@@ -1,47 +1,47 @@
-# MX Bikes HUD (mxbo)
+# MXBO Overlay
 
-Standings, relative, and a track map for MX Bikes.
+Standings, relative, map, minimap, and radar for [MX Bikes](https://store.steampowered.com/app/655500/MX_Bikes/).
 
-There are two layers:
+## Download and install
 
-1. **`mxbo.dlo`** — in-game plugin. Reads telemetry and writes a shared-memory snapshot (`Local\MXBOHudV1`).
-2. **`mxbo-overlay`** — a transparent Rust window (tiny-skia) that sits on top of the game and draws anti-aliased lines and real Windows fonts.
+1. Get the latest **MXBO-Overlay-*-windows-x64.zip** from [Releases](https://github.com/troyerl/mx-bikes-overlay/releases).
+2. Unzip it and run **Install.bat**.
+3. If SmartScreen appears, choose **More info → Run anyway**.
+4. Set MX Bikes to **borderless** or **windowed**.
+5. Start the game, then start **MXBO Overlay** from the desktop shortcut.
+6. Press **F8** for settings. Hold **Ctrl** and drag widgets to move or resize.
 
-In-game drawing is **off** by default (`ingame_hud=0`) so the plugin stays cheap. The overlay is what you look at.
+You can also grab a zip from the latest [Actions](https://github.com/troyerl/mx-bikes-overlay/actions) run if no release is published yet.
 
-## Build
-
-Visual Studio 2022 x64 tools, plus [Rust](https://rustup.rs/) for the overlay.
-
-```bat
-build.bat
-```
-
-That installs `mxbo.dlo` into `MX Bikes\plugins\`. Overlay exe:
-
-`overlay\target\release\mxbo-overlay.exe`
+Uninstall with `Uninstall.bat`, or from `%LOCALAPPDATA%\MXBO Overlay`.
 
 ## Use
 
-1. Set MX Bikes to **borderless** or **windowed** (exclusive fullscreen will cover the overlay).
-2. Start the game (loads the plugin).
-3. Start `mxbo-overlay.exe`.
-4. Hold **Ctrl** and drag still works only if you turn in-game HUD back on.
+The plugin (`mxbo.dlo`) reads the game and writes shared memory. The overlay is a transparent window on top of MX Bikes.
 
-Layout still lives in `Documents\PiBoSo\MX Bikes\mxbo.ini`. Overlay widgets follow those normalized 0..1 rects.
+Layout is saved to `Documents\PiBoSo\MX Bikes\mxbo.ini`.
 
+Restart MX Bikes after installing or updating the plugin.
+
+## Build from source
+
+Needs Visual Studio 2022 (C++ desktop) and [Rust](https://rustup.rs/).
+
+```bat
+build.bat
+pack.bat
 ```
-ingame_hud=0
-show_map=1
-show_standings=1
-show_relative=1
-```
 
-Quit the overlay by closing its process (it is click-through so it will not steal mouse input).
+`build.bat` compiles `out\Release\mxbo.dlo` and `overlay\target\release\mxbo-overlay.exe`.  
+`pack.bat` writes `dist\MXBO-Overlay-<version>-windows-x64.zip` for other PCs.
+
+Push a tag to publish a downloadable release:
+
+```bat
+git tag v0.1.0
+git push origin v0.1.0
+```
 
 ## Data wiki
 
-Every plugin callback and field, plus what we already store vs ignore:
-
-[wiki/Home.md](wiki/Home.md)
-# mx-bikes-overlay
+Plugin callbacks and fields: [wiki/Home.md](wiki/Home.md)

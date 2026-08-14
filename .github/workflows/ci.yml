@@ -1,0 +1,35 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: microsoft/setup-msbuild@v2
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: overlay
+
+      - name: Build plugin
+        run: msbuild mxbo.vcxproj /p:Configuration=Release /p:Platform=x64 /m
+
+      - name: Build overlay
+        run: cargo build --release --manifest-path overlay/Cargo.toml
+
+      - name: Pack zip
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File tools/pack.ps1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MXBO-Overlay-windows-x64
+          path: dist/*.zip

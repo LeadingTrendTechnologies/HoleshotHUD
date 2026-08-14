@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: microsoft/setup-msbuild@v2
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: overlay
+
+      - name: Build plugin
+        run: msbuild mxbo.vcxproj /p:Configuration=Release /p:Platform=x64 /m
+
+      - name: Build overlay
+        run: cargo build --release --manifest-path overlay/Cargo.toml
+
+      - name: Pack zip
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File tools/pack.ps1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MXBO-Overlay-windows-x64
+          path: dist/*.zip
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
+          generate_release_notes: true
