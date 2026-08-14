@@ -9,7 +9,7 @@ extern "C" {
 #define MXBO_SHM_NAME L"Local\\MXBOHudV1"
 #define MXBO_SHM_NAME_A "Local\\MXBOHudV1"
 #define MXBO_SHM_MAGIC 0x4F42584Du /* 'MXBO' */
-#define MXBO_SHM_VERSION 1
+#define MXBO_SHM_VERSION 2
 #define MXBO_MAX_POLY 1024
 #define MXBO_MAX_RIDERS 64
 #define MXBO_MAX_STANDINGS 40
@@ -43,7 +43,10 @@ typedef struct MxboShmStanding
     int32_t gapMs;
     int32_t gapLaps;
     int32_t pit;
+    int32_t penaltyMs;
+    int32_t crashed;
     char name[MXBO_NAME];
+    char bike[MXBO_NAME];
 } MxboShmStanding;
 
 typedef struct MxboShmRect

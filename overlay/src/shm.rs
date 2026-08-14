@@ -9,7 +9,7 @@ use windows::Win32::System::Memory::{
 };
 
 pub const MAGIC: u32 = 0x4F42584D;
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 pub const MAX_POLY: usize = 1024;
 pub const MAX_RIDERS: usize = 64;
 pub const MAX_STANDINGS: usize = 40;
@@ -60,7 +60,10 @@ pub struct Standing {
     pub gap_ms: i32,
     pub gap_laps: i32,
     pub pit: i32,
+    pub penalty_ms: i32,
+    pub crashed: i32,
     pub name: [u8; NAME],
+    pub bike: [u8; NAME],
 }
 
 impl Default for Standing {
@@ -74,7 +77,10 @@ impl Default for Standing {
             gap_ms: 0,
             gap_laps: 0,
             pit: 0,
+            penalty_ms: 0,
+            crashed: 0,
             name: [0; NAME],
+            bike: [0; NAME],
         }
     }
 }

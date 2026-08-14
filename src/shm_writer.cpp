@@ -253,8 +253,12 @@ void ShmWriter::publish(const PluginState& state, const PluginConfig& config)
         d.gapMs = s.gapMs;
         d.gapLaps = s.gapLaps;
         d.pit = s.pit;
+        d.penaltyMs = s.penaltyMs;
+        const TrackPos* tp = state.findTrackPos(s.raceNum);
+        d.crashed = tp ? tp->crashed : 0;
         const RaceEntry* e = state.findEntry(s.raceNum);
         copyName(d.name, MXBO_NAME, e ? e->name.c_str() : "");
+        copyName(d.bike, MXBO_NAME, e ? e->bikeShort.c_str() : "");
     }
 
     local.map = MxboShmRect{config.map.x, config.map.y, config.map.w, config.map.h};

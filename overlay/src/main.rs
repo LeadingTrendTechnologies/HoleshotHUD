@@ -1,8 +1,10 @@
 #![windows_subsystem = "windows"]
 
 mod compat;
+mod config;
 mod layout;
 mod render;
+mod settings;
 mod shm;
 
 use std::mem::size_of;
@@ -22,15 +24,16 @@ use windows::Win32::System::Diagnostics::ToolHelp::{
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
 use windows::Win32::System::Threading::Sleep;
+use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_F8};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateIconFromResourceEx, CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClassNameW,
     GetClientRect, GetSystemMetrics, GetWindowThreadProcessId, IsWindow, LoadCursorW,
-    LookupIconIdFromDirectoryEx, PeekMessageW, PostQuitMessage, RegisterClassExW, SetWindowPos,
-    ShowWindow, TranslateMessage, UpdateLayeredWindow, HWND_TOPMOST, IDC_ARROW, LR_DEFAULTCOLOR,
-    MSG, PM_REMOVE, SM_CXSCREEN, SM_CYSCREEN, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_SHOWMINNOACTIVE,
-    SW_SHOWNOACTIVATE, ULW_ALPHA, WM_CLOSE, WM_DESTROY, WM_QUIT, WNDCLASSEXW, WS_CAPTION, WS_CHILD,
-    WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
-    WS_EX_TRANSPARENT, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_POPUP, WS_SYSMENU, WS_VISIBLE,
+    LookupIconIdFromDirectoryEx, PeekMessageW, PostQuitMessage, RegisterClassExW, SetCursor,
+    SetWindowPos, ShowWindow, TranslateMessage, UpdateLayeredWindow, HWND_TOPMOST, IDC_ARROW,
+    LR_DEFAULTCOLOR, MSG, PM_REMOVE, SM_CXSCREEN, SM_CYSCREEN, SWP_NOACTIVATE, SWP_SHOWWINDOW,
+    SW_SHOWMINNOACTIVE, SW_SHOWNOACTIVATE, ULW_ALPHA, WM_CLOSE, WM_DESTROY, WM_QUIT, WM_SETCURSOR,
+    WNDCLASSEXW, WS_CAPTION, WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+    WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_POPUP, WS_SYSMENU,
 };
 
 use crate::render::Fonts;
@@ -64,12 +67,12 @@ unsafe fn run(fonts: Fonts) {
     let host = CreateWindowExW(
         WS_EX_APPWINDOW,
         class,
-        w!("MXBO Overlay"),
+        w!("MXBO Overlay — Settings"),
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
         80,
         80,
-        360,
-        140,
+        720,
+        640,
         None,
         None,
         hinst,
@@ -77,20 +80,11 @@ unsafe fn run(fonts: Fonts) {
     )
     .expect("host window");
     unsafe { HOST = host; }
-    let _ = CreateWindowExW(
-        Default::default(),
-        w!("STATIC"),
-        w!("Overlay is running. Close this window to quit."),
-        WS_CHILD | WS_VISIBLE,
-        16,
-        16,
-        320,
-        80,
-        host,
-        None,
-        hinst,
-        None,
-    );
+    {
+        let loaded = crate::config::HudConfig::load_file();
+        *crate::config::CONFIG.lock().unwrap_or_else(|e| e.into_inner()) = loaded;
+    }
+    crate::settings::attach(host);
     let _ = ShowWindow(host, SW_SHOWMINNOACTIVE);
 
     let mut game = find_game_hwnd();
@@ -115,6 +109,7 @@ unsafe fn run(fonts: Fonts) {
     QueryPerformanceFrequency(&mut freq).ok();
     let zfix = compat::FullscreenFix::new();
     let mut editor = crate::layout::Editor::default();
+    let mut f8_was = false;
 
     let mut msg = MSG::default();
     loop {
@@ -178,15 +173,30 @@ unsafe fn run(fonts: Fonts) {
 
         let layout_on = overlay_on && crate::layout::Editor::ctrl_down();
         zfix.set_layout_mode(hwnd, layout_on);
+        if layout_on {
+            let cur = LoadCursorW(None, IDC_ARROW).unwrap_or_default();
+            let _ = SetCursor(cur);
+        }
+
+        let f8 = unsafe { GetAsyncKeyState(VK_F8.0 as i32) < 0 };
+        if f8 && !f8_was {
+            crate::settings::show(host);
+        }
+        f8_was = f8;
 
         if shm.is_none() {
             shm = Shm::open();
         }
         let mut snap = shm.as_ref().and_then(|s| s.read());
-        editor.tick(hwnd, x, y, w, h, snap.as_ref());
+        let mut cfg = crate::config::with_config(|c| c.clone());
+        if let Some(ref mut s) = snap {
+            cfg.apply_to_snapshot(s);
+        }
+        editor.tick(hwnd, x, y, w, h, snap.as_ref(), &cfg);
         if let Some(ref mut s) = snap {
             editor.apply(s);
         }
+        editor.apply_cfg(&mut cfg);
         let age = snap
             .as_ref()
             .map(|s| qpc_age(s.tick_qpc, freq))
@@ -197,13 +207,16 @@ unsafe fn run(fonts: Fonts) {
             &mut pixmap,
             &fonts,
             snap.as_ref(),
+            &cfg,
             w as u32,
             h as u32,
             age,
             restart_hint,
+            layout_on,
         );
         dib.blit_premul_bgra(pixmap.data());
         dib.present(hwnd, w, h, x, y);
+        crate::settings::paint(&fonts);
         Sleep(8);
     }
 }
@@ -236,9 +249,19 @@ unsafe fn icon_from_ico(bytes: &[u8], size: i32) -> windows::Win32::UI::WindowsA
 }
 
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
-    if hwnd == HOST && (msg == WM_CLOSE || msg == WM_DESTROY) {
-        PostQuitMessage(0);
-        return LRESULT(0);
+    if hwnd == HOST {
+        if crate::settings::handle_message(msg, wp, lp) {
+            return LRESULT(0);
+        }
+        if msg == WM_CLOSE || msg == WM_DESTROY {
+            crate::config::update_config(|_| {});
+            PostQuitMessage(0);
+            return LRESULT(0);
+        }
+    } else if msg == WM_SETCURSOR {
+        let cur = LoadCursorW(None, IDC_ARROW).unwrap_or_default();
+        let _ = SetCursor(cur);
+        return LRESULT(1);
     }
     DefWindowProcW(hwnd, msg, wp, lp)
 }
