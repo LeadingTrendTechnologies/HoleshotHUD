@@ -1,0 +1,12 @@
+build/
+out/
+overlay/target/
+*.user
+*.user
+*.suo
+*.sdf
+*.opensdf
+.vs/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake

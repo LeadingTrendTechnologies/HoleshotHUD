@@ -1,0 +1,281 @@
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+
+#include "shm_writer.h"
+#include "shm/mxbo_shm.h"
+#include "config.h"
+#include "state.h"
+
+#include <cstddef>
+#include <cmath>
+#include <cstring>
+#include <vector>
+#include <windows.h>
+
+namespace
+{
+    constexpr float kPi = 3.14159265358979323846f;
+    constexpr float kDeg = 180.0f / kPi;
+
+    void copyName(char* dest, int destSize, const char* src)
+    {
+        if (!dest || destSize <= 0)
+        {
+            return;
+        }
+        dest[0] = '\0';
+        if (!src)
+        {
+            return;
+        }
+        int n = 0;
+        while (src[n] && n + 1 < destSize)
+        {
+            dest[n] = src[n];
+            ++n;
+        }
+        dest[n] = '\0';
+    }
+
+    float deg2rad(float d)
+    {
+        return d * kPi / 180.0f;
+    }
+
+    void advanceAlongArc(float& x, float& y, float& angleDeg, float radius, float distance)
+    {
+        const float r = (std::fabs(radius) < 0.05f) ? 0.0f : radius;
+        if (r == 0.0f)
+        {
+            const float a = deg2rad(angleDeg);
+            x += std::sin(a) * distance;
+            y += std::cos(a) * distance;
+            return;
+        }
+        const float a = deg2rad(angleDeg);
+        const float dTheta = distance / r;
+        const float cx = x + std::cos(a) * r;
+        const float cy = y - std::sin(a) * r;
+        const float n = a + dTheta;
+        x = cx - std::cos(n) * r;
+        y = cy + std::sin(n) * r;
+        angleDeg += dTheta * kDeg;
+    }
+
+    void tessellate(const PluginState& state, MxboShmPoint* out, int32_t* count)
+    {
+        *count = 0;
+        std::vector<MxboShmPoint> pts;
+        pts.reserve(512);
+
+        const auto& segs = state.centerline();
+        if (!segs.empty())
+        {
+            float x = segs[0].startX;
+            float y = segs[0].startZ;
+            float heading = segs[0].angle;
+            auto push = [&](float px, float pz) {
+                if (!pts.empty())
+                {
+                    const float dx = px - pts.back().x;
+                    const float dz = pz - pts.back().z;
+                    if (dx * dx + dz * dz < 0.04f)
+                    {
+                        return;
+                    }
+                }
+                pts.push_back(MxboShmPoint{px, pz});
+            };
+            push(x, y);
+            for (const auto& s : segs)
+            {
+                if (s.length <= 0.01f)
+                {
+                    continue;
+                }
+                if (s.type == 0 || std::fabs(s.radius) < 0.05f)
+                {
+                    advanceAlongArc(x, y, heading, 0.0f, s.length);
+                    push(x, y);
+                    continue;
+                }
+                const int steps = std::max(6, static_cast<int>(std::ceil(s.length / 0.55f)));
+                const float step = s.length / static_cast<float>(steps);
+                for (int i = 0; i < steps; ++i)
+                {
+                    advanceAlongArc(x, y, heading, s.radius, step);
+                    push(x, y);
+                }
+            }
+        }
+        else
+        {
+            for (const auto& p : state.trail())
+            {
+                pts.push_back(MxboShmPoint{p.first, p.second});
+            }
+            if (state.hasTelemetry() &&
+                (pts.empty() ||
+                 std::fabs(pts.back().x - state.localX()) + std::fabs(pts.back().z - state.localZ()) > 0.5f))
+            {
+                pts.push_back(MxboShmPoint{state.localX(), state.localZ()});
+            }
+        }
+
+        if (pts.size() > MXBO_MAX_POLY)
+        {
+            const float stride = static_cast<float>(pts.size() - 1) / static_cast<float>(MXBO_MAX_POLY - 1);
+            for (int i = 0; i < MXBO_MAX_POLY; ++i)
+            {
+                const int idx = std::min(static_cast<int>(pts.size()) - 1, static_cast<int>(i * stride));
+                out[i] = pts[static_cast<size_t>(idx)];
+            }
+            *count = MXBO_MAX_POLY;
+            return;
+        }
+
+        *count = static_cast<int32_t>(pts.size());
+        if (*count > 0)
+        {
+            std::memcpy(out, pts.data(), static_cast<size_t>(*count) * sizeof(MxboShmPoint));
+        }
+    }
+}
+
+bool ShmWriter::open()
+{
+    close();
+    m_map = CreateFileMappingW(
+        INVALID_HANDLE_VALUE,
+        nullptr,
+        PAGE_READWRITE,
+        0,
+        static_cast<DWORD>(sizeof(MxboShmSnapshot)),
+        MXBO_SHM_NAME);
+    if (!m_map)
+    {
+        return false;
+    }
+    m_view = MapViewOfFile(m_map, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(MxboShmSnapshot));
+    if (!m_view)
+    {
+        CloseHandle(m_map);
+        m_map = nullptr;
+        return false;
+    }
+    std::memset(m_view, 0, sizeof(MxboShmSnapshot));
+    auto* snap = static_cast<MxboShmSnapshot*>(m_view);
+    snap->magic = MXBO_SHM_MAGIC;
+    snap->version = MXBO_SHM_VERSION;
+    snap->size = static_cast<uint32_t>(sizeof(MxboShmSnapshot));
+    snap->seq = 0;
+    return true;
+}
+
+void ShmWriter::close()
+{
+    if (m_view)
+    {
+        UnmapViewOfFile(m_view);
+        m_view = nullptr;
+    }
+    if (m_map)
+    {
+        CloseHandle(m_map);
+        m_map = nullptr;
+    }
+}
+
+void ShmWriter::publish(const PluginState& state, const PluginConfig& config)
+{
+    if (!m_view)
+    {
+        return;
+    }
+
+    MxboShmSnapshot local{};
+    local.magic = MXBO_SHM_MAGIC;
+    local.version = MXBO_SHM_VERSION;
+    local.size = static_cast<uint32_t>(sizeof(MxboShmSnapshot));
+
+    LARGE_INTEGER qpc{};
+    QueryPerformanceCounter(&qpc);
+    local.tickQpc = static_cast<uint64_t>(qpc.QuadPart);
+
+    local.localRaceNum = state.localRaceNum();
+    local.focusRaceNum = state.focusRaceNum();
+    local.hasTelemetry = state.hasTelemetry() ? 1 : 0;
+    local.localCrashed = state.localCrashed();
+    local.localX = state.localX();
+    local.localZ = state.localZ();
+    local.localVelX = state.localVelX();
+    local.localVelZ = state.localVelZ();
+    local.localYaw = state.localYaw();
+    local.localSpeed = state.localSpeed();
+    local.localTrackPos = state.localTrackPos();
+    copyName(local.trackName, MXBO_TRACK_NAME, state.trackName().c_str());
+    local.trackLength = state.trackLength();
+    local.sfMeters = state.startFinishMeters();
+
+    tessellate(state, local.poly, &local.polyCount);
+
+    const int nRiders = std::min(static_cast<int>(state.trackPositions().size()), MXBO_MAX_RIDERS);
+    local.riderCount = nRiders;
+    for (int i = 0; i < nRiders; ++i)
+    {
+        const TrackPos& p = state.trackPositions()[static_cast<size_t>(i)];
+        MxboShmRider& d = local.riders[i];
+        d.raceNum = p.raceNum;
+        d.x = p.x;
+        d.z = p.z;
+        d.yaw = p.yaw;
+        d.trackPos = p.trackPos;
+        d.crashed = p.crashed;
+        const RaceEntry* e = state.findEntry(p.raceNum);
+        copyName(d.name, MXBO_NAME, e ? e->name.c_str() : "");
+    }
+
+    const int nStand = std::min(static_cast<int>(state.standings().size()), MXBO_MAX_STANDINGS);
+    local.standingCount = nStand;
+    for (int i = 0; i < nStand; ++i)
+    {
+        const StandingRow& s = state.standings()[static_cast<size_t>(i)];
+        MxboShmStanding& d = local.standings[i];
+        d.raceNum = s.raceNum;
+        d.position = s.position;
+        d.state = s.state;
+        d.bestLapMs = s.bestLapMs;
+        d.numLaps = s.numLaps;
+        d.gapMs = s.gapMs;
+        d.gapLaps = s.gapLaps;
+        d.pit = s.pit;
+        const RaceEntry* e = state.findEntry(s.raceNum);
+        copyName(d.name, MXBO_NAME, e ? e->name.c_str() : "");
+    }
+
+    local.map = MxboShmRect{config.map.x, config.map.y, config.map.w, config.map.h};
+    local.standingsRect = MxboShmRect{config.standings.x, config.standings.y, config.standings.w, config.standings.h};
+    local.relative = MxboShmRect{config.relative.x, config.relative.y, config.relative.w, config.relative.h};
+    local.showMap = config.showMap ? 1 : 0;
+    local.showStandings = config.showStandings ? 1 : 0;
+    local.showRelative = config.showRelative ? 1 : 0;
+    local.standingsRows = config.standingsRows;
+    local.relativeCount = config.relativeCount;
+
+    auto* dst = static_cast<MxboShmSnapshot*>(m_view);
+    const uint32_t odd = dst->seq | 1u;
+    dst->seq = odd;
+    MemoryBarrier();
+    constexpr size_t kSkip = offsetof(MxboShmSnapshot, size);
+    std::memcpy(reinterpret_cast<uint8_t*>(dst) + kSkip,
+                reinterpret_cast<const uint8_t*>(&local) + kSkip,
+                sizeof(MxboShmSnapshot) - kSkip);
+    dst->magic = MXBO_SHM_MAGIC;
+    dst->version = MXBO_SHM_VERSION;
+    MemoryBarrier();
+    dst->seq = odd + 1u;
+}
