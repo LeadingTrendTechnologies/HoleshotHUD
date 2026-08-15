@@ -72,11 +72,13 @@ void PluginConfig::load(const std::string& path)
         if (applyRect(key, "map", map, f)) continue;
         if (applyRect(key, "minimap", minimap, f)) continue;
         if (applyRect(key, "radar", radar, f)) continue;
+        if (applyRect(key, "dash", dash, f)) continue;
         if (key == "show_standings") showStandings = parseBool(val);
         else if (key == "show_relative") showRelative = parseBool(val);
         else if (key == "show_map") showMap = parseBool(val);
         else if (key == "show_minimap") showMinimap = parseBool(val);
         else if (key == "show_radar") showRadar = parseBool(val);
+        else if (key == "show_dash") showDash = parseBool(val);
         else if (key == "ingame_hud") ingameHud = parseBool(val);
         else if (key == "standings_rows") standingsRows = std::max(3, std::atoi(val.c_str()));
         else if (key == "relative_count") relativeCount = std::max(1, std::atoi(val.c_str()));
@@ -121,6 +123,7 @@ void PluginConfig::load(const std::string& path)
         else if (key == "map_bg") mapBg = std::max(0, std::min(100, std::atoi(val.c_str())));
         else if (key == "mini_bg") miniBg = std::max(0, std::min(100, std::atoi(val.c_str())));
         else if (key == "radar_bg") radarBg = std::max(0, std::min(100, std::atoi(val.c_str())));
+        else if (key == "dash_bg") dashBg = std::max(0, std::min(100, std::atoi(val.c_str())));
         else if (key == "st_order") stOrder = val;
         else if (key == "rel_order") relOrder = val;
         else if (key == "st_w_pos") stWPos = std::max(18, std::atoi(val.c_str()));
@@ -159,12 +162,14 @@ void PluginConfig::save(const std::string& path) const
     writeRect(out, "map", map);
     writeRect(out, "minimap", minimap);
     writeRect(out, "radar", radar);
+    writeRect(out, "dash", dash);
     out << "\n[Widgets]\n";
     out << "show_standings=" << (showStandings ? 1 : 0) << "\n";
     out << "show_relative=" << (showRelative ? 1 : 0) << "\n";
     out << "show_map=" << (showMap ? 1 : 0) << "\n";
     out << "show_minimap=" << (showMinimap ? 1 : 0) << "\n";
     out << "show_radar=" << (showRadar ? 1 : 0) << "\n";
+    out << "show_dash=" << (showDash ? 1 : 0) << "\n";
     out << "ingame_hud=" << (ingameHud ? 1 : 0) << "\n";
     out << "standings_rows=" << standingsRows << "\n";
     out << "relative_count=" << relativeCount << "\n";
@@ -235,4 +240,6 @@ void PluginConfig::save(const std::string& path) const
     out << "radar_sides=" << (radarSides ? 1 : 0) << "\n";
     out << "radar_rear=" << (radarRear ? 1 : 0) << "\n";
     out << "radar_bg=" << radarBg << "\n";
+    out << "\n[Dash]\n";
+    out << "dash_bg=" << dashBg << "\n";
 }

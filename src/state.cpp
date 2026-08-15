@@ -44,12 +44,16 @@ void PluginState::clearEvent()
     m_localVelX = 0.0f;
     m_localVelZ = 0.0f;
     m_telemetryStamp = 0.0;
+    m_trackPosStamp = 0.0;
     m_localRaceNum = -1;
     m_centerline.clear();
     m_centerlineDirty = true;
     m_sfMeters = 0.0f;
     m_trail.clear();
     m_trailStarted = false;
+    m_inRun = false;
+    m_maxRpm = 0;
+    m_shiftRpm = 0;
     clearRace();
 }
 
@@ -60,6 +64,20 @@ void PluginState::clearRace()
     m_standings.clear();
     m_trackPos.clear();
     m_focusRaceNum = -1;
+    m_localGear = 0;
+    m_localRpm = 0;
+    m_engineTemp = 0.0f;
+    m_airTemp = 0.0f;
+    m_sessionTime = 0.0f;
+    m_lastLapEndTime = 0.0f;
+    m_lastLapMs = 0;
+    m_bestLapMs = 0;
+    m_currentLap = 0;
+    m_sessionLaps = 0;
+    m_sessionClock = 0;
+    m_sessionLength = 0;
+    m_lastLaps.clear();
+    m_inRun = false;
 }
 
 void PluginState::setEvent(const SPluginsBikeEvent_t& ev)
@@ -72,6 +90,18 @@ void PluginState::setEvent(const SPluginsBikeEvent_t& ev)
     if (ev.m_fTrackLength > 0.0f)
     {
         m_trackLength = ev.m_fTrackLength;
+    }
+    if (ev.m_iMaxRPM > 0)
+    {
+        m_maxRpm = ev.m_iMaxRPM;
+    }
+    if (ev.m_iShiftRPM > 0)
+    {
+        m_shiftRpm = ev.m_iShiftRPM;
+    }
+    else if (ev.m_iLimiter > 0)
+    {
+        m_shiftRpm = ev.m_iLimiter;
     }
     resolveLocalRaceNum();
 }
@@ -88,9 +118,89 @@ void PluginState::setRaceEvent(const SPluginsRaceEvent_t& ev)
     }
 }
 
+void PluginState::beginRun()
+{
+    m_inRun = true;
+}
+
+void PluginState::endRun()
+{
+    m_inRun = false;
+    m_hasTelemetry = false;
+    m_telemetryStamp = 0.0;
+    m_trackPosStamp = 0.0;
+    m_trackPos.clear();
+}
+
+bool PluginState::onTrack() const
+{
+    return m_inRun;
+}
+
 void PluginState::setSession(const SPluginsRaceSession_t& s)
 {
-    (void)s;
+    m_airTemp = s.m_fAirTemperature;
+    m_sessionLaps = s.m_iSessionNumLaps;
+    if (s.m_iSessionLength > 0)
+    {
+        m_sessionLength = s.m_iSessionLength;
+    }
+}
+
+void PluginState::setLocalLap(int lapNum, int lapMs)
+{
+    m_lastLapMs = lapMs;
+    if (lapMs > 0 && (m_bestLapMs <= 0 || lapMs < m_bestLapMs))
+    {
+        m_bestLapMs = lapMs;
+    }
+    m_currentLap = lapNum + 1;
+    m_lastLapEndTime = m_sessionTime;
+    if (m_localRaceNum >= 0)
+    {
+        m_lastLaps[m_localRaceNum] = lapMs;
+    }
+}
+
+void PluginState::setRaceLap(int raceNum, int lapNum, int lapMs)
+{
+    if (lapMs > 0)
+    {
+        m_lastLaps[raceNum] = lapMs;
+    }
+    const int focus = focusRaceNum();
+    if (raceNum != focus && raceNum != m_localRaceNum)
+    {
+        return;
+    }
+    setLocalLap(lapNum, lapMs);
+}
+
+int PluginState::sessionTimeMs() const
+{
+    if (m_sessionClock > 0)
+    {
+        return m_sessionClock > 100000 ? m_sessionClock : m_sessionClock * 1000;
+    }
+    if (m_sessionTime > 0.0f)
+    {
+        return static_cast<int>(m_sessionTime * 1000.0f);
+    }
+    return 0;
+}
+
+int PluginState::currentLapMs() const
+{
+    if (m_lastLapEndTime > 0.0f && m_sessionTime >= m_lastLapEndTime)
+    {
+        const float dt = m_sessionTime - m_lastLapEndTime;
+        if (dt > 200.0f)
+        {
+            return static_cast<int>(dt);
+        }
+        return static_cast<int>(dt * 1000.0f);
+    }
+    return m_lastLapMs;
 }
 
 void PluginState::addEntry(const SPluginsRaceAddEntry_t& e)
@@ -99,6 +209,7 @@ void PluginState::addEntry(const SPluginsRaceAddEntry_t& e)
     row.raceNum = e.m_iRaceNum;
     row.name = copyCString(e.m_szName, sizeof(e.m_szName));
     row.bikeShort = copyCString(e.m_szBikeShortName, sizeof(e.m_szBikeShortName));
+    row.category = copyCString(e.m_szCategory, sizeof(e.m_szCategory));
     row.unactive = e.m_iUnactive != 0;
     resolveLocalRaceNum();
 }
@@ -117,10 +228,14 @@ void PluginState::removeEntry(int raceNum)
     }
 }
 
-void PluginState::setClassification(const SPluginsRaceClassification_t&,
+void PluginState::setClassification(const SPluginsRaceClassification_t& header,
                                     const SPluginsRaceClassificationEntry_t* entries,
                                     int count)
 {
+    if (header.m_iSessionTime > 0)
+    {
+        m_sessionClock = header.m_iSessionTime;
+    }
     count = clampCount(count);
     m_standings.clear();
     m_standings.reserve(static_cast<size_t>(count));
@@ -136,6 +251,8 @@ void PluginState::setClassification(const SPluginsRaceClassification_t&,
         row.gapLaps = entries[i].m_iGapLaps;
         row.penaltyMs = entries[i].m_iPenalty;
         row.pit = entries[i].m_iPit;
+        auto it = m_lastLaps.find(row.raceNum);
+        row.lastLapMs = it != m_lastLaps.end() ? it->second : 0;
         m_standings.push_back(row);
     }
 }
@@ -156,6 +273,10 @@ void PluginState::setTrackPositions(const SPluginsRaceTrackPosition_t* entries, 
         p.trackPos = entries[i].m_fTrackPos;
         p.crashed = entries[i].m_iCrashed;
         m_trackPos.push_back(p);
+    }
+    if (count > 0)
+    {
+        m_trackPosStamp = pluginNowSeconds();
     }
     resolveLocalRaceNum();
 }
@@ -197,9 +318,13 @@ void PluginState::setCenterline(int numSegments, const SPluginsTrackSegment_t* s
     m_centerlineDirty = true;
 }
 
-void PluginState::setTelemetry(const SPluginsBikeData_t& data, float, float pos)
+void PluginState::setTelemetry(const SPluginsBikeData_t& data, float time, float pos)
 {
     m_hasTelemetry = true;
+    m_sessionTime = time;
+    m_localGear = data.m_iGear;
+    m_localRpm = data.m_iRPM;
+    m_engineTemp = data.m_fWaterTemperature > 1.0f ? data.m_fWaterTemperature : data.m_fEngineTemperature;
     m_localSpeed = data.m_fSpeedometer;
     m_localTrackPos = pos;
     m_localX = data.m_fPosX;
@@ -250,6 +375,16 @@ void PluginState::setVehicleData(const SPluginsRaceVehicleData_t& data)
 void PluginState::setSpectateSelection(int raceNum)
 {
     m_focusRaceNum = raceNum;
+}
+
+const VehicleLive* PluginState::findVehicle(int raceNum) const
+{
+    const auto it = m_vehicles.find(raceNum);
+    if (it == m_vehicles.end())
+    {
+        return nullptr;
+    }
+    return &it->second;
 }
 
 float PluginState::riderSpeed(int raceNum) const

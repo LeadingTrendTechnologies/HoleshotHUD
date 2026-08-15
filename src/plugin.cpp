@@ -139,6 +139,11 @@ namespace
         g_config.load(g_iniPath);
         g_layoutDirty = true;
     }
+
+    void publishHud()
+    {
+        g_shm.publish(g_state, g_config);
+    }
 }
 
 extern "C" {
@@ -214,6 +219,7 @@ __declspec(dllexport) void EventDeinit()
     {
         g_state.clearEvent();
         g_layoutDirty = true;
+        publishHud();
     }
     catch (...)
     {
@@ -224,19 +230,53 @@ __declspec(dllexport) void RunInit(void* _pData, int _iDataSize)
 {
     (void)_pData;
     (void)_iDataSize;
+    try
+    {
+        g_state.beginRun();
+    }
+    catch (...)
+    {
+    }
 }
 
 __declspec(dllexport) void RunDeinit()
 {
+    try
+    {
+        g_state.endRun();
+        publishHud();
+    }
+    catch (...)
+    {
+    }
 }
 
-__declspec(dllexport) void RunStart() {}
+__declspec(dllexport) void RunStart()
+{
+    try
+    {
+        g_state.beginRun();
+    }
+    catch (...)
+    {
+    }
+}
+
 __declspec(dllexport) void RunStop() {}
 
 __declspec(dllexport) void RunLap(void* _pData, int _iDataSize)
 {
-    (void)_pData;
-    (void)_iDataSize;
+    try
+    {
+        SPluginsBikeLap_t data{};
+        if (copySized(data, _pData, _iDataSize))
+        {
+            g_state.setLocalLap(data.m_iLapNum, data.m_iLapTime);
+        }
+    }
+    catch (...)
+    {
+    }
 }
 
 __declspec(dllexport) void RunSplit(void* _pData, int _iDataSize)
@@ -385,8 +425,10 @@ __declspec(dllexport) void RaceDeinit()
 {
     try
     {
+        g_state.endRun();
         g_state.clearRace();
         g_layoutDirty = true;
+        publishHud();
     }
     catch (...)
     {
@@ -446,8 +488,17 @@ __declspec(dllexport) void RaceSessionState(void* _pData, int _iDataSize)
 
 __declspec(dllexport) void RaceLap(void* _pData, int _iDataSize)
 {
-    (void)_pData;
-    (void)_iDataSize;
+    try
+    {
+        SPluginsRaceLap_t data{};
+        if (copySized(data, _pData, _iDataSize))
+        {
+            g_state.setRaceLap(data.m_iRaceNum, data.m_iLapNum, data.m_iLapTime);
+        }
+    }
+    catch (...)
+    {
+    }
 }
 
 __declspec(dllexport) void RaceSplit(void* _pData, int _iDataSize)

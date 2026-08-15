@@ -197,16 +197,18 @@ unsafe fn run(fonts: Fonts) {
             editor.apply(s);
         }
         editor.apply_cfg(&mut cfg);
-        let age = snap
+        let raw_age = snap
             .as_ref()
             .map(|s| qpc_age(s.tick_qpc, freq))
-            .unwrap_or(0.0)
-            .clamp(0.0, 0.08);
+            .unwrap_or(999.0);
+        let age = raw_age.clamp(0.0, 0.08);
+        let live = raw_age < 0.6;
+        let hud = if live || layout_on { snap.as_ref() } else { None };
 
         render::draw(
             &mut pixmap,
             &fonts,
-            snap.as_ref(),
+            hud,
             &cfg,
             w as u32,
             h as u32,

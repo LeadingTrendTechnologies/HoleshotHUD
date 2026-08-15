@@ -35,6 +35,7 @@ enum Tab {
     Map,
     Minimap,
     Radar,
+    Dash,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -44,11 +45,13 @@ enum Hit {
     TabMap,
     TabMini,
     TabRadar,
+    TabDash,
     StShow,
     RelShow,
     MapShow,
     MiniShow,
     RadarShow,
+    DashShow,
     StPos,
     StNum,
     StName,
@@ -98,6 +101,8 @@ enum Hit {
     MiniBgInc,
     RadarBgDec,
     RadarBgInc,
+    DashBgDec,
+    DashBgInc,
     StDec,
     StInc,
     RelDec,
@@ -388,6 +393,10 @@ fn click(p: (f32, f32)) {
             set_tab(Tab::Radar);
             return;
         }
+        Hit::TabDash => {
+            set_tab(Tab::Dash);
+            return;
+        }
         Hit::MapDotOpen => {
             toggle_drop(Drop::MapDot);
             return;
@@ -404,6 +413,7 @@ fn click(p: (f32, f32)) {
         Hit::MapShow => c.show_map = !c.show_map,
         Hit::MiniShow => c.show_minimap = !c.show_minimap,
         Hit::RadarShow => c.show_radar = !c.show_radar,
+        Hit::DashShow => c.show_dash = !c.show_dash,
         Hit::StPos => c.st_pos = !c.st_pos,
         Hit::StNum => c.st_num = !c.st_num,
         Hit::StName => c.st_name = !c.st_name,
@@ -451,6 +461,8 @@ fn click(p: (f32, f32)) {
         Hit::MiniBgInc => c.mini_bg = (c.mini_bg + 5).min(100),
         Hit::RadarBgDec => c.radar_bg = (c.radar_bg - 5).max(0),
         Hit::RadarBgInc => c.radar_bg = (c.radar_bg + 5).min(100),
+        Hit::DashBgDec => c.dash_bg = (c.dash_bg - 5).max(0),
+        Hit::DashBgInc => c.dash_bg = (c.dash_bg + 5).min(100),
         Hit::StDec => c.standings_rows = (c.standings_rows - 1).max(3),
         Hit::StInc => c.standings_rows = (c.standings_rows + 1).min(40),
         Hit::RelDec => c.relative_count = (c.relative_count - 1).max(1),
@@ -475,7 +487,7 @@ fn click(p: (f32, f32)) {
                 f.add_width(c, 2);
             }
         }
-        Hit::TabSt | Hit::TabRel | Hit::TabMap | Hit::TabMini | Hit::TabRadar
+        Hit::TabSt | Hit::TabRel | Hit::TabMap | Hit::TabMini | Hit::TabRadar | Hit::TabDash
         | Hit::MapDotOpen | Hit::MiniDotOpen | Hit::StDrag(_) | Hit::RelDrag(_) => {}
     });
 }
@@ -538,11 +550,12 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
         (Tab::Map, Hit::TabMap, "Map", "Track layout", cfg.show_map),
         (Tab::Minimap, Hit::TabMini, "Minimap", "Numbered circle", cfg.show_minimap),
         (Tab::Radar, Hit::TabRadar, "Radar", "Proximity", cfg.show_radar),
+        (Tab::Dash, Hit::TabDash, "Dash", "Gear and speed", cfg.show_dash),
     ];
     let mut ty = 78.0;
     for (t, hit, name, hint, on) in tabs {
-        nav_tab(px, fonts, 8.0, ty, SIDE_W - 16.0, 42.0, t == tab, on, name, hint, hit, hover, &mut hits);
-        ty += 46.0;
+        nav_tab(px, fonts, 8.0, ty, SIDE_W - 16.0, 38.0, t == tab, on, name, hint, hit, hover, &mut hits);
+        ty += 42.0;
     }
     text(px, fonts, "F8  ·  Ctrl+drag move / resize", 11.0, 16.0, h - 28.0, muted(), false);
 
@@ -554,6 +567,7 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
         Tab::Map => pane_map(px, fonts, &cfg, hover, open_drop == Some(Drop::MapDot), &mut hits, x, 24.0, cw),
         Tab::Minimap => pane_minimap(px, fonts, &cfg, hover, open_drop == Some(Drop::MiniDot), &mut hits, x, 24.0, cw),
         Tab::Radar => pane_radar(px, fonts, &cfg, hover, &mut hits, x, 24.0, cw),
+        Tab::Dash => pane_dash(px, fonts, &cfg, hover, &mut hits, x, 24.0, cw),
     }
 
     if let Some(ui) = UI.lock().unwrap().as_mut() {
@@ -768,6 +782,22 @@ fn pane_radar(
     y = section(px, fonts, x, y, "On the radar");
     y = toggle_row(px, fonts, x, y, w, "Side proximity", cfg.radar_sides, Hit::RadarSides, hover, hits);
     toggle_row(px, fonts, x, y, w, "Rear proximity", cfg.radar_rear, Hit::RadarRear, hover, hits);
+}
+
+fn pane_dash(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    cfg: &HudConfig,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+    x: f32,
+    y: f32,
+    w: f32,
+) {
+    heading(px, fonts, x, y, "Dash", "Gear, speed, and lap");
+    let mut y = y + 56.0;
+    y = toggle_row(px, fonts, x, y, w, "Show on overlay", cfg.show_dash, Hit::DashShow, hover, hits);
+    stepper_row(px, fonts, x, y, w, "Panel opacity", &format!("{}%", cfg.dash_bg), Hit::DashBgDec, Hit::DashBgInc, hover, hits);
 }
 
 fn heading(px: &mut Pixmap, fonts: &Fonts, x: f32, y: f32, title: &str, sub: &str) {

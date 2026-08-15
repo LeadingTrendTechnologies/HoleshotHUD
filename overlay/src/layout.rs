@@ -11,6 +11,7 @@ enum Target {
     Relative,
     Minimap,
     Radar,
+    Dash,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -42,6 +43,7 @@ pub struct Editor {
     relative: Option<Rect>,
     minimap: Option<Rect>,
     radar: Option<Rect>,
+    dash: Option<Rect>,
     drag: Option<Drag>,
     mouse_was_down: bool,
 }
@@ -69,6 +71,9 @@ impl Editor {
         }
         if let Some(r) = self.radar {
             cfg.radar = r;
+        }
+        if let Some(r) = self.dash {
+            cfg.dash = r;
         }
     }
 
@@ -121,6 +126,7 @@ impl Editor {
                 Target::Relative => self.relative = Some(r),
                 Target::Minimap => self.minimap = Some(r),
                 Target::Radar => self.radar = Some(r),
+                Target::Dash => self.dash = Some(r),
             }
             let _ = overlay;
         }
@@ -139,6 +145,7 @@ impl Editor {
         let relative = self.relative.unwrap_or(s.relative);
         let minimap = self.minimap;
         let radar = self.radar;
+        let dash = self.dash;
         crate::config::update_config(|cfg| {
             cfg.map = map;
             cfg.standings = standings;
@@ -148,6 +155,9 @@ impl Editor {
             }
             if let Some(r) = radar {
                 cfg.radar = r;
+            }
+            if let Some(d) = dash {
+                cfg.dash = d;
             }
         });
     }
@@ -211,6 +221,12 @@ fn rect_of(s: &Snapshot, ed: &Editor, cfg: &HudConfig, t: Target) -> Rect {
         Target::Relative => ed.relative.unwrap_or(s.relative),
         Target::Minimap => ed.minimap.unwrap_or(cfg.minimap),
         Target::Radar => ed.radar.unwrap_or(cfg.radar),
+        Target::Dash => {
+            let mut r = ed.dash.unwrap_or_else(crate::render::dash_visual);
+            let vis = crate::render::dash_visual();
+            r.w = vis.w;
+            r
+        }
     }
 }
 
@@ -221,11 +237,13 @@ fn shown(s: &Snapshot, cfg: &HudConfig, t: Target) -> bool {
         Target::Relative => s.show_relative != 0,
         Target::Minimap => cfg.show_minimap,
         Target::Radar => cfg.show_radar,
+        Target::Dash => cfg.show_dash,
     }
 }
 
 fn hit(s: &Snapshot, ed: &Editor, cfg: &HudConfig, x: f32, y: f32, ow: i32, oh: i32) -> Option<(Target, Handle)> {
-    const ORDER: [Target; 5] = [
+    const ORDER: [Target; 6] = [
+        Target::Dash,
         Target::Minimap,
         Target::Radar,
         Target::Map,
@@ -301,6 +319,7 @@ fn min_px(t: Target) -> (f32, f32) {
         Target::Map => (90.0, 90.0),
         Target::Minimap => (72.0, 72.0),
         Target::Radar => (72.0, 72.0),
+        Target::Dash => (220.0, 100.0),
     }
 }
 

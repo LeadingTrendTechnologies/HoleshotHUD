@@ -277,11 +277,13 @@ pub struct HudConfig {
     pub map: Rect,
     pub minimap: Rect,
     pub radar: Rect,
+    pub dash: Rect,
     pub show_standings: bool,
     pub show_relative: bool,
     pub show_map: bool,
     pub show_minimap: bool,
     pub show_radar: bool,
+    pub show_dash: bool,
     pub ingame_hud: bool,
     pub standings_rows: i32,
     pub relative_count: i32,
@@ -326,6 +328,7 @@ pub struct HudConfig {
     pub map_bg: i32,
     pub mini_bg: i32,
     pub radar_bg: i32,
+    pub dash_bg: i32,
     pub st_order: Vec<StField>,
     pub rel_order: Vec<RelField>,
     pub st_w_pos: i32,
@@ -356,14 +359,14 @@ impl HudConfig {
             standings: Rect {
                 x: 0.012,
                 y: 0.03,
-                w: 0.235,
-                h: 0.42,
+                w: 0.30,
+                h: 0.46,
             },
             relative: Rect {
                 x: 0.012,
                 y: 0.62,
-                w: 0.235,
-                h: 0.33,
+                w: 0.30,
+                h: 0.36,
             },
             map: Rect {
                 x: 0.775,
@@ -383,11 +386,18 @@ impl HudConfig {
                 w: 0.124,
                 h: 0.22,
             },
+            dash: Rect {
+                x: 0.41,
+                y: 0.82,
+                w: 0.18,
+                h: 0.16,
+            },
             show_standings: true,
             show_relative: true,
             show_map: true,
             show_minimap: true,
             show_radar: true,
+            show_dash: true,
             ingame_hud: false,
             standings_rows: 12,
             relative_count: 3,
@@ -432,6 +442,7 @@ impl HudConfig {
             map_bg: 0,
             mini_bg: 0,
             radar_bg: 86,
+            dash_bg: 82,
             st_order: StField::ALL.to_vec(),
             rel_order: RelField::ALL.to_vec(),
             st_w_pos: 26,
@@ -498,11 +509,16 @@ impl HudConfig {
                 "radar_y" => cfg.radar.y = f,
                 "radar_w" => cfg.radar.w = f,
                 "radar_h" => cfg.radar.h = f,
+                "dash_x" => cfg.dash.x = f,
+                "dash_y" => cfg.dash.y = f,
+                "dash_w" => cfg.dash.w = f,
+                "dash_h" => cfg.dash.h = f,
                 "show_standings" => cfg.show_standings = b,
                 "show_relative" => cfg.show_relative = b,
                 "show_map" => cfg.show_map = b,
                 "show_minimap" => cfg.show_minimap = b,
                 "show_radar" => cfg.show_radar = b,
+                "show_dash" => cfg.show_dash = b,
                 "ingame_hud" => cfg.ingame_hud = b,
                 "standings_rows" => cfg.standings_rows = val.parse().unwrap_or(12).max(3),
                 "relative_count" => cfg.relative_count = val.parse().unwrap_or(3).max(1),
@@ -547,6 +563,7 @@ impl HudConfig {
                 "map_bg" => cfg.map_bg = clamp_pct(val),
                 "mini_bg" => cfg.mini_bg = clamp_pct(val),
                 "radar_bg" => cfg.radar_bg = clamp_pct(val),
+                "dash_bg" => cfg.dash_bg = clamp_pct(val),
                 "st_order" => cfg.st_order = parse_st_order(val),
                 "rel_order" => cfg.rel_order = parse_rel_order(val),
                 "st_w_pos" => cfg.st_w_pos = clamp_w(val),
@@ -587,8 +604,9 @@ impl HudConfig {
              map_x={}\nmap_y={}\nmap_w={}\nmap_h={}\n\
              minimap_x={}\nminimap_y={}\nminimap_w={}\nminimap_h={}\n\
              radar_x={}\nradar_y={}\nradar_w={}\nradar_h={}\n\
+             dash_x={}\ndash_y={}\ndash_w={}\ndash_h={}\n\
              \n[Widgets]\n\
-             show_standings={}\nshow_relative={}\nshow_map={}\nshow_minimap={}\nshow_radar={}\n\
+             show_standings={}\nshow_relative={}\nshow_map={}\nshow_minimap={}\nshow_radar={}\nshow_dash={}\n\
              ingame_hud={}\nstandings_rows={}\nrelative_count={}\n\
              \n[Standings]\n\
              st_pos={}\nst_num={}\nst_name={}\nst_gap={}\nst_interval={}\nst_laps={}\nst_best={}\nst_status={}\n\
@@ -610,7 +628,9 @@ impl HudConfig {
              mini_bg={}\n\
              \n[Radar]\n\
              radar_sides={}\nradar_rear={}\n\
-             radar_bg={}\n",
+             radar_bg={}\n\
+             \n[Dash]\n\
+             dash_bg={}\n",
             self.standings.x,
             self.standings.y,
             self.standings.w,
@@ -631,11 +651,16 @@ impl HudConfig {
             self.radar.y,
             self.radar.w,
             self.radar.h,
+            self.dash.x,
+            self.dash.y,
+            self.dash.w,
+            self.dash.h,
             b(self.show_standings),
             b(self.show_relative),
             b(self.show_map),
             b(self.show_minimap),
             b(self.show_radar),
+            b(self.show_dash),
             b(self.ingame_hud),
             self.standings_rows,
             self.relative_count,
@@ -701,6 +726,7 @@ impl HudConfig {
             b(self.radar_sides),
             b(self.radar_rear),
             self.radar_bg,
+            self.dash_bg,
         );
         let _ = fs::write(&path, body);
         self.loaded_mtime = fs::metadata(&path).and_then(|m| m.modified()).ok();

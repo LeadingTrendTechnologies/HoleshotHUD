@@ -9,7 +9,7 @@ extern "C" {
 #define MXBO_SHM_NAME L"Local\\MXBOHudV1"
 #define MXBO_SHM_NAME_A "Local\\MXBOHudV1"
 #define MXBO_SHM_MAGIC 0x4F42584Du /* 'MXBO' */
-#define MXBO_SHM_VERSION 2
+#define MXBO_SHM_VERSION 7
 #define MXBO_MAX_POLY 1024
 #define MXBO_MAX_RIDERS 64
 #define MXBO_MAX_STANDINGS 40
@@ -47,6 +47,8 @@ typedef struct MxboShmStanding
     int32_t crashed;
     char name[MXBO_NAME];
     char bike[MXBO_NAME];
+    int32_t lastLapMs;
+    char category[MXBO_NAME];
 } MxboShmStanding;
 
 typedef struct MxboShmRect
@@ -98,6 +100,21 @@ typedef struct MxboShmSnapshot
     int32_t showRelative;
     int32_t standingsRows;
     int32_t relativeCount;
+
+    int32_t localGear;
+    int32_t localRpm;
+    float engineTemp;
+    float airTemp;
+    int32_t lastLapMs;
+    int32_t currentLapMs;
+    int32_t currentLap;
+    int32_t sessionLaps;
+    int32_t onTrack;
+    int32_t maxRpm;
+    int32_t shiftRpm;
+    int32_t sessionTimeMs;
+    int32_t sessionLength;
+    int32_t bestLapMs;
 } MxboShmSnapshot;
 
 #ifdef __cplusplus

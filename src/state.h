@@ -22,6 +22,7 @@ struct RaceEntry
     int raceNum = 0;
     std::string name;
     std::string bikeShort;
+    std::string category;
     bool unactive = false;
 };
 
@@ -36,6 +37,7 @@ struct StandingRow
     int gapLaps = 0;
     int penaltyMs = 0;
     int pit = 0;
+    int lastLapMs = 0;
 };
 
 struct TrackPos
@@ -80,6 +82,11 @@ public:
     void setEvent(const SPluginsBikeEvent_t& ev);
     void setRaceEvent(const SPluginsRaceEvent_t& ev);
     void setSession(const SPluginsRaceSession_t& s);
+    void beginRun();
+    void endRun();
+    bool onTrack() const;
+    void setLocalLap(int lapNum, int lapMs);
+    void setRaceLap(int raceNum, int lapNum, int lapMs);
     void addEntry(const SPluginsRaceAddEntry_t& e);
     void removeEntry(int raceNum);
     void setClassification(const SPluginsRaceClassification_t& header,
@@ -117,8 +124,22 @@ public:
     float localYaw() const { return m_localYaw; }
     int localCrashed() const { return m_localCrashed; }
     double telemetryStamp() const { return m_telemetryStamp; }
+    int localGear() const { return m_localGear; }
+    int localRpm() const { return m_localRpm; }
+    float engineTemp() const { return m_engineTemp; }
+    float airTemp() const { return m_airTemp; }
+    int lastLapMs() const { return m_lastLapMs; }
+    int bestLapMs() const { return m_bestLapMs; }
+    int currentLapMs() const;
+    int currentLap() const { return m_currentLap; }
+    int sessionLaps() const { return m_sessionLaps; }
+    int maxRpm() const { return m_maxRpm; }
+    int shiftRpm() const { return m_shiftRpm; }
+    int sessionTimeMs() const;
+    int sessionLength() const { return m_sessionLength; }
 
     float riderSpeed(int raceNum) const;
+    const VehicleLive* findVehicle(int raceNum) const;
     const RaceEntry* findEntry(int raceNum) const;
     const StandingRow* findStanding(int raceNum) const;
     const TrackPos* findTrackPos(int raceNum) const;
@@ -146,6 +167,7 @@ private:
     int m_localRaceNum = -1;
     int m_focusRaceNum = -1;
 
+    bool m_inRun = false;
     bool m_hasTelemetry = false;
     float m_localSpeed = 0.0f;
     float m_localTrackPos = 0.0f;
@@ -156,6 +178,22 @@ private:
     float m_localYaw = 0.0f;
     int m_localCrashed = 0;
     double m_telemetryStamp = 0.0;
+    double m_trackPosStamp = 0.0;
+    int m_localGear = 0;
+    int m_localRpm = 0;
+    float m_engineTemp = 0.0f;
+    float m_airTemp = 0.0f;
+    float m_sessionTime = 0.0f;
+    float m_lastLapEndTime = 0.0f;
+    int m_lastLapMs = 0;
+    int m_bestLapMs = 0;
+    int m_currentLap = 0;
+    int m_sessionLaps = 0;
+    int m_maxRpm = 0;
+    int m_shiftRpm = 0;
+    int m_sessionClock = 0;
+    int m_sessionLength = 0;
+    std::unordered_map<int, int> m_lastLaps;
 
     bool m_centerlineDirty = false;
 };

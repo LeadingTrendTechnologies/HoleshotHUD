@@ -12,17 +12,19 @@ struct HudRect
 
 struct PluginConfig
 {
-    HudRect standings{0.012f, 0.030f, 0.235f, 0.42f};
-    HudRect relative{0.012f, 0.62f, 0.235f, 0.33f};
+    HudRect standings{0.012f, 0.030f, 0.30f, 0.46f};
+    HudRect relative{0.012f, 0.62f, 0.30f, 0.36f};
     HudRect map{0.775f, 0.62f, 0.210f, 0.340f};
     HudRect minimap{0.815f, 0.035f, 0.165f, 0.295f};
     HudRect radar{0.438f, 0.755f, 0.124f, 0.220f};
+    HudRect dash{0.41f, 0.82f, 0.18f, 0.16f};
 
     bool showStandings = true;
     bool showRelative = true;
     bool showMap = true;
     bool showMinimap = true;
     bool showRadar = true;
+    bool showDash = true;
     bool ingameHud = false;
 
     int standingsRows = 12;
@@ -74,6 +76,7 @@ struct PluginConfig
     int mapBg = 0;
     int miniBg = 0;
     int radarBg = 86;
+    int dashBg = 82;
 
     std::string stOrder = "pos,num,name,gap,int,laps,best,status,bike,pen,crash";
     std::string relOrder = "num,name,gap,pos,bike,pen,int,crash";

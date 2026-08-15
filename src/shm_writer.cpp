@@ -209,6 +209,9 @@ void ShmWriter::publish(const PluginState& state, const PluginConfig& config)
     local.localRaceNum = state.localRaceNum();
     local.focusRaceNum = state.focusRaceNum();
     local.hasTelemetry = state.hasTelemetry() ? 1 : 0;
+    local.onTrack = state.onTrack() ? 1 : 0;
+    local.maxRpm = state.maxRpm();
+    local.shiftRpm = state.shiftRpm();
     local.localCrashed = state.localCrashed();
     local.localX = state.localX();
     local.localZ = state.localZ();
@@ -259,6 +262,8 @@ void ShmWriter::publish(const PluginState& state, const PluginConfig& config)
         const RaceEntry* e = state.findEntry(s.raceNum);
         copyName(d.name, MXBO_NAME, e ? e->name.c_str() : "");
         copyName(d.bike, MXBO_NAME, e ? e->bikeShort.c_str() : "");
+        d.lastLapMs = s.lastLapMs;
+        copyName(d.category, MXBO_NAME, e ? e->category.c_str() : "");
     }
 
     local.map = MxboShmRect{config.map.x, config.map.y, config.map.w, config.map.h};
@@ -269,6 +274,33 @@ void ShmWriter::publish(const PluginState& state, const PluginConfig& config)
     local.showRelative = config.showRelative ? 1 : 0;
     local.standingsRows = config.standingsRows;
     local.relativeCount = config.relativeCount;
+
+    const int focus = state.focusRaceNum();
+    const VehicleLive* live = state.findVehicle(focus);
+    if (live && live->active)
+    {
+        local.localGear = live->gear;
+        local.localRpm = live->rpm;
+    }
+    else
+    {
+        local.localGear = state.localGear();
+        local.localRpm = state.localRpm();
+    }
+    local.engineTemp = state.engineTemp();
+    local.airTemp = state.airTemp();
+    local.lastLapMs = state.lastLapMs();
+    local.bestLapMs = state.bestLapMs();
+    local.currentLapMs = state.currentLapMs();
+    int lap = state.currentLap();
+    if (const StandingRow* st = state.findStanding(focus))
+    {
+        lap = std::max(lap, st->numLaps);
+    }
+    local.currentLap = lap;
+    local.sessionLaps = state.sessionLaps();
+    local.sessionTimeMs = state.sessionTimeMs();
+    local.sessionLength = state.sessionLength();
 
     auto* dst = static_cast<MxboShmSnapshot*>(m_view);
     const uint32_t odd = dst->seq | 1u;

@@ -9,7 +9,7 @@ use windows::Win32::System::Memory::{
 };
 
 pub const MAGIC: u32 = 0x4F42584D;
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 7;
 pub const MAX_POLY: usize = 1024;
 pub const MAX_RIDERS: usize = 64;
 pub const MAX_STANDINGS: usize = 40;
@@ -64,6 +64,8 @@ pub struct Standing {
     pub crashed: i32,
     pub name: [u8; NAME],
     pub bike: [u8; NAME],
+    pub last_lap_ms: i32,
+    pub category: [u8; NAME],
 }
 
 impl Default for Standing {
@@ -81,6 +83,8 @@ impl Default for Standing {
             crashed: 0,
             name: [0; NAME],
             bike: [0; NAME],
+            last_lap_ms: 0,
+            category: [0; NAME],
         }
     }
 }
@@ -130,6 +134,20 @@ pub struct Snapshot {
     pub show_relative: i32,
     pub standings_rows: i32,
     pub relative_count: i32,
+    pub local_gear: i32,
+    pub local_rpm: i32,
+    pub engine_temp: f32,
+    pub air_temp: f32,
+    pub last_lap_ms: i32,
+    pub current_lap_ms: i32,
+    pub current_lap: i32,
+    pub session_laps: i32,
+    pub on_track: i32,
+    pub max_rpm: i32,
+    pub shift_rpm: i32,
+    pub session_time_ms: i32,
+    pub session_length: i32,
+    pub best_lap_ms: i32,
 }
 
 impl Default for Snapshot {
@@ -183,6 +201,20 @@ impl Default for Snapshot {
             show_relative: 1,
             standings_rows: 12,
             relative_count: 3,
+            local_gear: 0,
+            local_rpm: 0,
+            engine_temp: 0.0,
+            air_temp: 0.0,
+            last_lap_ms: 0,
+            current_lap_ms: 0,
+            current_lap: 0,
+            session_laps: 0,
+            on_track: 0,
+            max_rpm: 0,
+            shift_rpm: 0,
+            session_time_ms: 0,
+            session_length: 0,
+            best_lap_ms: 0,
         }
     }
 }
