@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0
+## 0.1.0
 
 One-click Windows installer and a website download that always gets the latest release. HUD timing, flags, and dash polish from recent races.
 

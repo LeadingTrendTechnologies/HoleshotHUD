@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
-const REPO: &str = "troyerl/mx-bikes-overlay";
+const REPO: &str = "LeadingTrendTechnologies/HoleshotHUD";
 const UA: &str = "mxbo-overlay";
 
 static QUIT: AtomicBool = AtomicBool::new(false);

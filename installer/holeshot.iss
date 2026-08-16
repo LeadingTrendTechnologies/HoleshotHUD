@@ -1,5 +1,5 @@
 #ifndef MyAppVersion
-#define MyAppVersion "0.2.0"
+#define MyAppVersion "0.1.0"
 #endif
 #ifndef SourceDir
 #define SourceDir "."
@@ -11,7 +11,7 @@
 #define MyAppName "Holeshot HUD"
 #define MyAppPublisher "Holeshot HUD"
 #define MyAppExeName "Holeshot HUD.exe"
-#define MyAppURL "https://github.com/troyerl/mx-bikes-overlay"
+#define MyAppURL "https://github.com/LeadingTrendTechnologies/HoleshotHUD"
 
 [Setup]
 AppId={{A7C4E2B1-9F18-4D3A-8C21-6B4E9F2A1C08}

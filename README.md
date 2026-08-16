@@ -10,7 +10,7 @@ A browser demo of the same HUD widgets lives in [`web/`](web/). Build it with `b
 
 ## Download and install
 
-1. Download **[HoleshotHUD-Setup.exe](https://github.com/troyerl/mx-bikes-overlay/releases/latest/download/HoleshotHUD-Setup.exe)** (always the latest release).
+1. Download **[HoleshotHUD-Setup.exe](https://github.com/LeadingTrendTechnologies/HoleshotHUD/releases/latest/download/HoleshotHUD-Setup.exe)** (always the latest release).
 2. Run the Setup file. If SmartScreen appears, choose **More info → Run anyway**.
 3. Set MX Bikes to **borderless** or **windowed**.
 4. Start the game, then start **Holeshot HUD** from the desktop shortcut.
@@ -43,8 +43,8 @@ pack.bat
 Push a tag to publish a downloadable release:
 
 ```bat
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.1.0
+git push origin v0.1.0
 ```
 
 ## Data wiki
