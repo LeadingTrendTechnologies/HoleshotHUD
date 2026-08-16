@@ -482,8 +482,17 @@ __declspec(dllexport) void RaceSession(void* _pData, int _iDataSize)
 
 __declspec(dllexport) void RaceSessionState(void* _pData, int _iDataSize)
 {
-    (void)_pData;
-    (void)_iDataSize;
+    try
+    {
+        SPluginsRaceSessionState_t data{};
+        if (copySized(data, _pData, _iDataSize))
+        {
+            g_state.setSessionState(data);
+        }
+    }
+    catch (...)
+    {
+    }
 }
 
 __declspec(dllexport) void RaceLap(void* _pData, int _iDataSize)

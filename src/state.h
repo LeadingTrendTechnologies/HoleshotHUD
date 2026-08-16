@@ -82,6 +82,7 @@ public:
     void setEvent(const SPluginsBikeEvent_t& ev);
     void setRaceEvent(const SPluginsRaceEvent_t& ev);
     void setSession(const SPluginsRaceSession_t& s);
+    void setSessionState(const SPluginsRaceSessionState_t& s);
     void beginRun();
     void endRun();
     bool onTrack() const;
@@ -149,6 +150,8 @@ public:
 
 private:
     void resolveLocalRaceNum();
+    void applySessionLength(int len);
+    int remainToMs() const;
 
     std::unordered_map<int, RaceEntry> m_entries;
     std::unordered_map<int, VehicleLive> m_vehicles;
@@ -193,6 +196,7 @@ private:
     int m_shiftRpm = 0;
     int m_sessionClock = 0;
     int m_sessionLength = 0;
+    int m_sessionRemain = 0;
     std::unordered_map<int, int> m_lastLaps;
 
     bool m_centerlineDirty = false;

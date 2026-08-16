@@ -5,10 +5,13 @@ mod config;
 mod layout;
 mod render;
 mod settings;
+mod plugin;
 mod shm;
+mod update;
 
 use std::mem::size_of;
 use std::ptr::null_mut;
+use std::time::{Duration, Instant};
 
 use tiny_skia::Pixmap;
 use windows::core::w;
@@ -42,11 +45,17 @@ use crate::shm::Shm;
 static mut HOST: HWND = HWND(null_mut());
 
 fn main() {
-    let fonts = Fonts::load().expect("need Segoe UI / Arial / Tahoma in Windows\\Fonts");
-    unsafe { run(fonts) }
+    crate::plugin::sync();
+    let loaded = crate::config::HudConfig::load_file();
+    let family = loaded.font_family;
+    *crate::config::CONFIG.lock().unwrap_or_else(|e| e.into_inner()) = loaded;
+    let fonts = Fonts::for_family(family)
+        .or_else(Fonts::load)
+        .expect("need a HUD font (bundled or Windows\\Fonts)");
+    unsafe { run(fonts, family) }
 }
 
-unsafe fn run(fonts: Fonts) {
+unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
     let hinst = GetModuleHandleW(None).unwrap();
     let icon_bytes = include_bytes!("../icon.ico");
     let icon_big = icon_from_ico(icon_bytes, 32);
@@ -67,12 +76,12 @@ unsafe fn run(fonts: Fonts) {
     let host = CreateWindowExW(
         WS_EX_APPWINDOW,
         class,
-        w!("MXBO Overlay — Settings"),
+        w!("Holeshot HUD — Settings"),
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
         80,
         80,
-        720,
-        640,
+        800,
+        700,
         None,
         None,
         hinst,
@@ -80,10 +89,6 @@ unsafe fn run(fonts: Fonts) {
     )
     .expect("host window");
     unsafe { HOST = host; }
-    {
-        let loaded = crate::config::HudConfig::load_file();
-        *crate::config::CONFIG.lock().unwrap_or_else(|e| e.into_inner()) = loaded;
-    }
     crate::settings::attach(host);
     let _ = ShowWindow(host, SW_SHOWMINNOACTIVE);
 
@@ -105,16 +110,19 @@ unsafe fn run(fonts: Fonts) {
     let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
 
     let mut shm = Shm::open();
+    let mut last_snap = None;
     let mut freq = 0i64;
     QueryPerformanceFrequency(&mut freq).ok();
-    let zfix = compat::FullscreenFix::new();
+    let mut zfix = compat::FullscreenFix::new();
     let mut editor = crate::layout::Editor::default();
     let mut f8_was = false;
+    let mut next_game_scan = Instant::now();
+    let mut placed = false;
 
     let mut msg = MSG::default();
     loop {
         while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
-            if msg.message == WM_QUIT {
+            if msg.message == WM_QUIT || crate::update::should_quit() {
                 return;
             }
             let _ = TranslateMessage(&msg);
@@ -133,11 +141,19 @@ unsafe fn run(fonts: Fonts) {
             hwnd = create_overlay(hinst, class, x, y, w, h);
             dib = Dib::new(w, h);
             pixmap = Pixmap::new(w as u32, h as u32).unwrap();
+            placed = false;
         }
 
-        let next_game = find_game_hwnd();
-        if next_game != game {
-            game = next_game;
+        if game.is_none() || Instant::now() >= next_game_scan {
+            let next_game = find_game_hwnd();
+            if next_game != game {
+                game = next_game;
+                placed = false;
+            }
+            next_game_scan = Instant::now() + Duration::from_millis(500);
+            if game.is_none() {
+                crate::plugin::retry_if_needed();
+            }
         }
         if !compat_done {
             if let Some(path) = mxbikes_pid().and_then(compat::exe_path_for_pid) {
@@ -148,18 +164,20 @@ unsafe fn run(fonts: Fonts) {
         let overlay_on = zfix.keep_overlay_above(hwnd, game);
         if let Some(g) = game {
             if let Some((nx, ny, nw, nh)) = client_screen_rect(g) {
-                if (nx, ny, nw, nh) != (x, y, w, h) && nw > 64 && nh > 64 {
+                if nw > 64 && nh > 64 && ((nx - x).abs() > 2 || (ny - y).abs() > 2 || (nw - w).abs() > 2 || (nh - h).abs() > 2)
+                {
                     x = nx;
                     y = ny;
                     w = nw;
                     h = nh;
                     dib = Dib::new(w, h);
                     pixmap = Pixmap::new(w as u32, h as u32).unwrap();
+                    placed = false;
                 }
             }
         }
 
-        if overlay_on {
+        if overlay_on && !placed {
             let _ = SetWindowPos(
                 hwnd,
                 HWND_TOPMOST,
@@ -169,6 +187,7 @@ unsafe fn run(fonts: Fonts) {
                 h,
                 SWP_NOACTIVATE | SWP_SHOWWINDOW,
             );
+            placed = true;
         }
 
         let layout_on = overlay_on && crate::layout::Editor::ctrl_down();
@@ -187,8 +206,20 @@ unsafe fn run(fonts: Fonts) {
         if shm.is_none() {
             shm = Shm::open();
         }
-        let mut snap = shm.as_ref().and_then(|s| s.read());
+        if let Some(s) = shm.as_ref().and_then(|s| s.read()) {
+            last_snap = Some(s);
+        }
+        let mut snap = last_snap.clone();
+        if crate::update::should_quit() {
+            return;
+        }
         let mut cfg = crate::config::with_config(|c| c.clone());
+        if cfg.font_family != font_family {
+            if let Some(next) = Fonts::for_family(cfg.font_family) {
+                fonts = next;
+                font_family = cfg.font_family;
+            }
+        }
         if let Some(ref mut s) = snap {
             cfg.apply_to_snapshot(s);
         }
@@ -202,9 +233,10 @@ unsafe fn run(fonts: Fonts) {
             .map(|s| qpc_age(s.tick_qpc, freq))
             .unwrap_or(999.0);
         let age = raw_age.clamp(0.0, 0.08);
-        let live = raw_age < 0.6;
+        let live = raw_age < 2.5;
         let hud = if live || layout_on { snap.as_ref() } else { None };
 
+        let frame_start = Instant::now();
         render::draw(
             &mut pixmap,
             &fonts,
@@ -219,7 +251,10 @@ unsafe fn run(fonts: Fonts) {
         dib.blit_premul_bgra(pixmap.data());
         dib.present(hwnd, w, h, x, y);
         crate::settings::paint(&fonts);
-        Sleep(8);
+        let target = Duration::from_millis(16);
+        if let Some(remain) = target.checked_sub(frame_start.elapsed()) {
+            Sleep(remain.as_millis() as u32);
+        }
     }
 }
 
@@ -280,7 +315,7 @@ unsafe fn create_overlay(
     if let Some(hwnd) = compat::try_create_window_in_band(
         ex.0,
         class,
-        w!("mxbo overlay"),
+        w!("Holeshot HUD"),
         WS_POPUP.0,
         x,
         y,
@@ -293,7 +328,7 @@ unsafe fn create_overlay(
     CreateWindowExW(
         ex,
         class,
-        w!("mxbo overlay"),
+        w!("Holeshot HUD"),
         WS_POPUP,
         x,
         y,
@@ -457,15 +492,32 @@ impl Dib {
         let n = (self.w * self.h * 4) as usize;
         unsafe {
             let dst = std::slice::from_raw_parts_mut(self.bits, n);
-            for i in (0..n).step_by(4) {
-                let r = rgba[i];
-                let g = rgba[i + 1];
-                let b = rgba[i + 2];
-                let a = rgba[i + 3];
-                dst[i] = b;
-                dst[i + 1] = g;
-                dst[i + 2] = r;
-                dst[i + 3] = a;
+            let mut i = 0;
+            while i + 16 <= n {
+                dst[i] = rgba[i + 2];
+                dst[i + 1] = rgba[i + 1];
+                dst[i + 2] = rgba[i];
+                dst[i + 3] = rgba[i + 3];
+                dst[i + 4] = rgba[i + 6];
+                dst[i + 5] = rgba[i + 5];
+                dst[i + 6] = rgba[i + 4];
+                dst[i + 7] = rgba[i + 7];
+                dst[i + 8] = rgba[i + 10];
+                dst[i + 9] = rgba[i + 9];
+                dst[i + 10] = rgba[i + 8];
+                dst[i + 11] = rgba[i + 11];
+                dst[i + 12] = rgba[i + 14];
+                dst[i + 13] = rgba[i + 13];
+                dst[i + 14] = rgba[i + 12];
+                dst[i + 15] = rgba[i + 15];
+                i += 16;
+            }
+            while i + 4 <= n {
+                dst[i] = rgba[i + 2];
+                dst[i + 1] = rgba[i + 1];
+                dst[i + 2] = rgba[i];
+                dst[i + 3] = rgba[i + 3];
+                i += 4;
             }
         }
     }

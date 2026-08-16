@@ -76,6 +76,7 @@ void PluginState::clearRace()
     m_sessionLaps = 0;
     m_sessionClock = 0;
     m_sessionLength = 0;
+    m_sessionRemain = 0;
     m_lastLaps.clear();
     m_inRun = false;
 }
@@ -137,14 +138,88 @@ bool PluginState::onTrack() const
     return m_inRun;
 }
 
+namespace
+{
+    bool likelyStartCountdown(int len)
+    {
+        return len >= 15 && len <= 180;
+    }
+
+    int lengthToMs(int len, int totalLen)
+    {
+        if (len <= 0)
+        {
+            return 0;
+        }
+        if (len > 100000)
+        {
+            return len;
+        }
+        if (len >= 60)
+        {
+            return len * 1000;
+        }
+        if (totalLen >= 60 || (totalLen > 0 && len > totalLen))
+        {
+            return len * 1000;
+        }
+        return len * 60000;
+    }
+}
+
+void PluginState::applySessionLength(int len)
+{
+    if (len <= 0)
+    {
+        return;
+    }
+    const int elapsedSec = sessionTimeMs() / 1000;
+    if (m_sessionLength <= 0)
+    {
+        m_sessionLength = elapsedSec > 0 ? len + elapsedSec : len;
+        return;
+    }
+    if (len > m_sessionLength)
+    {
+        // Gate / start sequence is seconds; race length is often minutes.
+        if (m_sessionLength < 60 && likelyStartCountdown(len))
+        {
+            m_sessionRemain = len;
+            return;
+        }
+        m_sessionLength = len;
+        return;
+    }
+    if (len < 60 && likelyStartCountdown(m_sessionLength) && len + 5 < m_sessionLength)
+    {
+        m_sessionRemain = m_sessionLength;
+        m_sessionLength = len;
+    }
+}
+
 void PluginState::setSession(const SPluginsRaceSession_t& s)
 {
     m_airTemp = s.m_fAirTemperature;
     m_sessionLaps = s.m_iSessionNumLaps;
+    applySessionLength(s.m_iSessionLength);
+    if (s.m_iSessionLength > 0 && m_sessionRemain <= 0)
+    {
+        m_sessionRemain = s.m_iSessionLength;
+    }
+}
+
+void PluginState::setSessionState(const SPluginsRaceSessionState_t& s)
+{
+    applySessionLength(s.m_iSessionLength);
     if (s.m_iSessionLength > 0)
     {
-        m_sessionLength = s.m_iSessionLength;
+        m_sessionRemain = s.m_iSessionLength;
     }
+}
+
+int PluginState::remainToMs() const
+{
+    return lengthToMs(m_sessionRemain, m_sessionLength);
 }
 
 void PluginState::setLocalLap(int lapNum, int lapMs)
@@ -178,9 +253,23 @@ void PluginState::setRaceLap(int raceNum, int lapNum, int lapMs)
 
 int PluginState::sessionTimeMs() const
 {
+    const int remainMs = remainToMs();
+    int clockMs = 0;
     if (m_sessionClock > 0)
     {
-        return m_sessionClock > 100000 ? m_sessionClock : m_sessionClock * 1000;
+        clockMs = m_sessionClock > 100000 ? m_sessionClock : m_sessionClock * 1000;
+    }
+    if (remainMs > 0 && remainMs <= 180000 && (clockMs <= 0 || remainMs + 2000 < clockMs))
+    {
+        return remainMs;
+    }
+    if (clockMs > 0)
+    {
+        return clockMs;
+    }
+    if (remainMs > 0)
+    {
+        return remainMs;
     }
     if (m_sessionTime > 0.0f)
     {

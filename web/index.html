@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MXBO Overlay — live HUD preview</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">MXBO Overlay</div>
+    <p>Standings, relative, dash, map, and radar for MX Bikes. Click a widget to show it on the preview.</p>
+    <a class="download" href="https://github.com/troyerl/mx-bikes-overlay/releases/latest/download/HoleshotHUD-Setup.exe">Download for Windows</a>
+  </header>
+  <main>
+    <aside>
+      <h2>Widgets</h2>
+      <button type="button" data-widget="standings" class="on">Standings</button>
+      <button type="button" data-widget="relative" class="on">Relative</button>
+      <button type="button" data-widget="dash" class="on">Dash</button>
+      <button type="button" data-widget="map" class="on">Map</button>
+      <button type="button" data-widget="minimap" class="on">Minimap</button>
+      <button type="button" data-widget="radar" class="on">Radar</button>
+    </aside>
+    <section class="stage">
+      <canvas id="hud" width="1280" height="720"></canvas>
+      <p class="hint">Demo data — not connected to MX Bikes</p>
+    </section>
+  </main>
+  <script type="module" src="demo.js"></script>
+</body>
+</html>

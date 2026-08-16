@@ -1,8 +1,10 @@
 #Requires -Version 5.1
+param([switch]$Silent)
 $ErrorActionPreference = "Continue"
 
-$AppName = "MXBO Overlay"
+$AppName = "Holeshot HUD"
 $InstallDir = Join-Path $env:LOCALAPPDATA $AppName
+$LegacyDir = Join-Path $env:LOCALAPPDATA "MXBO Overlay"
 
 function Get-SteamLibraries {
     $roots = @()
@@ -32,7 +34,7 @@ function Get-SteamLibraries {
     $libs | Select-Object -Unique
 }
 
-Get-Process -Name "mxbo-overlay", "MXBO Overlay" -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process -Name "mxbo-overlay", "MXBO Overlay", "Holeshot HUD" -ErrorAction SilentlyContinue | Stop-Process -Force
 
 foreach ($lib in Get-SteamLibraries) {
     $plugin = Join-Path $lib "steamapps\common\MX Bikes\plugins\mxbo.dlo"
@@ -42,16 +44,24 @@ foreach ($lib in Get-SteamLibraries) {
     }
 }
 
-$desktop = Join-Path ([Environment]::GetFolderPath("Desktop")) "$AppName.lnk"
-$start = Join-Path ([Environment]::GetFolderPath("StartMenu")) "Programs\$AppName.lnk"
-foreach ($lnk in @($desktop, $start)) {
-    if (Test-Path $lnk) { Remove-Item -LiteralPath $lnk -Force }
+$desktop = [Environment]::GetFolderPath("Desktop")
+$start = Join-Path ([Environment]::GetFolderPath("StartMenu")) "Programs"
+foreach ($name in @($AppName, "MXBO Overlay")) {
+    foreach ($lnk in @((Join-Path $desktop "$name.lnk"), (Join-Path $start "$name.lnk"))) {
+        if (Test-Path $lnk) { Remove-Item -LiteralPath $lnk -Force }
+    }
 }
 
-if (Test-Path $InstallDir) {
-    Start-Sleep -Milliseconds 400
-    Remove-Item -LiteralPath $InstallDir -Recurse -Force -ErrorAction SilentlyContinue
+if ($Silent) {
+    exit 0
 }
 
-Write-Host "MXBO Overlay has been removed."
+foreach ($dir in @($InstallDir, $LegacyDir)) {
+    if (Test-Path $dir) {
+        Start-Sleep -Milliseconds 400
+        Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+Write-Host "Holeshot HUD has been removed."
 Read-Host "Press Enter to close"

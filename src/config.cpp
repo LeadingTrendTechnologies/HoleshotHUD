@@ -124,8 +124,15 @@ void PluginConfig::load(const std::string& path)
         else if (key == "mini_bg") miniBg = std::max(0, std::min(100, std::atoi(val.c_str())));
         else if (key == "radar_bg") radarBg = std::max(0, std::min(100, std::atoi(val.c_str())));
         else if (key == "dash_bg") dashBg = std::max(0, std::min(100, std::atoi(val.c_str())));
+        else if (key == "dash_left") dashLeft = val;
+        else if (key == "dash_mid") dashMid = val;
+        else if (key == "dash_right") dashRight = val;
         else if (key == "st_order") stOrder = val;
         else if (key == "rel_order") relOrder = val;
+        else if (key == "st_head") stHead = val;
+        else if (key == "st_foot") stFoot = val;
+        else if (key == "rel_head") relHead = val;
+        else if (key == "rel_foot") relFoot = val;
         else if (key == "st_w_pos") stWPos = std::max(18, std::atoi(val.c_str()));
         else if (key == "st_w_num") stWNum = std::max(18, std::atoi(val.c_str()));
         else if (key == "st_w_name") stWName = std::max(18, std::atoi(val.c_str()));
@@ -198,6 +205,8 @@ void PluginConfig::save(const std::string& path) const
     out << "st_w_penalty=" << stWPenalty << "\n";
     out << "st_w_crashed=" << stWCrashed << "\n";
     out << "st_bg=" << stBg << "\n";
+    out << "st_head=" << stHead << "\n";
+    out << "st_foot=" << stFoot << "\n";
     out << "\n[Relative]\n";
     out << "rel_num=" << (relNum ? 1 : 0) << "\n";
     out << "rel_name=" << (relName ? 1 : 0) << "\n";
@@ -217,6 +226,8 @@ void PluginConfig::save(const std::string& path) const
     out << "rel_w_interval=" << relWInterval << "\n";
     out << "rel_w_crashed=" << relWCrashed << "\n";
     out << "rel_bg=" << relBg << "\n";
+    out << "rel_head=" << relHead << "\n";
+    out << "rel_foot=" << relFoot << "\n";
     out << "\n[Map]\n";
     out << "map_others=" << (mapOthers ? 1 : 0) << "\n";
     out << "map_sf=" << (mapSf ? 1 : 0) << "\n";
@@ -241,5 +252,8 @@ void PluginConfig::save(const std::string& path) const
     out << "radar_rear=" << (radarRear ? 1 : 0) << "\n";
     out << "radar_bg=" << radarBg << "\n";
     out << "\n[Dash]\n";
+    out << "dash_left=" << dashLeft << "\n";
+    out << "dash_mid=" << dashMid << "\n";
+    out << "dash_right=" << dashRight << "\n";
     out << "dash_bg=" << dashBg << "\n";
 }

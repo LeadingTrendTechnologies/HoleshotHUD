@@ -77,9 +77,16 @@ struct PluginConfig
     int miniBg = 0;
     int radarBg = 86;
     int dashBg = 82;
+    std::string dashLeft = "eng";
+    std::string dashMid = "air";
+    std::string dashRight = "best";
 
     std::string stOrder = "pos,num,name,gap,int,laps,best,status,bike,pen,crash";
     std::string relOrder = "num,name,gap,pos,bike,pen,int,crash";
+    std::string stHead = "sess,none,riders";
+    std::string stFoot = "none,none,none";
+    std::string relHead = "sess,none,riders";
+    std::string relFoot = "none,none,none";
 
     int stWPos = 26;
     int stWNum = 30;

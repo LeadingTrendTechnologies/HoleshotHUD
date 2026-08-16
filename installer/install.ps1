@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 $ErrorActionPreference = "Stop"
 
-$AppName = "MXBO Overlay"
+$AppName = "Holeshot HUD"
 $InstallDir = Join-Path $env:LOCALAPPDATA $AppName
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 
@@ -88,11 +88,12 @@ function New-Shortcut([string]$path, [string]$target) {
 
 $pluginSrc = Join-Path $Here "mxbo.dlo"
 if (-not (Test-Path $pluginSrc)) { $pluginSrc = Join-Path $Here "..\out\Release\mxbo.dlo" }
-$overlaySrc = Join-Path $Here "MXBO Overlay.exe"
+$overlaySrc = Join-Path $Here "Holeshot HUD.exe"
+if (-not (Test-Path $overlaySrc)) { $overlaySrc = Join-Path $Here "MXBO Overlay.exe" }
 if (-not (Test-Path $overlaySrc)) { $overlaySrc = Join-Path $Here "mxbo-overlay.exe" }
 if (-not (Test-Path $overlaySrc)) { $overlaySrc = Join-Path $Here "..\overlay\target\release\mxbo-overlay.exe" }
 if (-not (Test-Path $pluginSrc)) { throw "mxbo.dlo is missing next to the installer." }
-if (-not (Test-Path $overlaySrc)) { throw "MXBO Overlay.exe is missing next to the installer." }
+if (-not (Test-Path $overlaySrc)) { throw "Holeshot HUD.exe is missing next to the installer." }
 
 Write-Host "Installing $AppName..."
 $game = Choose-MxBikes
@@ -106,7 +107,7 @@ try {
     throw "Could not copy mxbo.dlo into MX Bikes. Fully quit the game and run Install again."
 }
 
-Copy-Item -LiteralPath $overlaySrc -Destination (Join-Path $InstallDir "MXBO Overlay.exe") -Force
+Copy-Item -LiteralPath $overlaySrc -Destination (Join-Path $InstallDir "Holeshot HUD.exe") -Force
 Copy-Item -LiteralPath (Join-Path $Here "Uninstall.ps1") -Destination (Join-Path $InstallDir "Uninstall.ps1") -Force
 Copy-Item -LiteralPath (Join-Path $Here "Uninstall.bat") -Destination (Join-Path $InstallDir "Uninstall.bat") -Force
 Copy-Item -LiteralPath (Join-Path $Here "README.txt") -Destination (Join-Path $InstallDir "README.txt") -ErrorAction SilentlyContinue
@@ -114,8 +115,8 @@ Copy-Item -LiteralPath (Join-Path $Here "README.txt") -Destination (Join-Path $I
 $desktop = [Environment]::GetFolderPath("Desktop")
 $start = Join-Path ([Environment]::GetFolderPath("StartMenu")) "Programs"
 New-Item -ItemType Directory -Force -Path $start | Out-Null
-New-Shortcut (Join-Path $desktop "$AppName.lnk") (Join-Path $InstallDir "MXBO Overlay.exe")
-New-Shortcut (Join-Path $start "$AppName.lnk") (Join-Path $InstallDir "MXBO Overlay.exe")
+New-Shortcut (Join-Path $desktop "$AppName.lnk") (Join-Path $InstallDir "Holeshot HUD.exe")
+New-Shortcut (Join-Path $start "$AppName.lnk") (Join-Path $InstallDir "Holeshot HUD.exe")
 
 Write-Host ""
 Write-Host "Installed."
@@ -124,11 +125,11 @@ Write-Host "  Plugin:   $plugins\mxbo.dlo"
 Write-Host ""
 Write-Host "1. Set MX Bikes to borderless or windowed (not exclusive fullscreen)."
 Write-Host "2. Start MX Bikes (restart it if it was already open)."
-Write-Host "3. Start MXBO Overlay from the desktop shortcut."
+Write-Host "3. Start Holeshot HUD from the desktop shortcut."
 Write-Host "4. Press F8 for settings."
 Write-Host ""
 
-$ans = Read-Host "Start MXBO Overlay now? [Y/n]"
+$ans = Read-Host "Start Holeshot HUD now? [Y/n]"
 if ($ans -notmatch '^[Nn]') {
-    Start-Process -FilePath (Join-Path $InstallDir "MXBO Overlay.exe")
+    Start-Process -FilePath (Join-Path $InstallDir "Holeshot HUD.exe")
 }

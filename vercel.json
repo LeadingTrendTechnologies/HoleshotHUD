@@ -1,0 +1,15 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "test -f web/pkg/mxbo_web_preview_bg.wasm",
+  "outputDirectory": "web",
+  "installCommand": "echo skip",
+  "headers": [
+    {
+      "source": "/pkg/(.*).wasm",
+      "headers": [
+        { "key": "Content-Type", "value": "application/wasm" }
+      ]
+    }
+  ]
+}

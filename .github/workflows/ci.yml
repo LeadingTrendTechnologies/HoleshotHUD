@@ -26,10 +26,15 @@ jobs:
       - name: Build overlay
         run: cargo build --release --manifest-path overlay/Cargo.toml
 
-      - name: Pack zip
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Pack installer
         run: powershell -NoProfile -ExecutionPolicy Bypass -File tools/pack.ps1
 
       - uses: actions/upload-artifact@v4
         with:
           name: MXBO-Overlay-windows-x64
-          path: dist/*.zip
+          path: |
+            dist/HoleshotHUD-Setup.exe
+            dist/*.zip

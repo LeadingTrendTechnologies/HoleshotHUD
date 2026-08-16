@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use windows::core::{w, PCSTR, PCWSTR, PWSTR};
 use windows::Win32::Foundation::{CloseHandle, HWND, RECT};
@@ -15,11 +15,12 @@ use windows::Win32::System::Registry::{
 use windows::Win32::System::Threading::{
     OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_FORMAT, PROCESS_QUERY_LIMITED_INFORMATION,
 };
+use windows::Win32::UI::Shell::{ABM_WINDOWPOSCHANGED, APPBARDATA, SHAppBarMessage};
 use windows::Win32::UI::WindowsAndMessaging::{
-    ClipCursor, FindWindowW, GetForegroundWindow, GetWindowLongPtrW, GetWindowRect,
+    ClipCursor, FindWindowExW, FindWindowW, GetForegroundWindow, GetWindowLongPtrW, GetWindowRect,
     GetWindowThreadProcessId, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_EXSTYLE,
     HWND_NOTOPMOST, HWND_TOPMOST, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-    SWP_SHOWWINDOW, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE, WS_EX_TRANSPARENT,
+    SWP_SHOWWINDOW, SW_HIDE, SW_SHOWNOACTIVATE, SW_SHOWNORMAL, WS_EX_TRANSPARENT,
 };
 
 const FLAG: &str = "DISABLEDXMAXIMIZEDWINDOWEDMODE";
@@ -184,6 +185,10 @@ type SetWindowBandFn = unsafe extern "system" fn(HWND, HWND, u32) -> i32;
 
 pub struct FullscreenFix {
     set_window_band: Option<SetWindowBandFn>,
+    last_playing: bool,
+    hide_after: Option<Instant>,
+    last_raise: Instant,
+    layout_on: bool,
 }
 
 impl FullscreenFix {
@@ -195,11 +200,22 @@ impl FullscreenFix {
                 Some(std::mem::transmute::<_, SetWindowBandFn>(proc))
             })();
             spawn_unclip_thread();
-            Self { set_window_band }
+            show_taskbars();
+            Self {
+                set_window_band,
+                last_playing: false,
+                hide_after: None,
+                last_raise: Instant::now() - Duration::from_secs(10),
+                layout_on: false,
+            }
         }
     }
 
-    pub fn set_layout_mode(&self, overlay: HWND, on: bool) {
+    pub fn set_layout_mode(&mut self, overlay: HWND, on: bool) {
+        if self.layout_on == on {
+            return;
+        }
+        self.layout_on = on;
         UNCLIP.store(on, Ordering::Relaxed);
         unsafe {
             set_click_through(overlay, !on);
@@ -209,36 +225,62 @@ impl FullscreenFix {
         }
     }
 
-    pub fn keep_overlay_above(&self, overlay: HWND, game: Option<HWND>) -> bool {
+    pub fn keep_overlay_above(&mut self, overlay: HWND, game: Option<HWND>) -> bool {
         unsafe {
             let playing = game.is_some_and(|g| game_is_foreground(g));
+            let now = Instant::now();
             if playing {
-                if let Some(game) = game {
-                    hide_taskbars();
-                    keep_just_shy_of_fullscreen(game);
-                }
-                if let Some(set_band) = self.set_window_band {
-                    for band in [ZBID_IMMERSIVE_NOTIFICATION, 2u32, 16u32] {
-                        if set_band(overlay, HWND::default(), band) != 0 {
-                            break;
+                self.hide_after = None;
+                let became = !self.last_playing;
+                self.last_playing = true;
+                if became || now.duration_since(self.last_raise) > Duration::from_secs(2) {
+                    if let Some(game) = game {
+                        hide_taskbars();
+                        if became {
+                            keep_just_shy_of_fullscreen(game);
                         }
                     }
+                    if let Some(set_band) = self.set_window_band {
+                        for band in [ZBID_IMMERSIVE_NOTIFICATION, 2u32, 16u32] {
+                            if set_band(overlay, HWND::default(), band) != 0 {
+                                break;
+                            }
+                        }
+                    }
+                    let _ = ShowWindow(overlay, SW_SHOWNOACTIVATE);
+                    let _ = SetWindowPos(
+                        overlay,
+                        HWND_TOPMOST,
+                        0,
+                        0,
+                        0,
+                        0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                    );
+                    self.last_raise = now;
                 }
-                let _ = ShowWindow(overlay, SW_SHOWNOACTIVATE);
-                let _ = SetWindowPos(
-                    overlay,
-                    HWND_TOPMOST,
-                    0,
-                    0,
-                    0,
-                    0,
-                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
-                );
+                true
             } else {
-                show_taskbars();
-                let _ = ShowWindow(overlay, SW_HIDE);
+                let game_gone = game.is_none();
+                if self.last_playing {
+                    self.last_playing = false;
+                    if game_gone {
+                        restore_desktop(overlay);
+                        self.hide_after = None;
+                        return false;
+                    }
+                    self.hide_after = Some(now + Duration::from_millis(1500));
+                    return true;
+                }
+                if let Some(until) = self.hide_after {
+                    if now < until && !game_gone {
+                        return true;
+                    }
+                    restore_desktop(overlay);
+                    self.hide_after = None;
+                }
+                false
             }
-            playing
         }
     }
 }
@@ -247,6 +289,11 @@ impl Drop for FullscreenFix {
     fn drop(&mut self) {
         show_taskbars();
     }
+}
+
+unsafe fn restore_desktop(overlay: HWND) {
+    show_taskbars();
+    let _ = ShowWindow(overlay, SW_HIDE);
 }
 
 fn game_is_foreground(game: HWND) -> bool {
@@ -273,12 +320,50 @@ fn show_taskbars() {
 
 fn set_taskbars_visible(show: bool) {
     unsafe {
-        for class in [w!("Shell_TrayWnd"), w!("Shell_SecondaryTrayWnd")] {
-            if let Ok(hwnd) = FindWindowW(class, None) {
-                let _ = ShowWindow(hwnd, if show { SW_SHOW } else { SW_HIDE });
+        for_each_taskbar(|hwnd| {
+            if show {
+                restore_taskbar(hwnd);
+            } else {
+                let _ = ShowWindow(hwnd, SW_HIDE);
             }
+        });
+    }
+}
+
+unsafe fn for_each_taskbar(mut f: impl FnMut(HWND)) {
+    if let Ok(hwnd) = FindWindowW(w!("Shell_TrayWnd"), None) {
+        if !hwnd.is_invalid() {
+            f(hwnd);
         }
     }
+    let mut prev = HWND::default();
+    loop {
+        let hwnd = FindWindowExW(None, prev, w!("Shell_SecondaryTrayWnd"), None).unwrap_or_default();
+        if hwnd.is_invalid() || hwnd.0.is_null() {
+            break;
+        }
+        f(hwnd);
+        prev = hwnd;
+    }
+}
+
+unsafe fn restore_taskbar(hwnd: HWND) {
+    let _ = ShowWindow(hwnd, SW_SHOWNORMAL);
+    let _ = SetWindowPos(
+        hwnd,
+        HWND_TOPMOST,
+        0,
+        0,
+        0,
+        0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOACTIVATE,
+    );
+    let mut abd = APPBARDATA {
+        cbSize: std::mem::size_of::<APPBARDATA>() as u32,
+        hWnd: hwnd,
+        ..Default::default()
+    };
+    let _ = SHAppBarMessage(ABM_WINDOWPOSCHANGED, &mut abd);
 }
 
 unsafe fn set_click_through(hwnd: HWND, through: bool) {

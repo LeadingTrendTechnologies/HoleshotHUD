@@ -1,0 +1,1609 @@
+use std::fs;
+use std::path::PathBuf;
+use std::sync::{LazyLock, Mutex};
+use std::time::SystemTime;
+
+use crate::shm::{Rect, Snapshot};
+
+pub static CONFIG: LazyLock<Mutex<HudConfig>> = LazyLock::new(|| Mutex::new(HudConfig::new()));
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum FontFamily {
+    Segoe,
+    Arial,
+    Tahoma,
+    Roboto,
+    Agency,
+    Industry,
+    FasterOne,
+}
+
+impl FontFamily {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Segoe => "Segoe UI",
+            Self::Arial => "Arial",
+            Self::Tahoma => "Tahoma",
+            Self::Roboto => "Roboto",
+            Self::Agency => "Agency FB",
+            Self::Industry => "Industry",
+            Self::FasterOne => "Faster One",
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Segoe => "segoe",
+            Self::Arial => "arial",
+            Self::Tahoma => "tahoma",
+            Self::Roboto => "roboto",
+            Self::Agency => "agency",
+            Self::Industry => "industry",
+            Self::FasterOne => "faster",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "arial" => Self::Arial,
+            "tahoma" => Self::Tahoma,
+            "roboto" => Self::Roboto,
+            "agency" | "agencyfb" => Self::Agency,
+            "industry" | "oswald" => Self::Industry,
+            "faster" | "fasterone" => Self::FasterOne,
+            _ => Self::Segoe,
+        }
+    }
+
+    pub fn windows_files(self) -> Option<(&'static str, &'static str)> {
+        match self {
+            Self::Segoe => Some((r"C:\Windows\Fonts\segoeui.ttf", r"C:\Windows\Fonts\segoeuib.ttf")),
+            Self::Arial => Some((r"C:\Windows\Fonts\arial.ttf", r"C:\Windows\Fonts\arialbd.ttf")),
+            Self::Tahoma => Some((r"C:\Windows\Fonts\tahoma.ttf", r"C:\Windows\Fonts\tahomabd.ttf")),
+            Self::Agency => Some((r"C:\Windows\Fonts\AGENCYR.TTF", r"C:\Windows\Fonts\AGENCYB.TTF")),
+            Self::Roboto | Self::Industry | Self::FasterOne => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Units {
+    Metric,
+    Imperial,
+}
+
+impl Units {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Metric => "Metric",
+            Self::Imperial => "Imperial",
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Metric => "metric",
+            Self::Imperial => "imperial",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "imperial" | "us" | "mph" => Self::Imperial,
+            _ => Self::Metric,
+        }
+    }
+
+    pub fn speed_label(self) -> &'static str {
+        match self {
+            Self::Metric => "KPH",
+            Self::Imperial => "MPH",
+        }
+    }
+
+    pub fn format_speed(self, mps: f32) -> String {
+        let n = match self {
+            Self::Metric => mps * 3.6,
+            Self::Imperial => mps * 2.236936,
+        };
+        format!("{}", n.round().max(0.0) as i32)
+    }
+
+    pub fn format_temp(self, celsius: f32) -> String {
+        if celsius <= 0.5 {
+            return match self {
+                Self::Metric => "--°C".into(),
+                Self::Imperial => "--°F".into(),
+            };
+        }
+        match self {
+            Self::Metric => format!("{:.0}°C", celsius),
+            Self::Imperial => format!("{:.0}°F", celsius * 9.0 / 5.0 + 32.0),
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum WidgetId {
+    Standings,
+    Relative,
+    Map,
+    Minimap,
+    Radar,
+    Dash,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum SnapAlign {
+    TopLeft,
+    Top,
+    TopRight,
+    Left,
+    Center,
+    Right,
+    BottomLeft,
+    Bottom,
+    BottomRight,
+    HCenter,
+    VCenter,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum StField {
+    Pos,
+    Num,
+    Name,
+    Gap,
+    Interval,
+    Laps,
+    Best,
+    Last,
+    Status,
+    Bike,
+    Penalty,
+    Crashed,
+}
+
+impl StField {
+    pub const ALL: [Self; 12] = [
+        Self::Pos,
+        Self::Num,
+        Self::Name,
+        Self::Gap,
+        Self::Interval,
+        Self::Laps,
+        Self::Best,
+        Self::Last,
+        Self::Status,
+        Self::Bike,
+        Self::Penalty,
+        Self::Crashed,
+    ];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Pos => "pos",
+            Self::Num => "num",
+            Self::Name => "name",
+            Self::Gap => "gap",
+            Self::Interval => "int",
+            Self::Laps => "laps",
+            Self::Best => "best",
+            Self::Last => "last",
+            Self::Status => "status",
+            Self::Bike => "bike",
+            Self::Penalty => "pen",
+            Self::Crashed => "crash",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Pos => "Position",
+            Self::Num => "Number",
+            Self::Name => "Name",
+            Self::Gap => "Gap",
+            Self::Interval => "Interval",
+            Self::Laps => "Laps",
+            Self::Best => "Fastest",
+            Self::Last => "Last lap",
+            Self::Status => "Status",
+            Self::Bike => "Bike",
+            Self::Penalty => "Penalty",
+            Self::Crashed => "Crashed",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        Some(match s {
+            "pos" => Self::Pos,
+            "num" => Self::Num,
+            "name" => Self::Name,
+            "gap" => Self::Gap,
+            "int" | "interval" => Self::Interval,
+            "laps" => Self::Laps,
+            "best" => Self::Best,
+            "last" => Self::Last,
+            "status" => Self::Status,
+            "bike" => Self::Bike,
+            "pen" | "penalty" => Self::Penalty,
+            "crash" | "crashed" => Self::Crashed,
+            _ => return None,
+        })
+    }
+
+    pub fn enabled(self, c: &HudConfig) -> bool {
+        match self {
+            Self::Pos => c.st_pos,
+            Self::Num => c.st_num,
+            Self::Name => c.st_name,
+            Self::Gap => c.st_gap,
+            Self::Interval => c.st_interval,
+            Self::Laps => c.st_laps,
+            Self::Best => c.st_best,
+            Self::Last => c.st_last,
+            Self::Status => c.st_status,
+            Self::Bike => c.st_bike,
+            Self::Penalty => c.st_penalty,
+            Self::Crashed => c.st_crashed,
+        }
+    }
+
+    pub fn width(self, c: &HudConfig) -> i32 {
+        match self {
+            Self::Pos => c.st_w_pos,
+            Self::Num => c.st_w_num,
+            Self::Name => c.st_w_name,
+            Self::Gap => c.st_w_gap,
+            Self::Interval => c.st_w_interval,
+            Self::Laps => c.st_w_laps,
+            Self::Best => c.st_w_best,
+            Self::Last => c.st_w_last,
+            Self::Status => c.st_w_status,
+            Self::Bike => c.st_w_bike,
+            Self::Penalty => c.st_w_penalty,
+            Self::Crashed => c.st_w_crashed,
+        }
+    }
+
+    pub fn set_width(self, c: &mut HudConfig, w: i32) {
+        self.add_width(c, w - self.width(c));
+    }
+
+    pub fn add_width(self, c: &mut HudConfig, d: i32) {
+        let next = (self.width(c) + d).clamp(18, 160);
+        match self {
+            Self::Pos => c.st_w_pos = next,
+            Self::Num => c.st_w_num = next,
+            Self::Name => c.st_w_name = next,
+            Self::Gap => c.st_w_gap = next,
+            Self::Interval => c.st_w_interval = next,
+            Self::Laps => c.st_w_laps = next,
+            Self::Best => c.st_w_best = next,
+            Self::Last => c.st_w_last = next,
+            Self::Status => c.st_w_status = next,
+            Self::Bike => c.st_w_bike = next,
+            Self::Penalty => c.st_w_penalty = next,
+            Self::Crashed => c.st_w_crashed = next,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DotLabel {
+    Number,
+    Position,
+}
+
+impl DotLabel {
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Number => "num",
+            Self::Position => "pos",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Number => "Number",
+            Self::Position => "Position",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s.trim() {
+            "pos" | "position" => Self::Position,
+            _ => Self::Number,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RelField {
+    Num,
+    Name,
+    Gap,
+    Pos,
+    Bike,
+    Penalty,
+    Interval,
+    Crashed,
+    Best,
+    Last,
+}
+
+impl RelField {
+    pub const ALL: [Self; 10] = [
+        Self::Num,
+        Self::Name,
+        Self::Gap,
+        Self::Pos,
+        Self::Bike,
+        Self::Penalty,
+        Self::Interval,
+        Self::Crashed,
+        Self::Best,
+        Self::Last,
+    ];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Num => "num",
+            Self::Name => "name",
+            Self::Gap => "gap",
+            Self::Pos => "pos",
+            Self::Bike => "bike",
+            Self::Penalty => "pen",
+            Self::Interval => "int",
+            Self::Crashed => "crash",
+            Self::Best => "best",
+            Self::Last => "last",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Num => "Number",
+            Self::Name => "Name",
+            Self::Gap => "Gap",
+            Self::Pos => "Position",
+            Self::Bike => "Bike",
+            Self::Penalty => "Penalty",
+            Self::Interval => "Interval",
+            Self::Crashed => "Crashed",
+            Self::Best => "Fastest",
+            Self::Last => "Last lap",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        Some(match s {
+            "num" => Self::Num,
+            "name" => Self::Name,
+            "gap" => Self::Gap,
+            "pos" => Self::Pos,
+            "bike" => Self::Bike,
+            "pen" | "penalty" => Self::Penalty,
+            "int" | "interval" => Self::Interval,
+            "crash" | "crashed" => Self::Crashed,
+            "best" => Self::Best,
+            "last" => Self::Last,
+            _ => return None,
+        })
+    }
+
+    pub fn enabled(self, c: &HudConfig) -> bool {
+        match self {
+            Self::Num => c.rel_num,
+            Self::Name => c.rel_name,
+            Self::Gap => c.rel_gap,
+            Self::Pos => c.rel_pos,
+            Self::Bike => c.rel_bike,
+            Self::Penalty => c.rel_penalty,
+            Self::Interval => c.rel_interval,
+            Self::Crashed => c.rel_crashed,
+            Self::Best => c.rel_best,
+            Self::Last => c.rel_last,
+        }
+    }
+
+    pub fn width(self, c: &HudConfig) -> i32 {
+        match self {
+            Self::Num => c.rel_w_num,
+            Self::Name => c.rel_w_name,
+            Self::Gap => c.rel_w_gap,
+            Self::Pos => c.rel_w_pos,
+            Self::Bike => c.rel_w_bike,
+            Self::Penalty => c.rel_w_penalty,
+            Self::Interval => c.rel_w_interval,
+            Self::Crashed => c.rel_w_crashed,
+            Self::Best => c.rel_w_best,
+            Self::Last => c.rel_w_last,
+        }
+    }
+
+    pub fn set_width(self, c: &mut HudConfig, w: i32) {
+        self.add_width(c, w - self.width(c));
+    }
+
+    pub fn add_width(self, c: &mut HudConfig, d: i32) {
+        let next = (self.width(c) + d).clamp(18, 160);
+        match self {
+            Self::Num => c.rel_w_num = next,
+            Self::Name => c.rel_w_name = next,
+            Self::Gap => c.rel_w_gap = next,
+            Self::Pos => c.rel_w_pos = next,
+            Self::Bike => c.rel_w_bike = next,
+            Self::Penalty => c.rel_w_penalty = next,
+            Self::Interval => c.rel_w_interval = next,
+            Self::Crashed => c.rel_w_crashed = next,
+            Self::Best => c.rel_w_best = next,
+            Self::Last => c.rel_w_last = next,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct HudConfig {
+    pub standings: Rect,
+    pub relative: Rect,
+    pub map: Rect,
+    pub minimap: Rect,
+    pub radar: Rect,
+    pub dash: Rect,
+    pub show_standings: bool,
+    pub show_relative: bool,
+    pub show_map: bool,
+    pub show_minimap: bool,
+    pub show_radar: bool,
+    pub show_dash: bool,
+    pub ingame_hud: bool,
+    pub standings_rows: i32,
+    pub relative_count: i32,
+    pub st_pos: bool,
+    pub st_num: bool,
+    pub st_name: bool,
+    pub st_gap: bool,
+    pub st_interval: bool,
+    pub st_laps: bool,
+    pub st_best: bool,
+    pub st_last: bool,
+    pub st_status: bool,
+    pub st_bike: bool,
+    pub st_penalty: bool,
+    pub st_crashed: bool,
+    pub rel_num: bool,
+    pub rel_name: bool,
+    pub rel_gap: bool,
+    pub rel_pos: bool,
+    pub rel_bike: bool,
+    pub rel_penalty: bool,
+    pub rel_interval: bool,
+    pub rel_crashed: bool,
+    pub rel_best: bool,
+    pub rel_last: bool,
+    pub map_others: bool,
+    pub map_sf: bool,
+    pub map_name: bool,
+    pub map_numbers: bool,
+    pub map_arrows: bool,
+    pub map_crown: bool,
+    pub map_place: bool,
+    pub map_dot: DotLabel,
+    pub mini_others: bool,
+    pub mini_sf: bool,
+    pub mini_numbers: bool,
+    pub mini_arrows: bool,
+    pub mini_crown: bool,
+    pub mini_place: bool,
+    pub mini_dot: DotLabel,
+    pub radar_sides: bool,
+    pub radar_rear: bool,
+    pub st_bg: i32,
+    pub rel_bg: i32,
+    pub map_bg: i32,
+    pub mini_bg: i32,
+    pub radar_bg: i32,
+    pub dash_bg: i32,
+    pub dash_left: DashField,
+    pub dash_mid: DashField,
+    pub dash_right: DashField,
+    pub st_head: [BoardField; 3],
+    pub st_foot: [BoardField; 3],
+    pub rel_head: [BoardField; 3],
+    pub rel_foot: [BoardField; 3],
+    pub st_font: i32,
+    pub rel_font: i32,
+    pub map_font: i32,
+    pub mini_font: i32,
+    pub radar_font: i32,
+    pub dash_font: i32,
+    pub st_bold: bool,
+    pub rel_bold: bool,
+    pub map_bold: bool,
+    pub mini_bold: bool,
+    pub radar_bold: bool,
+    pub dash_bold: bool,
+    pub font_family: FontFamily,
+    pub units: Units,
+    pub st_order: Vec<StField>,
+    pub rel_order: Vec<RelField>,
+    pub st_w_pos: i32,
+    pub st_w_num: i32,
+    pub st_w_name: i32,
+    pub st_w_gap: i32,
+    pub st_w_interval: i32,
+    pub st_w_laps: i32,
+    pub st_w_best: i32,
+    pub st_w_last: i32,
+    pub st_w_status: i32,
+    pub st_w_bike: i32,
+    pub st_w_penalty: i32,
+    pub st_w_crashed: i32,
+    pub rel_w_num: i32,
+    pub rel_w_name: i32,
+    pub rel_w_gap: i32,
+    pub rel_w_pos: i32,
+    pub rel_w_bike: i32,
+    pub rel_w_penalty: i32,
+    pub rel_w_interval: i32,
+    pub rel_w_crashed: i32,
+    pub rel_w_best: i32,
+    pub rel_w_last: i32,
+    loaded_mtime: Option<SystemTime>,
+}
+
+impl HudConfig {
+    pub fn new() -> Self {
+        Self {
+            standings: Rect {
+                x: 0.012,
+                y: 0.03,
+                w: 0.30,
+                h: 0.46,
+            },
+            relative: Rect {
+                x: 0.012,
+                y: 0.62,
+                w: 0.30,
+                h: 0.36,
+            },
+            map: Rect {
+                x: 0.775,
+                y: 0.62,
+                w: 0.21,
+                h: 0.34,
+            },
+            minimap: Rect {
+                x: 0.815,
+                y: 0.035,
+                w: 0.165,
+                h: 0.295,
+            },
+            radar: Rect {
+                x: 0.438,
+                y: 0.755,
+                w: 0.124,
+                h: 0.22,
+            },
+            dash: Rect {
+                x: 0.41,
+                y: 0.82,
+                w: 0.18,
+                h: 0.16,
+            },
+            show_standings: true,
+            show_relative: true,
+            show_map: true,
+            show_minimap: true,
+            show_radar: true,
+            show_dash: true,
+            ingame_hud: false,
+            standings_rows: 12,
+            relative_count: 3,
+            st_pos: true,
+            st_num: true,
+            st_name: true,
+            st_gap: true,
+            st_interval: false,
+            st_laps: false,
+            st_best: true,
+            st_last: true,
+            st_status: false,
+            st_bike: false,
+            st_penalty: false,
+            st_crashed: false,
+            rel_num: true,
+            rel_name: true,
+            rel_gap: true,
+            rel_pos: false,
+            rel_bike: false,
+            rel_penalty: false,
+            rel_interval: false,
+            rel_crashed: false,
+            rel_best: true,
+            rel_last: true,
+            map_others: true,
+            map_sf: true,
+            map_name: true,
+            map_numbers: true,
+            map_arrows: true,
+            map_crown: true,
+            map_place: true,
+            map_dot: DotLabel::Position,
+            mini_others: true,
+            mini_sf: true,
+            mini_numbers: true,
+            mini_arrows: true,
+            mini_crown: true,
+            mini_place: true,
+            mini_dot: DotLabel::Number,
+            radar_sides: true,
+            radar_rear: true,
+            st_bg: 78,
+            rel_bg: 78,
+            map_bg: 0,
+            mini_bg: 0,
+            radar_bg: 86,
+            dash_bg: 82,
+            dash_left: DashField::Engine,
+            dash_mid: DashField::Air,
+            dash_right: DashField::Best,
+            st_head: BoardField::DEFAULT_HEAD,
+            st_foot: BoardField::DEFAULT_FOOT,
+            rel_head: BoardField::DEFAULT_HEAD,
+            rel_foot: BoardField::DEFAULT_FOOT,
+            st_font: 100,
+            rel_font: 100,
+            map_font: 100,
+            mini_font: 100,
+            radar_font: 100,
+            dash_font: 100,
+            st_bold: false,
+            rel_bold: false,
+            map_bold: false,
+            mini_bold: false,
+            radar_bold: false,
+            dash_bold: false,
+            font_family: FontFamily::Segoe,
+            units: Units::Metric,
+            st_order: StField::ALL.to_vec(),
+            rel_order: RelField::ALL.to_vec(),
+            st_w_pos: 26,
+            st_w_num: 30,
+            st_w_name: 80,
+            st_w_gap: 58,
+            st_w_interval: 58,
+            st_w_laps: 32,
+            st_w_best: 58,
+            st_w_last: 54,
+            st_w_status: 40,
+            st_w_bike: 56,
+            st_w_penalty: 48,
+            st_w_crashed: 44,
+            rel_w_num: 32,
+            rel_w_name: 80,
+            rel_w_gap: 58,
+            rel_w_pos: 28,
+            rel_w_bike: 56,
+            rel_w_penalty: 48,
+            rel_w_interval: 58,
+            rel_w_crashed: 44,
+            rel_w_best: 54,
+            rel_w_last: 54,
+            loaded_mtime: None,
+        }
+    }
+
+    pub fn load_file() -> Self {
+        let path = ini_path();
+        let mut cfg = Self::new();
+        let Ok(text) = fs::read_to_string(&path) else {
+            cfg.save();
+            return cfg;
+        };
+        cfg.loaded_mtime = fs::metadata(&path).and_then(|m| m.modified()).ok();
+        let mut saw_last_cols = false;
+        for raw in text.lines() {
+            let line = raw.trim();
+            if line.is_empty() || line.starts_with('#') || line.starts_with(';') || line.starts_with('[') {
+                continue;
+            }
+            let Some((k, v)) = line.split_once('=') else {
+                continue;
+            };
+            let key = k.trim();
+            let val = v.trim();
+            let f = val.parse::<f32>().unwrap_or(0.0);
+            let b = val == "1" || val.eq_ignore_ascii_case("true") || val.eq_ignore_ascii_case("yes");
+            match key {
+                "standings_x" => cfg.standings.x = f,
+                "standings_y" => cfg.standings.y = f,
+                "standings_w" => cfg.standings.w = f,
+                "standings_h" => cfg.standings.h = f,
+                "relative_x" => cfg.relative.x = f,
+                "relative_y" => cfg.relative.y = f,
+                "relative_w" => cfg.relative.w = f,
+                "relative_h" => cfg.relative.h = f,
+                "map_x" => cfg.map.x = f,
+                "map_y" => cfg.map.y = f,
+                "map_w" => cfg.map.w = f,
+                "map_h" => cfg.map.h = f,
+                "minimap_x" => cfg.minimap.x = f,
+                "minimap_y" => cfg.minimap.y = f,
+                "minimap_w" => cfg.minimap.w = f,
+                "minimap_h" => cfg.minimap.h = f,
+                "radar_x" => cfg.radar.x = f,
+                "radar_y" => cfg.radar.y = f,
+                "radar_w" => cfg.radar.w = f,
+                "radar_h" => cfg.radar.h = f,
+                "dash_x" => cfg.dash.x = f,
+                "dash_y" => cfg.dash.y = f,
+                "dash_w" => cfg.dash.w = f,
+                "dash_h" => cfg.dash.h = f,
+                "show_standings" => cfg.show_standings = b,
+                "show_relative" => cfg.show_relative = b,
+                "show_map" => cfg.show_map = b,
+                "show_minimap" => cfg.show_minimap = b,
+                "show_radar" => cfg.show_radar = b,
+                "show_dash" => cfg.show_dash = b,
+                "ingame_hud" => cfg.ingame_hud = b,
+                "standings_rows" => cfg.standings_rows = val.parse().unwrap_or(12).max(3),
+                "relative_count" => cfg.relative_count = val.parse().unwrap_or(3).max(1),
+                "st_pos" => cfg.st_pos = b,
+                "st_num" => cfg.st_num = b,
+                "st_name" => cfg.st_name = b,
+                "st_gap" => cfg.st_gap = b,
+                "st_interval" => cfg.st_interval = b,
+                "st_laps" => cfg.st_laps = b,
+                "st_best" => cfg.st_best = b,
+                "st_last" => {
+                    cfg.st_last = b;
+                    saw_last_cols = true;
+                }
+                "st_status" => cfg.st_status = b,
+                "st_bike" => cfg.st_bike = b,
+                "st_penalty" => cfg.st_penalty = b,
+                "st_crashed" => cfg.st_crashed = b,
+                "rel_num" => cfg.rel_num = b,
+                "rel_name" => cfg.rel_name = b,
+                "rel_gap" => cfg.rel_gap = b,
+                "rel_pos" => cfg.rel_pos = b,
+                "rel_bike" => cfg.rel_bike = b,
+                "rel_penalty" => cfg.rel_penalty = b,
+                "rel_interval" => cfg.rel_interval = b,
+                "rel_crashed" => cfg.rel_crashed = b,
+                "rel_best" => cfg.rel_best = b,
+                "rel_last" => cfg.rel_last = b,
+                "map_others" => cfg.map_others = b,
+                "map_sf" => cfg.map_sf = b,
+                "map_name" => cfg.map_name = b,
+                "map_numbers" => cfg.map_numbers = b,
+                "map_arrows" => cfg.map_arrows = b,
+                "map_crown" => cfg.map_crown = b,
+                "map_place" => cfg.map_place = b,
+                "map_dot" => cfg.map_dot = DotLabel::parse(val),
+                "mini_others" => cfg.mini_others = b,
+                "mini_sf" => cfg.mini_sf = b,
+                "mini_numbers" => cfg.mini_numbers = b,
+                "mini_arrows" => cfg.mini_arrows = b,
+                "mini_crown" => cfg.mini_crown = b,
+                "mini_place" => cfg.mini_place = b,
+                "mini_dot" => cfg.mini_dot = DotLabel::parse(val),
+                "radar_sides" => cfg.radar_sides = b,
+                "radar_rear" => cfg.radar_rear = b,
+                "st_bg" => cfg.st_bg = clamp_pct(val),
+                "rel_bg" => cfg.rel_bg = clamp_pct(val),
+                "map_bg" => cfg.map_bg = clamp_pct(val),
+                "mini_bg" => cfg.mini_bg = clamp_pct(val),
+                "radar_bg" => cfg.radar_bg = clamp_pct(val),
+                "dash_bg" => cfg.dash_bg = clamp_pct(val),
+                "dash_left" => cfg.dash_left = DashField::parse(val),
+                "dash_mid" => cfg.dash_mid = DashField::parse(val),
+                "dash_right" => cfg.dash_right = DashField::parse(val),
+                "st_head" => cfg.st_head = parse_board(val, BoardField::DEFAULT_HEAD),
+                "st_foot" => cfg.st_foot = parse_board(val, BoardField::DEFAULT_FOOT),
+                "rel_head" => cfg.rel_head = parse_board(val, BoardField::DEFAULT_HEAD),
+                "rel_foot" => cfg.rel_foot = parse_board(val, BoardField::DEFAULT_FOOT),
+                "st_font" => cfg.st_font = clamp_font(val),
+                "rel_font" => cfg.rel_font = clamp_font(val),
+                "map_font" => cfg.map_font = clamp_font(val),
+                "mini_font" => cfg.mini_font = clamp_font(val),
+                "radar_font" => cfg.radar_font = clamp_font(val),
+                "dash_font" => cfg.dash_font = clamp_font(val),
+                "st_bold" => cfg.st_bold = b,
+                "rel_bold" => cfg.rel_bold = b,
+                "map_bold" => cfg.map_bold = b,
+                "mini_bold" => cfg.mini_bold = b,
+                "radar_bold" => cfg.radar_bold = b,
+                "dash_bold" => cfg.dash_bold = b,
+                "font_family" => cfg.font_family = FontFamily::parse(val),
+                "units" => cfg.units = Units::parse(val),
+                "st_order" => cfg.st_order = parse_st_order(val),
+                "rel_order" => cfg.rel_order = parse_rel_order(val),
+                "st_w_pos" => cfg.st_w_pos = clamp_w(val),
+                "st_w_num" => cfg.st_w_num = clamp_w(val),
+                "st_w_name" => cfg.st_w_name = clamp_w(val),
+                "st_w_gap" => cfg.st_w_gap = clamp_w(val),
+                "st_w_interval" => cfg.st_w_interval = clamp_w(val),
+                "st_w_laps" => cfg.st_w_laps = clamp_w(val),
+                "st_w_best" => cfg.st_w_best = clamp_w(val),
+                "st_w_last" => cfg.st_w_last = clamp_w(val),
+                "st_w_status" => cfg.st_w_status = clamp_w(val),
+                "st_w_bike" => cfg.st_w_bike = clamp_w(val),
+                "st_w_penalty" => cfg.st_w_penalty = clamp_w(val),
+                "st_w_crashed" => cfg.st_w_crashed = clamp_w(val),
+                "rel_w_num" => cfg.rel_w_num = clamp_w(val),
+                "rel_w_name" => cfg.rel_w_name = clamp_w(val),
+                "rel_w_gap" => cfg.rel_w_gap = clamp_w(val),
+                "rel_w_pos" => cfg.rel_w_pos = clamp_w(val),
+                "rel_w_bike" => cfg.rel_w_bike = clamp_w(val),
+                "rel_w_penalty" => cfg.rel_w_penalty = clamp_w(val),
+                "rel_w_interval" => cfg.rel_w_interval = clamp_w(val),
+                "rel_w_crashed" => cfg.rel_w_crashed = clamp_w(val),
+                "rel_w_best" => cfg.rel_w_best = clamp_w(val),
+                "rel_w_last" => cfg.rel_w_last = clamp_w(val),
+                _ => {}
+            }
+        }
+        if !saw_last_cols {
+            cfg.st_best = true;
+            cfg.st_last = true;
+            cfg.rel_best = true;
+            cfg.rel_last = true;
+        }
+        cfg
+    }
+
+    pub fn save(&mut self) {
+        let path = ini_path();
+        if let Some(dir) = path.parent() {
+            let _ = fs::create_dir_all(dir);
+        }
+        let body = format!(
+            "# mxbo HUD layout (normalized 0..1, origin top-left)\n\
+             [Layout]\n\
+             standings_x={}\nstandings_y={}\nstandings_w={}\nstandings_h={}\n\
+             relative_x={}\nrelative_y={}\nrelative_w={}\nrelative_h={}\n\
+             map_x={}\nmap_y={}\nmap_w={}\nmap_h={}\n\
+             minimap_x={}\nminimap_y={}\nminimap_w={}\nminimap_h={}\n\
+             radar_x={}\nradar_y={}\nradar_w={}\nradar_h={}\n\
+             dash_x={}\ndash_y={}\ndash_w={}\ndash_h={}\n\
+             \n[Widgets]\n\
+             show_standings={}\nshow_relative={}\nshow_map={}\nshow_minimap={}\nshow_radar={}\nshow_dash={}\n\
+             ingame_hud={}\nstandings_rows={}\nrelative_count={}\n\
+             \n[Standings]\n\
+             st_pos={}\nst_num={}\nst_name={}\nst_gap={}\nst_interval={}\nst_laps={}\nst_best={}\nst_last={}\nst_status={}\n\
+             st_bike={}\nst_penalty={}\nst_crashed={}\n\
+             st_order={}\n\
+             st_w_pos={}\nst_w_num={}\nst_w_name={}\nst_w_gap={}\nst_w_interval={}\nst_w_laps={}\nst_w_best={}\nst_w_last={}\nst_w_status={}\n\
+             st_w_bike={}\nst_w_penalty={}\nst_w_crashed={}\n\
+             st_bg={}\nst_font={}\nst_bold={}\n\
+             st_head={}\nst_foot={}\n\
+             \n[Relative]\n\
+             rel_num={}\nrel_name={}\nrel_gap={}\nrel_pos={}\nrel_bike={}\nrel_penalty={}\nrel_interval={}\nrel_crashed={}\n\
+             rel_best={}\nrel_last={}\n\
+             rel_order={}\n\
+             rel_w_num={}\nrel_w_name={}\nrel_w_gap={}\nrel_w_pos={}\nrel_w_bike={}\nrel_w_penalty={}\nrel_w_interval={}\nrel_w_crashed={}\n\
+             rel_w_best={}\nrel_w_last={}\n\
+             rel_bg={}\nrel_font={}\nrel_bold={}\n\
+             rel_head={}\nrel_foot={}\n\
+             \n[Map]\n\
+             map_others={}\nmap_sf={}\nmap_name={}\nmap_numbers={}\nmap_arrows={}\nmap_crown={}\nmap_place={}\nmap_dot={}\n\
+             map_bg={}\nmap_font={}\nmap_bold={}\n\
+             \n[Minimap]\n\
+             mini_others={}\nmini_sf={}\nmini_numbers={}\nmini_arrows={}\nmini_crown={}\nmini_place={}\nmini_dot={}\n\
+             mini_bg={}\nmini_font={}\nmini_bold={}\n\
+             \n[Radar]\n\
+             radar_sides={}\nradar_rear={}\n\
+             radar_bg={}\nradar_font={}\nradar_bold={}\n\
+             \n[Dash]\n\
+             dash_left={}\ndash_mid={}\ndash_right={}\n\
+             dash_bg={}\ndash_font={}\ndash_bold={}\n\
+             \n[App]\n\
+             font_family={}\nunits={}\n",
+            self.standings.x,
+            self.standings.y,
+            self.standings.w,
+            self.standings.h,
+            self.relative.x,
+            self.relative.y,
+            self.relative.w,
+            self.relative.h,
+            self.map.x,
+            self.map.y,
+            self.map.w,
+            self.map.h,
+            self.minimap.x,
+            self.minimap.y,
+            self.minimap.w,
+            self.minimap.h,
+            self.radar.x,
+            self.radar.y,
+            self.radar.w,
+            self.radar.h,
+            self.dash.x,
+            self.dash.y,
+            self.dash.w,
+            self.dash.h,
+            b(self.show_standings),
+            b(self.show_relative),
+            b(self.show_map),
+            b(self.show_minimap),
+            b(self.show_radar),
+            b(self.show_dash),
+            b(self.ingame_hud),
+            self.standings_rows,
+            self.relative_count,
+            b(self.st_pos),
+            b(self.st_num),
+            b(self.st_name),
+            b(self.st_gap),
+            b(self.st_interval),
+            b(self.st_laps),
+            b(self.st_best),
+            b(self.st_last),
+            b(self.st_status),
+            b(self.st_bike),
+            b(self.st_penalty),
+            b(self.st_crashed),
+            join_st(&self.st_order),
+            self.st_w_pos,
+            self.st_w_num,
+            self.st_w_name,
+            self.st_w_gap,
+            self.st_w_interval,
+            self.st_w_laps,
+            self.st_w_best,
+            self.st_w_last,
+            self.st_w_status,
+            self.st_w_bike,
+            self.st_w_penalty,
+            self.st_w_crashed,
+            self.st_bg,
+            self.st_font,
+            b(self.st_bold),
+            join_board(&self.st_head),
+            join_board(&self.st_foot),
+            b(self.rel_num),
+            b(self.rel_name),
+            b(self.rel_gap),
+            b(self.rel_pos),
+            b(self.rel_bike),
+            b(self.rel_penalty),
+            b(self.rel_interval),
+            b(self.rel_crashed),
+            b(self.rel_best),
+            b(self.rel_last),
+            join_rel(&self.rel_order),
+            self.rel_w_num,
+            self.rel_w_name,
+            self.rel_w_gap,
+            self.rel_w_pos,
+            self.rel_w_bike,
+            self.rel_w_penalty,
+            self.rel_w_interval,
+            self.rel_w_crashed,
+            self.rel_w_best,
+            self.rel_w_last,
+            self.rel_bg,
+            self.rel_font,
+            b(self.rel_bold),
+            join_board(&self.rel_head),
+            join_board(&self.rel_foot),
+            b(self.map_others),
+            b(self.map_sf),
+            b(self.map_name),
+            b(self.map_numbers),
+            b(self.map_arrows),
+            b(self.map_crown),
+            b(self.map_place),
+            self.map_dot.key(),
+            self.map_bg,
+            self.map_font,
+            b(self.map_bold),
+            b(self.mini_others),
+            b(self.mini_sf),
+            b(self.mini_numbers),
+            b(self.mini_arrows),
+            b(self.mini_crown),
+            b(self.mini_place),
+            self.mini_dot.key(),
+            self.mini_bg,
+            self.mini_font,
+            b(self.mini_bold),
+            b(self.radar_sides),
+            b(self.radar_rear),
+            self.radar_bg,
+            self.radar_font,
+            b(self.radar_bold),
+            self.dash_left.key(),
+            self.dash_mid.key(),
+            self.dash_right.key(),
+            self.dash_bg,
+            self.dash_font,
+            b(self.dash_bold),
+            self.font_family.key(),
+            self.units.key(),
+        );
+        let _ = fs::write(&path, body);
+        self.loaded_mtime = fs::metadata(&path).and_then(|m| m.modified()).ok();
+    }
+
+    pub fn apply_to_snapshot(&self, s: &mut Snapshot) {
+        s.standings_rect = self.standings;
+        s.relative = self.relative;
+        s.map = self.map;
+        s.show_standings = i32::from(self.show_standings);
+        s.show_relative = i32::from(self.show_relative);
+        s.show_map = i32::from(self.show_map);
+        s.standings_rows = self.standings_rows;
+        s.relative_count = self.relative_count;
+    }
+
+    pub fn move_st_to(&mut self, from: usize, to: usize) {
+        move_to(&mut self.st_order, from, to);
+    }
+
+    pub fn move_rel_to(&mut self, from: usize, to: usize) {
+        move_to(&mut self.rel_order, from, to);
+    }
+
+    pub fn standings_cols(&self) -> Vec<StField> {
+        let mut cols: Vec<_> = self.st_order.iter().copied().filter(|c| c.enabled(self)).collect();
+        if cols.is_empty() {
+            cols.push(StField::Name);
+        }
+        cols
+    }
+
+    pub fn font_pct(&self, id: WidgetId) -> i32 {
+        match id {
+            WidgetId::Standings => self.st_font,
+            WidgetId::Relative => self.rel_font,
+            WidgetId::Map => self.map_font,
+            WidgetId::Minimap => self.mini_font,
+            WidgetId::Radar => self.radar_font,
+            WidgetId::Dash => self.dash_font,
+        }
+    }
+
+    pub fn set_font_pct(&mut self, id: WidgetId, v: i32) {
+        let v = v.clamp(70, 160);
+        match id {
+            WidgetId::Standings => self.st_font = v,
+            WidgetId::Relative => self.rel_font = v,
+            WidgetId::Map => self.map_font = v,
+            WidgetId::Minimap => self.mini_font = v,
+            WidgetId::Radar => self.radar_font = v,
+            WidgetId::Dash => self.dash_font = v,
+        }
+    }
+
+    pub fn bold(&self, id: WidgetId) -> bool {
+        match id {
+            WidgetId::Standings => self.st_bold,
+            WidgetId::Relative => self.rel_bold,
+            WidgetId::Map => self.map_bold,
+            WidgetId::Minimap => self.mini_bold,
+            WidgetId::Radar => self.radar_bold,
+            WidgetId::Dash => self.dash_bold,
+        }
+    }
+
+    pub fn set_bold(&mut self, id: WidgetId, on: bool) {
+        match id {
+            WidgetId::Standings => self.st_bold = on,
+            WidgetId::Relative => self.rel_bold = on,
+            WidgetId::Map => self.map_bold = on,
+            WidgetId::Minimap => self.mini_bold = on,
+            WidgetId::Radar => self.radar_bold = on,
+            WidgetId::Dash => self.dash_bold = on,
+        }
+    }
+
+    pub fn snap(&mut self, id: WidgetId, align: SnapAlign) {
+        let r = match id {
+            WidgetId::Standings => &mut self.standings,
+            WidgetId::Relative => &mut self.relative,
+            WidgetId::Map => &mut self.map,
+            WidgetId::Minimap => &mut self.minimap,
+            WidgetId::Radar => &mut self.radar,
+            WidgetId::Dash => &mut self.dash,
+        };
+        snap_rect(r, align);
+    }
+
+    pub fn relative_cols(&self) -> Vec<RelField> {
+        let mut cols: Vec<_> = self.rel_order.iter().copied().filter(|c| c.enabled(self)).collect();
+        if cols.is_empty() {
+            cols.push(RelField::Name);
+        }
+        cols
+    }
+}
+
+fn b(v: bool) -> i32 {
+    i32::from(v)
+}
+
+fn clamp_w(val: &str) -> i32 {
+    val.parse().unwrap_or(40).clamp(18, 160)
+}
+
+fn clamp_pct(val: &str) -> i32 {
+    val.parse().unwrap_or(80).clamp(0, 100)
+}
+
+fn clamp_font(val: &str) -> i32 {
+    val.parse().unwrap_or(100).clamp(70, 160)
+}
+
+fn snap_rect(r: &mut Rect, align: SnapAlign) {
+    const PAD: f32 = 0.012;
+    let max_x = (1.0 - r.w - PAD).max(PAD);
+    let max_y = (1.0 - r.h - PAD).max(PAD);
+    let cx = ((1.0 - r.w) * 0.5).clamp(PAD, max_x);
+    let cy = ((1.0 - r.h) * 0.5).clamp(PAD, max_y);
+    match align {
+        SnapAlign::TopLeft => {
+            r.x = PAD;
+            r.y = PAD;
+        }
+        SnapAlign::Top => {
+            r.x = cx;
+            r.y = PAD;
+        }
+        SnapAlign::TopRight => {
+            r.x = max_x;
+            r.y = PAD;
+        }
+        SnapAlign::Left => {
+            r.x = PAD;
+            r.y = cy;
+        }
+        SnapAlign::Center => {
+            r.x = cx;
+            r.y = cy;
+        }
+        SnapAlign::Right => {
+            r.x = max_x;
+            r.y = cy;
+        }
+        SnapAlign::BottomLeft => {
+            r.x = PAD;
+            r.y = max_y;
+        }
+        SnapAlign::Bottom => {
+            r.x = cx;
+            r.y = max_y;
+        }
+        SnapAlign::BottomRight => {
+            r.x = max_x;
+            r.y = max_y;
+        }
+        SnapAlign::HCenter => r.x = cx,
+        SnapAlign::VCenter => r.y = cy,
+    }
+}
+
+fn parse_st_order(s: &str) -> Vec<StField> {
+    normalize(s.split(',').filter_map(|p| StField::parse(p.trim())), &StField::ALL)
+}
+
+fn parse_rel_order(s: &str) -> Vec<RelField> {
+    normalize(s.split(',').filter_map(|p| RelField::parse(p.trim())), &RelField::ALL)
+}
+
+fn normalize<T: Copy + PartialEq>(found: impl Iterator<Item = T>, all: &[T]) -> Vec<T> {
+    let mut out = Vec::new();
+    for item in found {
+        if !out.contains(&item) {
+            out.push(item);
+        }
+    }
+    for item in all {
+        if !out.contains(item) {
+            out.push(*item);
+        }
+    }
+    out
+}
+
+fn join_st(order: &[StField]) -> String {
+    order.iter().map(|c| c.key()).collect::<Vec<_>>().join(",")
+}
+
+fn join_rel(order: &[RelField]) -> String {
+    order.iter().map(|c| c.key()).collect::<Vec<_>>().join(",")
+}
+
+fn join_board(fields: &[BoardField; 3]) -> String {
+    fields.iter().map(|f| f.key()).collect::<Vec<_>>().join(",")
+}
+
+fn parse_board(s: &str, fallback: [BoardField; 3]) -> [BoardField; 3] {
+    let mut out = fallback;
+    for (i, part) in s.split(',').take(3).enumerate() {
+        out[i] = BoardField::parse(part);
+    }
+    out
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BoardField {
+    None,
+    Position,
+    ClassPos,
+    Session,
+    RaceTime,
+    Lap,
+    LapsLeft,
+    Track,
+    Air,
+    Best,
+    SessionBest,
+    LocalTime,
+    Riders,
+    SessionType,
+}
+
+impl BoardField {
+    pub const ALL: [Self; 14] = [
+        Self::None,
+        Self::Position,
+        Self::ClassPos,
+        Self::Session,
+        Self::RaceTime,
+        Self::Lap,
+        Self::LapsLeft,
+        Self::Track,
+        Self::Air,
+        Self::Best,
+        Self::SessionBest,
+        Self::LocalTime,
+        Self::Riders,
+        Self::SessionType,
+    ];
+
+    pub const DEFAULT_HEAD: [Self; 3] = [Self::Session, Self::None, Self::Riders];
+    pub const DEFAULT_FOOT: [Self; 3] = [Self::None, Self::None, Self::None];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Position => "pos",
+            Self::ClassPos => "classpos",
+            Self::Session => "sess",
+            Self::RaceTime => "race",
+            Self::Lap => "lap",
+            Self::LapsLeft => "left",
+            Self::Track => "track",
+            Self::Air => "air",
+            Self::Best => "best",
+            Self::SessionBest => "sbest",
+            Self::LocalTime => "local",
+            Self::Riders => "riders",
+            Self::SessionType => "stype",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::None => "None",
+            Self::Position => "Position",
+            Self::ClassPos => "Class position",
+            Self::Session => "Session time",
+            Self::RaceTime => "Race time",
+            Self::Lap => "Lap",
+            Self::LapsLeft => "Laps remaining",
+            Self::Track => "Track name",
+            Self::Air => "Air temp",
+            Self::Best => "Best lap",
+            Self::SessionBest => "Session best",
+            Self::LocalTime => "Local time",
+            Self::Riders => "Riders",
+            Self::SessionType => "Session type",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s.trim() {
+            "none" => Self::None,
+            "pos" | "position" => Self::Position,
+            "classpos" | "class_pos" => Self::ClassPos,
+            "sess" | "session" => Self::Session,
+            "race" | "racetime" => Self::RaceTime,
+            "lap" => Self::Lap,
+            "left" | "lapsleft" => Self::LapsLeft,
+            "track" => Self::Track,
+            "air" => Self::Air,
+            "best" => Self::Best,
+            "sbest" | "sessionbest" => Self::SessionBest,
+            "local" | "localtime" => Self::LocalTime,
+            "riders" | "count" => Self::Riders,
+            "stype" | "sessiontype" => Self::SessionType,
+            _ => Self::None,
+        }
+    }
+
+    pub fn icon(self) -> char {
+        match self {
+            Self::None => '\0',
+            Self::Position | Self::ClassPos => '\u{f091}',
+            Self::Session | Self::RaceTime | Self::LocalTime => '\u{f2f2}',
+            Self::Lap | Self::LapsLeft => '\u{f1da}',
+            Self::Track | Self::Riders => '\u{f553}',
+            Self::Air => '\u{f72e}',
+            Self::Best | Self::SessionBest => '\u{f2f2}',
+            Self::SessionType => '\u{f11e}',
+        }
+    }
+
+    pub fn any(fields: &[Self; 3]) -> bool {
+        fields.iter().any(|f| *f != Self::None)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DashField {
+    None,
+    Speed,
+    Rpm,
+    Gear,
+    Position,
+    Number,
+    LapCount,
+    LapsLeft,
+    Last,
+    Best,
+    Current,
+    Delta,
+    Air,
+    Engine,
+    Gap,
+    Interval,
+    Penalty,
+    Session,
+    Bike,
+    Class,
+}
+
+impl DashField {
+    pub const ALL: [Self; 20] = [
+        Self::None,
+        Self::Speed,
+        Self::Rpm,
+        Self::Gear,
+        Self::Position,
+        Self::Number,
+        Self::LapCount,
+        Self::LapsLeft,
+        Self::Last,
+        Self::Best,
+        Self::Current,
+        Self::Delta,
+        Self::Air,
+        Self::Engine,
+        Self::Gap,
+        Self::Interval,
+        Self::Penalty,
+        Self::Session,
+        Self::Bike,
+        Self::Class,
+    ];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Speed => "speed",
+            Self::Rpm => "rpm",
+            Self::Gear => "gear",
+            Self::Position => "pos",
+            Self::Number => "num",
+            Self::LapCount => "laps",
+            Self::LapsLeft => "left",
+            Self::Last => "last",
+            Self::Best => "best",
+            Self::Current => "cur",
+            Self::Delta => "delta",
+            Self::Air => "air",
+            Self::Engine => "eng",
+            Self::Gap => "gap",
+            Self::Interval => "int",
+            Self::Penalty => "pen",
+            Self::Session => "sess",
+            Self::Bike => "bike",
+            Self::Class => "class",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::None => "None",
+            Self::Speed => "Speed",
+            Self::Rpm => "RPM",
+            Self::Gear => "Gear",
+            Self::Position => "Position",
+            Self::Number => "Bike number",
+            Self::LapCount => "Lap count",
+            Self::LapsLeft => "Laps left",
+            Self::Last => "Last lap",
+            Self::Best => "Best lap",
+            Self::Current => "Current lap",
+            Self::Delta => "Delta",
+            Self::Air => "Air temp",
+            Self::Engine => "Engine temp",
+            Self::Gap => "Gap",
+            Self::Interval => "Interval",
+            Self::Penalty => "Penalty",
+            Self::Session => "Session time",
+            Self::Bike => "Bike",
+            Self::Class => "Class",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s.trim() {
+            "none" => Self::None,
+            "speed" => Self::Speed,
+            "rpm" => Self::Rpm,
+            "gear" => Self::Gear,
+            "pos" | "position" => Self::Position,
+            "num" | "number" => Self::Number,
+            "laps" | "lapcount" => Self::LapCount,
+            "left" | "lapsleft" => Self::LapsLeft,
+            "last" => Self::Last,
+            "best" => Self::Best,
+            "cur" | "current" => Self::Current,
+            "delta" => Self::Delta,
+            "air" => Self::Air,
+            "eng" | "engine" => Self::Engine,
+            "gap" => Self::Gap,
+            "int" | "interval" => Self::Interval,
+            "pen" | "penalty" => Self::Penalty,
+            "sess" | "session" => Self::Session,
+            "bike" => Self::Bike,
+            "class" => Self::Class,
+            _ => Self::None,
+        }
+    }
+
+    pub fn icon(self) -> char {
+        match self {
+            Self::None => '\0',
+            Self::Speed => '\u{f3fd}',
+            Self::Rpm => '\u{f3fd}',
+            Self::Gear => '\u{f013}',
+            Self::Position => '\u{f091}',
+            Self::Number => '\u{f292}',
+            Self::LapCount | Self::LapsLeft => '\u{f1da}',
+            Self::Last | Self::Best | Self::Current | Self::Session => '\u{f2f2}',
+            Self::Delta => '\u{f362}',
+            Self::Air => '\u{f72e}',
+            Self::Engine => '\u{f2c9}',
+            Self::Gap | Self::Interval => '\u{f362}',
+            Self::Penalty => '\u{f06a}',
+            Self::Bike => '\u{f21c}',
+            Self::Class => '\u{f0c0}',
+        }
+    }
+}
+
+fn move_to<T>(items: &mut Vec<T>, from: usize, to: usize) {
+    if from >= items.len() || to >= items.len() || from == to {
+        return;
+    }
+    let item = items.remove(from);
+    items.insert(to, item);
+}
+
+pub fn ini_path() -> PathBuf {
+    let home = std::env::var("USERPROFILE").unwrap_or_else(|_| "C:\\Users\\Public".into());
+    PathBuf::from(home)
+        .join("Documents")
+        .join("PiBoSo")
+        .join("MX Bikes")
+        .join("mxbo.ini")
+}
+
+pub fn with_config<T>(f: impl FnOnce(&HudConfig) -> T) -> T {
+    let g = CONFIG.lock().unwrap_or_else(|e| e.into_inner());
+    f(&g)
+}
+
+pub fn update_config(f: impl FnOnce(&mut HudConfig)) {
+    let mut g = CONFIG.lock().unwrap_or_else(|e| e.into_inner());
+    f(&mut g);
+    g.save();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn field_keys_round_trip() {
+        for field in DashField::ALL {
+            assert_eq!(DashField::parse(field.key()), field, "{field:?}");
+        }
+        for field in BoardField::ALL {
+            assert_eq!(BoardField::parse(field.key()), field, "{field:?}");
+        }
+        for field in StField::ALL {
+            assert_eq!(StField::parse(field.key()), Some(field), "{field:?}");
+        }
+        for field in RelField::ALL {
+            assert_eq!(RelField::parse(field.key()), Some(field), "{field:?}");
+        }
+        assert_eq!(DotLabel::parse(DotLabel::Number.key()), DotLabel::Number);
+        assert_eq!(DotLabel::parse(DotLabel::Position.key()), DotLabel::Position);
+        for family in [
+            FontFamily::Segoe,
+            FontFamily::Arial,
+            FontFamily::Tahoma,
+            FontFamily::Roboto,
+            FontFamily::Agency,
+            FontFamily::Industry,
+            FontFamily::FasterOne,
+        ] {
+            assert_eq!(FontFamily::parse(family.key()), family, "{}", family.label());
+        }
+    }
+
+    #[test]
+    fn default_hud_enables_every_widget() {
+        let cfg = HudConfig::new();
+        assert!(cfg.show_standings);
+        assert!(cfg.show_relative);
+        assert!(cfg.show_map);
+        assert!(cfg.show_minimap);
+        assert!(cfg.show_radar);
+        assert!(cfg.show_dash);
+        assert_eq!(cfg.dash_left, DashField::Engine);
+        assert_eq!(cfg.dash_mid, DashField::Air);
+        assert_eq!(cfg.dash_right, DashField::Best);
+        assert!(BoardField::any(&BoardField::DEFAULT_HEAD));
+        assert!(!BoardField::any(&BoardField::DEFAULT_FOOT));
+        assert!(!cfg.standings_cols().is_empty());
+        assert!(!cfg.relative_cols().is_empty());
+        for id in [
+            WidgetId::Standings,
+            WidgetId::Relative,
+            WidgetId::Map,
+            WidgetId::Minimap,
+            WidgetId::Radar,
+            WidgetId::Dash,
+        ] {
+            assert!(cfg.font_pct(id) >= 70);
+        }
+    }
+
+    #[test]
+    fn units_format_speed_and_temp() {
+        assert_eq!(Units::parse("imperial").format_speed(10.0), "22");
+        assert_eq!(Units::Metric.format_speed(10.0), "36");
+        assert_eq!(Units::Metric.format_temp(21.0), "21°C");
+        assert_eq!(Units::Imperial.format_temp(0.0), "--°F");
+        assert_eq!(Units::Metric.speed_label(), "KPH");
+        assert_eq!(Units::Imperial.speed_label(), "MPH");
+    }
+
+    #[test]
+    fn disabled_columns_drop_from_widget_layout() {
+        let mut cfg = HudConfig::new();
+        cfg.st_name = false;
+        cfg.st_pos = false;
+        cfg.st_num = false;
+        cfg.st_gap = false;
+        cfg.st_best = false;
+        cfg.st_last = false;
+        assert_eq!(cfg.standings_cols(), vec![StField::Name]);
+        cfg.rel_name = false;
+        cfg.rel_num = false;
+        cfg.rel_gap = false;
+        cfg.rel_best = false;
+        cfg.rel_last = false;
+        assert_eq!(cfg.relative_cols(), vec![RelField::Name]);
+    }
+}

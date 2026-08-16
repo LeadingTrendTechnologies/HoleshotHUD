@@ -2,6 +2,11 @@ build/
 dist/
 out/
 overlay/target/
+overlay/*-out/
+overlay/target-new/
+overlay/hud/target/
+web-preview/target/
+target/
 *.user
 *.user
 *.suo

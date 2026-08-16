@@ -29,7 +29,7 @@ namespace Palette
     constexpr unsigned long kTrackEdge   = abgr(220, 18, 18, 20);
     constexpr unsigned long kMapFill     = abgr(168, 8, 8, 10);
     constexpr unsigned long kStartFinish = abgr(255, 245, 245, 245);
-    constexpr unsigned long kRider       = abgr(255, 36, 220, 255);
+    constexpr unsigned long kRider       = abgr(255, 255, 88, 168);
     constexpr unsigned long kRiderLocal  = abgr(255, 48, 148, 255);
     constexpr unsigned long kRiderCrash  = abgr(255, 64, 64, 220);
     constexpr unsigned long kDotRing     = abgr(240, 8, 8, 8);

@@ -28,17 +28,25 @@ jobs:
       - name: Build overlay
         run: cargo build --release --manifest-path overlay/Cargo.toml
 
-      - name: Pack zip
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Pack installer
         run: powershell -NoProfile -ExecutionPolicy Bypass -File tools/pack.ps1
 
       - uses: actions/upload-artifact@v4
         with:
           name: MXBO-Overlay-windows-x64
-          path: dist/*.zip
+          path: |
+            dist/HoleshotHUD-Setup.exe
+            dist/*.zip
 
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.zip
+          files: |
+            dist/HoleshotHUD-Setup.exe
+            dist/*.zip
+          body_path: CHANGELOG.md
           generate_release_notes: true

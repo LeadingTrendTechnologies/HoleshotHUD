@@ -2,18 +2,23 @@
 
 Standings, relative, map, minimap, and radar for [MX Bikes](https://store.steampowered.com/app/655500/MX_Bikes/).
 
+## Preview
+
+A browser demo of the same HUD widgets lives in [`web/`](web/). Build it with `build-web.bat`, then serve the `web` folder.
+
+**Vercel:** import this GitHub repo (root directory = repo root). `vercel.json` publishes `web/`. After you change the HUD, run `build-web.bat` and commit the updated `web/pkg` files before you deploy.
+
 ## Download and install
 
-1. Get the latest **MXBO-Overlay-*-windows-x64.zip** from [Releases](https://github.com/troyerl/mx-bikes-overlay/releases).
-2. Unzip it and run **Install.bat**.
-3. If SmartScreen appears, choose **More info → Run anyway**.
-4. Set MX Bikes to **borderless** or **windowed**.
-5. Start the game, then start **MXBO Overlay** from the desktop shortcut.
-6. Press **F8** for settings. Hold **Ctrl** and drag widgets to move or resize.
+1. Download **[HoleshotHUD-Setup.exe](https://github.com/troyerl/mx-bikes-overlay/releases/latest/download/HoleshotHUD-Setup.exe)** (always the latest release).
+2. Run the Setup file. If SmartScreen appears, choose **More info → Run anyway**.
+3. Set MX Bikes to **borderless** or **windowed**.
+4. Start the game, then start **Holeshot HUD** from the desktop shortcut.
+5. Press **F8** for settings. Hold **Ctrl** and drag widgets to move or resize.
 
-You can also grab a zip from the latest [Actions](https://github.com/troyerl/mx-bikes-overlay/actions) run if no release is published yet.
+Pull requests also build `HoleshotHUD-Setup.exe` as a workflow artifact for testing. That does not change the website download until you publish a `v*` tag.
 
-Uninstall with `Uninstall.bat`, or from `%LOCALAPPDATA%\MXBO Overlay`.
+Uninstall from Windows Settings, or run `Uninstall.bat` in `%LOCALAPPDATA%\Holeshot HUD`.
 
 ## Use
 
@@ -33,13 +38,13 @@ pack.bat
 ```
 
 `build.bat` compiles `out\Release\mxbo.dlo` and `overlay\target\release\mxbo-overlay.exe`.  
-`pack.bat` writes `dist\MXBO-Overlay-<version>-windows-x64.zip` for other PCs.
+`pack.bat` writes `dist\HoleshotHUD-Setup.exe` (needs [Inno Setup 6](https://jrsoftware.org/isinfo.php)).
 
 Push a tag to publish a downloadable release:
 
 ```bat
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 ## Data wiki

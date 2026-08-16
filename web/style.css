@@ -1,0 +1,63 @@
+:root {
+  --bg: #0c0c0e;
+  --panel: #141416;
+  --text: #e4e4e6;
+  --dim: #84848a;
+  --accent: #ff9430;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font-family: Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+
+header { padding: 28px 32px 12px; max-width: 1200px; }
+.brand { font-size: 28px; font-weight: 700; letter-spacing: 0.02em; }
+header p { color: var(--dim); max-width: 560px; line-height: 1.45; }
+.download {
+  display: inline-block;
+  margin-top: 8px;
+  background: var(--accent);
+  color: #1a1008;
+  font-weight: 700;
+  text-decoration: none;
+  padding: 10px 16px;
+  border-radius: 6px;
+}
+
+main {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 20px;
+  padding: 12px 32px 40px;
+  max-width: 1200px;
+}
+
+aside h2 { font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.08em; }
+aside button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  border: 1px solid #2a2a2e;
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 6px;
+  cursor: pointer;
+}
+aside button.on { border-color: var(--accent); color: var(--accent); }
+
+.stage {
+  background:
+    radial-gradient(ellipse at 50% 30%, #2a2218 0%, transparent 55%),
+    linear-gradient(#161412, #0a0a0c);
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+}
+#hud { width: 100%; height: auto; display: block; aspect-ratio: 16 / 9; }
+.hint { position: absolute; right: 12px; bottom: 8px; margin: 0; color: var(--dim); font-size: 12px; }
+
+@media (max-width: 800px) {
+  main { grid-template-columns: 1fr; padding: 12px 16px 32px; }
+  header { padding: 20px 16px 8px; }
+}

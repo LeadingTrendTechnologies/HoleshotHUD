@@ -101,6 +101,7 @@ impl Editor {
             if self.drag.take().is_some() {
                 self.save(snap);
             }
+            self.clear_preview();
             return;
         }
 
@@ -133,7 +134,17 @@ impl Editor {
 
         if released && self.drag.take().is_some() {
             self.save(snap);
+            self.clear_preview();
         }
+    }
+
+    fn clear_preview(&mut self) {
+        self.map = None;
+        self.standings = None;
+        self.relative = None;
+        self.minimap = None;
+        self.radar = None;
+        self.dash = None;
     }
 
     fn save(&self, snap: Option<&Snapshot>) {
