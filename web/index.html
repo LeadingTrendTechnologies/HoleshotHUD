@@ -3,24 +3,30 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MXBO Overlay — live HUD preview</title>
+  <title>Holeshot HUD — live widget editor</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header>
-    <div class="brand">MXBO Overlay</div>
-    <p>Standings, relative, dash, map, and radar for MX Bikes. Click a widget to show it on the preview.</p>
+    <div class="brand">Holeshot HUD</div>
+    <p>One widget at a time. Edit fields like in the app. Turn on Move and resize to show the border and drag handles.</p>
     <a class="download" href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/releases/latest/download/HoleshotHUD-Setup.exe">Download for Windows</a>
   </header>
   <main>
     <aside>
-      <h2>Widgets</h2>
+      <h2>Widget</h2>
       <button type="button" data-widget="standings" class="on">Standings</button>
-      <button type="button" data-widget="relative" class="on">Relative</button>
-      <button type="button" data-widget="dash" class="on">Dash</button>
-      <button type="button" data-widget="map" class="on">Map</button>
-      <button type="button" data-widget="minimap" class="on">Minimap</button>
-      <button type="button" data-widget="radar" class="on">Radar</button>
+      <button type="button" data-widget="relative">Relative</button>
+      <button type="button" data-widget="dash">Dash</button>
+      <button type="button" data-widget="map">Map</button>
+      <button type="button" data-widget="minimap">Minimap</button>
+      <button type="button" data-widget="radar">Radar</button>
+      <div class="row layout-toggle">
+        <label for="layout-edit">Move and resize</label>
+        <input id="layout-edit" class="toggle" type="checkbox" data-bool="layout_edit" />
+      </div>
+      <h2>Settings</h2>
+      <div id="settings"></div>
     </aside>
     <section class="stage">
       <canvas id="hud" width="1280" height="720"></canvas>

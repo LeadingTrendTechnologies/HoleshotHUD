@@ -3,6 +3,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Mutex;
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
 use crate::config::{BoardField, DashField, DotLabel, FontFamily, HudConfig, RelField, StField};
@@ -887,20 +888,21 @@ fn near_session_total(clock: i32, total: i32) -> bool {
 }
 
 fn clock_stuck(clock: i32, last: i32) -> bool {
-    static HOLD: Mutex<Option<(i32, Instant)>> = Mutex::new(None);
+    static HOLD: Mutex<Option<(i32, f32)>> = Mutex::new(None);
     let Ok(mut hold) = HOLD.lock() else {
         return false;
     };
+    let now = anim_now();
     if last > 0 && clock == last {
         match *hold {
-            Some((prev, at)) if prev == clock => at.elapsed().as_millis() >= 2500,
+            Some((prev, at)) if prev == clock => now - at >= 2.5,
             _ => {
-                *hold = Some((clock, Instant::now()));
+                *hold = Some((clock, now));
                 false
             }
         }
     } else {
-        *hold = Some((clock, Instant::now()));
+        *hold = Some((clock, now));
         false
     }
 }
@@ -1226,34 +1228,42 @@ fn class_position(s: &Snapshot) -> i32 {
 }
 
 fn local_clock() -> String {
-    #[repr(C)]
-    struct SystemTime {
-        year: u16,
-        month: u16,
-        day_of_week: u16,
-        day: u16,
-        hour: u16,
-        minute: u16,
-        second: u16,
-        milliseconds: u16,
+    #[cfg(target_arch = "wasm32")]
+    {
+        let mins = (anim_now() as i32 / 60).rem_euclid(24 * 60);
+        return format!("{:02}:{:02}", mins / 60, mins % 60);
     }
-    extern "system" {
-        fn GetLocalTime(lp: *mut SystemTime);
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        #[repr(C)]
+        struct SystemTime {
+            year: u16,
+            month: u16,
+            day_of_week: u16,
+            day: u16,
+            hour: u16,
+            minute: u16,
+            second: u16,
+            milliseconds: u16,
+        }
+        extern "system" {
+            fn GetLocalTime(lp: *mut SystemTime);
+        }
+        let mut st = SystemTime {
+            year: 0,
+            month: 0,
+            day_of_week: 0,
+            day: 0,
+            hour: 0,
+            minute: 0,
+            second: 0,
+            milliseconds: 0,
+        };
+        unsafe {
+            GetLocalTime(&mut st);
+        }
+        format!("{:02}:{:02}", st.hour, st.minute)
     }
-    let mut st = SystemTime {
-        year: 0,
-        month: 0,
-        day_of_week: 0,
-        day: 0,
-        hour: 0,
-        minute: 0,
-        second: 0,
-        milliseconds: 0,
-    };
-    unsafe {
-        GetLocalTime(&mut st);
-    }
-    format!("{:02}:{:02}", st.hour, st.minute)
 }
 
 fn board_item(s: &Snapshot, cfg: &HudConfig, field: BoardField) -> Option<(char, String)> {

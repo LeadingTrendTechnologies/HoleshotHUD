@@ -12,6 +12,21 @@ export class Preview {
         wasm.__wbg_preview_free(ptr, 0);
     }
     /**
+     * @returns {string}
+     */
+    active_widget() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.preview_active_widget(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
      * @param {number} width
      * @param {number} height
      * @returns {Uint8Array}
@@ -21,6 +36,63 @@ export class Preview {
         var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
         return v1;
+    }
+    /**
+     * @param {string} key
+     * @returns {boolean}
+     */
+    get_bool(key) {
+        const ptr0 = passStringToWasm0(key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.preview_get_bool(this.__wbg_ptr, ptr0, len0);
+        return ret !== 0;
+    }
+    /**
+     * @param {string} key
+     * @returns {string}
+     */
+    get_field(key) {
+        let deferred2_0;
+        let deferred2_1;
+        try {
+            const ptr0 = passStringToWasm0(key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ret = wasm.preview_get_field(this.__wbg_ptr, ptr0, len0);
+            deferred2_0 = ret[0];
+            deferred2_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        }
+    }
+    /**
+     * @param {string} key
+     * @returns {number}
+     */
+    get_int(key) {
+        const ptr0 = passStringToWasm0(key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.preview_get_int(this.__wbg_ptr, ptr0, len0);
+        return ret;
+    }
+    /**
+     * @param {number} nx
+     * @param {number} ny
+     * @param {number} width
+     * @param {number} height
+     * @returns {string}
+     */
+    hover_cursor(nx, ny, width, height) {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.preview_hover_cursor(this.__wbg_ptr, nx, ny, width, height);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
     }
     constructor() {
         const ret = wasm.preview_new();
@@ -32,6 +104,64 @@ export class Preview {
         return this;
     }
     /**
+     * @param {number} nx
+     * @param {number} ny
+     * @param {number} width
+     * @param {number} height
+     */
+    pointer_down(nx, ny, width, height) {
+        wasm.preview_pointer_down(this.__wbg_ptr, nx, ny, width, height);
+    }
+    /**
+     * @param {number} nx
+     * @param {number} ny
+     * @param {number} width
+     * @param {number} height
+     */
+    pointer_move(nx, ny, width, height) {
+        wasm.preview_pointer_move(this.__wbg_ptr, nx, ny, width, height);
+    }
+    pointer_up() {
+        wasm.preview_pointer_up(this.__wbg_ptr);
+    }
+    /**
+     * @param {string} name
+     */
+    select_widget(name) {
+        const ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.preview_select_widget(this.__wbg_ptr, ptr0, len0);
+    }
+    /**
+     * @param {string} key
+     * @param {boolean} on
+     */
+    set_bool(key, on) {
+        const ptr0 = passStringToWasm0(key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.preview_set_bool(this.__wbg_ptr, ptr0, len0, on);
+    }
+    /**
+     * @param {string} key
+     * @param {string} value
+     */
+    set_field(key, value) {
+        const ptr0 = passStringToWasm0(key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        wasm.preview_set_field(this.__wbg_ptr, ptr0, len0, ptr1, len1);
+    }
+    /**
+     * @param {string} key
+     * @param {number} value
+     */
+    set_int(key, value) {
+        const ptr0 = passStringToWasm0(key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.preview_set_int(this.__wbg_ptr, ptr0, len0, value);
+    }
+    /**
      * @param {string} name
      * @param {boolean} on
      */
@@ -39,6 +169,14 @@ export class Preview {
         const ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
         wasm.preview_set_widget(this.__wbg_ptr, ptr0, len0, on);
+    }
+    /**
+     * @param {string} align
+     */
+    snap_widget(align) {
+        const ptr0 = passStringToWasm0(align, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.preview_snap_widget(this.__wbg_ptr, ptr0, len0);
     }
     /**
      * @param {number} dt

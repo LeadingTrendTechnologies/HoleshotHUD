@@ -1,11 +1,14 @@
 mod demo_track;
+mod edit;
 
-use mxbo_hud::config::HudConfig;
+use mxbo_hud::config::{
+    BoardField, DashField, DotLabel, HudConfig, SnapAlign, WidgetId,
+};
 use mxbo_hud::render::{draw, Fonts};
 use mxbo_hud::snapshot::{
     write_name, Point, Rider, Snapshot, Standing, MAGIC, MAX_POLY, VERSION,
 };
-use tiny_skia::Pixmap;
+use tiny_skia::{Color, Paint, PathBuilder, Pixmap, Stroke, Transform};
 use wasm_bindgen::prelude::*;
 
 const RIDERS: &[(&str, &str, &str)] = &[
@@ -31,6 +34,10 @@ pub struct Preview {
     cfg: HudConfig,
     snap: Snapshot,
     t: f32,
+    active: String,
+    drag: Option<edit::Drag>,
+    placed: Vec<String>,
+    layout_edit: bool,
 }
 
 #[wasm_bindgen]
@@ -38,7 +45,9 @@ impl Preview {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Result<Preview, JsValue> {
         let fonts = Fonts::load().ok_or_else(|| JsValue::from_str("failed to load fonts"))?;
-        let cfg = HudConfig::new();
+        let mut cfg = HudConfig::new();
+        show_only(&mut cfg, "standings");
+        center_widget(&mut cfg, "standings");
         let mut snap = demo_snapshot();
         cfg.apply_to_snapshot(&mut snap);
         Ok(Self {
@@ -46,32 +55,150 @@ impl Preview {
             cfg,
             snap,
             t: 0.0,
+            active: "standings".into(),
+            drag: None,
+            placed: vec!["standings".into()],
+            layout_edit: false,
         })
     }
 
-    pub fn set_widget(&mut self, name: &str, on: bool) {
-        match name {
-            "standings" => self.cfg.show_standings = on,
-            "relative" => self.cfg.show_relative = on,
-            "dash" => self.cfg.show_dash = on,
-            "map" => self.cfg.show_map = on,
-            "minimap" => self.cfg.show_minimap = on,
-            "radar" => self.cfg.show_radar = on,
-            _ => {}
+    pub fn select_widget(&mut self, name: &str) {
+        if edit::parse_target(name).is_none() {
+            return;
+        }
+        self.active = name.to_string();
+        show_only(&mut self.cfg, name);
+        if !self.placed.iter().any(|w| w == name) {
+            center_widget(&mut self.cfg, name);
+            self.placed.push(name.to_string());
         }
         self.cfg.apply_to_snapshot(&mut self.snap);
+        self.drag = None;
+    }
+
+    pub fn active_widget(&self) -> String {
+        self.active.clone()
+    }
+
+    pub fn set_widget(&mut self, name: &str, on: bool) {
+        if on {
+            self.select_widget(name);
+        }
     }
 
     pub fn widget_on(&self, name: &str) -> bool {
-        match name {
-            "standings" => self.cfg.show_standings,
-            "relative" => self.cfg.show_relative,
-            "dash" => self.cfg.show_dash,
-            "map" => self.cfg.show_map,
-            "minimap" => self.cfg.show_minimap,
-            "radar" => self.cfg.show_radar,
-            _ => false,
+        self.active == name
+    }
+
+    pub fn get_bool(&self, key: &str) -> bool {
+        if key == "layout_edit" {
+            return self.layout_edit;
         }
+        flag(&self.cfg, key).unwrap_or(false)
+    }
+
+    pub fn set_bool(&mut self, key: &str, on: bool) {
+        if key == "layout_edit" {
+            self.layout_edit = on;
+            if !on {
+                self.drag = None;
+            }
+            return;
+        }
+        set_flag(&mut self.cfg, key, on);
+        self.cfg.apply_to_snapshot(&mut self.snap);
+    }
+
+    pub fn get_int(&self, key: &str) -> i32 {
+        int_val(&self.cfg, key).unwrap_or(0)
+    }
+
+    pub fn set_int(&mut self, key: &str, value: i32) {
+        set_int(&mut self.cfg, key, value);
+        self.cfg.apply_to_snapshot(&mut self.snap);
+    }
+
+    pub fn get_field(&self, key: &str) -> String {
+        field_val(&self.cfg, key).unwrap_or_default()
+    }
+
+    pub fn set_field(&mut self, key: &str, value: &str) {
+        set_field(&mut self.cfg, key, value);
+        self.cfg.apply_to_snapshot(&mut self.snap);
+    }
+
+    pub fn hover_cursor(&self, nx: f32, ny: f32, width: u32, height: u32) -> String {
+        if !self.layout_edit {
+            return String::new();
+        }
+        let Some(t) = edit::parse_target(&self.active) else {
+            return String::new();
+        };
+        edit::hit(&self.cfg, t, nx, ny, width as f32, height as f32)
+            .map(|h| h.cursor().to_string())
+            .unwrap_or_default()
+    }
+
+    pub fn pointer_down(&mut self, nx: f32, ny: f32, width: u32, height: u32) {
+        if !self.layout_edit {
+            return;
+        }
+        let Some(t) = edit::parse_target(&self.active) else {
+            return;
+        };
+        let Some(handle) = edit::hit(&self.cfg, t, nx, ny, width as f32, height as f32) else {
+            return;
+        };
+        self.drag = Some(edit::Drag {
+            target: t,
+            handle,
+            grab_x: nx,
+            grab_y: ny,
+            orig: edit::rect_of(&self.cfg, t),
+        });
+    }
+
+    pub fn pointer_move(&mut self, nx: f32, ny: f32, width: u32, height: u32) {
+        let Some(d) = self.drag else {
+            return;
+        };
+        let r = edit::resize(
+            d.orig,
+            d.handle,
+            nx,
+            ny,
+            d.grab_x,
+            d.grab_y,
+            width as f32,
+            height as f32,
+            d.target,
+        );
+        edit::set_rect(&mut self.cfg, d.target, r);
+        self.cfg.apply_to_snapshot(&mut self.snap);
+    }
+
+    pub fn pointer_up(&mut self) {
+        self.drag = None;
+    }
+
+    pub fn snap_widget(&mut self, align: &str) {
+        let Some(id) = widget_id(&self.active) else {
+            return;
+        };
+        let align = match align {
+            "tl" => SnapAlign::TopLeft,
+            "t" => SnapAlign::Top,
+            "tr" => SnapAlign::TopRight,
+            "l" => SnapAlign::Left,
+            "c" => SnapAlign::Center,
+            "r" => SnapAlign::Right,
+            "bl" => SnapAlign::BottomLeft,
+            "b" => SnapAlign::Bottom,
+            "br" => SnapAlign::BottomRight,
+            _ => return,
+        };
+        self.cfg.snap(id, align);
+        self.cfg.apply_to_snapshot(&mut self.snap);
     }
 
     pub fn tick(&mut self, dt: f32) {
@@ -95,7 +222,261 @@ impl Preview {
             false,
             false,
         );
+        if self.layout_edit {
+            if let Some(t) = edit::parse_target(&self.active) {
+                draw_edit_frame(
+                    &mut px,
+                    edit::edit_rect(&self.cfg, t, w as f32, h as f32),
+                    w as f32,
+                    h as f32,
+                );
+            }
+        }
         px.data().to_vec()
+    }
+}
+
+fn center_widget(cfg: &mut HudConfig, name: &str) {
+    if let Some(id) = widget_id(name) {
+        cfg.snap(id, SnapAlign::Center);
+    }
+}
+
+fn show_only(cfg: &mut HudConfig, name: &str) {
+    cfg.show_standings = name == "standings";
+    cfg.show_relative = name == "relative";
+    cfg.show_dash = name == "dash";
+    cfg.show_map = name == "map";
+    cfg.show_minimap = name == "minimap";
+    cfg.show_radar = name == "radar";
+}
+
+fn widget_id(name: &str) -> Option<WidgetId> {
+    Some(match name {
+        "standings" => WidgetId::Standings,
+        "relative" => WidgetId::Relative,
+        "map" => WidgetId::Map,
+        "minimap" => WidgetId::Minimap,
+        "radar" => WidgetId::Radar,
+        "dash" => WidgetId::Dash,
+        _ => return None,
+    })
+}
+
+fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
+    Some(match key {
+        "st_pos" => cfg.st_pos,
+        "st_num" => cfg.st_num,
+        "st_name" => cfg.st_name,
+        "st_gap" => cfg.st_gap,
+        "st_interval" => cfg.st_interval,
+        "st_laps" => cfg.st_laps,
+        "st_best" => cfg.st_best,
+        "st_last" => cfg.st_last,
+        "st_status" => cfg.st_status,
+        "st_bike" => cfg.st_bike,
+        "st_penalty" => cfg.st_penalty,
+        "st_crashed" => cfg.st_crashed,
+        "rel_num" => cfg.rel_num,
+        "rel_name" => cfg.rel_name,
+        "rel_gap" => cfg.rel_gap,
+        "rel_pos" => cfg.rel_pos,
+        "rel_bike" => cfg.rel_bike,
+        "rel_penalty" => cfg.rel_penalty,
+        "rel_interval" => cfg.rel_interval,
+        "rel_crashed" => cfg.rel_crashed,
+        "rel_best" => cfg.rel_best,
+        "rel_last" => cfg.rel_last,
+        "map_others" => cfg.map_others,
+        "map_sf" => cfg.map_sf,
+        "map_arrows" => cfg.map_arrows,
+        "map_crown" => cfg.map_crown,
+        "map_place" => cfg.map_place,
+        "map_numbers" => cfg.map_numbers,
+        "mini_others" => cfg.mini_others,
+        "mini_sf" => cfg.mini_sf,
+        "mini_arrows" => cfg.mini_arrows,
+        "mini_crown" => cfg.mini_crown,
+        "mini_place" => cfg.mini_place,
+        "mini_numbers" => cfg.mini_numbers,
+        "radar_sides" => cfg.radar_sides,
+        "radar_rear" => cfg.radar_rear,
+        "st_bold" => cfg.st_bold,
+        "rel_bold" => cfg.rel_bold,
+        "map_bold" => cfg.map_bold,
+        "mini_bold" => cfg.mini_bold,
+        "radar_bold" => cfg.radar_bold,
+        "dash_bold" => cfg.dash_bold,
+        _ => return None,
+    })
+}
+
+fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
+    match key {
+        "st_pos" => cfg.st_pos = on,
+        "st_num" => cfg.st_num = on,
+        "st_name" => cfg.st_name = on,
+        "st_gap" => cfg.st_gap = on,
+        "st_interval" => cfg.st_interval = on,
+        "st_laps" => cfg.st_laps = on,
+        "st_best" => cfg.st_best = on,
+        "st_last" => cfg.st_last = on,
+        "st_status" => cfg.st_status = on,
+        "st_bike" => cfg.st_bike = on,
+        "st_penalty" => cfg.st_penalty = on,
+        "st_crashed" => cfg.st_crashed = on,
+        "rel_num" => cfg.rel_num = on,
+        "rel_name" => cfg.rel_name = on,
+        "rel_gap" => cfg.rel_gap = on,
+        "rel_pos" => cfg.rel_pos = on,
+        "rel_bike" => cfg.rel_bike = on,
+        "rel_penalty" => cfg.rel_penalty = on,
+        "rel_interval" => cfg.rel_interval = on,
+        "rel_crashed" => cfg.rel_crashed = on,
+        "rel_best" => cfg.rel_best = on,
+        "rel_last" => cfg.rel_last = on,
+        "map_others" => cfg.map_others = on,
+        "map_sf" => cfg.map_sf = on,
+        "map_arrows" => cfg.map_arrows = on,
+        "map_crown" => cfg.map_crown = on,
+        "map_place" => cfg.map_place = on,
+        "map_numbers" => cfg.map_numbers = on,
+        "mini_others" => cfg.mini_others = on,
+        "mini_sf" => cfg.mini_sf = on,
+        "mini_arrows" => cfg.mini_arrows = on,
+        "mini_crown" => cfg.mini_crown = on,
+        "mini_place" => cfg.mini_place = on,
+        "mini_numbers" => cfg.mini_numbers = on,
+        "radar_sides" => cfg.radar_sides = on,
+        "radar_rear" => cfg.radar_rear = on,
+        "st_bold" => cfg.st_bold = on,
+        "rel_bold" => cfg.rel_bold = on,
+        "map_bold" => cfg.map_bold = on,
+        "mini_bold" => cfg.mini_bold = on,
+        "radar_bold" => cfg.radar_bold = on,
+        "dash_bold" => cfg.dash_bold = on,
+        _ => {}
+    }
+}
+
+fn int_val(cfg: &HudConfig, key: &str) -> Option<i32> {
+    Some(match key {
+        "standings_rows" => cfg.standings_rows,
+        "relative_count" => cfg.relative_count,
+        "st_bg" => cfg.st_bg,
+        "rel_bg" => cfg.rel_bg,
+        "map_bg" => cfg.map_bg,
+        "mini_bg" => cfg.mini_bg,
+        "radar_bg" => cfg.radar_bg,
+        "dash_bg" => cfg.dash_bg,
+        "st_font" => cfg.st_font,
+        "rel_font" => cfg.rel_font,
+        "map_font" => cfg.map_font,
+        "mini_font" => cfg.mini_font,
+        "radar_font" => cfg.radar_font,
+        "dash_font" => cfg.dash_font,
+        _ => return None,
+    })
+}
+
+fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
+    match key {
+        "standings_rows" => cfg.standings_rows = value.clamp(3, 40),
+        "relative_count" => cfg.relative_count = value.clamp(1, 8),
+        "st_bg" => cfg.st_bg = value.clamp(0, 100),
+        "rel_bg" => cfg.rel_bg = value.clamp(0, 100),
+        "map_bg" => cfg.map_bg = value.clamp(0, 100),
+        "mini_bg" => cfg.mini_bg = value.clamp(0, 100),
+        "radar_bg" => cfg.radar_bg = value.clamp(0, 100),
+        "dash_bg" => cfg.dash_bg = value.clamp(0, 100),
+        "st_font" => cfg.set_font_pct(WidgetId::Standings, value),
+        "rel_font" => cfg.set_font_pct(WidgetId::Relative, value),
+        "map_font" => cfg.set_font_pct(WidgetId::Map, value),
+        "mini_font" => cfg.set_font_pct(WidgetId::Minimap, value),
+        "radar_font" => cfg.set_font_pct(WidgetId::Radar, value),
+        "dash_font" => cfg.set_font_pct(WidgetId::Dash, value),
+        _ => {}
+    }
+}
+
+fn field_val(cfg: &HudConfig, key: &str) -> Option<String> {
+    Some(match key {
+        "dash_left" => cfg.dash_left.key().into(),
+        "dash_mid" => cfg.dash_mid.key().into(),
+        "dash_right" => cfg.dash_right.key().into(),
+        "st_head0" => cfg.st_head[0].key().into(),
+        "st_head1" => cfg.st_head[1].key().into(),
+        "st_head2" => cfg.st_head[2].key().into(),
+        "st_foot0" => cfg.st_foot[0].key().into(),
+        "st_foot1" => cfg.st_foot[1].key().into(),
+        "st_foot2" => cfg.st_foot[2].key().into(),
+        "rel_head0" => cfg.rel_head[0].key().into(),
+        "rel_head1" => cfg.rel_head[1].key().into(),
+        "rel_head2" => cfg.rel_head[2].key().into(),
+        "rel_foot0" => cfg.rel_foot[0].key().into(),
+        "rel_foot1" => cfg.rel_foot[1].key().into(),
+        "rel_foot2" => cfg.rel_foot[2].key().into(),
+        "map_dot" => cfg.map_dot.key().into(),
+        "mini_dot" => cfg.mini_dot.key().into(),
+        _ => return None,
+    })
+}
+
+fn set_field(cfg: &mut HudConfig, key: &str, value: &str) {
+    match key {
+        "dash_left" => cfg.dash_left = DashField::parse(value),
+        "dash_mid" => cfg.dash_mid = DashField::parse(value),
+        "dash_right" => cfg.dash_right = DashField::parse(value),
+        "st_head0" => cfg.st_head[0] = BoardField::parse(value),
+        "st_head1" => cfg.st_head[1] = BoardField::parse(value),
+        "st_head2" => cfg.st_head[2] = BoardField::parse(value),
+        "st_foot0" => cfg.st_foot[0] = BoardField::parse(value),
+        "st_foot1" => cfg.st_foot[1] = BoardField::parse(value),
+        "st_foot2" => cfg.st_foot[2] = BoardField::parse(value),
+        "rel_head0" => cfg.rel_head[0] = BoardField::parse(value),
+        "rel_head1" => cfg.rel_head[1] = BoardField::parse(value),
+        "rel_head2" => cfg.rel_head[2] = BoardField::parse(value),
+        "rel_foot0" => cfg.rel_foot[0] = BoardField::parse(value),
+        "rel_foot1" => cfg.rel_foot[1] = BoardField::parse(value),
+        "rel_foot2" => cfg.rel_foot[2] = BoardField::parse(value),
+        "map_dot" => cfg.map_dot = DotLabel::parse(value),
+        "mini_dot" => cfg.mini_dot = DotLabel::parse(value),
+        _ => {}
+    }
+}
+
+fn draw_edit_frame(px: &mut Pixmap, r: mxbo_hud::snapshot::Rect, sw: f32, sh: f32) {
+    let x = r.x * sw;
+    let y = r.y * sh;
+    let w = r.w * sw;
+    let h = r.h * sh;
+    let mut pb = PathBuilder::new();
+    pb.move_to(x, y);
+    pb.line_to(x + w, y);
+    pb.line_to(x + w, y + h);
+    pb.line_to(x, y + h);
+    pb.close();
+    if let Some(path) = pb.finish() {
+        let mut paint = Paint::default();
+        paint.set_color(Color::from_rgba8(255, 148, 48, 220));
+        paint.anti_alias = true;
+        px.stroke_path(&path, &paint, &Stroke { width: 2.0, ..Stroke::default() }, Transform::identity(), None);
+    }
+    let mut paint = Paint::default();
+    paint.set_color(Color::from_rgba8(255, 148, 48, 255));
+    for (hx, hy) in [
+        (x, y),
+        (x + w, y),
+        (x, y + h),
+        (x + w, y + h),
+        (x + w * 0.5, y),
+        (x + w * 0.5, y + h),
+        (x, y + h * 0.5),
+        (x + w, y + h * 0.5),
+    ] {
+        if let Some(rect) = tiny_skia::Rect::from_xywh(hx - 4.0, hy - 4.0, 8.0, 8.0) {
+            px.fill_rect(rect, &paint, Transform::identity(), None);
+        }
     }
 }
 
