@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.6
+
+Private feedback inbox, a feature-ask tab, and race logs that survive until after the moto.
+
+### Feedback
+
+- **F8 → App → Feedback** now has Rate, Bug, and Feature
+- Sends go to a private inbox, not public GitHub issues
+- Bug reports snapshot the race log in memory so a send works while the overlay still has the file open
+- The current moto is kept in full (2 MB cap). When it ends, that log is saved as `last-race.jsonl`, so a bug from the start of the race can still be reported after the checkered flag
+- The text caret sits on the letters you typed
+
 ## 0.1.5
 
 Silent in-app updates, one race log file, and feedback that attaches that log even mid-moto.

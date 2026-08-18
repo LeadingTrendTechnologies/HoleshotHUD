@@ -8,6 +8,13 @@ A browser demo of the same HUD widgets lives in [`web/`](web/). Build it with `b
 
 **Vercel:** import this GitHub repo (root directory = repo root). `vercel.json` publishes `web/`. After you change the HUD, run `build-web.bat` and commit the updated `web/pkg` files before you deploy.
 
+In-app feedback (F8 → App) posts to `/api/feedback` and stores **private gists**, not GitHub issues. Add these Vercel env vars:
+
+- `FEEDBACK_GITHUB_TOKEN` — classic PAT with the **gist** scope
+- `FEEDBACK_INBOX_SECRET` — password for [the inbox](https://holeshot-hud.vercel.app/inbox.html)
+
+Open the inbox to filter ratings, bugs, and feature asks. **Done** deletes that gist.
+
 ## Download and install
 
 1. Download **[HoleshotHUD-Setup.exe](https://github.com/LeadingTrendTechnologies/HoleshotHUD/releases/latest/download/HoleshotHUD-Setup.exe)** (always the latest release).
@@ -46,8 +53,8 @@ pack.bat
 Push a tag to publish a downloadable release:
 
 ```bat
-git tag v0.1.5
-git push origin v0.1.5
+git tag v0.1.6
+git push origin v0.1.6
 ```
 
 ## Data wiki

@@ -468,7 +468,7 @@ fn draw_text(
     }
 }
 
-pub(crate) fn measure(fonts: &Fonts, s: &str, size: f32) -> f32 {
+pub fn measure(fonts: &Fonts, s: &str, size: f32) -> f32 {
     let extra = if FAKE_BOLD.with(|c| c.get()) { 0.7 } else { 0.0 };
     measure_font(style_font(fonts), s, size * style_k()) + extra
 }

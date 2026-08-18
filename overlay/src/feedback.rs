@@ -18,6 +18,7 @@ const MAX_MESSAGE: usize = 1500;
 pub enum Kind {
     Rate,
     Bug,
+    Feature,
 }
 
 #[derive(Clone)]
@@ -57,7 +58,38 @@ impl Default for Form {
     }
 }
 
+struct CaretLayout {
+    x0: f32,
+    y0: f32,
+    line_h: f32,
+    rows: Vec<Vec<(usize, f32)>>,
+}
+
 static FORM: OnceLock<Mutex<Form>> = OnceLock::new();
+static CARET: OnceLock<Mutex<CaretLayout>> = OnceLock::new();
+
+fn caret_lock() -> std::sync::MutexGuard<'static, CaretLayout> {
+    CARET
+        .get_or_init(|| {
+            Mutex::new(CaretLayout {
+                x0: 0.0,
+                y0: 0.0,
+                line_h: 16.0,
+                rows: Vec::new(),
+            })
+        })
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
+pub fn set_caret_layout(x0: f32, y0: f32, line_h: f32, rows: Vec<Vec<(usize, f32)>>) {
+    *caret_lock() = CaretLayout {
+        x0,
+        y0,
+        line_h,
+        rows,
+    };
+}
 
 fn lock() -> std::sync::MutexGuard<'static, Form> {
     FORM.get_or_init(|| Mutex::new(Form::default()))
@@ -102,11 +134,23 @@ pub fn click_text(px: f32, py: f32) {
     let mut f = lock();
     f.focused = true;
     f.caret_at = Instant::now();
-    let (x, y, w, _h) = f.text_rect;
-    let col = ((px - x - 12.0).max(0.0) / 7.2) as usize;
-    let row = ((py - y - 10.0).max(0.0) / 16.0) as usize;
-    let wrap = wrap_cols(w);
-    f.cursor = cursor_from_row_col(&f.message, row, col, wrap);
+    let lay = caret_lock();
+    if lay.rows.is_empty() {
+        f.cursor = f.message.len();
+        return;
+    }
+    let row = ((py - lay.y0).max(0.0) / lay.line_h.max(1.0)) as usize;
+    let row = row.min(lay.rows.len() - 1);
+    let x = px - lay.x0;
+    let stops = &lay.rows[row];
+    let mut best = stops.first().map(|s| s.0).unwrap_or(0);
+    for pair in stops.windows(2) {
+        let mid = (pair[0].1 + pair[1].1) * 0.5;
+        if x >= mid {
+            best = pair[1].0;
+        }
+    }
+    f.cursor = best.min(f.message.len());
 }
 
 pub fn on_char(ch: char) -> bool {
@@ -206,6 +250,10 @@ pub fn send() {
                 f.status = Status::Error("Describe the bug first.".into());
                 return;
             }
+            Kind::Feature if f.message.trim().is_empty() => {
+                f.status = Status::Error("Describe the feature first.".into());
+                return;
+            }
             _ => {}
         }
         f.status = Status::Sending;
@@ -214,7 +262,7 @@ pub fn send() {
     };
     std::thread::spawn(move || {
         let log = if attach { record::feedback_log() } else { None };
-        let result = submit(kind, rating, &message, log.as_ref());
+        let result = submit(kind, rating, &message, log.as_ref(), attach);
         let mut f = lock();
         f.status = result;
         if matches!(f.status, Status::Sent) {
@@ -243,37 +291,6 @@ fn insert(f: &mut Form, ch: char) {
     f.status = Status::Idle;
 }
 
-fn wrap_cols(w: f32) -> usize {
-    ((w - 24.0) / 7.2).max(8.0) as usize
-}
-
-fn cursor_from_row_col(s: &str, row: usize, col: usize, wrap: usize) -> usize {
-    let mut r = 0usize;
-    let mut c = 0usize;
-    for (i, ch) in s.char_indices() {
-        if r == row && c >= col {
-            return i;
-        }
-        if ch == '\n' {
-            r += 1;
-            c = 0;
-            if r > row {
-                return i;
-            }
-        } else {
-            c += 1;
-            if c >= wrap {
-                r += 1;
-                c = 0;
-                if r > row {
-                    return i + ch.len_utf8();
-                }
-            }
-        }
-    }
-    s.len()
-}
-
 fn prev_char(s: &str, i: usize) -> usize {
     if i == 0 {
         return 0;
@@ -292,8 +309,8 @@ fn next_char(s: &str, i: usize) -> usize {
         .unwrap_or(s.len())
 }
 
-fn submit(kind: Kind, rating: u8, message: &str, log: Option<&FeedbackLog>) -> Status {
-    match post(kind, rating, message, log) {
+fn submit(kind: Kind, rating: u8, message: &str, log: Option<&FeedbackLog>, attach: bool) -> Status {
+    match post(kind, rating, message, log, attach) {
         Ok(()) => Status::Sent,
         Err(e) => {
             copy_report(kind, rating, message, log);
@@ -306,6 +323,8 @@ fn send_error(e: &str) -> String {
     let e = e.to_ascii_lowercase();
     if e.contains("503") {
         "Couldn't send. Add FEEDBACK_GITHUB_TOKEN on Vercel.".into()
+    } else if e.contains("gist") || e.contains("502") {
+        "Couldn't send. Token needs gist access on Vercel.".into()
     } else if e.contains("404") || e.contains("not found") {
         "Couldn't send. Deploy /api/feedback to Vercel.".into()
     } else if e.contains("could not") || e.contains("timed out") || e.contains("dns") {
@@ -321,9 +340,9 @@ fn copy_report(kind: Kind, rating: u8, message: &str, log: Option<&FeedbackLog>)
     let _ = set_clipboard(&text, path);
 }
 
-fn post(kind: Kind, rating: u8, message: &str, log: Option<&FeedbackLog>) -> Result<(), String> {
+fn post(kind: Kind, rating: u8, message: &str, log: Option<&FeedbackLog>, attach: bool) -> Result<(), String> {
     let url = feedback_url();
-    let body = payload_json(kind, rating, message, log);
+    let body = payload_json(kind, rating, message, log, attach);
     let agent = ureq::AgentBuilder::new()
         .timeout(Duration::from_secs(60))
         .user_agent("mxbo-overlay")
@@ -362,10 +381,11 @@ fn feedback_url() -> String {
     FEEDBACK_URL.to_string()
 }
 
-fn payload_json(kind: Kind, rating: u8, message: &str, log: Option<&FeedbackLog>) -> String {
+fn payload_json(kind: Kind, rating: u8, message: &str, log: Option<&FeedbackLog>, attach: bool) -> String {
     let kind_s = match kind {
         Kind::Rate => "rating",
         Kind::Bug => "bug",
+        Kind::Feature => "feature",
     };
     let rating_s = if rating == 0 {
         "null".into()
@@ -389,6 +409,8 @@ fn payload_json(kind: Kind, rating: u8, message: &str, log: Option<&FeedbackLog>
         if let Some(track) = log.track.as_deref() {
             s.push_str(&format!(",\"track\":\"{}\"", json_escape(track)));
         }
+    } else if attach {
+        s.push_str(",\"log_skipped\":true");
     }
     s.push('}');
     s
@@ -405,6 +427,7 @@ fn plain_report(kind: Kind, rating: u8, message: &str, log: Option<&FeedbackLog>
     match kind {
         Kind::Rate => body.push_str("Kind: rating\n"),
         Kind::Bug => body.push_str("Kind: bug\n"),
+        Kind::Feature => body.push_str("Kind: feature\n"),
     }
     if rating > 0 {
         body.push_str(&format!("Rating: {rating}/5\n"));

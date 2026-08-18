@@ -17,7 +17,7 @@ use crate::config::{
     update_config, with_config, BoardField, DashField, DotLabel, FontFamily, HudConfig, RelField,
     SnapAlign, StField, Units, WidgetId,
 };
-use crate::render::{fill_rect, text, Fonts};
+use crate::render::{fill_rect, measure, text, Fonts};
 
 fn bg() -> Color { Color::from_rgba8(24, 25, 29, 255) }
 fn side() -> Color { Color::from_rgba8(8, 8, 10, 255) }
@@ -155,6 +155,7 @@ enum Hit {
     UpdateInstall,
     FbRate,
     FbBug,
+    FbFeature,
     FbStar(u8),
     FbText,
     FbAttach,
@@ -648,6 +649,11 @@ fn click(p: (f32, f32)) {
             crate::feedback::set_kind(crate::feedback::Kind::Bug);
             return;
         }
+        Hit::FbFeature => {
+            close_drop();
+            crate::feedback::set_kind(crate::feedback::Kind::Feature);
+            return;
+        }
         Hit::FbStar(n) => {
             close_drop();
             crate::feedback::set_rating(n);
@@ -761,7 +767,7 @@ fn click(p: (f32, f32)) {
         | Hit::TickerFootOpen(_)
         | Hit::InfoOpen(_, _)
         | Hit::UpdateCheck | Hit::UpdateInstall
-        | Hit::FbRate | Hit::FbBug | Hit::FbStar(_) | Hit::FbText | Hit::FbAttach | Hit::FbSend
+        | Hit::FbRate | Hit::FbBug | Hit::FbFeature | Hit::FbStar(_) | Hit::FbText | Hit::FbAttach | Hit::FbSend
         | Hit::StDrag(_) | Hit::RelDrag(_)
         | Hit::StBg | Hit::RelBg | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarBg | Hit::DashBg | Hit::TickerBg
         | Hit::StW(_) | Hit::RelW(_) | Hit::Font(_) => {}
@@ -1073,34 +1079,46 @@ fn pane_feedback(
 ) -> f32 {
     let fb = crate::feedback::snapshot();
     let bug = fb.kind == crate::feedback::Kind::Bug;
+    let feature = fb.kind == crate::feedback::Kind::Feature;
+    let show_stars = !feature;
     let attach_h = if bug { 52.0 } else { 0.0 };
-    let card_h = 280.0 + attach_h;
+    let stars_h = if show_stars { 56.0 } else { 8.0 };
+    let card_h = 224.0 + stars_h + attach_h;
     outlined(px, x, y, w, card_h, 10.0, panel());
 
-    let chip_w = (w - 42.0) * 0.5;
+    let gap = 8.0;
+    let chip_w = (w - 32.0 - gap * 2.0) / 3.0;
     let cy = y + 14.0;
-    kind_chip(px, fonts, x + 16.0, cy, chip_w, "Rate the app", Hit::FbRate, fb.kind == crate::feedback::Kind::Rate, hover, hits);
-    kind_chip(px, fonts, x + 26.0 + chip_w, cy, chip_w, "Report a bug", Hit::FbBug, bug, hover, hits);
+    kind_chip(px, fonts, x + 16.0, cy, chip_w, "Rate", Hit::FbRate, fb.kind == crate::feedback::Kind::Rate, hover, hits);
+    kind_chip(px, fonts, x + 16.0 + chip_w + gap, cy, chip_w, "Bug", Hit::FbBug, bug, hover, hits);
+    kind_chip(px, fonts, x + 16.0 + (chip_w + gap) * 2.0, cy, chip_w, "Feature", Hit::FbFeature, feature, hover, hits);
 
+    let prompt = match fb.kind {
+        crate::feedback::Kind::Bug => "How bad is it? (optional)",
+        crate::feedback::Kind::Feature => "What should we add?",
+        crate::feedback::Kind::Rate => "How is it going?",
+    };
     let sy = y + 56.0;
-    text(px, fonts, if bug { "How bad is it? (optional)" } else { "How is it going?" }, 11.0, x + 16.0, sy, dim(), false);
-    let star_y = sy + 20.0;
-    for i in 1u8..=5 {
-        let sx = x + 12.0 + (i as f32 - 1.0) * 34.0;
-        hits.push(HitBox { id: Hit::FbStar(i), x: sx, y: star_y, w: 32.0, h: 28.0 });
-        let on = fb.rating >= i;
-        let hot = hover == Some(Hit::FbStar(i));
-        let col = if on {
-            accent()
-        } else if hot {
-            Color::from_rgba8(255, 140, 36, 140)
-        } else {
-            Color::from_rgba8(72, 72, 80, 255)
-        };
-        fill_star(px, sx + 16.0, star_y + 14.0, 10.0, col);
+    text(px, fonts, prompt, 11.0, x + 16.0, sy, dim(), false);
+    let mut box_y = sy + 24.0;
+    if show_stars {
+        let star_y = sy + 20.0;
+        for i in 1u8..=5 {
+            let sx = x + 12.0 + (i as f32 - 1.0) * 34.0;
+            hits.push(HitBox { id: Hit::FbStar(i), x: sx, y: star_y, w: 32.0, h: 28.0 });
+            let on = fb.rating >= i;
+            let hot = hover == Some(Hit::FbStar(i));
+            let col = if on {
+                accent()
+            } else if hot {
+                Color::from_rgba8(255, 140, 36, 140)
+            } else {
+                Color::from_rgba8(72, 72, 80, 255)
+            };
+            fill_star(px, sx + 16.0, star_y + 14.0, 10.0, col);
+        }
+        box_y = star_y + 36.0;
     }
-
-    let box_y = star_y + 36.0;
     let box_h = 88.0;
     crate::feedback::set_text_rect(x + 16.0, box_y, w - 32.0, box_h);
     hits.push(HitBox { id: Hit::FbText, x: x + 16.0, y: box_y, w: w - 32.0, h: box_h });
@@ -1110,16 +1128,19 @@ fn pane_feedback(
         btn_bg()
     };
     outlined(px, x + 16.0, box_y, w - 32.0, box_h, 8.0, box_fill);
-    let placeholder = if bug {
-        "What went wrong?"
-    } else {
-        "Anything you want to add? (optional)"
+    let placeholder = match fb.kind {
+        crate::feedback::Kind::Bug => "What went wrong?",
+        crate::feedback::Kind::Feature => "Describe the feature.",
+        crate::feedback::Kind::Rate => "Anything you want to add? (optional)",
     };
-    let cols = ((w - 56.0) / 7.2).max(8.0) as usize;
+    let tx = x + 28.0;
+    let ty = box_y + 10.0;
+    let tw = w - 56.0;
     if fb.message.is_empty() && !fb.focused {
-        text(px, fonts, placeholder, 12.0, x + 28.0, box_y + 12.0, dim(), false);
+        text(px, fonts, placeholder, 12.0, tx, ty + 2.0, dim(), false);
+        crate::feedback::set_caret_layout(tx, ty, 16.0, vec![vec![(0, 0.0)]]);
     } else {
-        draw_fb_text(px, fonts, &fb.message, fb.cursor, x + 28.0, box_y + 10.0, w - 56.0, box_h - 16.0, cols);
+        draw_fb_text(px, fonts, &fb.message, fb.cursor, tx, ty, tw, box_h - 16.0);
     }
 
     let mut iy = box_y + box_h + 12.0;
@@ -1195,12 +1216,13 @@ fn draw_fb_text(
     cursor: usize,
     x: f32,
     y: f32,
-    _w: f32,
+    w: f32,
     h: f32,
-    cols: usize,
 ) {
-    let lines = wrap_fb(s, cols);
-    let max_rows = (h / 16.0).max(1.0) as usize;
+    const SIZE: f32 = 12.0;
+    const LINE: f32 = 16.0;
+    let lines = wrap_fb(fonts, s, w, SIZE);
+    let max_rows = (h / LINE).max(1.0) as usize;
     let caret_line = {
         let mut i = 0usize;
         let mut line = 0usize;
@@ -1221,17 +1243,28 @@ fn draw_fb_text(
     let start = caret_line.saturating_sub(max_rows.saturating_sub(1));
     let mut drawn = 0usize;
     let mut idx = 0usize;
+    let mut rows = Vec::new();
     for (li, line) in lines.iter().enumerate() {
         if li >= start && drawn < max_rows {
-            text(px, fonts, line, 12.0, x, y + drawn as f32 * 16.0, text_col(), false);
+            text(px, fonts, line, SIZE, x, y + drawn as f32 * LINE, text_col(), false);
+            let mut stops = vec![(idx, 0.0)];
+            let mut prefix = String::new();
+            for (off, ch) in line.char_indices() {
+                prefix.push(ch);
+                stops.push((idx + off + ch.len_utf8(), measure(fonts, &prefix, SIZE)));
+            }
             if crate::feedback::caret_on() && li == caret_line {
-                let col = cursor.saturating_sub(idx);
-                let prefix: String = line.chars().take(col).collect();
-                let cx = x + prefix.chars().count() as f32 * 7.2;
-                if let Some(r) = Rect::from_xywh(cx, y + drawn as f32 * 16.0, 1.5, 14.0) {
+                let cx = x + stops
+                    .iter()
+                    .rev()
+                    .find(|(b, _)| *b <= cursor)
+                    .map(|s| s.1)
+                    .unwrap_or(0.0);
+                if let Some(r) = Rect::from_xywh(cx, y + drawn as f32 * LINE, 1.5, 14.0) {
                     fill_rect(px, r, accent());
                 }
             }
+            rows.push(stops);
             drawn += 1;
         }
         idx += line.len();
@@ -1239,14 +1272,18 @@ fn draw_fb_text(
             idx += 1;
         }
     }
-    if s.is_empty() && crate::feedback::caret_on() {
-        if let Some(r) = Rect::from_xywh(x, y, 1.5, 14.0) {
-            fill_rect(px, r, accent());
+    if s.is_empty() {
+        rows.push(vec![(0, 0.0)]);
+        if crate::feedback::caret_on() {
+            if let Some(r) = Rect::from_xywh(x, y, 1.5, 14.0) {
+                fill_rect(px, r, accent());
+            }
         }
     }
+    crate::feedback::set_caret_layout(x, y, LINE, rows);
 }
 
-fn wrap_fb(s: &str, cols: usize) -> Vec<String> {
+fn wrap_fb(fonts: &Fonts, s: &str, max_w: f32, size: f32) -> Vec<String> {
     let mut lines = Vec::new();
     if s.is_empty() {
         lines.push(String::new());
@@ -1262,11 +1299,15 @@ fn wrap_fb(s: &str, cols: usize) -> Vec<String> {
             continue;
         }
         let mut line = String::new();
+        let mut line_w = 0.0;
         for ch in para.chars() {
-            if line.chars().count() >= cols {
+            let ch_w = measure(fonts, ch.encode_utf8(&mut [0; 4]), size);
+            if !line.is_empty() && line_w + ch_w > max_w {
                 lines.push(std::mem::take(&mut line));
+                line_w = 0.0;
             }
             line.push(ch);
+            line_w += ch_w;
         }
         lines.push(line);
     }

@@ -7,6 +7,9 @@
   "functions": {
     "api/feedback.js": {
       "maxDuration": 30
+    },
+    "api/inbox.js": {
+      "maxDuration": 30
     }
   },
   "headers": [
