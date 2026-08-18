@@ -33,9 +33,12 @@
     button { background: var(--accent); color: #1a1008; font-weight: 700; border: 0; border-radius: 8px; padding: 10px 16px; cursor: pointer; }
     button.ghost { background: #2a2a2e; color: var(--text); }
     .err { color: #ff7878; margin: 0 0 16px; }
-    .filters { display: flex; gap: 8px; margin-bottom: 16px; }
+    .filters { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
     .chip { background: #1c1c20; color: var(--dim); border: 0; border-radius: 999px; padding: 6px 12px; cursor: pointer; font-size: 13px; }
     .chip.on { background: #3a2414; color: var(--accent); }
+    .avg { margin-left: auto; color: var(--text); font-size: 14px; font-weight: 700; }
+    .avg span { color: var(--accent); }
+    .avg em { color: var(--dim); font-style: normal; font-weight: 500; font-size: 12px; }
     .card { padding: 14px 16px; margin-bottom: 10px; }
     .row { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
     .kind { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
@@ -69,6 +72,7 @@
         <button class="chip" data-kind="rating" type="button">Ratings</button>
         <button class="chip" data-kind="bug" type="button">Bugs</button>
         <button class="chip" data-kind="feature" type="button">Features</button>
+        <p class="avg" id="avg"></p>
       </div>
       <div id="list"></div>
     </div>
@@ -79,6 +83,7 @@
     const err = document.getElementById("err");
     const app = document.getElementById("app");
     const list = document.getElementById("list");
+    const avgEl = document.getElementById("avg");
     let secret = sessionStorage.getItem("hh-inbox") || "";
     let items = [];
     let filter = "all";
@@ -101,7 +106,25 @@
       render();
     }
 
+    function starScore(it) {
+      if (it.kind !== "rating") return 0;
+      const m = String(it.summary || "").match(/^([1-5])\s*\/\s*5/);
+      return m ? Number(m[1]) : 0;
+    }
+
+    function renderAvg() {
+      const scores = items.map(starScore).filter((n) => n >= 1);
+      if (!scores.length) {
+        avgEl.innerHTML = "<em>No ratings yet</em>";
+        return;
+      }
+      const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+      const label = scores.length === 1 ? "rating" : "ratings";
+      avgEl.innerHTML = `Average <span>${avg.toFixed(1)} / 5</span> <em>(${scores.length} ${label})</em>`;
+    }
+
     function render() {
+      renderAvg();
       const shown = items.filter((it) => filter === "all" || it.kind === filter);
       list.innerHTML = shown.length ? "" : "<p class='when'>Nothing here yet.</p>";
       for (const it of shown) {
