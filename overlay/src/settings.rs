@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 
-use tiny_skia::{Color, FillRule, Paint, Path, PathBuilder, Pixmap, Rect, Transform};
+use tiny_skia::{Color, FillRule, Paint, Path, PathBuilder, Pixmap, PixmapPaint, Rect, Transform};
 use windows::Win32::Foundation::{BOOL, HWND, LPARAM, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, CreateSolidBrush, DeleteObject, EndPaint, FillRect, GetDC, ReleaseDC,
@@ -46,6 +46,7 @@ enum Tab {
     Minimap,
     Radar,
     Dash,
+    Ticker,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -57,17 +58,22 @@ enum Hit {
     TabMini,
     TabRadar,
     TabDash,
+    TabTicker,
     StShow,
     RelShow,
     MapShow,
     MiniShow,
     RadarShow,
     DashShow,
+    TickerShow,
+    TickerTitle,
+    TickerAutoscroll,
     StPos,
     StNum,
     StName,
     StGap,
     StLaps,
+    StCurrent,
     StBest,
     StLast,
     StStatus,
@@ -78,6 +84,8 @@ enum Hit {
     RelNum,
     RelName,
     RelGap,
+    RelLaps,
+    RelCurrent,
     RelPos,
     RelBike,
     RelPenalty,
@@ -109,12 +117,16 @@ enum Hit {
     RelBg,
     MapBg,
     MiniBg,
+    MiniZoom,
     RadarBg,
     DashBg,
+    TickerBg,
     StDec,
     StInc,
     RelDec,
     RelInc,
+    TickerDec,
+    TickerInc,
     StDrag(u8),
     RelDrag(u8),
     StW(u8),
@@ -135,6 +147,8 @@ enum Hit {
     UnitsImperial,
     DashFootOpen(u8),
     DashFootPick(u8, DashField),
+    TickerFootOpen(u8),
+    TickerFootPick(u8, BoardField),
     InfoOpen(InfoBar, u8),
     InfoPick(InfoBar, u8, BoardField),
     UpdateCheck,
@@ -165,6 +179,7 @@ enum Drop {
     FontFamily,
     Units,
     DashFoot(u8),
+    TickerFoot(u8),
     Info(InfoBar, u8),
 }
 
@@ -374,8 +389,10 @@ fn is_slider(hit: Hit) -> bool {
             | Hit::RelBg
             | Hit::MapBg
             | Hit::MiniBg
+            | Hit::MiniZoom
             | Hit::RadarBg
             | Hit::DashBg
+            | Hit::TickerBg
             | Hit::StW(_)
             | Hit::RelW(_)
             | Hit::Font(_)
@@ -423,8 +440,10 @@ fn apply_slide(hit: Hit, mx: f32, x: f32, w: f32, min: i32, max: i32) {
         Hit::RelBg => c.rel_bg = v,
         Hit::MapBg => c.map_bg = v,
         Hit::MiniBg => c.mini_bg = v,
+        Hit::MiniZoom => c.mini_zoom = v,
         Hit::RadarBg => c.radar_bg = v,
         Hit::DashBg => c.dash_bg = v,
+        Hit::TickerBg => c.ticker_bg = v,
         Hit::StW(i) => {
             if let Some(f) = c.st_order.get(i as usize).copied() {
                 f.set_width(c, v);
@@ -556,6 +575,10 @@ fn click(p: (f32, f32)) {
             set_tab(Tab::Dash);
             return;
         }
+        Hit::TabTicker => {
+            set_tab(Tab::Ticker);
+            return;
+        }
         Hit::MapDotOpen => {
             toggle_drop(Drop::MapDot);
             return;
@@ -574,6 +597,10 @@ fn click(p: (f32, f32)) {
         }
         Hit::DashFootOpen(slot) => {
             toggle_drop(Drop::DashFoot(slot));
+            return;
+        }
+        Hit::TickerFootOpen(slot) => {
+            toggle_drop(Drop::TickerFoot(slot));
             return;
         }
         Hit::InfoOpen(bar, slot) => {
@@ -599,11 +626,15 @@ fn click(p: (f32, f32)) {
         Hit::MiniShow => c.show_minimap = !c.show_minimap,
         Hit::RadarShow => c.show_radar = !c.show_radar,
         Hit::DashShow => c.show_dash = !c.show_dash,
+        Hit::TickerShow => c.show_ticker = !c.show_ticker,
+        Hit::TickerTitle => c.ticker_title = !c.ticker_title,
+        Hit::TickerAutoscroll => c.ticker_autoscroll = !c.ticker_autoscroll,
         Hit::StPos => c.st_pos = !c.st_pos,
         Hit::StNum => c.st_num = !c.st_num,
         Hit::StName => c.st_name = !c.st_name,
         Hit::StGap => c.st_gap = !c.st_gap,
         Hit::StLaps => c.st_laps = !c.st_laps,
+        Hit::StCurrent => c.st_current = !c.st_current,
         Hit::StBest => c.st_best = !c.st_best,
         Hit::StLast => c.st_last = !c.st_last,
         Hit::StStatus => c.st_status = !c.st_status,
@@ -614,6 +645,8 @@ fn click(p: (f32, f32)) {
         Hit::RelNum => c.rel_num = !c.rel_num,
         Hit::RelName => c.rel_name = !c.rel_name,
         Hit::RelGap => c.rel_gap = !c.rel_gap,
+        Hit::RelLaps => c.rel_laps = !c.rel_laps,
+        Hit::RelCurrent => c.rel_current = !c.rel_current,
         Hit::RelPos => c.rel_pos = !c.rel_pos,
         Hit::RelBike => c.rel_bike = !c.rel_bike,
         Hit::RelPenalty => c.rel_penalty = !c.rel_penalty,
@@ -659,17 +692,26 @@ fn click(p: (f32, f32)) {
             2 => c.dash_right = field,
             _ => {}
         },
+        Hit::TickerFootPick(slot, field) => match slot {
+            0 => c.ticker_left = field,
+            1 => c.ticker_right = field,
+            _ => {}
+        },
         Hit::InfoPick(bar, slot, field) => set_info_slot(c, bar, slot, field),
         Hit::StDec => c.standings_rows = (c.standings_rows - 1).max(3),
         Hit::StInc => c.standings_rows = (c.standings_rows + 1).min(40),
         Hit::RelDec => c.relative_count = (c.relative_count - 1).max(1),
         Hit::RelInc => c.relative_count = (c.relative_count + 1).min(8),
+        Hit::TickerDec => c.ticker_count = (c.ticker_count - 1).max(3),
+        Hit::TickerInc => c.ticker_count = (c.ticker_count + 1).min(15),
         Hit::TabApp | Hit::TabSt | Hit::TabRel | Hit::TabMap | Hit::TabMini | Hit::TabRadar | Hit::TabDash
+        | Hit::TabTicker
         | Hit::MapDotOpen | Hit::MiniDotOpen | Hit::FontOpen | Hit::UnitsOpen | Hit::DashFootOpen(_)
+        | Hit::TickerFootOpen(_)
         | Hit::InfoOpen(_, _)
         | Hit::UpdateCheck | Hit::UpdateInstall
         | Hit::StDrag(_) | Hit::RelDrag(_)
-        | Hit::StBg | Hit::RelBg | Hit::MapBg | Hit::MiniBg | Hit::RadarBg | Hit::DashBg
+        | Hit::StBg | Hit::RelBg | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarBg | Hit::DashBg | Hit::TickerBg
         | Hit::StW(_) | Hit::RelW(_) | Hit::Font(_) => {}
     });
 }
@@ -726,11 +768,8 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
     };
     let mut hits = Vec::new();
 
-    fill_round(px, 18.0, 20.0, 32.0, 32.0, 9.0, accent());
-    text(px, fonts, "H", 17.0, 34.0, 26.0, Color::from_rgba8(16, 10, 4, 255), true);
-    text(px, fonts, "Holeshot", 15.0, 58.0, 20.0, text_col(), false);
-    text(px, fonts, "HUD", 11.0, 58.0, 38.0, muted(), false);
-    if let Some(r) = Rect::from_xywh(18.0, 64.0, SIDE_W - 36.0, 1.0) {
+    draw_brand(px, fonts);
+    if let Some(r) = Rect::from_xywh(18.0, 72.0, SIDE_W - 36.0, 1.0) {
         fill_rect(px, r, row_line());
     }
 
@@ -742,8 +781,9 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
         (Tab::Minimap, Hit::TabMini, "Minimap", cfg.show_minimap),
         (Tab::Radar, Hit::TabRadar, "Radar", cfg.show_radar),
         (Tab::Dash, Hit::TabDash, "Dash", cfg.show_dash),
+        (Tab::Ticker, Hit::TabTicker, "H-Standings", cfg.show_ticker),
     ];
-    let mut ty = 80.0;
+    let mut ty = 84.0;
     for (t, hit, name, on) in tabs {
         nav_tab(px, fonts, 12.0, ty, SIDE_W - 24.0, 36.0, t == tab, on, name, hit, hover, &mut hits);
         ty += 40.0;
@@ -763,6 +803,7 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
         Tab::Minimap => pane_minimap(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
         Tab::Radar => pane_radar(px, fonts, &cfg, hover, &mut hits, x, py, cw),
         Tab::Dash => pane_dash(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
+        Tab::Ticker => pane_ticker(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
     };
 
     if let Some(ui) = UI.lock().unwrap().as_mut() {
@@ -770,6 +811,45 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
         ui.content_h = bottom + scroll;
         let max = (ui.content_h - h + 24.0).max(0.0);
         ui.scroll = ui.scroll.clamp(0.0, max);
+    }
+}
+
+fn brand_logo() -> &'static Pixmap {
+    static LOGO: std::sync::OnceLock<Pixmap> = std::sync::OnceLock::new();
+    LOGO.get_or_init(|| Pixmap::decode_png(include_bytes!("../icon-48.png")).expect("icon-48.png"))
+}
+
+fn draw_brand(px: &mut Pixmap, fonts: &Fonts) {
+    let logo = brand_logo();
+    let x = 12.0;
+    let y = 14.0;
+    let _ = px.draw_pixmap(
+        x as i32,
+        y as i32,
+        logo.as_ref(),
+        &PixmapPaint::default(),
+        Transform::identity(),
+        None,
+    );
+    let tx = x + logo.width() as f32 + 10.0;
+    text(px, fonts, "HOLESHOT", 13.0, tx, y + 8.0, text_col(), false);
+    text_tracked(px, fonts, "HUD", 10.0, tx, y + 26.0, accent(), 2.6);
+}
+
+fn text_tracked(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    s: &str,
+    size: f32,
+    mut x: f32,
+    y: f32,
+    color: Color,
+    tracking: f32,
+) {
+    for ch in s.chars() {
+        let g = ch.to_string();
+        text(px, fonts, &g, size, x, y, color, false);
+        x += size * 0.62 + tracking;
     }
 }
 
@@ -1120,6 +1200,7 @@ fn pane_minimap(
         hover,
         hits,
     );
+    y = slider_row(px, fonts, x, y, w, "Zoom", cfg.mini_zoom, 0, 100, "%", Hit::MiniZoom, hover, hits);
     y = slider_row(px, fonts, x, y, w, "Background", cfg.mini_bg, 0, 100, "%", Hit::MiniBg, hover, hits);
     look_section(px, fonts, x, y, w, WidgetId::Minimap, cfg, hover, hits)
 }
@@ -1164,6 +1245,63 @@ fn pane_dash(
     y = dash_field_row(px, fonts, x, y, w, "Right", cfg.dash_right, 2, open_drop, hover, hits);
     y = slider_row(px, fonts, x, y, w, "Panel opacity", cfg.dash_bg, 0, 100, "%", Hit::DashBg, hover, hits);
     look_section(px, fonts, x, y, w, WidgetId::Dash, cfg, hover, hits)
+}
+
+fn pane_ticker(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    cfg: &HudConfig,
+    hover: Option<Hit>,
+    open_drop: Option<Drop>,
+    hits: &mut Vec<HitBox>,
+    x: f32,
+    y: f32,
+    w: f32,
+) -> f32 {
+    heading(px, fonts, x, y, "Horizontal Standings", "Your name is highlighted in the field");
+    let mut y = y + 64.0;
+    y = toggle_row(px, fonts, x, y, w, "Show on overlay", cfg.show_ticker, Hit::TickerShow, hover, hits);
+    y = toggle_row(px, fonts, x, y, w, "Track name", cfg.ticker_title, Hit::TickerTitle, hover, hits);
+    y = toggle_row(px, fonts, x, y, w, "Autoscroll", cfg.ticker_autoscroll, Hit::TickerAutoscroll, hover, hits);
+    y = section(px, fonts, x, y, "Side info");
+    y = ticker_field_row(px, fonts, x, y, w, "Left", cfg.ticker_left, 0, open_drop, hover, hits);
+    y = ticker_field_row(px, fonts, x, y, w, "Right", cfg.ticker_right, 1, open_drop, hover, hits);
+    y = stepper_row(px, fonts, x, y, w, "Riders shown", &cfg.ticker_count.to_string(), Hit::TickerDec, Hit::TickerInc, hover, hits);
+    y = slider_row(px, fonts, x, y, w, "Panel opacity", cfg.ticker_bg, 0, 100, "%", Hit::TickerBg, hover, hits);
+    look_section(px, fonts, x, y, w, WidgetId::Ticker, cfg, hover, hits)
+}
+
+fn ticker_field_row(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    x: f32,
+    y: f32,
+    w: f32,
+    label: &str,
+    value: BoardField,
+    slot: u8,
+    open_drop: Option<Drop>,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+) -> f32 {
+    let options: Vec<(Hit, &'static str, bool)> = BoardField::ALL
+        .iter()
+        .map(|&field| (Hit::TickerFootPick(slot, field), field.label(), field == value))
+        .collect();
+    dropdown_row(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        label,
+        value.label(),
+        open_drop == Some(Drop::TickerFoot(slot)),
+        Hit::TickerFootOpen(slot),
+        &options,
+        hover,
+        hits,
+    )
 }
 
 fn dash_field_row(
@@ -1402,6 +1540,7 @@ fn st_toggle(f: StField) -> Hit {
         StField::Name => Hit::StName,
         StField::Gap => Hit::StGap,
         StField::Laps => Hit::StLaps,
+        StField::Current => Hit::StCurrent,
         StField::Best => Hit::StBest,
         StField::Last => Hit::StLast,
         StField::Status => Hit::StStatus,
@@ -1417,6 +1556,8 @@ fn rel_toggle(f: RelField) -> Hit {
         RelField::Num => Hit::RelNum,
         RelField::Name => Hit::RelName,
         RelField::Gap => Hit::RelGap,
+        RelField::Laps => Hit::RelLaps,
+        RelField::Current => Hit::RelCurrent,
         RelField::Pos => Hit::RelPos,
         RelField::Bike => Hit::RelBike,
         RelField::Penalty => Hit::RelPenalty,

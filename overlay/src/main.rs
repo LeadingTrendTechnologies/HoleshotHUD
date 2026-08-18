@@ -3,6 +3,7 @@
 mod compat;
 mod config;
 mod layout;
+mod record;
 mod render;
 mod settings;
 mod plugin;
@@ -27,16 +28,17 @@ use windows::Win32::System::Diagnostics::ToolHelp::{
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
 use windows::Win32::System::Threading::Sleep;
-use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_F8};
+use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_F8, VK_F9};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateIconFromResourceEx, CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClassNameW,
-    GetClientRect, GetSystemMetrics, GetWindowThreadProcessId, IsWindow, LoadCursorW,
-    LookupIconIdFromDirectoryEx, PeekMessageW, PostQuitMessage, RegisterClassExW, SetCursor,
-    SetWindowPos, ShowWindow, TranslateMessage, UpdateLayeredWindow, HWND_TOPMOST, IDC_ARROW,
-    LR_DEFAULTCOLOR, MSG, PM_REMOVE, SM_CXSCREEN, SM_CYSCREEN, SWP_NOACTIVATE, SWP_SHOWWINDOW,
-    SW_SHOWMINNOACTIVE, SW_SHOWNOACTIVATE, ULW_ALPHA, WM_CLOSE, WM_DESTROY, WM_QUIT, WM_SETCURSOR,
-    WNDCLASSEXW, WS_CAPTION, WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
-    WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_POPUP, WS_SYSMENU,
+    GetClientRect, GetSystemMetrics, GetWindowThreadProcessId, IsWindow, LoadCursorW, LoadImageW,
+    LookupIconIdFromDirectoryEx, PeekMessageW, PostQuitMessage, RegisterClassExW, SendMessageW,
+    SetCursor, SetWindowPos, ShowWindow, TranslateMessage, UpdateLayeredWindow, HWND_TOPMOST,
+    ICON_BIG, ICON_SMALL, IDC_ARROW, IMAGE_ICON, LR_DEFAULTCOLOR, MSG, PM_REMOVE, SM_CXSCREEN,
+    SM_CYSCREEN, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_SHOWMINNOACTIVE, SW_SHOWNOACTIVATE, ULW_ALPHA,
+    WM_CLOSE, WM_DESTROY, WM_QUIT, WM_SETCURSOR, WM_SETICON, WNDCLASSEXW, WS_CAPTION,
+    WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+    WS_EX_TRANSPARENT, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_POPUP, WS_SYSMENU,
 };
 
 use crate::render::Fonts;
@@ -45,6 +47,11 @@ use crate::shm::Shm;
 static mut HOST: HWND = HWND(null_mut());
 
 fn main() {
+    let clock_log = crate::record::ClockLog::new();
+    match clock_log.path() {
+        Some(p) => mxbo_hud::set_status_hint(format!("Clock log: {}", p.display())),
+        None => mxbo_hud::set_status_hint("Clock log failed — see AppData\\Local\\Holeshot HUD\\logs\\boot.txt"),
+    }
     crate::plugin::sync();
     let loaded = crate::config::HudConfig::load_file();
     let family = loaded.font_family;
@@ -52,14 +59,14 @@ fn main() {
     let fonts = Fonts::for_family(family)
         .or_else(Fonts::load)
         .expect("need a HUD font (bundled or Windows\\Fonts)");
-    unsafe { run(fonts, family) }
+    unsafe { run(fonts, family, clock_log) }
 }
 
-unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
+unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily, mut clock_log: crate::record::ClockLog) {
     let hinst = GetModuleHandleW(None).unwrap();
     let icon_bytes = include_bytes!("../icon.ico");
-    let icon_big = icon_from_ico(icon_bytes, 32);
-    let icon_small = icon_from_ico(icon_bytes, 16);
+    let icon_big = load_app_icon(hinst, icon_bytes, 256);
+    let icon_small = load_app_icon(hinst, icon_bytes, 32);
     let class = w!("MXBOOverlay");
     let wc = WNDCLASSEXW {
         cbSize: size_of::<WNDCLASSEXW>() as u32,
@@ -90,6 +97,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
     .expect("host window");
     unsafe { HOST = host; }
     crate::settings::attach(host);
+    apply_window_icons(host, icon_big, icon_small);
     let _ = ShowWindow(host, SW_SHOWMINNOACTIVE);
 
     let mut game = find_game_hwnd();
@@ -116,6 +124,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
     let mut zfix = compat::FullscreenFix::new();
     let mut editor = crate::layout::Editor::default();
     let mut f8_was = false;
+    let mut f9_was = false;
     let mut next_game_scan = Instant::now();
     let mut placed = false;
 
@@ -202,6 +211,15 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
             crate::settings::show(host);
         }
         f8_was = f8;
+        let f9 = unsafe { GetAsyncKeyState(VK_F9.0 as i32) < 0 };
+        if f9 && !f9_was {
+            clock_log.rotate();
+            match clock_log.path() {
+                Some(p) => mxbo_hud::set_status_hint(format!("Clock log: {}", p.display())),
+                None => mxbo_hud::set_status_hint("Clock log failed — see AppData\\Local\\Holeshot HUD\\logs\\boot.txt"),
+            }
+        }
+        f9_was = f9;
 
         if shm.is_none() {
             shm = Shm::open();
@@ -235,6 +253,11 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         let age = raw_age.clamp(0.0, 0.08);
         let live = raw_age < 2.5;
         let hud = if live || layout_on { snap.as_ref() } else { None };
+        if live {
+            if let Some(s) = snap.as_ref() {
+                clock_log.tick(s);
+            }
+        }
 
         let frame_start = Instant::now();
         render::draw(
@@ -267,6 +290,40 @@ fn qpc_age(tick: u64, freq: i64) -> f32 {
         QueryPerformanceCounter(&mut now).ok();
     }
     ((now as f64 - tick as f64) / freq as f64) as f32
+}
+
+unsafe fn load_app_icon(
+    hinst: windows::Win32::Foundation::HMODULE,
+    bytes: &[u8],
+    size: i32,
+) -> windows::Win32::UI::WindowsAndMessaging::HICON {
+    if let Ok(handle) = LoadImageW(
+        hinst,
+        windows::core::PCWSTR(1usize as *const u16),
+        IMAGE_ICON,
+        size,
+        size,
+        LR_DEFAULTCOLOR,
+    ) {
+        if !handle.is_invalid() {
+            return windows::Win32::UI::WindowsAndMessaging::HICON(handle.0);
+        }
+    }
+    icon_from_ico(bytes, size)
+}
+
+unsafe fn apply_window_icons(
+    hwnd: HWND,
+    big: windows::Win32::UI::WindowsAndMessaging::HICON,
+    small: windows::Win32::UI::WindowsAndMessaging::HICON,
+) {
+    let _ = SendMessageW(hwnd, WM_SETICON, WPARAM(ICON_BIG as usize), LPARAM(big.0 as isize));
+    let _ = SendMessageW(
+        hwnd,
+        WM_SETICON,
+        WPARAM(ICON_SMALL as usize),
+        LPARAM(small.0 as isize),
+    );
 }
 
 unsafe fn icon_from_ico(bytes: &[u8], size: i32) -> windows::Win32::UI::WindowsAndMessaging::HICON {

@@ -1,6 +1,6 @@
 # MXBO Overlay
 
-Standings, relative, map, minimap, and radar for [MX Bikes](https://store.steampowered.com/app/655500/MX_Bikes/).
+Standings, relative, horizontal standings, map, minimap, and radar for [MX Bikes](https://store.steampowered.com/app/655500/MX_Bikes/).
 
 ## Preview
 
@@ -37,14 +37,14 @@ build.bat
 pack.bat
 ```
 
-`build.bat` compiles `out\Release\mxbo.dlo` and `overlay\target\release\mxbo-overlay.exe`.  
+`build.bat` compiles `out\Release\mxbo.dlo` and `overlay\target\release\Holeshot-HUD.exe`.  
 `pack.bat` writes `dist\HoleshotHUD-Setup.exe` (needs [Inno Setup 6](https://jrsoftware.org/isinfo.php)).
 
 Push a tag to publish a downloadable release:
 
 ```bat
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.2
+git push origin v0.1.2
 ```
 
 ## Data wiki

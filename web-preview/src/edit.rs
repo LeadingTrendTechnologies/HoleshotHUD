@@ -9,6 +9,7 @@ pub enum Target {
     Minimap,
     Radar,
     Dash,
+    Ticker,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -53,6 +54,7 @@ pub fn parse_target(name: &str) -> Option<Target> {
         "map" => Target::Map,
         "minimap" => Target::Minimap,
         "radar" => Target::Radar,
+        "ticker" => Target::Ticker,
         _ => return None,
     })
 }
@@ -65,6 +67,7 @@ pub fn rect_of(cfg: &HudConfig, t: Target) -> Rect {
         Target::Minimap => cfg.minimap,
         Target::Radar => cfg.radar,
         Target::Dash => cfg.dash,
+        Target::Ticker => cfg.ticker,
     }
 }
 
@@ -80,12 +83,13 @@ pub fn set_rect(cfg: &mut HudConfig, t: Target, r: Rect) {
         Target::Minimap => cfg.minimap = r,
         Target::Radar => cfg.radar = r,
         Target::Dash => cfg.dash = r,
+        Target::Ticker => cfg.ticker = r,
     }
 }
 
 pub fn hit(cfg: &HudConfig, t: Target, x: f32, y: f32, ow: f32, oh: f32) -> Option<Handle> {
     let r = visual_rect(rect_of(cfg, t), t, ow, oh);
-    if let Some(h) = handle_at(r, x, y, ow, oh) {
+    if let Some(h) = handle_at(r, x, y, ow, oh, t) {
         return Some(h);
     }
     let inside = if t == Target::Minimap {
@@ -127,7 +131,7 @@ fn visual_rect(r: Rect, t: Target, ow: f32, oh: f32) -> Rect {
     }
 }
 
-fn handle_at(r: Rect, nx: f32, ny: f32, ow: f32, oh: f32) -> Option<Handle> {
+fn handle_at(r: Rect, nx: f32, ny: f32, ow: f32, oh: f32, t: Target) -> Option<Handle> {
     let px = nx * ow;
     let py = ny * oh;
     let x0 = r.x * ow;
@@ -135,6 +139,17 @@ fn handle_at(r: Rect, nx: f32, ny: f32, ow: f32, oh: f32) -> Option<Handle> {
     let x1 = (r.x + r.w) * ow;
     let y1 = (r.y + r.h) * oh;
     let s = 12.0;
+    if t == Target::Ticker {
+        if px >= x0 - s && px <= x1 + s && py >= y0 - s && py <= y1 + s {
+            if (px - x0).abs() <= s {
+                return Some(Handle::W);
+            }
+            if (px - x1).abs() <= s {
+                return Some(Handle::E);
+            }
+        }
+        return None;
+    }
     let near = |hx: f32, hy: f32| (px - hx).abs() <= s && (py - hy).abs() <= s;
     if near(x0, y0) {
         return Some(Handle::NW);
@@ -171,6 +186,7 @@ pub fn resize(orig: Rect, handle: Handle, nx: f32, ny: f32, grab_x: f32, grab_y:
         Target::Minimap => (72.0, 72.0),
         Target::Radar => (72.0, 72.0),
         Target::Dash => (220.0, 100.0),
+        Target::Ticker => (360.0, 44.0),
     };
     let min_w = min_w_px / ow;
     let min_h = min_h_px / oh;
@@ -204,6 +220,10 @@ pub fn resize(orig: Rect, handle: Handle, nx: f32, ny: f32, grab_x: f32, grab_y:
             h = bottom - y;
         }
         _ => {}
+    }
+    if target == Target::Ticker {
+        y = orig.y;
+        h = orig.h;
     }
     Rect { x, y, w, h }
 }

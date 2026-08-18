@@ -1,5 +1,5 @@
 #ifndef MyAppVersion
-#define MyAppVersion "0.1.0"
+#define MyAppVersion "0.1.2"
 #endif
 #ifndef SourceDir
 #define SourceDir "."
@@ -10,7 +10,7 @@
 
 #define MyAppName "Holeshot HUD"
 #define MyAppPublisher "Holeshot HUD"
-#define MyAppExeName "Holeshot HUD.exe"
+#define MyAppExeName "Holeshot-HUD.exe"
 #define MyAppURL "https://github.com/LeadingTrendTechnologies/HoleshotHUD"
 
 [Setup]
@@ -30,6 +30,8 @@ OutputBaseFilename=HoleshotHUD-Setup
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\overlay\icon.ico
+UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName}
 SetupLogging=yes
 
@@ -40,7 +42,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: checkedonce
 
 [Files]
-Source: "{#SourceDir}\Holeshot HUD.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceDir}\Holeshot-HUD.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\mxbo.dlo"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\Install-Plugin.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\Uninstall.ps1"; DestDir: "{app}"; Flags: ignoreversion

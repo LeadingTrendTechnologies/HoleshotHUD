@@ -2,7 +2,7 @@ mod demo_track;
 mod edit;
 
 use mxbo_hud::config::{
-    BoardField, DashField, DotLabel, HudConfig, SnapAlign, WidgetId,
+    BoardField, DashField, DotLabel, HudConfig, SnapAlign, Units, WidgetId,
 };
 use mxbo_hud::render::{draw, Fonts};
 use mxbo_hud::snapshot::{
@@ -46,6 +46,7 @@ impl Preview {
     pub fn new() -> Result<Preview, JsValue> {
         let fonts = Fonts::load().ok_or_else(|| JsValue::from_str("failed to load fonts"))?;
         let mut cfg = HudConfig::new();
+        cfg.units = Units::Imperial;
         show_only(&mut cfg, "standings");
         center_widget(&mut cfg, "standings");
         let mut snap = demo_snapshot();
@@ -229,6 +230,7 @@ impl Preview {
                     edit::edit_rect(&self.cfg, t, w as f32, h as f32),
                     w as f32,
                     h as f32,
+                    t == edit::Target::Ticker,
                 );
             }
         }
@@ -249,6 +251,7 @@ fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg.show_map = name == "map";
     cfg.show_minimap = name == "minimap";
     cfg.show_radar = name == "radar";
+    cfg.show_ticker = name == "ticker";
 }
 
 fn widget_id(name: &str) -> Option<WidgetId> {
@@ -259,6 +262,7 @@ fn widget_id(name: &str) -> Option<WidgetId> {
         "minimap" => WidgetId::Minimap,
         "radar" => WidgetId::Radar,
         "dash" => WidgetId::Dash,
+        "ticker" => WidgetId::Ticker,
         _ => return None,
     })
 }
@@ -271,6 +275,7 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "st_gap" => cfg.st_gap,
         "st_interval" => cfg.st_interval,
         "st_laps" => cfg.st_laps,
+        "st_current" => cfg.st_current,
         "st_best" => cfg.st_best,
         "st_last" => cfg.st_last,
         "st_status" => cfg.st_status,
@@ -280,6 +285,8 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "rel_num" => cfg.rel_num,
         "rel_name" => cfg.rel_name,
         "rel_gap" => cfg.rel_gap,
+        "rel_laps" => cfg.rel_laps,
+        "rel_current" => cfg.rel_current,
         "rel_pos" => cfg.rel_pos,
         "rel_bike" => cfg.rel_bike,
         "rel_penalty" => cfg.rel_penalty,
@@ -307,6 +314,9 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "mini_bold" => cfg.mini_bold,
         "radar_bold" => cfg.radar_bold,
         "dash_bold" => cfg.dash_bold,
+        "ticker_bold" => cfg.ticker_bold,
+        "ticker_title" => cfg.ticker_title,
+        "ticker_autoscroll" => cfg.ticker_autoscroll,
         _ => return None,
     })
 }
@@ -319,6 +329,7 @@ fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
         "st_gap" => cfg.st_gap = on,
         "st_interval" => cfg.st_interval = on,
         "st_laps" => cfg.st_laps = on,
+        "st_current" => cfg.st_current = on,
         "st_best" => cfg.st_best = on,
         "st_last" => cfg.st_last = on,
         "st_status" => cfg.st_status = on,
@@ -328,6 +339,8 @@ fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
         "rel_num" => cfg.rel_num = on,
         "rel_name" => cfg.rel_name = on,
         "rel_gap" => cfg.rel_gap = on,
+        "rel_laps" => cfg.rel_laps = on,
+        "rel_current" => cfg.rel_current = on,
         "rel_pos" => cfg.rel_pos = on,
         "rel_bike" => cfg.rel_bike = on,
         "rel_penalty" => cfg.rel_penalty = on,
@@ -355,6 +368,9 @@ fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
         "mini_bold" => cfg.mini_bold = on,
         "radar_bold" => cfg.radar_bold = on,
         "dash_bold" => cfg.dash_bold = on,
+        "ticker_bold" => cfg.ticker_bold = on,
+        "ticker_title" => cfg.ticker_title = on,
+        "ticker_autoscroll" => cfg.ticker_autoscroll = on,
         _ => {}
     }
 }
@@ -367,14 +383,18 @@ fn int_val(cfg: &HudConfig, key: &str) -> Option<i32> {
         "rel_bg" => cfg.rel_bg,
         "map_bg" => cfg.map_bg,
         "mini_bg" => cfg.mini_bg,
+        "mini_zoom" => cfg.mini_zoom,
         "radar_bg" => cfg.radar_bg,
         "dash_bg" => cfg.dash_bg,
+        "ticker_bg" => cfg.ticker_bg,
+        "ticker_count" => cfg.ticker_count,
         "st_font" => cfg.st_font,
         "rel_font" => cfg.rel_font,
         "map_font" => cfg.map_font,
         "mini_font" => cfg.mini_font,
         "radar_font" => cfg.radar_font,
         "dash_font" => cfg.dash_font,
+        "ticker_font" => cfg.ticker_font,
         _ => return None,
     })
 }
@@ -387,14 +407,18 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "rel_bg" => cfg.rel_bg = value.clamp(0, 100),
         "map_bg" => cfg.map_bg = value.clamp(0, 100),
         "mini_bg" => cfg.mini_bg = value.clamp(0, 100),
+        "mini_zoom" => cfg.mini_zoom = value.clamp(0, 100),
         "radar_bg" => cfg.radar_bg = value.clamp(0, 100),
         "dash_bg" => cfg.dash_bg = value.clamp(0, 100),
+        "ticker_bg" => cfg.ticker_bg = value.clamp(0, 100),
+        "ticker_count" => cfg.ticker_count = value.clamp(3, 15),
         "st_font" => cfg.set_font_pct(WidgetId::Standings, value),
         "rel_font" => cfg.set_font_pct(WidgetId::Relative, value),
         "map_font" => cfg.set_font_pct(WidgetId::Map, value),
         "mini_font" => cfg.set_font_pct(WidgetId::Minimap, value),
         "radar_font" => cfg.set_font_pct(WidgetId::Radar, value),
         "dash_font" => cfg.set_font_pct(WidgetId::Dash, value),
+        "ticker_font" => cfg.set_font_pct(WidgetId::Ticker, value),
         _ => {}
     }
 }
@@ -404,6 +428,8 @@ fn field_val(cfg: &HudConfig, key: &str) -> Option<String> {
         "dash_left" => cfg.dash_left.key().into(),
         "dash_mid" => cfg.dash_mid.key().into(),
         "dash_right" => cfg.dash_right.key().into(),
+        "ticker_left" => cfg.ticker_left.key().into(),
+        "ticker_right" => cfg.ticker_right.key().into(),
         "st_head0" => cfg.st_head[0].key().into(),
         "st_head1" => cfg.st_head[1].key().into(),
         "st_head2" => cfg.st_head[2].key().into(),
@@ -427,6 +453,8 @@ fn set_field(cfg: &mut HudConfig, key: &str, value: &str) {
         "dash_left" => cfg.dash_left = DashField::parse(value),
         "dash_mid" => cfg.dash_mid = DashField::parse(value),
         "dash_right" => cfg.dash_right = DashField::parse(value),
+        "ticker_left" => cfg.ticker_left = BoardField::parse(value),
+        "ticker_right" => cfg.ticker_right = BoardField::parse(value),
         "st_head0" => cfg.st_head[0] = BoardField::parse(value),
         "st_head1" => cfg.st_head[1] = BoardField::parse(value),
         "st_head2" => cfg.st_head[2] = BoardField::parse(value),
@@ -445,7 +473,7 @@ fn set_field(cfg: &mut HudConfig, key: &str, value: &str) {
     }
 }
 
-fn draw_edit_frame(px: &mut Pixmap, r: mxbo_hud::snapshot::Rect, sw: f32, sh: f32) {
+fn draw_edit_frame(px: &mut Pixmap, r: mxbo_hud::snapshot::Rect, sw: f32, sh: f32, ew_only: bool) {
     let x = r.x * sw;
     let y = r.y * sh;
     let w = r.w * sw;
@@ -464,16 +492,21 @@ fn draw_edit_frame(px: &mut Pixmap, r: mxbo_hud::snapshot::Rect, sw: f32, sh: f3
     }
     let mut paint = Paint::default();
     paint.set_color(Color::from_rgba8(255, 148, 48, 255));
-    for (hx, hy) in [
-        (x, y),
-        (x + w, y),
-        (x, y + h),
-        (x + w, y + h),
-        (x + w * 0.5, y),
-        (x + w * 0.5, y + h),
-        (x, y + h * 0.5),
-        (x + w, y + h * 0.5),
-    ] {
+    let handles: &[(f32, f32)] = if ew_only {
+        &[(x, y + h * 0.5), (x + w, y + h * 0.5)]
+    } else {
+        &[
+            (x, y),
+            (x + w, y),
+            (x, y + h),
+            (x + w, y + h),
+            (x + w * 0.5, y),
+            (x + w * 0.5, y + h),
+            (x, y + h * 0.5),
+            (x + w, y + h * 0.5),
+        ]
+    };
+    for &(hx, hy) in handles {
         if let Some(rect) = tiny_skia::Rect::from_xywh(hx - 4.0, hy - 4.0, 8.0, 8.0) {
             px.fill_rect(rect, &paint, Transform::identity(), None);
         }
@@ -524,8 +557,46 @@ fn demo_snapshot() -> Snapshot {
         };
         write_name(&mut s.riders[i].name, name);
     }
+    apply_radar_pack(&mut s, 0.0);
     refresh_standings(&mut s);
     s
+}
+
+/// Keep a few riders in the focus rider's sides and rear so the radar has blips.
+const RADAR_PACK: &[(usize, f32, f32, f32, f32, f32)] = &[
+    (6, -1.4, -2.3, 0.5, 0.35, 0.4),
+    (7, -2.2, 2.0, 0.7, 0.40, 1.1),
+    (8, -5.0, -1.8, 1.1, 0.55, 2.0),
+    (9, -8.2, 0.6, 1.4, 0.70, 2.8),
+];
+
+fn offset_from_track(s: &Snapshot, pos: f32, along_m: f32, lat_m: f32) -> (f32, f32, f32, f32) {
+    let dt = along_m / s.track_length.max(1.0);
+    let t = (pos + dt).rem_euclid(1.0);
+    let (x, z, yaw) = sample_track(s, t);
+    let rx = yaw.cos();
+    let rz = -yaw.sin();
+    (x + rx * lat_m, z + rz * lat_m, yaw, t)
+}
+
+fn apply_radar_pack(s: &mut Snapshot, t: f32) {
+    let n = s.rider_count.max(0) as usize;
+    let Some(fi) = (0..n).find(|&i| s.riders[i].race_num == FOCUS) else {
+        return;
+    };
+    let focus_pos = s.riders[fi].track_pos;
+    for &(i, along0, lat0, aa, la, phase) in RADAR_PACK {
+        if i >= n || i == fi {
+            continue;
+        }
+        let along = along0 + aa * (t * 1.15 + phase).sin();
+        let lat = lat0 + la * (t * 0.85 + phase * 1.4).sin();
+        let (x, z, yaw, pos) = offset_from_track(s, focus_pos, along, lat);
+        s.riders[i].x = x;
+        s.riders[i].z = z;
+        s.riders[i].yaw = yaw;
+        s.riders[i].track_pos = pos;
+    }
 }
 
 fn captured_track() -> (Vec<Point>, f32, f32, String) {
@@ -641,6 +712,7 @@ fn animate(s: &mut Snapshot, t: f32, dt: f32) {
             s.local_vel_z = yaw.cos() * s.local_speed;
         }
     }
+    apply_radar_pack(s, t);
     refresh_standings(s);
 }
 

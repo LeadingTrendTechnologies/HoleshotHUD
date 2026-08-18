@@ -31,6 +31,6 @@ if errorlevel 1 exit /b 1
 echo.
 echo Built:
 echo   out\Release\mxbo.dlo
-echo   overlay\target\release\mxbo-overlay.exe
+echo   overlay\target\release\Holeshot-HUD.exe
 echo Run pack.bat to make a zip for other PCs.
 endlocal

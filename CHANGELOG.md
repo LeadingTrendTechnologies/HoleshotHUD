@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.1.2
+
+Dash session clock, extra laps, and race flags from recent motos. Horizontal Standings bar.
+
+### Dash and session
+
+- Practice, gate, and race time share the dash clock slot
+- Lap motos (4+ laps) show `1 / N` instead of leftover warmup minutes
+- 3-lap motos show lap count when the session is not a standard timed length
+- Timed extras stay `0 / N` until the **leader** crosses after time expires, then your crosses count
+- Crossing the line as a backmarker right when time hits zero does not start extras
+
+### Flags
+
+- White in the last ~40 m before you start your last lap
+- Checkered in the last ~40 m before you finish, then it holds until you leave the session
+- Flag is a banner above the dash (no striped side panels over the widget)
+
+### Other
+
+- Horizontal Standings bar (leader on the left; your name is highlighted)
+- Website widget demo uses imperial units (MPH, °F)
+
 ## 0.1.0
 
 One-click Windows installer and a website download that always gets the latest release. HUD timing, flags, and dash polish from recent races.

@@ -40,6 +40,7 @@ To add a widget: if the field is **Overlay**, draw it. If **Cached** / **Receive
 ## What the overlay already shows
 
 - Standings: place, `#`, name, gap (ms or laps)
+- Horizontal Standings: leader on the left, your name highlighted; lap/temp ends
 - Relative: riders near you on `m_fTrackPos`
 - Map: tessellated centerline, rider XZ + yaw, crash, S/F meters, track name
 

@@ -12,6 +12,7 @@ enum Target {
     Minimap,
     Radar,
     Dash,
+    Ticker,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -44,6 +45,7 @@ pub struct Editor {
     minimap: Option<Rect>,
     radar: Option<Rect>,
     dash: Option<Rect>,
+    ticker: Option<Rect>,
     drag: Option<Drag>,
     mouse_was_down: bool,
 }
@@ -74,6 +76,9 @@ impl Editor {
         }
         if let Some(r) = self.dash {
             cfg.dash = r;
+        }
+        if let Some(t) = self.ticker {
+            cfg.ticker = t;
         }
     }
 
@@ -128,6 +133,7 @@ impl Editor {
                 Target::Minimap => self.minimap = Some(r),
                 Target::Radar => self.radar = Some(r),
                 Target::Dash => self.dash = Some(r),
+                Target::Ticker => self.ticker = Some(r),
             }
             let _ = overlay;
         }
@@ -145,6 +151,7 @@ impl Editor {
         self.minimap = None;
         self.radar = None;
         self.dash = None;
+        self.ticker = None;
     }
 
     fn save(&self, snap: Option<&Snapshot>) {
@@ -157,6 +164,7 @@ impl Editor {
         let minimap = self.minimap;
         let radar = self.radar;
         let dash = self.dash;
+        let ticker = self.ticker;
         crate::config::update_config(|cfg| {
             cfg.map = map;
             cfg.standings = standings;
@@ -169,6 +177,9 @@ impl Editor {
             }
             if let Some(d) = dash {
                 cfg.dash = d;
+            }
+            if let Some(t) = ticker {
+                cfg.ticker = t;
             }
         });
     }
@@ -238,6 +249,7 @@ fn rect_of(s: &Snapshot, ed: &Editor, cfg: &HudConfig, t: Target) -> Rect {
             r.w = vis.w;
             r
         }
+        Target::Ticker => ed.ticker.unwrap_or(cfg.ticker),
     }
 }
 
@@ -249,12 +261,14 @@ fn shown(s: &Snapshot, cfg: &HudConfig, t: Target) -> bool {
         Target::Minimap => cfg.show_minimap,
         Target::Radar => cfg.show_radar,
         Target::Dash => cfg.show_dash,
+        Target::Ticker => cfg.show_ticker,
     }
 }
 
 fn hit(s: &Snapshot, ed: &Editor, cfg: &HudConfig, x: f32, y: f32, ow: i32, oh: i32) -> Option<(Target, Handle)> {
-    const ORDER: [Target; 6] = [
+    const ORDER: [Target; 7] = [
         Target::Dash,
+        Target::Ticker,
         Target::Minimap,
         Target::Radar,
         Target::Map,
@@ -266,7 +280,7 @@ fn hit(s: &Snapshot, ed: &Editor, cfg: &HudConfig, x: f32, y: f32, ow: i32, oh: 
             continue;
         }
         let r = visual_rect(rect_of(s, ed, cfg, t), t, ow, oh);
-        if let Some(h) = handle_at(r, x, y, ow, oh) {
+        if let Some(h) = handle_at(r, x, y, ow, oh, t) {
             return Some((t, h));
         }
     }
@@ -287,7 +301,7 @@ fn hit(s: &Snapshot, ed: &Editor, cfg: &HudConfig, x: f32, y: f32, ow: i32, oh: 
     None
 }
 
-fn handle_at(r: Rect, nx: f32, ny: f32, ow: i32, oh: i32) -> Option<Handle> {
+fn handle_at(r: Rect, nx: f32, ny: f32, ow: i32, oh: i32, t: Target) -> Option<Handle> {
     let px = nx * ow as f32;
     let py = ny * oh as f32;
     let x0 = r.x * ow as f32;
@@ -295,6 +309,17 @@ fn handle_at(r: Rect, nx: f32, ny: f32, ow: i32, oh: i32) -> Option<Handle> {
     let x1 = (r.x + r.w) * ow as f32;
     let y1 = (r.y + r.h) * oh as f32;
     let s = 12.0;
+    if t == Target::Ticker {
+        if px >= x0 - s && px <= x1 + s && py >= y0 - s && py <= y1 + s {
+            if (px - x0).abs() <= s {
+                return Some(Handle::W);
+            }
+            if (px - x1).abs() <= s {
+                return Some(Handle::E);
+            }
+        }
+        return None;
+    }
     let near = |hx: f32, hy: f32| (px - hx).abs() <= s && (py - hy).abs() <= s;
     if near(x0, y0) {
         return Some(Handle::NW);
@@ -331,6 +356,7 @@ fn min_px(t: Target) -> (f32, f32) {
         Target::Minimap => (72.0, 72.0),
         Target::Radar => (72.0, 72.0),
         Target::Dash => (220.0, 100.0),
+        Target::Ticker => (360.0, 44.0),
     }
 }
 
@@ -381,6 +407,10 @@ fn resize(
             h = bottom - y;
         }
         Handle::E | Handle::W => {}
+    }
+    if target == Target::Ticker {
+        y = orig.y;
+        h = orig.h;
     }
     Rect { x, y, w, h }
 }

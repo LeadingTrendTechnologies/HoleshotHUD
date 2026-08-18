@@ -34,7 +34,7 @@ function Get-SteamLibraries {
     $libs | Select-Object -Unique
 }
 
-Get-Process -Name "mxbo-overlay", "MXBO Overlay", "Holeshot HUD" -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process -Name "Holeshot-HUD", "mxbo-overlay", "MXBO Overlay", "Holeshot HUD" -ErrorAction SilentlyContinue | Stop-Process -Force
 
 foreach ($lib in Get-SteamLibraries) {
     $plugin = Join-Path $lib "steamapps\common\MX Bikes\plugins\mxbo.dlo"

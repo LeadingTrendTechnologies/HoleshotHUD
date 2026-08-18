@@ -46,7 +46,8 @@ const ST_COLS = [
   ["st_name", "Name"],
   ["st_gap", "Gap"],
   ["st_interval", "Interval"],
-  ["st_laps", "Laps"],
+  ["st_laps", "Completed Laps"],
+  ["st_current", "Current lap"],
   ["st_best", "Fastest"],
   ["st_last", "Last lap"],
   ["st_status", "Status"],
@@ -59,6 +60,8 @@ const REL_COLS = [
   ["rel_num", "Number"],
   ["rel_name", "Name"],
   ["rel_gap", "Gap"],
+  ["rel_laps", "Completed Laps"],
+  ["rel_current", "Current lap"],
   ["rel_pos", "Position"],
   ["rel_bike", "Bike"],
   ["rel_penalty", "Penalty"],
@@ -90,7 +93,7 @@ const canvas = document.getElementById("hud");
 const ctx = canvas.getContext("2d", { alpha: true });
 const settings = document.getElementById("settings");
 
-await init();
+await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=dot-noborder", import.meta.url) });
 const preview = new Preview();
 
 function syncButtons() {
@@ -182,12 +185,13 @@ function renderSettings() {
     html += `<div class="section">On the minimap</div>`;
     html += MINI_TOGGLES.map(([k, l]) => toggleRow(k, l)).join("");
     html += fieldRow("mini_dot", "Dot number", [["num", "Number"], ["pos", "Position"]]);
+    html += sliderRow("mini_zoom", "Zoom", 0, 100, "%");
     html += sliderRow("mini_bg", "Background", 0, 100, "%");
     html += look("mini");
   } else if (w === "radar") {
-    html += `<div class="section">On the radar</div>`;
-    html += toggleRow("radar_sides", "Side proximity");
-    html += toggleRow("radar_rear", "Rear proximity");
+    html += `<div class="section">Blind spots</div>`;
+    html += toggleRow("radar_sides", "Riders beside you");
+    html += toggleRow("radar_rear", "Riders behind you");
     html += sliderRow("radar_bg", "Panel opacity", 0, 100, "%");
     html += look("radar");
   } else if (w === "dash") {
@@ -197,6 +201,15 @@ function renderSettings() {
     html += fieldRow("dash_right", "Right", DASH);
     html += sliderRow("dash_bg", "Panel opacity", 0, 100, "%");
     html += look("dash");
+  } else if (w === "ticker") {
+    html += toggleRow("ticker_title", "Track name");
+    html += toggleRow("ticker_autoscroll", "Autoscroll");
+    html += `<div class="section">Side info</div>`;
+    html += fieldRow("ticker_left", "Left", BOARD);
+    html += fieldRow("ticker_right", "Right", BOARD);
+    html += stepperRow("ticker_count", "Riders shown", 3, 15);
+    html += sliderRow("ticker_bg", "Panel opacity", 0, 100, "%");
+    html += look("ticker");
   }
   html += snapGrid();
   settings.replaceChildren(el(html));

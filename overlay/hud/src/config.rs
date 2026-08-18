@@ -131,6 +131,7 @@ pub enum WidgetId {
     Minimap,
     Radar,
     Dash,
+    Ticker,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -156,6 +157,7 @@ pub enum StField {
     Gap,
     Interval,
     Laps,
+    Current,
     Best,
     Last,
     Status,
@@ -165,13 +167,14 @@ pub enum StField {
 }
 
 impl StField {
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 13] = [
         Self::Pos,
         Self::Num,
         Self::Name,
         Self::Gap,
         Self::Interval,
         Self::Laps,
+        Self::Current,
         Self::Best,
         Self::Last,
         Self::Status,
@@ -188,6 +191,7 @@ impl StField {
             Self::Gap => "gap",
             Self::Interval => "int",
             Self::Laps => "laps",
+            Self::Current => "current",
             Self::Best => "best",
             Self::Last => "last",
             Self::Status => "status",
@@ -204,7 +208,8 @@ impl StField {
             Self::Name => "Name",
             Self::Gap => "Gap",
             Self::Interval => "Interval",
-            Self::Laps => "Laps",
+            Self::Laps => "Completed Laps",
+            Self::Current => "Current lap",
             Self::Best => "Fastest",
             Self::Last => "Last lap",
             Self::Status => "Status",
@@ -222,6 +227,7 @@ impl StField {
             "gap" => Self::Gap,
             "int" | "interval" => Self::Interval,
             "laps" => Self::Laps,
+            "cur" | "current" => Self::Current,
             "best" => Self::Best,
             "last" => Self::Last,
             "status" => Self::Status,
@@ -240,6 +246,7 @@ impl StField {
             Self::Gap => c.st_gap,
             Self::Interval => c.st_interval,
             Self::Laps => c.st_laps,
+            Self::Current => c.st_current,
             Self::Best => c.st_best,
             Self::Last => c.st_last,
             Self::Status => c.st_status,
@@ -257,6 +264,7 @@ impl StField {
             Self::Gap => c.st_w_gap,
             Self::Interval => c.st_w_interval,
             Self::Laps => c.st_w_laps,
+            Self::Current => c.st_w_current,
             Self::Best => c.st_w_best,
             Self::Last => c.st_w_last,
             Self::Status => c.st_w_status,
@@ -279,6 +287,7 @@ impl StField {
             Self::Gap => c.st_w_gap = next,
             Self::Interval => c.st_w_interval = next,
             Self::Laps => c.st_w_laps = next,
+            Self::Current => c.st_w_current = next,
             Self::Best => c.st_w_best = next,
             Self::Last => c.st_w_last = next,
             Self::Status => c.st_w_status = next,
@@ -323,6 +332,8 @@ pub enum RelField {
     Num,
     Name,
     Gap,
+    Laps,
+    Current,
     Pos,
     Bike,
     Penalty,
@@ -333,10 +344,12 @@ pub enum RelField {
 }
 
 impl RelField {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 12] = [
         Self::Num,
         Self::Name,
         Self::Gap,
+        Self::Laps,
+        Self::Current,
         Self::Pos,
         Self::Bike,
         Self::Penalty,
@@ -351,6 +364,8 @@ impl RelField {
             Self::Num => "num",
             Self::Name => "name",
             Self::Gap => "gap",
+            Self::Laps => "laps",
+            Self::Current => "current",
             Self::Pos => "pos",
             Self::Bike => "bike",
             Self::Penalty => "pen",
@@ -366,6 +381,8 @@ impl RelField {
             Self::Num => "Number",
             Self::Name => "Name",
             Self::Gap => "Gap",
+            Self::Laps => "Completed Laps",
+            Self::Current => "Current lap",
             Self::Pos => "Position",
             Self::Bike => "Bike",
             Self::Penalty => "Penalty",
@@ -381,6 +398,8 @@ impl RelField {
             "num" => Self::Num,
             "name" => Self::Name,
             "gap" => Self::Gap,
+            "laps" => Self::Laps,
+            "cur" | "current" => Self::Current,
             "pos" => Self::Pos,
             "bike" => Self::Bike,
             "pen" | "penalty" => Self::Penalty,
@@ -397,6 +416,8 @@ impl RelField {
             Self::Num => c.rel_num,
             Self::Name => c.rel_name,
             Self::Gap => c.rel_gap,
+            Self::Laps => c.rel_laps,
+            Self::Current => c.rel_current,
             Self::Pos => c.rel_pos,
             Self::Bike => c.rel_bike,
             Self::Penalty => c.rel_penalty,
@@ -412,6 +433,8 @@ impl RelField {
             Self::Num => c.rel_w_num,
             Self::Name => c.rel_w_name,
             Self::Gap => c.rel_w_gap,
+            Self::Laps => c.rel_w_laps,
+            Self::Current => c.rel_w_current,
             Self::Pos => c.rel_w_pos,
             Self::Bike => c.rel_w_bike,
             Self::Penalty => c.rel_w_penalty,
@@ -432,6 +455,8 @@ impl RelField {
             Self::Num => c.rel_w_num = next,
             Self::Name => c.rel_w_name = next,
             Self::Gap => c.rel_w_gap = next,
+            Self::Laps => c.rel_w_laps = next,
+            Self::Current => c.rel_w_current = next,
             Self::Pos => c.rel_w_pos = next,
             Self::Bike => c.rel_w_bike = next,
             Self::Penalty => c.rel_w_penalty = next,
@@ -451,21 +476,27 @@ pub struct HudConfig {
     pub minimap: Rect,
     pub radar: Rect,
     pub dash: Rect,
+    pub ticker: Rect,
     pub show_standings: bool,
     pub show_relative: bool,
     pub show_map: bool,
     pub show_minimap: bool,
     pub show_radar: bool,
     pub show_dash: bool,
+    pub show_ticker: bool,
     pub ingame_hud: bool,
     pub standings_rows: i32,
     pub relative_count: i32,
+    pub ticker_count: i32,
+    pub ticker_title: bool,
+    pub ticker_autoscroll: bool,
     pub st_pos: bool,
     pub st_num: bool,
     pub st_name: bool,
     pub st_gap: bool,
     pub st_interval: bool,
     pub st_laps: bool,
+    pub st_current: bool,
     pub st_best: bool,
     pub st_last: bool,
     pub st_status: bool,
@@ -475,6 +506,8 @@ pub struct HudConfig {
     pub rel_num: bool,
     pub rel_name: bool,
     pub rel_gap: bool,
+    pub rel_laps: bool,
+    pub rel_current: bool,
     pub rel_pos: bool,
     pub rel_bike: bool,
     pub rel_penalty: bool,
@@ -503,11 +536,15 @@ pub struct HudConfig {
     pub rel_bg: i32,
     pub map_bg: i32,
     pub mini_bg: i32,
+    pub mini_zoom: i32,
     pub radar_bg: i32,
     pub dash_bg: i32,
+    pub ticker_bg: i32,
     pub dash_left: DashField,
     pub dash_mid: DashField,
     pub dash_right: DashField,
+    pub ticker_left: BoardField,
+    pub ticker_right: BoardField,
     pub st_head: [BoardField; 3],
     pub st_foot: [BoardField; 3],
     pub rel_head: [BoardField; 3],
@@ -518,12 +555,14 @@ pub struct HudConfig {
     pub mini_font: i32,
     pub radar_font: i32,
     pub dash_font: i32,
+    pub ticker_font: i32,
     pub st_bold: bool,
     pub rel_bold: bool,
     pub map_bold: bool,
     pub mini_bold: bool,
     pub radar_bold: bool,
     pub dash_bold: bool,
+    pub ticker_bold: bool,
     pub font_family: FontFamily,
     pub units: Units,
     pub st_order: Vec<StField>,
@@ -534,6 +573,7 @@ pub struct HudConfig {
     pub st_w_gap: i32,
     pub st_w_interval: i32,
     pub st_w_laps: i32,
+    pub st_w_current: i32,
     pub st_w_best: i32,
     pub st_w_last: i32,
     pub st_w_status: i32,
@@ -543,6 +583,8 @@ pub struct HudConfig {
     pub rel_w_num: i32,
     pub rel_w_name: i32,
     pub rel_w_gap: i32,
+    pub rel_w_laps: i32,
+    pub rel_w_current: i32,
     pub rel_w_pos: i32,
     pub rel_w_bike: i32,
     pub rel_w_penalty: i32,
@@ -592,21 +634,32 @@ impl HudConfig {
                 w: 0.18,
                 h: 0.16,
             },
+            ticker: Rect {
+                x: 0.06,
+                y: 0.012,
+                w: 0.88,
+                h: 0.055,
+            },
             show_standings: true,
             show_relative: true,
             show_map: true,
             show_minimap: true,
             show_radar: true,
             show_dash: true,
+            show_ticker: true,
             ingame_hud: false,
             standings_rows: 12,
             relative_count: 3,
+            ticker_count: 7,
+            ticker_title: true,
+            ticker_autoscroll: false,
             st_pos: true,
             st_num: true,
             st_name: true,
             st_gap: true,
             st_interval: false,
             st_laps: false,
+            st_current: false,
             st_best: true,
             st_last: true,
             st_status: false,
@@ -616,6 +669,8 @@ impl HudConfig {
             rel_num: true,
             rel_name: true,
             rel_gap: true,
+            rel_laps: false,
+            rel_current: false,
             rel_pos: false,
             rel_bike: false,
             rel_penalty: false,
@@ -644,11 +699,15 @@ impl HudConfig {
             rel_bg: 78,
             map_bg: 0,
             mini_bg: 0,
+            mini_zoom: 70,
             radar_bg: 86,
             dash_bg: 82,
+            ticker_bg: 86,
             dash_left: DashField::Engine,
             dash_mid: DashField::Air,
             dash_right: DashField::Best,
+            ticker_left: BoardField::Lap,
+            ticker_right: BoardField::Air,
             st_head: BoardField::DEFAULT_HEAD,
             st_foot: BoardField::DEFAULT_FOOT,
             rel_head: BoardField::DEFAULT_HEAD,
@@ -659,12 +718,14 @@ impl HudConfig {
             mini_font: 100,
             radar_font: 100,
             dash_font: 100,
+            ticker_font: 100,
             st_bold: false,
             rel_bold: false,
             map_bold: false,
             mini_bold: false,
             radar_bold: false,
             dash_bold: false,
+            ticker_bold: false,
             font_family: FontFamily::Segoe,
             units: Units::Metric,
             st_order: StField::ALL.to_vec(),
@@ -674,7 +735,8 @@ impl HudConfig {
             st_w_name: 80,
             st_w_gap: 58,
             st_w_interval: 58,
-            st_w_laps: 32,
+            st_w_laps: 90,
+            st_w_current: 72,
             st_w_best: 58,
             st_w_last: 54,
             st_w_status: 40,
@@ -684,6 +746,8 @@ impl HudConfig {
             rel_w_num: 32,
             rel_w_name: 80,
             rel_w_gap: 58,
+            rel_w_laps: 90,
+            rel_w_current: 72,
             rel_w_pos: 28,
             rel_w_bike: 56,
             rel_w_penalty: 48,
@@ -741,21 +805,30 @@ impl HudConfig {
                 "dash_y" => cfg.dash.y = f,
                 "dash_w" => cfg.dash.w = f,
                 "dash_h" => cfg.dash.h = f,
+                "ticker_x" => cfg.ticker.x = f,
+                "ticker_y" => cfg.ticker.y = f,
+                "ticker_w" => cfg.ticker.w = f,
+                "ticker_h" => cfg.ticker.h = f.clamp(0.035, 0.07),
                 "show_standings" => cfg.show_standings = b,
                 "show_relative" => cfg.show_relative = b,
                 "show_map" => cfg.show_map = b,
                 "show_minimap" => cfg.show_minimap = b,
                 "show_radar" => cfg.show_radar = b,
                 "show_dash" => cfg.show_dash = b,
+                "show_ticker" => cfg.show_ticker = b,
                 "ingame_hud" => cfg.ingame_hud = b,
                 "standings_rows" => cfg.standings_rows = val.parse().unwrap_or(12).max(3),
                 "relative_count" => cfg.relative_count = val.parse().unwrap_or(3).max(1),
+                "ticker_count" => cfg.ticker_count = val.parse().unwrap_or(7).clamp(3, 15),
+                "ticker_title" => cfg.ticker_title = b,
+                "ticker_autoscroll" => cfg.ticker_autoscroll = b,
                 "st_pos" => cfg.st_pos = b,
                 "st_num" => cfg.st_num = b,
                 "st_name" => cfg.st_name = b,
                 "st_gap" => cfg.st_gap = b,
                 "st_interval" => cfg.st_interval = b,
                 "st_laps" => cfg.st_laps = b,
+                "st_current" => cfg.st_current = b,
                 "st_best" => cfg.st_best = b,
                 "st_last" => {
                     cfg.st_last = b;
@@ -768,6 +841,8 @@ impl HudConfig {
                 "rel_num" => cfg.rel_num = b,
                 "rel_name" => cfg.rel_name = b,
                 "rel_gap" => cfg.rel_gap = b,
+                "rel_laps" => cfg.rel_laps = b,
+                "rel_current" => cfg.rel_current = b,
                 "rel_pos" => cfg.rel_pos = b,
                 "rel_bike" => cfg.rel_bike = b,
                 "rel_penalty" => cfg.rel_penalty = b,
@@ -796,11 +871,15 @@ impl HudConfig {
                 "rel_bg" => cfg.rel_bg = clamp_pct(val),
                 "map_bg" => cfg.map_bg = clamp_pct(val),
                 "mini_bg" => cfg.mini_bg = clamp_pct(val),
+                "mini_zoom" => cfg.mini_zoom = clamp_pct(val),
                 "radar_bg" => cfg.radar_bg = clamp_pct(val),
                 "dash_bg" => cfg.dash_bg = clamp_pct(val),
+                "ticker_bg" => cfg.ticker_bg = clamp_pct(val),
                 "dash_left" => cfg.dash_left = DashField::parse(val),
                 "dash_mid" => cfg.dash_mid = DashField::parse(val),
                 "dash_right" => cfg.dash_right = DashField::parse(val),
+                "ticker_left" => cfg.ticker_left = BoardField::parse(val),
+                "ticker_right" => cfg.ticker_right = BoardField::parse(val),
                 "st_head" => cfg.st_head = parse_board(val, BoardField::DEFAULT_HEAD),
                 "st_foot" => cfg.st_foot = parse_board(val, BoardField::DEFAULT_FOOT),
                 "rel_head" => cfg.rel_head = parse_board(val, BoardField::DEFAULT_HEAD),
@@ -811,12 +890,14 @@ impl HudConfig {
                 "mini_font" => cfg.mini_font = clamp_font(val),
                 "radar_font" => cfg.radar_font = clamp_font(val),
                 "dash_font" => cfg.dash_font = clamp_font(val),
+                "ticker_font" => cfg.ticker_font = clamp_font(val),
                 "st_bold" => cfg.st_bold = b,
                 "rel_bold" => cfg.rel_bold = b,
                 "map_bold" => cfg.map_bold = b,
                 "mini_bold" => cfg.mini_bold = b,
                 "radar_bold" => cfg.radar_bold = b,
                 "dash_bold" => cfg.dash_bold = b,
+                "ticker_bold" => cfg.ticker_bold = b,
                 "font_family" => cfg.font_family = FontFamily::parse(val),
                 "units" => cfg.units = Units::parse(val),
                 "st_order" => cfg.st_order = parse_st_order(val),
@@ -827,6 +908,7 @@ impl HudConfig {
                 "st_w_gap" => cfg.st_w_gap = clamp_w(val),
                 "st_w_interval" => cfg.st_w_interval = clamp_w(val),
                 "st_w_laps" => cfg.st_w_laps = clamp_w(val),
+                "st_w_current" => cfg.st_w_current = clamp_w(val),
                 "st_w_best" => cfg.st_w_best = clamp_w(val),
                 "st_w_last" => cfg.st_w_last = clamp_w(val),
                 "st_w_status" => cfg.st_w_status = clamp_w(val),
@@ -836,6 +918,8 @@ impl HudConfig {
                 "rel_w_num" => cfg.rel_w_num = clamp_w(val),
                 "rel_w_name" => cfg.rel_w_name = clamp_w(val),
                 "rel_w_gap" => cfg.rel_w_gap = clamp_w(val),
+                "rel_w_laps" => cfg.rel_w_laps = clamp_w(val),
+                "rel_w_current" => cfg.rel_w_current = clamp_w(val),
                 "rel_w_pos" => cfg.rel_w_pos = clamp_w(val),
                 "rel_w_bike" => cfg.rel_w_bike = clamp_w(val),
                 "rel_w_penalty" => cfg.rel_w_penalty = clamp_w(val),
@@ -869,22 +953,23 @@ impl HudConfig {
              minimap_x={}\nminimap_y={}\nminimap_w={}\nminimap_h={}\n\
              radar_x={}\nradar_y={}\nradar_w={}\nradar_h={}\n\
              dash_x={}\ndash_y={}\ndash_w={}\ndash_h={}\n\
+             ticker_x={}\nticker_y={}\nticker_w={}\nticker_h={}\n\
              \n[Widgets]\n\
-             show_standings={}\nshow_relative={}\nshow_map={}\nshow_minimap={}\nshow_radar={}\nshow_dash={}\n\
-             ingame_hud={}\nstandings_rows={}\nrelative_count={}\n\
+             show_standings={}\nshow_relative={}\nshow_map={}\nshow_minimap={}\nshow_radar={}\nshow_dash={}\nshow_ticker={}\n\
+             ingame_hud={}\nstandings_rows={}\nrelative_count={}\nticker_count={}\n\
              \n[Standings]\n\
-             st_pos={}\nst_num={}\nst_name={}\nst_gap={}\nst_interval={}\nst_laps={}\nst_best={}\nst_last={}\nst_status={}\n\
+             st_pos={}\nst_num={}\nst_name={}\nst_gap={}\nst_interval={}\nst_laps={}\nst_current={}\nst_best={}\nst_last={}\nst_status={}\n\
              st_bike={}\nst_penalty={}\nst_crashed={}\n\
              st_order={}\n\
-             st_w_pos={}\nst_w_num={}\nst_w_name={}\nst_w_gap={}\nst_w_interval={}\nst_w_laps={}\nst_w_best={}\nst_w_last={}\nst_w_status={}\n\
+             st_w_pos={}\nst_w_num={}\nst_w_name={}\nst_w_gap={}\nst_w_interval={}\nst_w_laps={}\nst_w_current={}\nst_w_best={}\nst_w_last={}\nst_w_status={}\n\
              st_w_bike={}\nst_w_penalty={}\nst_w_crashed={}\n\
              st_bg={}\nst_font={}\nst_bold={}\n\
              st_head={}\nst_foot={}\n\
              \n[Relative]\n\
-             rel_num={}\nrel_name={}\nrel_gap={}\nrel_pos={}\nrel_bike={}\nrel_penalty={}\nrel_interval={}\nrel_crashed={}\n\
+             rel_num={}\nrel_name={}\nrel_gap={}\nrel_laps={}\nrel_current={}\nrel_pos={}\nrel_bike={}\nrel_penalty={}\nrel_interval={}\nrel_crashed={}\n\
              rel_best={}\nrel_last={}\n\
              rel_order={}\n\
-             rel_w_num={}\nrel_w_name={}\nrel_w_gap={}\nrel_w_pos={}\nrel_w_bike={}\nrel_w_penalty={}\nrel_w_interval={}\nrel_w_crashed={}\n\
+             rel_w_num={}\nrel_w_name={}\nrel_w_gap={}\nrel_w_laps={}\nrel_w_current={}\nrel_w_pos={}\nrel_w_bike={}\nrel_w_penalty={}\nrel_w_interval={}\nrel_w_crashed={}\n\
              rel_w_best={}\nrel_w_last={}\n\
              rel_bg={}\nrel_font={}\nrel_bold={}\n\
              rel_head={}\nrel_foot={}\n\
@@ -893,13 +978,18 @@ impl HudConfig {
              map_bg={}\nmap_font={}\nmap_bold={}\n\
              \n[Minimap]\n\
              mini_others={}\nmini_sf={}\nmini_numbers={}\nmini_arrows={}\nmini_crown={}\nmini_place={}\nmini_dot={}\n\
-             mini_bg={}\nmini_font={}\nmini_bold={}\n\
+             mini_bg={}\nmini_zoom={}\nmini_font={}\nmini_bold={}\n\
              \n[Radar]\n\
              radar_sides={}\nradar_rear={}\n\
              radar_bg={}\nradar_font={}\nradar_bold={}\n\
              \n[Dash]\n\
              dash_left={}\ndash_mid={}\ndash_right={}\n\
              dash_bg={}\ndash_font={}\ndash_bold={}\n\
+             \n[Ticker]\n\
+             ticker_left={}\nticker_right={}\n\
+             ticker_title={}\n\
+             ticker_autoscroll={}\n\
+             ticker_bg={}\nticker_font={}\nticker_bold={}\n\
              \n[App]\n\
              font_family={}\nunits={}\n",
             self.standings.x,
@@ -926,21 +1016,28 @@ impl HudConfig {
             self.dash.y,
             self.dash.w,
             self.dash.h,
+            self.ticker.x,
+            self.ticker.y,
+            self.ticker.w,
+            self.ticker.h,
             b(self.show_standings),
             b(self.show_relative),
             b(self.show_map),
             b(self.show_minimap),
             b(self.show_radar),
             b(self.show_dash),
+            b(self.show_ticker),
             b(self.ingame_hud),
             self.standings_rows,
             self.relative_count,
+            self.ticker_count,
             b(self.st_pos),
             b(self.st_num),
             b(self.st_name),
             b(self.st_gap),
             b(self.st_interval),
             b(self.st_laps),
+            b(self.st_current),
             b(self.st_best),
             b(self.st_last),
             b(self.st_status),
@@ -954,6 +1051,7 @@ impl HudConfig {
             self.st_w_gap,
             self.st_w_interval,
             self.st_w_laps,
+            self.st_w_current,
             self.st_w_best,
             self.st_w_last,
             self.st_w_status,
@@ -968,6 +1066,8 @@ impl HudConfig {
             b(self.rel_num),
             b(self.rel_name),
             b(self.rel_gap),
+            b(self.rel_laps),
+            b(self.rel_current),
             b(self.rel_pos),
             b(self.rel_bike),
             b(self.rel_penalty),
@@ -979,6 +1079,8 @@ impl HudConfig {
             self.rel_w_num,
             self.rel_w_name,
             self.rel_w_gap,
+            self.rel_w_laps,
+            self.rel_w_current,
             self.rel_w_pos,
             self.rel_w_bike,
             self.rel_w_penalty,
@@ -1010,6 +1112,7 @@ impl HudConfig {
             b(self.mini_place),
             self.mini_dot.key(),
             self.mini_bg,
+            self.mini_zoom,
             self.mini_font,
             b(self.mini_bold),
             b(self.radar_sides),
@@ -1023,6 +1126,13 @@ impl HudConfig {
             self.dash_bg,
             self.dash_font,
             b(self.dash_bold),
+            self.ticker_left.key(),
+            self.ticker_right.key(),
+            b(self.ticker_title),
+            b(self.ticker_autoscroll),
+            self.ticker_bg,
+            self.ticker_font,
+            b(self.ticker_bold),
             self.font_family.key(),
             self.units.key(),
         );
@@ -1065,6 +1175,7 @@ impl HudConfig {
             WidgetId::Minimap => self.mini_font,
             WidgetId::Radar => self.radar_font,
             WidgetId::Dash => self.dash_font,
+            WidgetId::Ticker => self.ticker_font,
         }
     }
 
@@ -1077,6 +1188,7 @@ impl HudConfig {
             WidgetId::Minimap => self.mini_font = v,
             WidgetId::Radar => self.radar_font = v,
             WidgetId::Dash => self.dash_font = v,
+            WidgetId::Ticker => self.ticker_font = v,
         }
     }
 
@@ -1088,6 +1200,7 @@ impl HudConfig {
             WidgetId::Minimap => self.mini_bold,
             WidgetId::Radar => self.radar_bold,
             WidgetId::Dash => self.dash_bold,
+            WidgetId::Ticker => self.ticker_bold,
         }
     }
 
@@ -1099,6 +1212,7 @@ impl HudConfig {
             WidgetId::Minimap => self.mini_bold = on,
             WidgetId::Radar => self.radar_bold = on,
             WidgetId::Dash => self.dash_bold = on,
+            WidgetId::Ticker => self.ticker_bold = on,
         }
     }
 
@@ -1110,6 +1224,7 @@ impl HudConfig {
             WidgetId::Minimap => &mut self.minimap,
             WidgetId::Radar => &mut self.radar,
             WidgetId::Dash => &mut self.dash,
+            WidgetId::Ticker => &mut self.ticker,
         };
         snap_rect(r, align);
     }
@@ -1560,6 +1675,8 @@ mod tests {
         assert!(cfg.show_minimap);
         assert!(cfg.show_radar);
         assert!(cfg.show_dash);
+        assert!(cfg.show_ticker);
+        assert!(cfg.ticker_title);
         assert_eq!(cfg.dash_left, DashField::Engine);
         assert_eq!(cfg.dash_mid, DashField::Air);
         assert_eq!(cfg.dash_right, DashField::Best);
@@ -1574,6 +1691,7 @@ mod tests {
             WidgetId::Minimap,
             WidgetId::Radar,
             WidgetId::Dash,
+            WidgetId::Ticker,
         ] {
             assert!(cfg.font_pct(id) >= 70);
         }

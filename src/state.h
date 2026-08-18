@@ -192,6 +192,7 @@ private:
     int m_bestLapMs = 0;
     int m_currentLap = 0;
     int m_sessionLaps = 0;
+    int m_sessionKind = -1;
     int m_maxRpm = 0;
     int m_shiftRpm = 0;
     int m_sessionClock = 0;

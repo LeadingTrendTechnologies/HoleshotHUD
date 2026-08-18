@@ -4,11 +4,19 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Holeshot HUD — live widget editor</title>
+  <link rel="icon" href="favicon.ico" sizes="any" />
+  <link rel="icon" href="logo.png" type="image/png" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header>
-    <div class="brand">Holeshot HUD</div>
+    <div class="brand">
+      <img class="logo" src="logo.png" width="48" height="48" alt="Holeshot HUD" />
+      <div class="wordmark">
+        <span class="name">Holeshot</span>
+        <span class="hud">HUD</span>
+      </div>
+    </div>
     <p>One widget at a time. Edit fields like in the app. Turn on Move and resize to show the border and drag handles.</p>
     <a class="download" href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/releases/latest/download/HoleshotHUD-Setup.exe">Download for Windows</a>
   </header>
@@ -18,6 +26,7 @@
       <button type="button" data-widget="standings" class="on">Standings</button>
       <button type="button" data-widget="relative">Relative</button>
       <button type="button" data-widget="dash">Dash</button>
+      <button type="button" data-widget="ticker">Horizontal Standings</button>
       <button type="button" data-widget="map">Map</button>
       <button type="button" data-widget="minimap">Minimap</button>
       <button type="button" data-widget="radar">Radar</button>
@@ -33,6 +42,6 @@
       <p class="hint">Demo data — not connected to MX Bikes</p>
     </section>
   </main>
-  <script type="module" src="demo.js"></script>
+  <script type="module" src="demo.js?v=dot-noborder"></script>
 </body>
 </html>

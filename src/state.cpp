@@ -74,6 +74,7 @@ void PluginState::clearRace()
     m_bestLapMs = 0;
     m_currentLap = 0;
     m_sessionLaps = 0;
+    m_sessionKind = -1;
     m_sessionClock = 0;
     m_sessionLength = 0;
     m_sessionRemain = 0;
@@ -145,13 +146,47 @@ namespace
         return len >= 15 && len <= 180;
     }
 
+    bool likelySessionMinutes(int len)
+    {
+        return len >= 3 && len < 15;
+    }
+
+    bool practiceSized(int len)
+    {
+        if (len >= 30 * 60000)
+        {
+            return true;
+        }
+        return len >= 30 && len < 60;
+    }
+
+    bool raceMinutes(int len)
+    {
+        if (len >= 3 * 60000 && len <= 20 * 60000)
+        {
+            return true;
+        }
+        return len >= 3 && len <= 20 && len < 60;
+    }
+
+    bool warmupSized(int len)
+    {
+        if (practiceSized(len))
+        {
+            return true;
+        }
+        return len == 10 || len == 10 * 60000;
+    }
+
     int lengthToMs(int len, int totalLen)
     {
         if (len <= 0)
         {
             return 0;
         }
-        if (len > 100000)
+        // 1000–100000 is already milliseconds (e.g. 01:40 remaining = 99992).
+        // Treating that as seconds made the overlay jump back to 08:00.
+        if (len >= 1000)
         {
             return len;
         }
@@ -173,16 +208,29 @@ void PluginState::applySessionLength(int len)
     {
         return;
     }
-    const int elapsedSec = sessionTimeMs() / 1000;
     if (m_sessionLength <= 0)
     {
-        m_sessionLength = elapsedSec > 0 ? len + elapsedSec : len;
+        if (likelyStartCountdown(len))
+        {
+            m_sessionRemain = len;
+            return;
+        }
+        if (m_sessionLaps >= 4 && warmupSized(len))
+        {
+            return;
+        }
+        m_sessionLength = len;
         return;
     }
     if (len > m_sessionLength)
     {
-        // Gate / start sequence is seconds; race length is often minutes.
-        if (m_sessionLength < 60 && likelyStartCountdown(len))
+        // Locked minutes + a larger 15–180 value is the gate / remaining seconds.
+        if (m_sessionLength < 60 && !likelyStartCountdown(m_sessionLength) && likelyStartCountdown(len))
+        {
+            m_sessionRemain = len;
+            return;
+        }
+        if (m_sessionLength < 60 && !likelyStartCountdown(m_sessionLength) && len >= 60)
         {
             m_sessionRemain = len;
             return;
@@ -190,21 +238,61 @@ void PluginState::applySessionLength(int len)
         m_sessionLength = len;
         return;
     }
-    if (len < 60 && likelyStartCountdown(m_sessionLength) && len + 5 < m_sessionLength)
+    // Shrinking is remaining time. Only steal the locked total when we captured
+    // a gate first (30s) and the real race minutes (8) arrive later — not when
+    // practice remaining ticks 15, 14, …, 8.
+    if (likelyStartCountdown(m_sessionLength)
+        && likelySessionMinutes(len)
+        && (m_sessionRemain <= 0 || m_sessionRemain == m_sessionLength))
     {
         m_sessionRemain = m_sessionLength;
         m_sessionLength = len;
+        return;
+    }
+    // 40:00 practice leftover must not block 8:00 when extras / laps arrive.
+    if (m_sessionLaps > 0 && practiceSized(m_sessionLength) && raceMinutes(len))
+    {
+        m_sessionLength = len;
+        m_sessionRemain = len;
     }
 }
 
 void PluginState::setSession(const SPluginsRaceSession_t& s)
 {
     m_airTemp = s.m_fAirTemperature;
-    m_sessionLaps = s.m_iSessionNumLaps;
-    applySessionLength(s.m_iSessionLength);
-    if (s.m_iSessionLength > 0 && m_sessionRemain <= 0)
+    const int len = s.m_iSessionLength;
+    const int laps = s.m_iSessionNumLaps;
+    const bool newKind = m_sessionKind >= 0 && s.m_iSession != m_sessionKind;
+    const bool newFormat = laps != m_sessionLaps
+        || (len > 0 && m_sessionLength > 0 && len != m_sessionLength && len < 60
+            && m_sessionLength < 60 && !likelyStartCountdown(len)
+            && !likelyStartCountdown(m_sessionLength));
+    m_sessionKind = s.m_iSession;
+    m_sessionLaps = laps;
+    if (laps > 0 && practiceSized(m_sessionLength)
+        && (len <= 0 || practiceSized(len) || len == m_sessionLength))
     {
-        m_sessionRemain = s.m_iSessionLength;
+        m_sessionLength = 0;
+        m_sessionRemain = 0;
+    }
+    // 10:00 leftover warmup must not become the length of a 4+ lap moto.
+    if (laps >= 4 && warmupSized(m_sessionLength)
+        && (len <= 0 || warmupSized(len) || len == m_sessionLength))
+    {
+        m_sessionLength = 0;
+        m_sessionRemain = 0;
+    }
+    // Warmup 10:00 then race 8:00 + 2L is a new format — don't keep the 10 minute lock.
+    if ((newKind || newFormat) && len > 0 && !likelyStartCountdown(len) && !practiceSized(len))
+    {
+        m_sessionLength = len;
+        m_sessionRemain = len;
+        return;
+    }
+    applySessionLength(len);
+    if (len > 0 && m_sessionRemain <= 0)
+    {
+        m_sessionRemain = len;
     }
 }
 
@@ -254,12 +342,31 @@ void PluginState::setRaceLap(int raceNum, int lapNum, int lapMs)
 int PluginState::sessionTimeMs() const
 {
     const int remainMs = remainToMs();
+    const int totalMs = lengthToMs(m_sessionLength, m_sessionLength);
+    const bool racing = m_currentLap > 1 || m_localSpeed >= 3.5f;
+    const bool shortRemain = remainMs > 0 && remainMs <= 180000 && (totalMs <= 0 || remainMs * 3 < totalMs);
     int clockMs = 0;
     if (m_sessionClock > 0)
     {
-        clockMs = m_sessionClock > 100000 ? m_sessionClock : m_sessionClock * 1000;
+        clockMs = lengthToMs(m_sessionClock, m_sessionLength);
+        if (totalMs > 0 && clockMs > totalMs + 30000 && clockMs > 180000)
+        {
+            clockMs = 0;
+        }
     }
-    if (remainMs > 0 && remainMs <= 180000 && (clockMs <= 0 || remainMs + 2000 < clockMs))
+    const bool clockLooksPrestart = clockMs > 0 && clockMs <= 180000
+        && (totalMs <= 0 || clockMs * 3 < totalMs);
+    const bool remainLooksRace = remainMs > 0 && totalMs > 0 && remainMs + 15000 >= totalMs;
+    // Classification often holds the 2:00/0:30 board while session length stays at 10:00.
+    if (!racing && clockLooksPrestart && (remainLooksRace || remainMs <= 0 || remainMs > 180000))
+    {
+        return clockMs;
+    }
+    if (!racing && shortRemain && (clockMs <= 0 || remainMs + 2000 < clockMs))
+    {
+        return remainMs;
+    }
+    if (remainMs > 0 && (totalMs <= 0 || remainMs <= totalMs + 2000) && !shortRemain && !clockLooksPrestart)
     {
         return remainMs;
     }
