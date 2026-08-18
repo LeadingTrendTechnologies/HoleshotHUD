@@ -566,8 +566,8 @@ fn demo_snapshot() -> Snapshot {
 const RADAR_PACK: &[(usize, f32, f32, f32, f32, f32)] = &[
     (6, -1.4, -2.3, 0.5, 0.35, 0.4),
     (7, -2.2, 2.0, 0.7, 0.40, 1.1),
-    (8, -5.0, -1.8, 1.1, 0.55, 2.0),
-    (9, -8.2, 0.6, 1.4, 0.70, 2.8),
+    (8, 2.4, -1.6, 1.1, 0.55, 2.0),
+    (9, 5.2, 0.8, 1.4, 0.70, 2.8),
 ];
 
 fn offset_from_track(s: &Snapshot, pos: f32, along_m: f32, lat_m: f32) -> (f32, f32, f32, f32) {
@@ -736,14 +736,19 @@ fn refresh_standings(s: &mut Snapshot) {
             let d = (leader_pos - r.track_pos).rem_euclid(1.0);
             (d * s.track_length / s.local_speed.max(8.0) * 1000.0) as i32
         };
+        let num_laps = match ri {
+            6 | 7 => 8,
+            8 | 9 => 6,
+            _ => 7,
+        };
         s.standings[i] = Standing {
             race_num: r.race_num,
             position: i as i32 + 1,
             state: 0,
             best_lap_ms: 71_800 + ri as i32 * 210,
-            num_laps: 7 + ((ri + 3) % 2) as i32,
+            num_laps,
             gap_ms: gap,
-            gap_laps: 0,
+            gap_laps: (8 - num_laps).max(0),
             pit: 0,
             penalty_ms: 0,
             crashed: 0,

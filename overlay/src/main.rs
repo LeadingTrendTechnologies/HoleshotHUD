@@ -2,6 +2,7 @@
 
 mod compat;
 mod config;
+mod feedback;
 mod layout;
 mod record;
 mod render;

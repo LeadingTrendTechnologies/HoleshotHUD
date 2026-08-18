@@ -299,7 +299,13 @@ void PluginState::setSession(const SPluginsRaceSession_t& s)
 void PluginState::setSessionState(const SPluginsRaceSessionState_t& s)
 {
     applySessionLength(s.m_iSessionLength);
-    if (s.m_iSessionLength > 0)
+    if (s.m_iSessionLength <= 0)
+    {
+        return;
+    }
+    // Don't pin remaining to a republished warmup/race total (10:00) if we already
+    // have a clock. Update when the value looks like remaining or a new length.
+    if (m_sessionRemain <= 0 || s.m_iSessionLength != m_sessionLength)
     {
         m_sessionRemain = s.m_iSessionLength;
     }
@@ -365,6 +371,13 @@ int PluginState::sessionTimeMs() const
     if (!racing && shortRemain && (clockMs <= 0 || remainMs + 2000 < clockMs))
     {
         return remainMs;
+    }
+    // Session state often republishes the 10:00 warmup length while classification
+    // already has the ticking remaining clock.
+    if (clockMs > 0 && totalMs > 0 && remainMs + 20000 >= totalMs
+        && clockMs + 1500 <= remainMs && clockMs <= totalMs + 2000)
+    {
+        return clockMs;
     }
     if (remainMs > 0 && (totalMs <= 0 || remainMs <= totalMs + 2000) && !shortRemain && !clockLooksPrestart)
     {

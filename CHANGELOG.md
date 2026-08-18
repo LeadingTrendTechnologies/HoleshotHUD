@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.1.4
+
+In-app feedback, last-race logs, lapping colors, and session clock/flag fixes from race testing.
+
+### Feedback
+
+- **F8 → App → Feedback:** rate the app (1–5 stars) or report a bug
+- Bug reports can attach the last race log (`%LOCALAPPDATA%\Holeshot HUD\logs`)
+- Send posts to the Holeshot HUD server; you do not need a GitHub account
+
+### Map and standings
+
+- Other riders use a dark slate dot with a white number
+- Blue only if they are a lap ahead and closing from behind
+- Red only if you are a lap ahead and closing on them
+
+### Dash and session
+
+- Warmup no longer sticks at `10:00` after a race (plugin prefers the ticking clock)
+- Checkered does not carry into the next warmup or a new moto
+- White flag on the last-lap approach, then checkered on the finish approach
+- Timed extras: no flags until extras start; +1 extra is white then checkered
+
 ## 0.1.3
 
 Installer remembers the MX Bikes folder, and a version tag only runs the Release pipeline.

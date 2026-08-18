@@ -1,16 +1,16 @@
 use std::sync::Mutex;
 
-use tiny_skia::{Color, FillRule, Paint, Path, PathBuilder, Pixmap, PixmapPaint, Rect, Transform};
+use tiny_skia::{Color, FillRule, Paint, Path, PathBuilder, Pixmap, PixmapPaint, Rect, Stroke, Transform};
 use windows::Win32::Foundation::{BOOL, HWND, LPARAM, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, CreateSolidBrush, DeleteObject, EndPaint, FillRect, GetDC, ReleaseDC,
     SetDIBitsToDevice, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HGDIOBJ, PAINTSTRUCT,
 };
-use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture};
+use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, ReleaseCapture, SetCapture, VK_CONTROL};
 use windows::Win32::UI::WindowsAndMessaging::{
     GetClientRect, IsIconic, LoadCursorW, SetCursor, SetForegroundWindow, ShowWindow, IDC_ARROW,
-    IDC_HAND, IDC_SIZEALL, SW_RESTORE, WM_ERASEBKGND, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE,
-    WM_MOUSEWHEEL, WM_PAINT, WM_SETCURSOR,
+    IDC_HAND, IDC_IBEAM, IDC_SIZEALL, SW_RESTORE, WM_CHAR, WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDOWN,
+    WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_SETCURSOR,
 };
 
 use crate::config::{
@@ -153,6 +153,12 @@ enum Hit {
     InfoPick(InfoBar, u8, BoardField),
     UpdateCheck,
     UpdateInstall,
+    FbRate,
+    FbBug,
+    FbStar(u8),
+    FbText,
+    FbAttach,
+    FbSend,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -315,19 +321,30 @@ pub fn handle_message(msg: u32, wp: WPARAM, lp: LPARAM) -> bool {
             }
             true
         }
+        WM_CHAR => crate::feedback::on_char(char::from_u32(wp.0 as u32).unwrap_or('\0')),
+        WM_KEYDOWN => {
+            let ctrl = unsafe { GetAsyncKeyState(VK_CONTROL.0 as i32) } < 0;
+            crate::feedback::on_key(wp.0 as u16, ctrl)
+        }
         WM_SETCURSOR => {
-            let (over, dragging) = {
+            let (over, dragging, text) = {
                 let ui = UI.lock().unwrap();
                 let ui = ui.as_ref();
                 let hover = ui.and_then(|u| u.hover);
                 let dragging = ui.and_then(|u| u.drag).is_some();
                 let sliding = ui.and_then(|u| u.slide).is_some() || hover.is_some_and(is_slider);
                 let grip = matches!(hover, Some(Hit::StDrag(_)) | Some(Hit::RelDrag(_)));
-                (hover.is_some(), dragging || grip || sliding)
+                (
+                    hover.is_some(),
+                    dragging || grip || sliding,
+                    hover == Some(Hit::FbText),
+                )
             };
             unsafe {
                 let idc = if dragging {
                     IDC_SIZEALL
+                } else if text {
+                    IDC_IBEAM
                 } else if over {
                     IDC_HAND
                 } else {
@@ -544,8 +561,12 @@ fn click(p: (f32, f32)) {
     };
     let Some(id) = id else {
         close_drop();
+        crate::feedback::set_focus(false);
         return;
     };
+    if !matches!(id, Hit::FbText) {
+        crate::feedback::set_focus(false);
+    }
     match id {
         Hit::TabApp => {
             set_tab(Tab::App);
@@ -615,6 +636,36 @@ fn click(p: (f32, f32)) {
         Hit::UpdateInstall => {
             close_drop();
             crate::update::install();
+            return;
+        }
+        Hit::FbRate => {
+            close_drop();
+            crate::feedback::set_kind(crate::feedback::Kind::Rate);
+            return;
+        }
+        Hit::FbBug => {
+            close_drop();
+            crate::feedback::set_kind(crate::feedback::Kind::Bug);
+            return;
+        }
+        Hit::FbStar(n) => {
+            close_drop();
+            crate::feedback::set_rating(n);
+            return;
+        }
+        Hit::FbText => {
+            close_drop();
+            crate::feedback::click_text(p.0, p.1);
+            return;
+        }
+        Hit::FbAttach => {
+            close_drop();
+            crate::feedback::toggle_attach();
+            return;
+        }
+        Hit::FbSend => {
+            close_drop();
+            crate::feedback::send();
             return;
         }
         _ => close_drop(),
@@ -710,6 +761,7 @@ fn click(p: (f32, f32)) {
         | Hit::TickerFootOpen(_)
         | Hit::InfoOpen(_, _)
         | Hit::UpdateCheck | Hit::UpdateInstall
+        | Hit::FbRate | Hit::FbBug | Hit::FbStar(_) | Hit::FbText | Hit::FbAttach | Hit::FbSend
         | Hit::StDrag(_) | Hit::RelDrag(_)
         | Hit::StBg | Hit::RelBg | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarBg | Hit::DashBg | Hit::TickerBg
         | Hit::StW(_) | Hit::RelW(_) | Hit::Font(_) => {}
@@ -717,6 +769,7 @@ fn click(p: (f32, f32)) {
 }
 
 fn set_tab(tab: Tab) {
+    crate::feedback::set_focus(false);
     if let Some(ui) = UI.lock().unwrap().as_mut() {
         ui.tab = tab;
         ui.open_drop = None;
@@ -994,6 +1047,8 @@ fn pane_app(
         );
     }
     y += card_h + 14.0;
+    y = section(px, fonts, x, y, "Feedback");
+    y = pane_feedback(px, fonts, hover, hits, x, y, w);
     text(
         px,
         fonts,
@@ -1005,6 +1060,240 @@ fn pane_app(
         false,
     );
     y + 28.0
+}
+
+fn pane_feedback(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+    x: f32,
+    y: f32,
+    w: f32,
+) -> f32 {
+    let fb = crate::feedback::snapshot();
+    let bug = fb.kind == crate::feedback::Kind::Bug;
+    let attach_h = if bug { 52.0 } else { 0.0 };
+    let card_h = 280.0 + attach_h;
+    outlined(px, x, y, w, card_h, 10.0, panel());
+
+    let chip_w = (w - 42.0) * 0.5;
+    let cy = y + 14.0;
+    kind_chip(px, fonts, x + 16.0, cy, chip_w, "Rate the app", Hit::FbRate, fb.kind == crate::feedback::Kind::Rate, hover, hits);
+    kind_chip(px, fonts, x + 26.0 + chip_w, cy, chip_w, "Report a bug", Hit::FbBug, bug, hover, hits);
+
+    let sy = y + 56.0;
+    text(px, fonts, if bug { "How bad is it? (optional)" } else { "How is it going?" }, 11.0, x + 16.0, sy, dim(), false);
+    let star_y = sy + 20.0;
+    for i in 1u8..=5 {
+        let sx = x + 12.0 + (i as f32 - 1.0) * 34.0;
+        hits.push(HitBox { id: Hit::FbStar(i), x: sx, y: star_y, w: 32.0, h: 28.0 });
+        let on = fb.rating >= i;
+        let hot = hover == Some(Hit::FbStar(i));
+        let col = if on {
+            accent()
+        } else if hot {
+            Color::from_rgba8(255, 140, 36, 140)
+        } else {
+            Color::from_rgba8(72, 72, 80, 255)
+        };
+        fill_star(px, sx + 16.0, star_y + 14.0, 10.0, col);
+    }
+
+    let box_y = star_y + 36.0;
+    let box_h = 88.0;
+    crate::feedback::set_text_rect(x + 16.0, box_y, w - 32.0, box_h);
+    hits.push(HitBox { id: Hit::FbText, x: x + 16.0, y: box_y, w: w - 32.0, h: box_h });
+    let box_fill = if fb.focused {
+        Color::from_rgba8(20, 20, 24, 255)
+    } else {
+        btn_bg()
+    };
+    outlined(px, x + 16.0, box_y, w - 32.0, box_h, 8.0, box_fill);
+    let placeholder = if bug {
+        "What went wrong?"
+    } else {
+        "Anything you want to add? (optional)"
+    };
+    let cols = ((w - 56.0) / 7.2).max(8.0) as usize;
+    if fb.message.is_empty() && !fb.focused {
+        text(px, fonts, placeholder, 12.0, x + 28.0, box_y + 12.0, dim(), false);
+    } else {
+        draw_fb_text(px, fonts, &fb.message, fb.cursor, x + 28.0, box_y + 10.0, w - 56.0, box_h - 16.0, cols);
+    }
+
+    let mut iy = box_y + box_h + 12.0;
+    if bug {
+        hits.push(HitBox { id: Hit::FbAttach, x: x + 16.0, y: iy, w: w - 32.0, h: 44.0 });
+        let check_col = if fb.attach_log { accent() } else { track_off() };
+        fill_round(px, x + 16.0, iy + 6.0, 18.0, 18.0, 4.0, check_col);
+        if fb.attach_log {
+            let mut pb = PathBuilder::new();
+            pb.move_to(x + 20.0, iy + 15.0);
+            pb.line_to(x + 24.0, iy + 19.0);
+            pb.line_to(x + 30.0, iy + 11.0);
+            if let Some(path) = pb.finish() {
+                let mut p = Paint::default();
+                p.set_color(Color::from_rgba8(20, 12, 4, 255));
+                p.anti_alias = true;
+                px.stroke_path(
+                    &path,
+                    &p,
+                    &Stroke { width: 2.0, ..Stroke::default() },
+                    Transform::identity(),
+                    None,
+                );
+            }
+        }
+        let log_c = if crate::feedback::has_log() { muted() } else { dim() };
+        text(px, fonts, "Include last race log", 13.0, x + 42.0, iy + 8.0, text_col(), false);
+        text(px, fonts, &crate::feedback::log_label(), 11.0, x + 42.0, iy + 24.0, log_c, false);
+        iy += 52.0;
+    }
+
+    let sending = matches!(fb.status, crate::feedback::Status::Sending);
+    action_btn(px, fonts, x + 16.0, iy, 120.0, 32.0, if sending { "Sending…" } else { "Send" }, Hit::FbSend, hover, hits, true);
+    let (status, status_c) = match &fb.status {
+        crate::feedback::Status::Idle => ("", muted()),
+        crate::feedback::Status::Sending => ("Sending…", muted()),
+        crate::feedback::Status::Sent => ("Sent. Thank you.", accent()),
+        crate::feedback::Status::Error(msg) => (msg.as_str(), Color::from_rgba8(255, 120, 100, 255)),
+    };
+    if !status.is_empty() {
+        text(px, fonts, status, 11.0, x + 148.0, iy + 10.0, status_c, false);
+    }
+    y + card_h + 14.0
+}
+
+fn kind_chip(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    x: f32,
+    y: f32,
+    w: f32,
+    label: &str,
+    hit: Hit,
+    on: bool,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+) {
+    hits.push(HitBox { id: hit, x, y, w, h: 32.0 });
+    if on {
+        fill_round(px, x, y, w, 32.0, 8.0, accent_dim());
+        text(px, fonts, label, 13.0, x + w * 0.5, y + 8.0, accent(), true);
+    } else {
+        let fill = if hover == Some(hit) { chip_hover() } else { btn_bg() };
+        outlined(px, x, y, w, 32.0, 8.0, fill);
+        text(px, fonts, label, 13.0, x + w * 0.5, y + 8.0, text_col(), true);
+    }
+}
+
+fn draw_fb_text(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    s: &str,
+    cursor: usize,
+    x: f32,
+    y: f32,
+    _w: f32,
+    h: f32,
+    cols: usize,
+) {
+    let lines = wrap_fb(s, cols);
+    let max_rows = (h / 16.0).max(1.0) as usize;
+    let caret_line = {
+        let mut i = 0usize;
+        let mut line = 0usize;
+        for (li, line_s) in lines.iter().enumerate() {
+            let end = i + line_s.len();
+            if cursor <= end {
+                line = li;
+                break;
+            }
+            i = end;
+            if s.get(i..).is_some_and(|r| r.starts_with('\n')) {
+                i += 1;
+            }
+            line = li + 1;
+        }
+        line
+    };
+    let start = caret_line.saturating_sub(max_rows.saturating_sub(1));
+    let mut drawn = 0usize;
+    let mut idx = 0usize;
+    for (li, line) in lines.iter().enumerate() {
+        if li >= start && drawn < max_rows {
+            text(px, fonts, line, 12.0, x, y + drawn as f32 * 16.0, text_col(), false);
+            if crate::feedback::caret_on() && li == caret_line {
+                let col = cursor.saturating_sub(idx);
+                let prefix: String = line.chars().take(col).collect();
+                let cx = x + prefix.chars().count() as f32 * 7.2;
+                if let Some(r) = Rect::from_xywh(cx, y + drawn as f32 * 16.0, 1.5, 14.0) {
+                    fill_rect(px, r, accent());
+                }
+            }
+            drawn += 1;
+        }
+        idx += line.len();
+        if s.get(idx..).is_some_and(|r| r.starts_with('\n')) {
+            idx += 1;
+        }
+    }
+    if s.is_empty() && crate::feedback::caret_on() {
+        if let Some(r) = Rect::from_xywh(x, y, 1.5, 14.0) {
+            fill_rect(px, r, accent());
+        }
+    }
+}
+
+fn wrap_fb(s: &str, cols: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    if s.is_empty() {
+        lines.push(String::new());
+        return lines;
+    }
+    for (pi, para) in s.split('\n').enumerate() {
+        if pi > 0 && para.is_empty() {
+            lines.push(String::new());
+            continue;
+        }
+        if para.is_empty() {
+            lines.push(String::new());
+            continue;
+        }
+        let mut line = String::new();
+        for ch in para.chars() {
+            if line.chars().count() >= cols {
+                lines.push(std::mem::take(&mut line));
+            }
+            line.push(ch);
+        }
+        lines.push(line);
+    }
+    lines
+}
+
+fn fill_star(px: &mut Pixmap, cx: f32, cy: f32, r: f32, c: Color) {
+    let mut pb = PathBuilder::new();
+    for i in 0..10 {
+        let a = -std::f32::consts::FRAC_PI_2 + i as f32 * std::f32::consts::PI / 5.0;
+        let rad = if i % 2 == 0 { r } else { r * 0.42 };
+        let px_ = cx + a.cos() * rad;
+        let py = cy + a.sin() * rad;
+        if i == 0 {
+            pb.move_to(px_, py);
+        } else {
+            pb.line_to(px_, py);
+        }
+    }
+    pb.close();
+    let Some(path) = pb.finish() else {
+        return;
+    };
+    let mut p = Paint::default();
+    p.set_color(c);
+    p.anti_alias = true;
+    px.fill_path(&path, &p, FillRule::Winding, Transform::identity(), None);
 }
 
 fn action_btn(

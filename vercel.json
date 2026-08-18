@@ -4,6 +4,11 @@
   "buildCommand": "test -f web/pkg/mxbo_web_preview_bg.wasm",
   "outputDirectory": "web",
   "installCommand": "echo skip",
+  "functions": {
+    "api/feedback.js": {
+      "maxDuration": 30
+    }
+  },
   "headers": [
     {
       "source": "/pkg/(.*).wasm",

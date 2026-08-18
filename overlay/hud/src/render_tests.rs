@@ -99,9 +99,13 @@ fn live_snap() -> Snapshot {
 }
 
 fn expire_timed(s: &mut Snapshot) {
+    expire_timed_extras(s, 2);
+}
+
+fn expire_timed_extras(s: &mut Snapshot, extras: i32) {
     reset_session();
     s.session_length = 8;
-    s.session_laps = 2;
+    s.session_laps = extras;
     s.session_time_ms = 30_000;
     s.current_lap = 1;
     s.local_speed = 0.0;
@@ -230,6 +234,57 @@ fn rider_current_lap_is_completed_plus_one() {
     let mut late = s;
     late.current_lap = 0;
     assert_eq!(rider_current_lap(&late, 12, 4), 5);
+}
+
+#[test]
+fn lap_rel_colors_lapping_and_lapped_riders() {
+    let mut s = live_snap();
+    assert_eq!(lap_rel(&s, 1), LapRel::Same);
+
+    s.standings[0].num_laps = 6;
+    s.riders[0].track_pos = 0.80;
+    s.local_track_pos = 0.92;
+    s.riders[1].track_pos = 0.92;
+    assert_eq!(lap_rel(&s, 1), LapRel::LappingMe);
+
+    s.standings[0].num_laps = 6;
+    s.riders[0].track_pos = 0.02;
+    s.local_track_pos = 0.98;
+    s.riders[1].track_pos = 0.98;
+    assert_eq!(lap_rel(&s, 1), LapRel::Same);
+
+    s.standings[0].num_laps = 4;
+    s.riders[0].track_pos = 0.97;
+    s.local_track_pos = 0.90;
+    s.riders[1].track_pos = 0.90;
+    assert_eq!(lap_rel(&s, 1), LapRel::LappedByMe);
+
+    s.standings[0].num_laps = 6;
+    s.riders[0].track_pos = 0.20;
+    s.local_track_pos = 0.90;
+    s.riders[1].track_pos = 0.90;
+    assert_eq!(lap_rel(&s, 1), LapRel::Same, "lap up but not closing from behind");
+
+    s.standings[0].num_laps = 5;
+    s.standings[0].gap_laps = 0;
+    s.standings[1].gap_laps = 1;
+    s.riders[0].track_pos = 0.50;
+    s.local_track_pos = 0.50;
+    s.riders[1].track_pos = 0.50;
+    assert_eq!(lap_rel(&s, 1), LapRel::Same);
+
+    s.riders[0].track_pos = 0.82;
+    s.local_track_pos = 0.90;
+    s.riders[1].track_pos = 0.90;
+    assert_eq!(lap_rel(&s, 1), LapRel::LappingMe);
+
+    s.standings[0].gap_laps = 2;
+    s.standings[1].gap_laps = 1;
+    s.riders[0].track_pos = 0.96;
+    s.local_track_pos = 0.88;
+    s.riders[1].track_pos = 0.88;
+    assert_eq!(lap_rel(&s, 1), LapRel::LappedByMe);
+    assert_eq!(lap_rel(&s, 12), LapRel::Same);
 }
 
 fn col_right(slots: &[(StField, f32, f32)]) -> f32 {
@@ -362,6 +417,9 @@ fn white_flag_waits_for_local_last_lap_not_leader_crossing() {
     let mut s = live_snap();
     expire_timed(&mut s);
     s.local_speed = 18.0;
+    s.local_track_pos = 0.97;
+    s.riders[1].track_pos = 0.97;
+    assert_eq!(dash_race_flag(&s), DashFlag::None, "no flags until extras start");
     s.local_track_pos = 0.88;
     s.riders[1].track_pos = 0.88;
     assert_eq!(dash_race_flag(&s), DashFlag::None);
@@ -378,8 +436,11 @@ fn white_flag_waits_for_local_last_lap_not_leader_crossing() {
     assert_eq!(dash_race_flag(&s), DashFlag::White);
     s.standings[1].num_laps = 6;
     s.current_lap = 7;
+    assert_eq!(dash_race_flag(&s), DashFlag::White, "white holds through the last-lap start");
     s.local_track_pos = 0.40;
     s.riders[1].track_pos = 0.40;
+    assert_eq!(dash_race_flag(&s), DashFlag::White);
+    expire_white_hold();
     assert_eq!(dash_race_flag(&s), DashFlag::None);
     s.local_track_pos = 0.97;
     s.riders[1].track_pos = 0.97;
@@ -389,6 +450,89 @@ fn white_flag_waits_for_local_last_lap_not_leader_crossing() {
     s.local_track_pos = 0.80;
     s.riders[1].track_pos = 0.80;
     assert_eq!(dash_race_flag(&s), DashFlag::Checkered, "checkered holds until you leave the session");
+    s.on_track = 0;
+    assert_eq!(dash_race_flag(&s), DashFlag::None);
+}
+
+#[test]
+fn checkered_does_not_carry_into_warmup() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_length = 10;
+    s.session_laps = 4;
+    s.session_time_ms = 0;
+    s.current_lap = 5;
+    s.local_speed = 18.0;
+    s.standings[0].num_laps = 4;
+    s.standings[1].num_laps = 4;
+    CHECKERED_LATCH.store(1, Ordering::Relaxed);
+    LAP_GREEN.store(1, Ordering::Relaxed);
+    POST_GATE.store(1, Ordering::Relaxed);
+    s.on_track = 1;
+    assert_eq!(dash_race_flag(&s), DashFlag::Checkered);
+
+    s.session_laps = 0;
+    s.session_time_ms = 10 * 60 * 1000;
+    s.current_lap = 1;
+    s.standings[0].num_laps = 0;
+    s.standings[1].num_laps = 0;
+    assert_eq!(dash_race_flag(&s), DashFlag::None);
+    assert_eq!(session_banner(&s).1, "10:00");
+    s.session_time_ms = 9 * 60 * 1000;
+    assert_eq!(session_banner(&s).1, "09:00");
+}
+
+#[test]
+fn warmup_after_race_counts_down_from_ten() {
+    let _g = session_lock();
+    let mut s = live_snap();
+    expire_timed(&mut s);
+    CHECKERED_LATCH.store(1, Ordering::Relaxed);
+    POST_GATE.store(1, Ordering::Relaxed);
+    s.on_track = 1;
+    s.session_length = 10;
+    s.session_laps = 0;
+    s.session_time_ms = 10 * 60 * 1000;
+    s.current_lap = 1;
+    s.local_speed = 16.0;
+    s.standings[0].num_laps = 0;
+    s.standings[1].num_laps = 0;
+    assert_eq!(dash_race_flag(&s), DashFlag::None);
+    assert_eq!(session_banner(&s).1, "10:00");
+    s.session_time_ms = 9 * 60 * 1000 + 40_000;
+    assert_eq!(session_banner(&s).1, "09:40");
+}
+
+#[test]
+fn timed_plus_one_shows_white_then_checkered() {
+    let _g = session_lock();
+    let mut s = live_snap();
+    expire_timed_extras(&mut s, 1);
+    s.local_speed = 18.0;
+    s.local_track_pos = 0.40;
+    s.riders[1].track_pos = 0.40;
+    assert_eq!(dash_race_flag(&s), DashFlag::None);
+    s.local_track_pos = 0.97;
+    s.riders[1].track_pos = 0.97;
+    assert_eq!(dash_race_flag(&s), DashFlag::White, "white as you start the last extra");
+    s.standings[0].num_laps = 6;
+    s.standings[1].num_laps = 5;
+    s.current_lap = 6;
+    assert_eq!(dash_race_flag(&s), DashFlag::White);
+    s.local_track_pos = 0.40;
+    s.riders[1].track_pos = 0.40;
+    assert_eq!(dash_race_flag(&s), DashFlag::White);
+    expire_white_hold();
+    assert_eq!(dash_race_flag(&s), DashFlag::None);
+    s.local_track_pos = 0.97;
+    s.riders[1].track_pos = 0.97;
+    assert_eq!(dash_race_flag(&s), DashFlag::Checkered);
+    s.standings[1].num_laps = 6;
+    s.current_lap = 7;
+    s.local_track_pos = 0.20;
+    s.riders[1].track_pos = 0.20;
+    assert_eq!(dash_race_flag(&s), DashFlag::Checkered);
     s.on_track = 0;
     assert_eq!(dash_race_flag(&s), DashFlag::None);
 }
@@ -422,8 +566,11 @@ fn lap_race_shows_white_then_checkered() {
     assert_eq!(dash_race_flag(&s), DashFlag::White);
     s.standings[1].num_laps = 2;
     s.current_lap = 3;
+    assert_eq!(dash_race_flag(&s), DashFlag::White, "white holds 5s; checkered waits until the next approach");
     s.local_track_pos = 0.40;
     s.riders[1].track_pos = 0.40;
+    assert_eq!(dash_race_flag(&s), DashFlag::White);
+    expire_white_hold();
     assert_eq!(dash_race_flag(&s), DashFlag::None);
     s.local_track_pos = 0.97;
     s.riders[1].track_pos = 0.97;
@@ -438,6 +585,37 @@ fn lap_race_shows_white_then_checkered() {
 }
 
 #[test]
+fn lap_race_checkered_waits_until_finish_approach() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_length = 0;
+    s.session_laps = 4;
+    s.session_time_ms = 0;
+    s.current_lap = 3;
+    s.local_speed = 18.0;
+    s.standings[0].num_laps = 2;
+    s.standings[1].num_laps = 2;
+    s.local_track_pos = 0.97;
+    s.riders[1].track_pos = 0.97;
+    assert_eq!(dash_race_flag(&s), DashFlag::White);
+    s.standings[1].num_laps = 3;
+    s.current_lap = 4;
+    assert_eq!(dash_race_flag(&s), DashFlag::White);
+    assert_ne!(dash_race_flag(&s), DashFlag::Checkered);
+    expire_white_hold();
+    s.local_track_pos = 0.40;
+    s.riders[1].track_pos = 0.40;
+    assert_eq!(dash_race_flag(&s), DashFlag::None);
+    s.local_track_pos = 0.97;
+    s.riders[1].track_pos = 0.97;
+    assert_eq!(dash_race_flag(&s), DashFlag::Checkered);
+    s.local_track_pos = 0.20;
+    s.riders[1].track_pos = 0.20;
+    assert_eq!(dash_race_flag(&s), DashFlag::Checkered);
+}
+
+#[test]
 fn lap_race_banner_uses_lap_count() {
     let _g = session_lock();
     reset_session();
@@ -448,6 +626,28 @@ fn lap_race_banner_uses_lap_count() {
     let (icon, text) = session_banner(&s);
     assert_eq!(text, "6 / 12");
     assert_ne!(icon, '\0');
+}
+
+#[test]
+fn lap_race_starts_on_lap_one_when_current_lap_is_zero() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_length = 0;
+    s.session_laps = 4;
+    s.session_time_ms = 0;
+    s.current_lap = 0;
+    s.standings[0].num_laps = 0;
+    s.standings[1].num_laps = 0;
+    assert_eq!(session_banner(&s).1, "1 / 4");
+    assert_eq!(race_lap(&s), 1);
+    let cfg = HudConfig::new();
+    assert_eq!(board_item(&s, &cfg, BoardField::Lap).unwrap().1, "1 / 4");
+    assert_eq!(dash_foot_item(&s, &cfg, DashField::LapCount).unwrap().1, "1 / 4");
+    s.standings[1].num_laps = 1;
+    s.current_lap = 2;
+    assert_eq!(session_banner(&s).1, "2 / 4");
+    assert_eq!(race_lap(&s), 2);
 }
 
 #[test]

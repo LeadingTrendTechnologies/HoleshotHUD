@@ -93,7 +93,7 @@ const canvas = document.getElementById("hud");
 const ctx = canvas.getContext("2d", { alpha: true });
 const settings = document.getElementById("settings");
 
-await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=dot-noborder", import.meta.url) });
+await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=dot-slate", import.meta.url) });
 const preview = new Preview();
 
 function syncButtons() {

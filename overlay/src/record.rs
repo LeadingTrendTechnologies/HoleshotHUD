@@ -13,6 +13,7 @@ pub struct ClockLog {
     last_write: Instant,
     last_key: Option<(i32, i32, i32, i32, i32, i32, i32, i32, i32)>,
     lines: u32,
+    gate: SessionGate,
 }
 
 impl ClockLog {
@@ -24,6 +25,7 @@ impl ClockLog {
             last_write: Instant::now() - std::time::Duration::from_secs(10),
             last_key: None,
             lines: 0,
+            gate: SessionGate::default(),
         };
         log.open_new();
         log
@@ -38,11 +40,37 @@ impl ClockLog {
     }
 
     pub fn rotate(&mut self) {
+        if self.gate.saw_race {
+            self.archive_last_race();
+            self.gate.saw_race = false;
+        }
         self.flush();
         self.open_new();
     }
 
     pub fn tick(&mut self, snap: &Snapshot) {
+        let track = cstr(&snap.track_name);
+        match self.gate.update(
+            &track,
+            snap.session_laps,
+            snap.session_length,
+            snap.session_time_ms,
+            snap.current_lap,
+            snap.on_track,
+        ) {
+            SessionEvent::RaceEnded => {
+                self.archive_last_race();
+                self.flush();
+                self.open_new();
+                return;
+            }
+            SessionEvent::NewSession => {
+                self.archive_last_race();
+                self.flush();
+                self.open_new();
+            }
+            SessionEvent::Continue => {}
+        }
         if snap.session_length <= 0
             && snap.session_time_ms <= 0
             && snap.session_laps <= 0
@@ -69,7 +97,25 @@ impl ClockLog {
         self.last_write = Instant::now();
         self.write_line(snap, &sample);
         if self.lines >= 80_000 {
-            self.rotate();
+            self.flush();
+            self.open_new();
+        }
+    }
+
+    fn archive_last_race(&mut self) {
+        self.flush();
+        if self.lines < 1 || self.path.as_os_str().is_empty() || !self.path.is_file() {
+            return;
+        }
+        let Some(dir) = self.path.parent() else {
+            return;
+        };
+        let dest = dir.join("last-race.jsonl");
+        if dest == self.path {
+            return;
+        }
+        if fs::copy(&self.path, &dest).is_ok() {
+            let _ = fs::write(dir.join("last-race.txt"), dest.to_string_lossy().as_bytes());
         }
     }
 
@@ -156,8 +202,219 @@ impl ClockLog {
 
 impl Drop for ClockLog {
     fn drop(&mut self) {
+        if self.gate.saw_race {
+            self.archive_last_race();
+        }
         self.flush();
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SessionEvent {
+    Continue,
+    RaceEnded,
+    NewSession,
+}
+
+#[derive(Default)]
+struct SessionGate {
+    track: String,
+    laps: i32,
+    time_ms: i32,
+    saw_race: bool,
+}
+
+impl SessionGate {
+    fn update(
+        &mut self,
+        track: &str,
+        laps: i32,
+        _len: i32,
+        time_ms: i32,
+        current_lap: i32,
+        on_track: i32,
+    ) -> SessionEvent {
+        let empty = laps <= 0 && time_ms <= 0 && current_lap <= 0 && on_track == 0;
+        if empty {
+            if self.saw_race {
+                self.saw_race = false;
+                self.track.clear();
+                self.time_ms = 0;
+                self.laps = 0;
+                return SessionEvent::RaceEnded;
+            }
+            return SessionEvent::Continue;
+        }
+        let track = track.trim();
+        let racing = current_lap > 0 || time_ms > 8000 || (on_track != 0 && time_ms > 3000);
+        let new_session = self.saw_race
+            && ((!self.track.is_empty() && !track.is_empty() && self.track != track)
+                || (self.laps > 0 && laps > 0 && self.laps != laps)
+                || (self.time_ms >= 20_000 && time_ms < 2_500));
+        self.track = if track.is_empty() {
+            self.track.clone()
+        } else {
+            track.to_string()
+        };
+        self.laps = laps;
+        self.time_ms = time_ms;
+        if new_session {
+            self.saw_race = racing;
+            return SessionEvent::NewSession;
+        }
+        if racing {
+            self.saw_race = true;
+        }
+        SessionEvent::Continue
+    }
+}
+
+pub struct FeedbackLog {
+    pub path: PathBuf,
+    pub name: String,
+    pub body: String,
+    pub truncated: bool,
+    pub track: Option<String>,
+}
+
+pub fn feedback_log() -> Option<FeedbackLog> {
+    let path = pick_feedback_log()?;
+    let dest = path.parent().unwrap_or(path.as_path()).join("feedback-attach.jsonl");
+    let src = if fs::copy(&path, &dest).is_ok() { dest } else { path.clone() };
+    let raw = fs::read_to_string(&src).ok()?;
+    if raw.trim().is_empty() {
+        return None;
+    }
+    let track = peek_track(&raw);
+    const MAX: usize = 400_000;
+    let (body, truncated) = if raw.len() <= MAX {
+        (raw, false)
+    } else {
+        let start = raw.len() - MAX;
+        let start = raw[start..].find('\n').map(|i| start + i + 1).unwrap_or(start);
+        (format!("… truncated …\n{}", &raw[start..]), true)
+    };
+    Some(FeedbackLog {
+        path: src,
+        name: path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "last-race.jsonl".into()),
+        body,
+        truncated,
+        track,
+    })
+}
+
+pub fn feedback_log_label() -> String {
+    match pick_feedback_log() {
+        None => "No race log yet — finish a moto first.".into(),
+        Some(path) => {
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "last-race.jsonl".into());
+            let kb = (file_len(&path) / 1024).max(1);
+            format!("Will send {name} ({kb} KB)")
+        }
+    }
+}
+
+pub fn has_feedback_log() -> bool {
+    pick_feedback_log().is_some_and(|p| file_len(&p) > 40)
+}
+
+fn pick_feedback_log() -> Option<PathBuf> {
+    for dir in log_dirs() {
+        let current = latest_in(&dir);
+        let last = dir.join("last-race.jsonl");
+        let current_live = current.as_ref().is_some_and(|p| log_has_race(p));
+        if current_live {
+            return current;
+        }
+        if last.is_file() && file_len(&last) > 40 {
+            return Some(last);
+        }
+        if let Some(p) = newest_clock(&dir) {
+            if file_len(&p) > 40 {
+                return Some(p);
+            }
+        }
+        if let Some(p) = current {
+            if file_len(&p) > 0 {
+                return Some(p);
+            }
+        }
+    }
+    None
+}
+
+fn newest_clock(dir: &Path) -> Option<PathBuf> {
+    let mut files: Vec<(std::time::SystemTime, PathBuf)> = fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.extension().and_then(|e| e.to_str()) == Some("jsonl")
+                && p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.starts_with("clock-") || n == "last-race.jsonl")
+        })
+        .filter_map(|p| {
+            let t = fs::metadata(&p).and_then(|m| m.modified()).ok()?;
+            Some((t, p))
+        })
+        .collect();
+    files.sort_by(|a, b| a.0.cmp(&b.0));
+    files.pop().map(|(_, p)| p)
+}
+
+fn file_len(path: &Path) -> u64 {
+    fs::metadata(path).map(|m| m.len()).unwrap_or(0)
+}
+
+fn latest_in(dir: &Path) -> Option<PathBuf> {
+    let text = fs::read_to_string(dir.join("latest.txt")).ok()?;
+    let path = PathBuf::from(text.trim());
+    path.is_file().then_some(path)
+}
+
+fn log_has_race(path: &Path) -> bool {
+    let Ok(raw) = fs::read_to_string(path) else {
+        return false;
+    };
+    raw.lines().filter(|l| l.contains("\"cur\":") || l.contains("\"time\":")).count() >= 1
+}
+
+fn peek_track(raw: &str) -> Option<String> {
+    for line in raw.lines().rev() {
+        if let Some(track) = json_field(line, "track") {
+            if !track.is_empty() && track != "null" {
+                return Some(track);
+            }
+        }
+    }
+    None
+}
+
+fn json_field(line: &str, key: &str) -> Option<String> {
+    let needle = format!("\"{key}\":\"");
+    let i = line.find(&needle)?;
+    let rest = &line[i + needle.len()..];
+    let mut out = String::new();
+    let mut chars = rest.chars();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\\' => {
+                if let Some(n) = chars.next() {
+                    out.push(n);
+                }
+            }
+            '"' => break,
+            c => out.push(c),
+        }
+    }
+    Some(out)
 }
 
 fn write_boot(msg: &str) {
@@ -221,4 +478,56 @@ fn json_escape(s: &str) -> String {
         }
     }
     o
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_ticks_do_not_end_a_race() {
+        let mut g = SessionGate::default();
+        assert_eq!(g.update("", 0, 0, 0, 0, 0), SessionEvent::Continue);
+    }
+
+    #[test]
+    fn leaving_a_session_archives_the_race() {
+        let mut g = SessionGate::default();
+        assert_eq!(g.update("Glen", 4, 0, 30_000, 2, 1), SessionEvent::Continue);
+        assert_eq!(g.update("", 0, 0, 0, 0, 0), SessionEvent::RaceEnded);
+    }
+
+    #[test]
+    fn track_change_starts_a_new_session() {
+        let mut g = SessionGate::default();
+        g.update("Glen", 4, 0, 40_000, 3, 1);
+        assert_eq!(g.update("Hangtown", 4, 0, 1_000, 1, 1), SessionEvent::NewSession);
+    }
+
+    #[test]
+    fn lap_count_change_starts_a_new_session() {
+        let mut g = SessionGate::default();
+        g.update("Glen", 4, 0, 40_000, 3, 1);
+        assert_eq!(g.update("Glen", 6, 0, 1_000, 1, 1), SessionEvent::NewSession);
+    }
+
+    #[test]
+    fn clock_reset_starts_a_new_session() {
+        let mut g = SessionGate::default();
+        g.update("Glen", 0, 8, 90_000, 2, 1);
+        assert_eq!(g.update("Glen", 0, 8, 800, 0, 1), SessionEvent::NewSession);
+    }
+
+    #[test]
+    fn same_moto_keeps_logging() {
+        let mut g = SessionGate::default();
+        g.update("Glen", 4, 0, 10_000, 1, 1);
+        assert_eq!(g.update("Glen", 4, 0, 20_000, 2, 1), SessionEvent::Continue);
+    }
+
+    #[test]
+    fn peek_track_reads_latest_name() {
+        let raw = "{\"v\":1}\n{\"track\":\"Glen Helen\",\"cur\":2}\n{\"track\":\"Hangtown\",\"cur\":1}\n";
+        assert_eq!(peek_track(raw).as_deref(), Some("Hangtown"));
+    }
 }
