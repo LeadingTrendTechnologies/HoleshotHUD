@@ -11,6 +11,7 @@ mod plugin;
 mod shm;
 mod startup;
 mod tray;
+mod uninstall;
 mod update;
 
 use std::mem::size_of;

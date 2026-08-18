@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
-use tiny_skia::{Color, FillRule, Paint, Path, PathBuilder, Pixmap, PixmapPaint, Rect, Stroke, Transform};
+use tiny_skia::{Color, FillRule, LineCap, LineJoin, Paint, Path, PathBuilder, Pixmap, PixmapPaint, Rect, Stroke, Transform};
 use windows::Win32::Foundation::{BOOL, HWND, LPARAM, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, CreateSolidBrush, DeleteObject, EndPaint, FillRect, GetDC, ReleaseDC,
@@ -163,6 +163,7 @@ enum Hit {
     MinimizeOnClose,
     AutoUpdateOnLaunch,
     QuitApp,
+    Uninstall,
     FbRate,
     FbBug,
     FbFeature,
@@ -738,6 +739,20 @@ fn click(p: (f32, f32)) {
             }
             return;
         }
+        Hit::Uninstall => {
+            close_drop();
+            let host = UI.lock().unwrap().as_ref().map(|u| u.host);
+            let Some(host) = host else {
+                return;
+            };
+            if crate::uninstall::confirm(host) && crate::uninstall::start(host) {
+                crate::config::update_config(|_| {});
+                unsafe {
+                    windows::Win32::UI::WindowsAndMessaging::PostQuitMessage(0);
+                }
+            }
+            return;
+        }
         Hit::FbRate => {
             close_drop();
             crate::feedback::set_kind(crate::feedback::Kind::Rate);
@@ -866,7 +881,7 @@ fn click(p: (f32, f32)) {
         | Hit::TickerFootOpen(_)
         | Hit::InfoOpen(_, _)
         | Hit::UpdateCheck | Hit::UpdateInstall | Hit::StartWithWindows | Hit::MinimizeOnClose
-        | Hit::AutoUpdateOnLaunch | Hit::QuitApp
+        | Hit::AutoUpdateOnLaunch | Hit::QuitApp | Hit::Uninstall
         | Hit::FbRate | Hit::FbBug | Hit::FbFeature | Hit::FbStar(_) | Hit::FbText | Hit::FbAttach | Hit::FbSend
         | Hit::StDrag(_) | Hit::RelDrag(_)
         | Hit::StBg | Hit::RelBg | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarBg | Hit::DashBg | Hit::TickerBg
@@ -1024,6 +1039,162 @@ fn nav_group(px: &mut Pixmap, fonts: &Fonts, x: f32, y: f32, label: &str) -> f32
     y + 24.0
 }
 
+fn nav_icon(px: &mut Pixmap, hit: Hit, cx: f32, cy: f32, c: Color) {
+    match hit {
+        Hit::TabApp => {
+            icon_stroke_line(px, cx - 6.0, cy - 4.5, cx + 6.0, cy - 4.5, c, 1.6);
+            icon_stroke_line(px, cx - 6.0, cy, cx + 6.0, cy, c, 1.6);
+            icon_stroke_line(px, cx - 6.0, cy + 4.5, cx + 6.0, cy + 4.5, c, 1.6);
+            fill_circle(px, cx - 2.0, cy - 4.5, 2.1, c);
+            fill_circle(px, cx + 2.5, cy, 2.1, c);
+            fill_circle(px, cx - 1.0, cy + 4.5, 2.1, c);
+        }
+        Hit::TabFeedback => {
+            if let Some(path) = round_path(cx - 6.5, cy - 5.5, 13.0, 9.5, 2.5) {
+                icon_stroke(px, &path, c, 1.5);
+            }
+            let mut pb = PathBuilder::new();
+            pb.move_to(cx - 3.0, cy + 4.0);
+            pb.line_to(cx - 5.5, cy + 7.5);
+            pb.line_to(cx + 0.5, cy + 4.0);
+            if let Some(path) = pb.finish() {
+                icon_stroke(px, &path, c, 1.5);
+            }
+        }
+        Hit::TabSt => {
+            fill_round(px, cx - 6.8, cy + 0.5, 4.0, 6.0, 1.0, c);
+            fill_round(px, cx - 2.0, cy - 4.8, 4.0, 11.3, 1.0, c);
+            fill_round(px, cx + 2.8, cy + 2.2, 4.0, 4.3, 1.0, c);
+        }
+        Hit::TabRel => {
+            icon_stroke_circle(px, cx, cy - 5.4, 2.2, c);
+            fill_circle(px, cx, cy, 2.7, c);
+            icon_stroke_circle(px, cx, cy + 5.4, 2.2, c);
+        }
+        Hit::TabMap => {
+            if let Some(path) = round_path(cx - 7.0, cy - 5.2, 14.0, 10.4, 5.0) {
+                icon_stroke(px, &path, c, 1.7);
+            }
+            if let Some(path) = round_path(cx - 3.4, cy - 2.0, 6.8, 4.0, 2.0) {
+                icon_stroke(px, &path, c, 1.3);
+            }
+        }
+        Hit::TabMini => {
+            icon_stroke_circle(px, cx, cy, 6.8, c);
+            let mut pb = PathBuilder::new();
+            pb.move_to(cx - 3.8, cy - 1.5);
+            pb.quad_to(cx + 0.5, cy - 5.2, cx + 4.2, cy - 0.5);
+            if let Some(path) = pb.finish() {
+                icon_stroke(px, &path, c, 1.4);
+            }
+            fill_circle(px, cx + 1.2, cy + 2.2, 1.8, c);
+        }
+        Hit::TabRadar => {
+            fill_round(px, cx - 2.1, cy - 4.2, 4.2, 8.4, 1.4, c);
+            let mut nose = PathBuilder::new();
+            nose.move_to(cx, cy - 6.6);
+            nose.line_to(cx - 2.4, cy - 3.6);
+            nose.line_to(cx + 2.4, cy - 3.6);
+            nose.close();
+            if let Some(path) = nose.finish() {
+                let mut p = Paint::default();
+                p.set_color(c);
+                p.anti_alias = true;
+                px.fill_path(&path, &p, FillRule::Winding, Transform::identity(), None);
+            }
+            let mut left = PathBuilder::new();
+            left.move_to(cx - 1.6, cy + 1.5);
+            left.line_to(cx - 7.2, cy + 6.6);
+            left.line_to(cx - 2.2, cy + 6.6);
+            if let Some(path) = left.finish() {
+                icon_stroke(px, &path, c, 1.4);
+            }
+            let mut right = PathBuilder::new();
+            right.move_to(cx + 1.6, cy + 1.5);
+            right.line_to(cx + 7.2, cy + 6.6);
+            right.line_to(cx + 2.2, cy + 6.6);
+            if let Some(path) = right.finish() {
+                icon_stroke(px, &path, c, 1.4);
+            }
+        }
+        Hit::TabDash => {
+            if let Some(path) = round_path(cx - 7.2, cy - 3.6, 4.2, 7.2, 1.2) {
+                icon_stroke(px, &path, c, 1.4);
+            }
+            if let Some(path) = round_path(cx - 2.1, cy - 3.6, 4.2, 7.2, 1.2) {
+                icon_stroke(px, &path, c, 1.4);
+            }
+            if let Some(path) = round_path(cx + 3.0, cy - 3.6, 4.2, 7.2, 1.2) {
+                icon_stroke(px, &path, c, 1.4);
+            }
+        }
+        Hit::TabTicker => {
+            if let Some(path) = round_path(cx - 7.0, cy - 4.2, 6.2, 8.4, 1.5) {
+                icon_stroke(px, &path, c, 1.4);
+            }
+            fill_round(px, cx - 2.2, cy - 4.2, 6.2, 8.4, 1.5, c);
+            if let Some(path) = round_path(cx + 2.6, cy - 4.2, 6.2, 8.4, 1.5) {
+                icon_stroke(px, &path, c, 1.4);
+            }
+        }
+        Hit::FbRate => fill_star(px, cx, cy, 6.2, c),
+        Hit::FbBug => {
+            let mut pb = PathBuilder::new();
+            pb.move_to(cx, cy - 6.4);
+            pb.line_to(cx + 6.6, cy + 5.4);
+            pb.line_to(cx - 6.6, cy + 5.4);
+            pb.close();
+            if let Some(path) = pb.finish() {
+                icon_stroke(px, &path, c, 1.5);
+            }
+            icon_stroke_line(px, cx, cy - 2.2, cx, cy + 1.4, c, 1.6);
+            fill_circle(px, cx, cy + 3.4, 1.05, c);
+        }
+        Hit::FbFeature => {
+            icon_stroke_circle(px, cx, cy - 1.4, 4.0, c);
+            icon_stroke_line(px, cx, cy + 2.6, cx, cy + 6.2, c, 1.6);
+            icon_stroke_line(px, cx - 2.4, cy + 6.2, cx + 2.4, cy + 6.2, c, 1.6);
+            icon_stroke_line(px, cx - 1.6, cy + 4.4, cx + 1.6, cy + 4.4, c, 1.5);
+        }
+        _ => {}
+    }
+}
+
+fn icon_stroke(px: &mut Pixmap, path: &Path, c: Color, width: f32) {
+    let mut p = Paint::default();
+    p.set_color(c);
+    p.anti_alias = true;
+    px.stroke_path(
+        path,
+        &p,
+        &Stroke {
+            width,
+            line_cap: LineCap::Round,
+            line_join: LineJoin::Round,
+            ..Stroke::default()
+        },
+        Transform::identity(),
+        None,
+    );
+}
+
+fn icon_stroke_line(px: &mut Pixmap, x0: f32, y0: f32, x1: f32, y1: f32, c: Color, width: f32) {
+    let mut pb = PathBuilder::new();
+    pb.move_to(x0, y0);
+    pb.line_to(x1, y1);
+    if let Some(path) = pb.finish() {
+        icon_stroke(px, &path, c, width);
+    }
+}
+
+fn icon_stroke_circle(px: &mut Pixmap, cx: f32, cy: f32, r: f32, c: Color) {
+    let mut pb = PathBuilder::new();
+    pb.push_circle(cx, cy, r);
+    if let Some(path) = pb.finish() {
+        icon_stroke(px, &path, c, 1.5);
+    }
+}
+
 fn nav_tab(
     px: &mut Pixmap,
     fonts: &Fonts,
@@ -1045,7 +1216,8 @@ fn nav_tab(
         fill_round(px, x, y, w, h, 8.0, Color::from_rgba8(255, 255, 255, 10));
     }
     let name_c = if selected { accent() } else { Color::from_rgba8(210, 210, 216, 255) };
-    text(px, fonts, name, 13.0, x + 14.0, y + 10.0, name_c, false);
+    nav_icon(px, hit, x + 18.0, y + h * 0.5, name_c);
+    text(px, fonts, name, 13.0, x + 32.0, y + 10.0, name_c, false);
     let dx = x + w - 16.0;
     let dy = y + h * 0.5;
     if visible {
@@ -1178,7 +1350,19 @@ fn pane_app(
     }
     y += card_h + 14.0;
     action_btn(px, fonts, x, y, 120.0, 32.0, "Quit overlay", Hit::QuitApp, hover, hits, false);
+    action_btn(px, fonts, x + 132.0, y, 120.0, 32.0, "Uninstall", Hit::Uninstall, hover, hits, false);
     y += 46.0;
+    text(
+        px,
+        fonts,
+        "Uninstall removes the overlay, MX Bikes plugin, and shortcuts.",
+        11.0,
+        x,
+        y,
+        dim(),
+        false,
+    );
+    y += 18.0;
     text(
         px,
         fonts,
@@ -1336,14 +1520,18 @@ fn kind_chip(
     hits: &mut Vec<HitBox>,
 ) {
     hits.push(HitBox { id: hit, x, y, w, h: 32.0 });
+    let col = if on { accent() } else { text_col() };
     if on {
         fill_round(px, x, y, w, 32.0, 8.0, accent_dim());
-        text(px, fonts, label, 13.0, x + w * 0.5, y + 8.0, accent(), true);
     } else {
         let fill = if hover == Some(hit) { chip_hover() } else { btn_bg() };
         outlined(px, x, y, w, 32.0, 8.0, fill);
-        text(px, fonts, label, 13.0, x + w * 0.5, y + 8.0, text_col(), true);
     }
+    let tw = measure(fonts, label, 13.0);
+    let total = 18.0 + tw;
+    let start = x + ((w - total) * 0.5).max(8.0);
+    nav_icon(px, hit, start + 6.0, y + 16.0, col);
+    text(px, fonts, label, 13.0, start + 16.0, y + 8.0, col, false);
 }
 
 fn draw_fb_text(

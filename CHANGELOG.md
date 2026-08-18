@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.8
+
+Tab icons, widgets off until you turn them on, and uninstall from Settings.
+
+### Settings
+
+- Sidebar tabs have icons, including distinct ones for each widget
+- Rate, Bug, and Feature on the Feedback tab have icons
+- **Uninstall** next to Quit overlay removes the app, the MX Bikes plugin, and shortcuts
+
+### Overlay
+
+- A first install starts with every widget hidden. Turn each one on with **Show on overlay**
+
 ## 0.1.7
 
 Startup options, opt-in auto-update on launch, and settings that come to the front.

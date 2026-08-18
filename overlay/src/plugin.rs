@@ -25,6 +25,16 @@ pub fn retry_if_needed() {
     }
 }
 
+pub fn remove() {
+    if let Some(dest) = plugin_dest() {
+        let _ = fs::remove_file(dest);
+    }
+}
+
+pub fn dest_path() -> Option<PathBuf> {
+    plugin_dest()
+}
+
 fn install_once() -> Result<bool, ()> {
     let bytes = plugin_bytes().ok_or(())?;
     let dest = plugin_dest().ok_or(())?;

@@ -643,13 +643,13 @@ impl HudConfig {
                 w: 0.88,
                 h: 0.055,
             },
-            show_standings: true,
-            show_relative: true,
-            show_map: true,
-            show_minimap: true,
-            show_radar: true,
-            show_dash: true,
-            show_ticker: true,
+            show_standings: false,
+            show_relative: false,
+            show_map: false,
+            show_minimap: false,
+            show_radar: false,
+            show_dash: false,
+            show_ticker: false,
             ingame_hud: false,
             standings_rows: 12,
             relative_count: 3,
@@ -1679,15 +1679,15 @@ mod tests {
     }
 
     #[test]
-    fn default_hud_enables_every_widget() {
+    fn default_hud_hides_every_widget() {
         let cfg = HudConfig::new();
-        assert!(cfg.show_standings);
-        assert!(cfg.show_relative);
-        assert!(cfg.show_map);
-        assert!(cfg.show_minimap);
-        assert!(cfg.show_radar);
-        assert!(cfg.show_dash);
-        assert!(cfg.show_ticker);
+        assert!(!cfg.show_standings);
+        assert!(!cfg.show_relative);
+        assert!(!cfg.show_map);
+        assert!(!cfg.show_minimap);
+        assert!(!cfg.show_radar);
+        assert!(!cfg.show_dash);
+        assert!(!cfg.show_ticker);
         assert!(cfg.ticker_title);
         assert_eq!(cfg.dash_left, DashField::Engine);
         assert_eq!(cfg.dash_mid, DashField::Air);
