@@ -1,13 +1,15 @@
 use std::fs;
-use std::io::Write;
+use std::io::{self, Write};
+use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
 const REPO: &str = "LeadingTrendTechnologies/HoleshotHUD";
 const UA: &str = "mxbo-overlay";
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 static QUIT: AtomicBool = AtomicBool::new(false);
 static STATE: Mutex<UpdateState> = Mutex::new(UpdateState::Idle);
@@ -104,23 +106,7 @@ fn apply(version: &str, url: &str) -> Result<(), String> {
     download(url, &zip)?;
     let extracted = work.join("extracted");
     fs::create_dir_all(&extracted).map_err(|e| format!("Could not create extract folder: {e}"))?;
-    let status = Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-Command",
-            &format!(
-                "Expand-Archive -LiteralPath '{}' -DestinationPath '{}' -Force",
-                zip.display(),
-                extracted.display()
-            ),
-        ])
-        .status()
-        .map_err(|e| format!("Could not unzip the update: {e}"))?;
-    if !status.success() {
-        return Err("Could not unzip the update.".into());
-    }
+    unzip(&zip, &extracted)?;
     let src_exe = find_file(&extracted, |n| n.ends_with(".exe"))
         .ok_or_else(|| "Update zip is missing the overlay.".to_string())?;
     let src_dlo = find_file(&extracted, |n| n.eq_ignore_ascii_case("mxbo.dlo"));
@@ -163,18 +149,40 @@ Start-Process -FilePath $dstExe
     );
     let mut f = fs::File::create(&script).map_err(|e| format!("Could not write updater: {e}"))?;
     f.write_all(body.as_bytes()).map_err(|e| format!("Could not write updater: {e}"))?;
-    Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-WindowStyle",
-            "Hidden",
-            "-File",
-            script.to_str().ok_or("Bad updater path")?,
-        ])
+    hidden_powershell()
+        .args(["-File", script.to_str().ok_or("Bad updater path")?])
         .spawn()
         .map_err(|e| format!("Could not start updater: {e}"))?;
+    Ok(())
+}
+
+fn hidden_powershell() -> Command {
+    let mut cmd = Command::new("powershell.exe");
+    cmd.args(["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    cmd
+}
+
+fn unzip(src: &Path, dest: &Path) -> Result<(), String> {
+    let file = fs::File::open(src).map_err(|e| format!("Could not open update zip: {e}"))?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("Could not read update zip: {e}"))?;
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i).map_err(|e| format!("Could not read zip entry: {e}"))?;
+        let name = entry.mangled_name();
+        let out = dest.join(name);
+        if entry.is_dir() {
+            fs::create_dir_all(&out).map_err(|e| format!("Could not create extract folder: {e}"))?;
+            continue;
+        }
+        if let Some(parent) = out.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("Could not create extract folder: {e}"))?;
+        }
+        let mut dest_file = fs::File::create(&out).map_err(|e| format!("Could not extract update: {e}"))?;
+        io::copy(&mut entry, &mut dest_file).map_err(|e| format!("Could not extract update: {e}"))?;
+    }
     Ok(())
 }
 

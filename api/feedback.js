@@ -39,10 +39,31 @@ async function createGist(token, name, content) {
   });
   if (!gh.ok) return null;
   const created = await gh.json();
-  return created.html_url || created.url || null;
+  return created.html_url || null;
 }
 
-function issueBody(data, gistUrl) {
+async function uploadLogFile(token, name, content) {
+  if (!content || !String(content).trim()) return null;
+  const path = `feedback-logs/${Date.now()}-${gistName(name)}`;
+  const gh = await fetch(`https://api.github.com/repos/${REPO}/contents/${encodeURIComponent(path).replace(/%2F/g, "/")}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "User-Agent": "Holeshot-HUD-feedback",
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+    body: JSON.stringify({
+      message: `Add last race log ${gistName(name)}`,
+      content: Buffer.from(String(content), "utf8").toString("base64"),
+    }),
+  });
+  if (!gh.ok) return null;
+  const created = await gh.json();
+  return created.content?.html_url || null;
+}
+
+function issueBody(data, logUrl) {
   const lines = [
     `**Holeshot HUD ${clip(data.version, 32)}**`,
     `${clip(data.os, 64)}`,
@@ -51,15 +72,14 @@ function issueBody(data, gistUrl) {
   if (data.rating) lines.push(`Rating: ${data.rating}/5`, "");
   if (data.track) lines.push(`Track: ${clip(data.track, 80)}`, "");
   if (data.message) lines.push(clip(data.message, 4000), "");
-  if (gistUrl) {
-    lines.push(`Last race log: [${clip(data.log_name || "last-race.jsonl", 80)}](${gistUrl})`);
+  const fileName = clip(data.log_name || "last-race.jsonl", 80);
+  if (logUrl) {
+    lines.push("", `Last race log: [${fileName}](${logUrl})`);
     if (data.log_truncated) lines.push("", "_Log was truncated to the last 400 KB._");
-  } else if (data.log) {
-    const log = clip(data.log, 20000);
-    lines.push("<details><summary>Last race log</summary>", "", "```jsonl", log, "```", "</details>");
-    if (data.log_truncated) lines.push("", "_Log was truncated._");
+  } else if (data.log && data.log.includes('"cur":')) {
+    lines.push("", `<details><summary>${fileName}</summary>`, "", "```jsonl", clip(data.log, 50000), "```", "</details>");
   } else {
-    lines.push("_No race log attached._");
+    lines.push("", "_No race log attached._");
   }
   return lines.join("\n");
 }
@@ -103,6 +123,7 @@ module.exports = async function handler(req, res) {
   }
 
   const gistUrl = data.log ? await createGist(token, data.log_name, data.log) : null;
+  const logUrl = gistUrl || (data.log ? await uploadLogFile(token, data.log_name, data.log) : null);
 
   const title =
     kind === "rating"
@@ -117,7 +138,7 @@ module.exports = async function handler(req, res) {
       "User-Agent": "Holeshot-HUD-feedback",
       "X-GitHub-Api-Version": "2022-11-28",
     },
-    body: JSON.stringify({ title, body: issueBody({ ...data, rating, message }, gistUrl) }),
+    body: JSON.stringify({ title, body: issueBody({ ...data, rating, message }, logUrl) }),
   });
   if (!gh.ok) {
     const err = await gh.text();
@@ -125,7 +146,7 @@ module.exports = async function handler(req, res) {
     return;
   }
   const created = await gh.json();
-  res.status(201).json({ ok: true, url: created.html_url || null, log: gistUrl || null });
+  res.status(201).json({ ok: true, url: created.html_url || null, log: logUrl || null });
 };
 
 module.exports.config = {

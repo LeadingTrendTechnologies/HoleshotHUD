@@ -1,10 +1,40 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::Instant;
 
 use mxbo_hud::snapshot::{cstr, Snapshot};
 use mxbo_hud::{clock_sample, ClockSample};
+
+const RACE_LOG: &str = "race.jsonl";
+const RACE_SEND: &str = "race-send.jsonl";
+
+static LOG: Mutex<Option<ClockLog>> = Mutex::new(None);
+
+fn live() -> std::sync::MutexGuard<'static, Option<ClockLog>> {
+    LOG.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+pub fn init() {
+    *live() = Some(ClockLog::new());
+}
+
+pub fn path() -> Option<PathBuf> {
+    live().as_ref().and_then(|l| l.path().map(|p| p.to_path_buf()))
+}
+
+pub fn rotate() {
+    if let Some(log) = live().as_mut() {
+        log.rotate();
+    }
+}
+
+pub fn tick(snap: &Snapshot) {
+    if let Some(log) = live().as_mut() {
+        log.tick(snap);
+    }
+}
 
 pub struct ClockLog {
     writer: Option<BufWriter<File>>,
@@ -27,7 +57,7 @@ impl ClockLog {
             lines: 0,
             gate: SessionGate::default(),
         };
-        log.open_new();
+        log.open(false);
         log
     }
 
@@ -40,12 +70,7 @@ impl ClockLog {
     }
 
     pub fn rotate(&mut self) {
-        if self.gate.saw_race {
-            self.archive_last_race();
-            self.gate.saw_race = false;
-        }
-        self.flush();
-        self.open_new();
+        self.reset();
     }
 
     pub fn tick(&mut self, snap: &Snapshot) {
@@ -59,15 +84,11 @@ impl ClockLog {
             snap.on_track,
         ) {
             SessionEvent::RaceEnded => {
-                self.archive_last_race();
                 self.flush();
-                self.open_new();
                 return;
             }
             SessionEvent::NewSession => {
-                self.archive_last_race();
-                self.flush();
-                self.open_new();
+                self.reset();
             }
             SessionEvent::Continue => {}
         }
@@ -96,53 +117,49 @@ impl ClockLog {
         self.last_key = Some(key);
         self.last_write = Instant::now();
         self.write_line(snap, &sample);
-        if self.lines >= 80_000 {
-            self.flush();
-            self.open_new();
-        }
     }
 
-    fn archive_last_race(&mut self) {
+    fn reset(&mut self) {
+        self.gate.saw_race = false;
+        self.open(true);
+    }
+
+    fn open(&mut self, clear: bool) {
         self.flush();
-        if self.lines < 1 || self.path.as_os_str().is_empty() || !self.path.is_file() {
-            return;
-        }
-        let Some(dir) = self.path.parent() else {
-            return;
-        };
-        let dest = dir.join("last-race.jsonl");
-        if dest == self.path {
-            return;
-        }
-        if fs::copy(&self.path, &dest).is_ok() {
-            let _ = fs::write(dir.join("last-race.txt"), dest.to_string_lossy().as_bytes());
-        }
-    }
-
-    fn open_new(&mut self) {
         self.writer = None;
-        self.lines = 0;
         self.last_key = None;
         self.started = Instant::now();
-        let stamp = chrono_stamp();
-        let name = format!("clock-{stamp}.jsonl");
         let mut errors = String::new();
         for dir in log_dirs() {
             if let Err(e) = fs::create_dir_all(&dir) {
                 errors.push_str(&format!("mkdir {}: {e}\n", dir.display()));
                 continue;
             }
-            let path = dir.join(&name);
-            match OpenOptions::new().create(true).append(true).open(&path) {
+            remove_old_logs(&dir);
+            let path = dir.join(RACE_LOG);
+            let mut opts = OpenOptions::new();
+            opts.create(true).write(true);
+            if clear {
+                opts.truncate(true);
+            } else {
+                opts.append(true);
+            }
+            match opts.open(&path) {
                 Ok(f) => {
                     let mut w = BufWriter::new(f);
-                    let _ = writeln!(
-                        w,
-                        "{{\"v\":1,\"file\":\"{}\"}}",
-                        json_escape(&path.display().to_string())
-                    );
-                    let _ = w.flush();
-                    let _ = fs::write(dir.join("latest.txt"), path.to_string_lossy().as_bytes());
+                    if clear || file_len(&path) == 0 {
+                        let _ = writeln!(
+                            w,
+                            "{{\"v\":1,\"file\":\"{}\"}}",
+                            json_escape(&path.display().to_string())
+                        );
+                        let _ = w.flush();
+                        self.lines = 1;
+                    } else {
+                        self.lines = fs::read_to_string(&path)
+                            .map(|s| s.lines().count() as u32)
+                            .unwrap_or(0);
+                    }
                     self.path = path;
                     self.writer = Some(w);
                     write_boot(&format!("ok {}", self.path.display()));
@@ -202,9 +219,6 @@ impl ClockLog {
 
 impl Drop for ClockLog {
     fn drop(&mut self) {
-        if self.gate.saw_race {
-            self.archive_last_race();
-        }
         self.flush();
     }
 }
@@ -278,11 +292,13 @@ pub struct FeedbackLog {
 }
 
 pub fn feedback_log() -> Option<FeedbackLog> {
-    let path = pick_feedback_log()?;
-    let dest = path.parent().unwrap_or(path.as_path()).join("feedback-attach.jsonl");
-    let src = if fs::copy(&path, &dest).is_ok() { dest } else { path.clone() };
-    let raw = fs::read_to_string(&src).ok()?;
-    if raw.trim().is_empty() {
+    let mut g = live();
+    let log = g.as_mut()?;
+    log.flush();
+    let path = log.path()?.to_path_buf();
+    let raw = fs::read_to_string(&path).ok()?;
+    drop(g);
+    if !raw_has_race(&raw) {
         return None;
     }
     let track = peek_track(&raw);
@@ -294,12 +310,11 @@ pub fn feedback_log() -> Option<FeedbackLog> {
         let start = raw[start..].find('\n').map(|i| start + i + 1).unwrap_or(start);
         (format!("… truncated …\n{}", &raw[start..]), true)
     };
+    let send = path.parent().unwrap_or(path.as_path()).join(RACE_SEND);
+    let _ = fs::write(&send, body.as_bytes());
     Some(FeedbackLog {
-        path: src,
-        name: path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "last-race.jsonl".into()),
+        path: if send.is_file() { send } else { path.clone() },
+        name: RACE_LOG.to_string(),
         body,
         truncated,
         track,
@@ -313,7 +328,7 @@ pub fn feedback_log_label() -> String {
             let name = path
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "last-race.jsonl".into());
+                .unwrap_or_else(|| "race.jsonl".into());
             let kb = (file_len(&path) / 1024).max(1);
             format!("Will send {name} ({kb} KB)")
         }
@@ -321,69 +336,32 @@ pub fn feedback_log_label() -> String {
 }
 
 pub fn has_feedback_log() -> bool {
-    pick_feedback_log().is_some_and(|p| file_len(&p) > 40)
+    pick_feedback_log().is_some()
 }
 
 fn pick_feedback_log() -> Option<PathBuf> {
     for dir in log_dirs() {
-        let current = latest_in(&dir);
-        let last = dir.join("last-race.jsonl");
-        let current_live = current.as_ref().is_some_and(|p| log_has_race(p));
-        if current_live {
-            return current;
-        }
-        if last.is_file() && file_len(&last) > 40 {
-            return Some(last);
-        }
-        if let Some(p) = newest_clock(&dir) {
-            if file_len(&p) > 40 {
-                return Some(p);
-            }
-        }
-        if let Some(p) = current {
-            if file_len(&p) > 0 {
-                return Some(p);
-            }
+        let path = dir.join(RACE_LOG);
+        if log_has_race(&path) {
+            return Some(path);
         }
     }
     None
-}
-
-fn newest_clock(dir: &Path) -> Option<PathBuf> {
-    let mut files: Vec<(std::time::SystemTime, PathBuf)> = fs::read_dir(dir)
-        .ok()?
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| {
-            p.extension().and_then(|e| e.to_str()) == Some("jsonl")
-                && p.file_name()
-                    .and_then(|n| n.to_str())
-                    .is_some_and(|n| n.starts_with("clock-") || n == "last-race.jsonl")
-        })
-        .filter_map(|p| {
-            let t = fs::metadata(&p).and_then(|m| m.modified()).ok()?;
-            Some((t, p))
-        })
-        .collect();
-    files.sort_by(|a, b| a.0.cmp(&b.0));
-    files.pop().map(|(_, p)| p)
 }
 
 fn file_len(path: &Path) -> u64 {
     fs::metadata(path).map(|m| m.len()).unwrap_or(0)
 }
 
-fn latest_in(dir: &Path) -> Option<PathBuf> {
-    let text = fs::read_to_string(dir.join("latest.txt")).ok()?;
-    let path = PathBuf::from(text.trim());
-    path.is_file().then_some(path)
-}
-
 fn log_has_race(path: &Path) -> bool {
     let Ok(raw) = fs::read_to_string(path) else {
         return false;
     };
-    raw.lines().filter(|l| l.contains("\"cur\":") || l.contains("\"time\":")).count() >= 1
+    raw_has_race(&raw)
+}
+
+fn raw_has_race(raw: &str) -> bool {
+    raw.lines().any(|l| l.contains("\"cur\":") && l.contains("\"t\":"))
 }
 
 fn peek_track(raw: &str) -> Option<String> {
@@ -424,6 +402,25 @@ fn write_boot(msg: &str) {
     }
 }
 
+fn remove_old_logs(dir: &Path) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let stale = name == "latest.txt"
+            || name == "last-race.jsonl"
+            || name == "last-race.txt"
+            || name == "feedback-attach.jsonl"
+            || name == "boot-from-agent.txt"
+            || (name.starts_with("clock-") && name.ends_with(".jsonl"));
+        if stale {
+            let _ = fs::remove_file(entry.path());
+        }
+    }
+}
+
 fn log_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     if let Ok(local) = std::env::var("LOCALAPPDATA") {
@@ -436,35 +433,6 @@ fn log_dirs() -> Vec<PathBuf> {
         }
     }
     dirs
-}
-
-fn chrono_stamp() -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let secs = now as i64;
-    let days = secs / 86400;
-    let tod = secs % 86400;
-    let (y, m, d) = civil_from_days(days);
-    let hh = tod / 3600;
-    let mm = (tod % 3600) / 60;
-    let ss = tod % 60;
-    format!("{y:04}{m:02}{d:02}-{hh:02}{mm:02}{ss:02}")
-}
-
-fn civil_from_days(z: i64) -> (i32, i32, i32) {
-    let z = z + 719468;
-    let era = if z >= 0 { z } else { z - 146096 } / 146097;
-    let doe = z - era * 146097;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if m <= 2 { y + 1 } else { y };
-    (y as i32, m as i32, d as i32)
 }
 
 fn json_escape(s: &str) -> String {
@@ -529,5 +497,17 @@ mod tests {
     fn peek_track_reads_latest_name() {
         let raw = "{\"v\":1}\n{\"track\":\"Glen Helen\",\"cur\":2}\n{\"track\":\"Hangtown\",\"cur\":1}\n";
         assert_eq!(peek_track(raw).as_deref(), Some("Hangtown"));
+    }
+
+    #[test]
+    fn header_only_clock_file_is_not_a_race_log() {
+        let raw = "{\"v\":1,\"file\":\"C:\\\\Users\\\\troye\\\\AppData\\\\Local\\\\Holeshot HUD\\\\logs\\\\clock-20260818-204810.jsonl\"}\n";
+        assert!(!raw_has_race(raw));
+    }
+
+    #[test]
+    fn clock_sample_line_counts_as_a_race_log() {
+        let raw = "{\"v\":1,\"file\":\"x\"}\n{\"t\":1.2,\"seq\":3,\"track\":\"Glen\",\"cur\":2,\"time\":8000}\n";
+        assert!(raw_has_race(raw));
     }
 }

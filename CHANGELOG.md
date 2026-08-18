@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.5
+
+Silent in-app updates, one race log file, and feedback that attaches that log even mid-moto.
+
+### Updates
+
+- **Download and install** runs in the background with no PowerShell window
+- The overlay closes, replaces files, then reopens when the new build is ready
+
+### Feedback
+
+- One log file: `%LOCALAPPDATA%\Holeshot HUD\logs\race.jsonl`
+- A new session clears that file and starts writing again
+- Send snapshots the log so a report can go out while you are still on track
+- Bug reports attach the race samples, not an empty header file
+- Old `clock-*.jsonl` files are removed on launch
+
 ## 0.1.4
 
 In-app feedback, last-race logs, lapping colors, and session clock/flag fixes from race testing.

@@ -46,8 +46,8 @@ pack.bat
 Push a tag to publish a downloadable release:
 
 ```bat
-git tag v0.1.4
-git push origin v0.1.4
+git tag v0.1.5
+git push origin v0.1.5
 ```
 
 ## Data wiki

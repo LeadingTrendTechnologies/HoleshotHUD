@@ -1,6 +1,6 @@
 [package]
 name = "mxbo-overlay"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 
 [[bin]]
@@ -22,6 +22,7 @@ mxbo-hud = { path = "hud" }
 tiny-skia = { version = "0.11", features = ["png-format"] }
 fontdue = "0.9"
 ureq = "2.12"
+zip = { version = "0.6", default-features = false, features = ["deflate"] }
 windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",

@@ -48,8 +48,11 @@ use crate::shm::Shm;
 static mut HOST: HWND = HWND(null_mut());
 
 fn main() {
-    let clock_log = crate::record::ClockLog::new();
-    match clock_log.path() {
+    let clock_log_path = {
+        crate::record::init();
+        crate::record::path()
+    };
+    match clock_log_path {
         Some(p) => mxbo_hud::set_status_hint(format!("Clock log: {}", p.display())),
         None => mxbo_hud::set_status_hint("Clock log failed — see AppData\\Local\\Holeshot HUD\\logs\\boot.txt"),
     }
@@ -60,10 +63,10 @@ fn main() {
     let fonts = Fonts::for_family(family)
         .or_else(Fonts::load)
         .expect("need a HUD font (bundled or Windows\\Fonts)");
-    unsafe { run(fonts, family, clock_log) }
+    unsafe { run(fonts, family) }
 }
 
-unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily, mut clock_log: crate::record::ClockLog) {
+unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
     let hinst = GetModuleHandleW(None).unwrap();
     let icon_bytes = include_bytes!("../icon.ico");
     let icon_big = load_app_icon(hinst, icon_bytes, 256);
@@ -214,8 +217,8 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily, mut 
         f8_was = f8;
         let f9 = unsafe { GetAsyncKeyState(VK_F9.0 as i32) < 0 };
         if f9 && !f9_was {
-            clock_log.rotate();
-            match clock_log.path() {
+            crate::record::rotate();
+            match crate::record::path() {
                 Some(p) => mxbo_hud::set_status_hint(format!("Clock log: {}", p.display())),
                 None => mxbo_hud::set_status_hint("Clock log failed — see AppData\\Local\\Holeshot HUD\\logs\\boot.txt"),
             }
@@ -256,7 +259,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily, mut 
         let hud = if live || layout_on { snap.as_ref() } else { None };
         if live {
             if let Some(s) = snap.as_ref() {
-                clock_log.tick(s);
+                crate::record::tick(s);
             }
         }
 
