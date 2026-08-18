@@ -565,6 +565,9 @@ pub struct HudConfig {
     pub ticker_bold: bool,
     pub font_family: FontFamily,
     pub units: Units,
+    pub start_with_windows: bool,
+    pub minimize_on_close: bool,
+    pub auto_update_on_launch: bool,
     pub st_order: Vec<StField>,
     pub rel_order: Vec<RelField>,
     pub st_w_pos: i32,
@@ -728,6 +731,9 @@ impl HudConfig {
             ticker_bold: false,
             font_family: FontFamily::Segoe,
             units: Units::Metric,
+            start_with_windows: false,
+            minimize_on_close: false,
+            auto_update_on_launch: false,
             st_order: StField::ALL.to_vec(),
             rel_order: RelField::ALL.to_vec(),
             st_w_pos: 26,
@@ -900,6 +906,9 @@ impl HudConfig {
                 "ticker_bold" => cfg.ticker_bold = b,
                 "font_family" => cfg.font_family = FontFamily::parse(val),
                 "units" => cfg.units = Units::parse(val),
+                "start_with_windows" => cfg.start_with_windows = b,
+                "minimize_on_close" => cfg.minimize_on_close = b,
+                "auto_update_on_launch" => cfg.auto_update_on_launch = b,
                 "st_order" => cfg.st_order = parse_st_order(val),
                 "rel_order" => cfg.rel_order = parse_rel_order(val),
                 "st_w_pos" => cfg.st_w_pos = clamp_w(val),
@@ -991,7 +1000,7 @@ impl HudConfig {
              ticker_autoscroll={}\n\
              ticker_bg={}\nticker_font={}\nticker_bold={}\n\
              \n[App]\n\
-             font_family={}\nunits={}\n",
+             font_family={}\nunits={}\nstart_with_windows={}\nminimize_on_close={}\nauto_update_on_launch={}\n",
             self.standings.x,
             self.standings.y,
             self.standings.w,
@@ -1135,6 +1144,9 @@ impl HudConfig {
             b(self.ticker_bold),
             self.font_family.key(),
             self.units.key(),
+            b(self.start_with_windows),
+            b(self.minimize_on_close),
+            b(self.auto_update_on_launch),
         );
         let _ = fs::write(&path, body);
         self.loaded_mtime = fs::metadata(&path).and_then(|m| m.modified()).ok();

@@ -9,6 +9,8 @@ mod render;
 mod settings;
 mod plugin;
 mod shm;
+mod startup;
+mod tray;
 mod update;
 
 use std::mem::size_of;
@@ -36,9 +38,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
     LookupIconIdFromDirectoryEx, PeekMessageW, PostQuitMessage, RegisterClassExW, SendMessageW,
     SetCursor, SetWindowPos, ShowWindow, TranslateMessage, UpdateLayeredWindow, HWND_TOPMOST,
     ICON_BIG, ICON_SMALL, IDC_ARROW, IMAGE_ICON, LR_DEFAULTCOLOR, MSG, PM_REMOVE, SM_CXSCREEN,
-    SM_CYSCREEN, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_SHOWMINNOACTIVE, SW_SHOWNOACTIVATE, ULW_ALPHA,
-    WM_CLOSE, WM_DESTROY, WM_QUIT, WM_SETCURSOR, WM_SETICON, WNDCLASSEXW, WS_CAPTION,
-    WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+    SM_CYSCREEN, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_MINIMIZE, SW_SHOWMINNOACTIVE, SW_SHOWNOACTIVATE,
+    ULW_ALPHA, WM_ACTIVATE, WM_CLOSE, WM_DESTROY, WM_QUIT, WM_SETCURSOR, WM_SETICON, WNDCLASSEXW,
+    WS_CAPTION, WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
     WS_EX_TRANSPARENT, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_POPUP, WS_SYSMENU,
 };
 
@@ -48,6 +50,10 @@ use crate::shm::Shm;
 static mut HOST: HWND = HWND(null_mut());
 
 fn main() {
+    let loaded = crate::config::HudConfig::load_file();
+    if loaded.auto_update_on_launch && crate::update::apply_on_launch() {
+        return;
+    }
     let clock_log_path = {
         crate::record::init();
         crate::record::path()
@@ -57,7 +63,6 @@ fn main() {
         None => mxbo_hud::set_status_hint("Clock log failed — see AppData\\Local\\Holeshot HUD\\logs\\boot.txt"),
     }
     crate::plugin::sync();
-    let loaded = crate::config::HudConfig::load_file();
     let family = loaded.font_family;
     *crate::config::CONFIG.lock().unwrap_or_else(|e| e.into_inner()) = loaded;
     let fonts = Fonts::for_family(family)
@@ -101,8 +106,15 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
     .expect("host window");
     unsafe { HOST = host; }
     crate::settings::attach(host);
+    crate::startup::sync_from_config();
     apply_window_icons(host, icon_big, icon_small);
-    let _ = ShowWindow(host, SW_SHOWMINNOACTIVE);
+    crate::tray::add(host, icon_small);
+    let start_minimized = std::env::args().any(|a| a == "--minimized");
+    if start_minimized {
+        let _ = ShowWindow(host, SW_SHOWMINNOACTIVE);
+    } else {
+        crate::settings::show(host);
+    }
 
     let mut game = find_game_hwnd();
     let mut restart_hint = false;
@@ -175,6 +187,9 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
             }
         }
         let overlay_on = zfix.keep_overlay_above(hwnd, game);
+        if overlay_on {
+            crate::settings::keep_above_overlay(host);
+        }
         if let Some(g) = game {
             if let Some((nx, ny, nw, nh)) = client_screen_rect(g) {
                 if nw > 64 && nh > 64 && ((nx - x).abs() > 2 || (ny - y).abs() > 2 || (nw - w).abs() > 2 || (nh - h).abs() > 2)
@@ -348,11 +363,33 @@ unsafe fn icon_from_ico(bytes: &[u8], size: i32) -> windows::Win32::UI::WindowsA
 
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
     if hwnd == HOST {
+        if msg == crate::tray::callback_msg() {
+            crate::tray::on_callback(lp);
+            return LRESULT(0);
+        }
+        if msg != 0 && msg == crate::tray::taskbar_created_msg() {
+            crate::tray::readd();
+            return LRESULT(0);
+        }
+        if msg == WM_ACTIVATE && (wp.0 as u32 & 0xFFFF) != 0 {
+            crate::settings::show(hwnd);
+        }
         if crate::settings::handle_message(msg, wp, lp) {
             return LRESULT(0);
         }
-        if msg == WM_CLOSE || msg == WM_DESTROY {
+        if msg == WM_CLOSE {
+            if crate::config::with_config(|c| c.minimize_on_close) {
+                let _ = ShowWindow(hwnd, SW_MINIMIZE);
+                return LRESULT(0);
+            }
             crate::config::update_config(|_| {});
+            crate::tray::remove();
+            PostQuitMessage(0);
+            return LRESULT(0);
+        }
+        if msg == WM_DESTROY {
+            crate::config::update_config(|_| {});
+            crate::tray::remove();
             PostQuitMessage(0);
             return LRESULT(0);
         }

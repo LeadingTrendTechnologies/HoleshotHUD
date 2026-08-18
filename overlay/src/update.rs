@@ -36,6 +36,24 @@ pub fn current_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
+/// Check GitHub and install a newer build before the UI opens.
+/// Returns true if this process should exit so the updater can relaunch.
+pub fn apply_on_launch() -> bool {
+    if std::env::var_os("HOLESHOT_SKIP_UPDATE").is_some() {
+        return false;
+    }
+    if std::env::args().any(|a| a == "--skip-update") {
+        return false;
+    }
+    let Ok((ver, url)) = latest_release_in(Duration::from_secs(10)) else {
+        return false;
+    };
+    if !version_newer(&ver, current_version()) {
+        return false;
+    }
+    apply(&ver, &url).is_ok()
+}
+
 pub fn check() {
     {
         let mut g = STATE.lock().unwrap_or_else(|e| e.into_inner());
@@ -45,7 +63,7 @@ pub fn check() {
         *g = UpdateState::Checking;
     }
     std::thread::spawn(|| {
-        let next = match latest_release() {
+        let next = match latest_release_in(Duration::from_secs(25)) {
             Ok((ver, url)) => {
                 if version_newer(&ver, current_version()) {
                     UpdateState::Available { version: ver, url }
@@ -76,9 +94,9 @@ pub fn install() {
     });
 }
 
-fn latest_release() -> Result<(String, String), String> {
+fn latest_release_in(timeout: Duration) -> Result<(String, String), String> {
     let agent = ureq::AgentBuilder::new()
-        .timeout(Duration::from_secs(25))
+        .timeout(timeout)
         .user_agent(UA)
         .build();
     let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
@@ -142,7 +160,8 @@ if ($srcDlo -and (Test-Path -LiteralPath $srcDlo)) {{
     try {{ Copy-Item -LiteralPath $srcDlo -Destination $game -Force }} catch {{}}
   }}
 }}
-Start-Process -FilePath $dstExe
+$env:HOLESHOT_SKIP_UPDATE = '1'
+Start-Process -FilePath $dstExe -ArgumentList '--skip-update'
 "#,
         src_exe.display(),
         exe.display(),

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.7
+
+Startup options, opt-in auto-update on launch, and settings that come to the front.
+
+### Settings
+
+- Opening the app from the exe, taskbar, or tray brings Settings on top so you can see it
+- A tray icon is added while the overlay is running; click it to open Settings
+- **Open when Windows starts** and **Minimize on close** are on the Settings tab
+- Minimize on close hides Settings instead of quitting; F8 or the tray brings it back, **Quit overlay** exits
+- Feedback is its own tab under General
+
+### Updates
+
+- **Update automatically on launch** is off until you turn it on
+- When it is on, a newer GitHub release is installed before the window opens
+
 ## 0.1.6
 
 Private feedback inbox, a feature-ask tab, and race logs that survive until after the moto.

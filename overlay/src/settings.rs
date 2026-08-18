@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use tiny_skia::{Color, FillRule, Paint, Path, PathBuilder, Pixmap, PixmapPaint, Rect, Stroke, Transform};
@@ -7,10 +8,13 @@ use windows::Win32::Graphics::Gdi::{
     SetDIBitsToDevice, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HGDIOBJ, PAINTSTRUCT,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, ReleaseCapture, SetCapture, VK_CONTROL};
+use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetClientRect, IsIconic, LoadCursorW, SetCursor, SetForegroundWindow, ShowWindow, IDC_ARROW,
-    IDC_HAND, IDC_IBEAM, IDC_SIZEALL, SW_RESTORE, WM_CHAR, WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDOWN,
-    WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_SETCURSOR,
+    BringWindowToTop, GetClientRect, GetForegroundWindow, GetWindowThreadProcessId, IsIconic,
+    LoadCursorW, SetCursor, SetForegroundWindow, SetWindowPos, ShowWindow, HWND_NOTOPMOST,
+    HWND_TOPMOST, IDC_ARROW, IDC_HAND, IDC_IBEAM, IDC_SIZEALL, SW_RESTORE, SW_SHOW, SWP_NOACTIVATE,
+    SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, WM_CHAR, WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP,
+    WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_SETCURSOR,
 };
 
 use crate::config::{
@@ -40,6 +44,7 @@ const ROW_GAP: f32 = 8.0;
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Tab {
     App,
+    Feedback,
     Standings,
     Relative,
     Map,
@@ -52,6 +57,7 @@ enum Tab {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Hit {
     TabApp,
+    TabFeedback,
     TabSt,
     TabRel,
     TabMap,
@@ -153,6 +159,10 @@ enum Hit {
     InfoPick(InfoBar, u8, BoardField),
     UpdateCheck,
     UpdateInstall,
+    StartWithWindows,
+    MinimizeOnClose,
+    AutoUpdateOnLaunch,
+    QuitApp,
     FbRate,
     FbBug,
     FbFeature,
@@ -227,6 +237,7 @@ struct SettingsUi {
 unsafe impl Send for SettingsUi {}
 
 static UI: Mutex<Option<SettingsUi>> = Mutex::new(None);
+static RAISING: AtomicBool = AtomicBool::new(false);
 
 const SIDE_W: f32 = 204.0;
 
@@ -249,9 +260,68 @@ pub fn attach(host: HWND) {
 
 pub fn show(host: HWND) {
     unsafe {
-        let _ = ShowWindow(host, SW_RESTORE);
-        let _ = SetForegroundWindow(host);
+        force_to_front(host);
     }
+}
+
+/// Keep settings above the game overlay while the window is open.
+pub fn keep_above_overlay(host: HWND) {
+    unsafe {
+        if IsIconic(host).as_bool() {
+            return;
+        }
+        let _ = SetWindowPos(
+            host,
+            HWND_TOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOACTIVATE,
+        );
+    }
+}
+
+unsafe fn force_to_front(host: HWND) {
+    if RAISING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    if IsIconic(host).as_bool() {
+        let _ = ShowWindow(host, SW_RESTORE);
+    } else {
+        let _ = ShowWindow(host, SW_SHOW);
+    }
+    let fg = GetForegroundWindow();
+    let fg_tid = GetWindowThreadProcessId(fg, None);
+    let this_tid = GetCurrentThreadId();
+    let attached = fg_tid != 0
+        && fg_tid != this_tid
+        && AttachThreadInput(this_tid, fg_tid, BOOL(1)).as_bool();
+    let _ = BringWindowToTop(host);
+    let _ = SetForegroundWindow(host);
+    let _ = SetWindowPos(
+        host,
+        HWND_TOPMOST,
+        0,
+        0,
+        0,
+        0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+    );
+    let _ = SetWindowPos(
+        host,
+        HWND_NOTOPMOST,
+        0,
+        0,
+        0,
+        0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+    );
+    if attached {
+        let _ = AttachThreadInput(this_tid, fg_tid, BOOL(0));
+    }
+    let _ = SetForegroundWindow(host);
+    RAISING.store(false, Ordering::SeqCst);
 }
 
 pub fn paint(fonts: &Fonts) {
@@ -573,6 +643,10 @@ fn click(p: (f32, f32)) {
             set_tab(Tab::App);
             return;
         }
+        Hit::TabFeedback => {
+            set_tab(Tab::Feedback);
+            return;
+        }
         Hit::TabSt => {
             set_tab(Tab::Standings);
             return;
@@ -637,6 +711,31 @@ fn click(p: (f32, f32)) {
         Hit::UpdateInstall => {
             close_drop();
             crate::update::install();
+            return;
+        }
+        Hit::StartWithWindows => {
+            close_drop();
+            let on = crate::config::with_config(|c| !c.start_with_windows);
+            crate::config::update_config(|c| c.start_with_windows = on);
+            crate::startup::set_enabled(on);
+            return;
+        }
+        Hit::MinimizeOnClose => {
+            close_drop();
+            crate::config::update_config(|c| c.minimize_on_close = !c.minimize_on_close);
+            return;
+        }
+        Hit::AutoUpdateOnLaunch => {
+            close_drop();
+            crate::config::update_config(|c| c.auto_update_on_launch = !c.auto_update_on_launch);
+            return;
+        }
+        Hit::QuitApp => {
+            close_drop();
+            crate::config::update_config(|_| {});
+            unsafe {
+                windows::Win32::UI::WindowsAndMessaging::PostQuitMessage(0);
+            }
             return;
         }
         Hit::FbRate => {
@@ -761,12 +860,13 @@ fn click(p: (f32, f32)) {
         Hit::RelInc => c.relative_count = (c.relative_count + 1).min(8),
         Hit::TickerDec => c.ticker_count = (c.ticker_count - 1).max(3),
         Hit::TickerInc => c.ticker_count = (c.ticker_count + 1).min(15),
-        Hit::TabApp | Hit::TabSt | Hit::TabRel | Hit::TabMap | Hit::TabMini | Hit::TabRadar | Hit::TabDash
+        Hit::TabApp | Hit::TabFeedback | Hit::TabSt | Hit::TabRel | Hit::TabMap | Hit::TabMini | Hit::TabRadar | Hit::TabDash
         | Hit::TabTicker
         | Hit::MapDotOpen | Hit::MiniDotOpen | Hit::FontOpen | Hit::UnitsOpen | Hit::DashFootOpen(_)
         | Hit::TickerFootOpen(_)
         | Hit::InfoOpen(_, _)
-        | Hit::UpdateCheck | Hit::UpdateInstall
+        | Hit::UpdateCheck | Hit::UpdateInstall | Hit::StartWithWindows | Hit::MinimizeOnClose
+        | Hit::AutoUpdateOnLaunch | Hit::QuitApp
         | Hit::FbRate | Hit::FbBug | Hit::FbFeature | Hit::FbStar(_) | Hit::FbText | Hit::FbAttach | Hit::FbSend
         | Hit::StDrag(_) | Hit::RelDrag(_)
         | Hit::StBg | Hit::RelBg | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarBg | Hit::DashBg | Hit::TickerBg
@@ -832,8 +932,15 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
         fill_rect(px, r, row_line());
     }
 
-    let tabs = [
-        (Tab::App, Hit::TabApp, "App", true),
+    let mut ty = 84.0;
+    ty = nav_group(px, fonts, 12.0, ty, "General");
+    nav_tab(px, fonts, 12.0, ty, SIDE_W - 24.0, 36.0, tab == Tab::App, true, "Settings", Hit::TabApp, hover, &mut hits);
+    ty += 40.0;
+    nav_tab(px, fonts, 12.0, ty, SIDE_W - 24.0, 36.0, tab == Tab::Feedback, true, "Feedback", Hit::TabFeedback, hover, &mut hits);
+    ty += 40.0;
+    ty += 6.0;
+    ty = nav_group(px, fonts, 12.0, ty, "Widgets");
+    let widgets = [
         (Tab::Standings, Hit::TabSt, "Standings", cfg.show_standings),
         (Tab::Relative, Hit::TabRel, "Relative", cfg.show_relative),
         (Tab::Map, Hit::TabMap, "Map", cfg.show_map),
@@ -842,8 +949,7 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
         (Tab::Dash, Hit::TabDash, "Dash", cfg.show_dash),
         (Tab::Ticker, Hit::TabTicker, "H-Standings", cfg.show_ticker),
     ];
-    let mut ty = 84.0;
-    for (t, hit, name, on) in tabs {
+    for (t, hit, name, on) in widgets {
         nav_tab(px, fonts, 12.0, ty, SIDE_W - 24.0, 36.0, t == tab, on, name, hit, hover, &mut hits);
         ty += 40.0;
     }
@@ -856,6 +962,7 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
     let py = 24.0 - scroll;
     let bottom = match tab {
         Tab::App => pane_app(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
+        Tab::Feedback => pane_feedback_tab(px, fonts, hover, &mut hits, x, py, cw),
         Tab::Standings => pane_standings(px, fonts, &cfg, hover, open_drop, drag, &mut hits, x, py, cw),
         Tab::Relative => pane_relative(px, fonts, &cfg, hover, open_drop, drag, &mut hits, x, py, cw),
         Tab::Map => pane_map(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
@@ -912,6 +1019,11 @@ fn text_tracked(
     }
 }
 
+fn nav_group(px: &mut Pixmap, fonts: &Fonts, x: f32, y: f32, label: &str) -> f32 {
+    text(px, fonts, &label.to_ascii_uppercase(), 10.0, x + 14.0, y + 6.0, dim(), false);
+    y + 24.0
+}
+
 fn nav_tab(
     px: &mut Pixmap,
     fonts: &Fonts,
@@ -954,7 +1066,7 @@ fn pane_app(
     y: f32,
     w: f32,
 ) -> f32 {
-    heading(px, fonts, x, y, "App", "Font and units apply to every widget");
+    heading(px, fonts, x, y, "Settings", "Font and units apply to every widget");
     let mut y = y + 64.0;
     y = section(px, fonts, x, y, "Look");
     y = dropdown_row(
@@ -996,7 +1108,19 @@ fn pane_app(
         hover,
         hits,
     );
+    y = section(px, fonts, x, y, "Startup");
+    y = toggle_row(px, fonts, x, y, w, "Open when Windows starts", cfg.start_with_windows, Hit::StartWithWindows, hover, hits);
+    y = toggle_row(px, fonts, x, y, w, "Minimize on close", cfg.minimize_on_close, Hit::MinimizeOnClose, hover, hits);
+    if cfg.minimize_on_close {
+        text(px, fonts, "Closing the window hides settings. F8 brings them back.", 11.0, x + 4.0, y + 2.0, dim(), false);
+        y += 22.0;
+    }
     y = section(px, fonts, x, y, "Updates");
+    y = toggle_row(px, fonts, x, y, w, "Update automatically on launch", cfg.auto_update_on_launch, Hit::AutoUpdateOnLaunch, hover, hits);
+    if cfg.auto_update_on_launch {
+        text(px, fonts, "Checks GitHub before opening and installs if a newer version is out.", 11.0, x + 4.0, y + 2.0, dim(), false);
+        y += 22.0;
+    }
     let update = crate::update::state();
     let (status, extra, show_check, show_install) = match &update {
         crate::update::UpdateState::Idle => ("Check GitHub for a newer build.", None, true, false),
@@ -1053,8 +1177,8 @@ fn pane_app(
         );
     }
     y += card_h + 14.0;
-    y = section(px, fonts, x, y, "Feedback");
-    y = pane_feedback(px, fonts, hover, hits, x, y, w);
+    action_btn(px, fonts, x, y, 120.0, 32.0, "Quit overlay", Hit::QuitApp, hover, hits, false);
+    y += 46.0;
     text(
         px,
         fonts,
@@ -1066,6 +1190,19 @@ fn pane_app(
         false,
     );
     y + 28.0
+}
+
+fn pane_feedback_tab(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+    x: f32,
+    y: f32,
+    w: f32,
+) -> f32 {
+    heading(px, fonts, x, y, "Feedback", "Rate the app, report a bug, or ask for a feature");
+    pane_feedback(px, fonts, hover, hits, x, y + 64.0, w)
 }
 
 fn pane_feedback(
