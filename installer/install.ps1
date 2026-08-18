@@ -108,6 +108,7 @@ try {
 } catch {
     throw "Could not copy mxbo.dlo into MX Bikes. Fully quit the game and run Install again."
 }
+Set-Content -LiteralPath (Join-Path $InstallDir "gamedir.txt") -Value $game -Encoding UTF8
 
 Copy-Item -LiteralPath $overlaySrc -Destination (Join-Path $InstallDir "Holeshot-HUD.exe") -Force
 Copy-Item -LiteralPath (Join-Path $Here "Uninstall.ps1") -Destination (Join-Path $InstallDir "Uninstall.ps1") -Force

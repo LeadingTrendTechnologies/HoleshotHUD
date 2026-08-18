@@ -323,7 +323,7 @@ dependencies = [
 
 [[package]]
 name = "mxbo-hud"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "fontdue",
  "tiny-skia",
@@ -331,7 +331,7 @@ dependencies = [
 
 [[package]]
 name = "mxbo-overlay"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "fontdue",
  "mxbo-hud",

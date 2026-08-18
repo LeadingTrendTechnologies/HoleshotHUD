@@ -31,6 +31,9 @@ fn install_once() -> Result<bool, ()> {
     if dest.is_file() {
         if let Ok(existing) = fs::read(&dest) {
             if existing == bytes {
+                if let Some(game) = dest.parent().and_then(|p| p.parent()) {
+                    save_game_dir(game);
+                }
                 return Ok(false);
             }
         }
@@ -39,7 +42,12 @@ fn install_once() -> Result<bool, ()> {
         let _ = fs::create_dir_all(parent);
     }
     match fs::write(&dest, bytes) {
-        Ok(()) => Ok(false),
+        Ok(()) => {
+            if let Some(game) = dest.parent().and_then(|p| p.parent()) {
+                save_game_dir(game);
+            }
+            Ok(false)
+        }
         Err(_) => Ok(true),
     }
 }
@@ -76,13 +84,20 @@ fn plugin_dest() -> Option<PathBuf> {
 fn game_dir() -> Option<PathBuf> {
     if let Ok(dir) = std::env::var("MXBIKES_DIR") {
         let p = PathBuf::from(dir);
-        if p.join("plugins").is_dir() {
+        if looks_like_game(&p) {
+            save_game_dir(&p);
+            return Some(p);
+        }
+    }
+    if let Some(p) = saved_game_dir() {
+        if looks_like_game(&p) {
             return Some(p);
         }
     }
     for lib in steam_libraries() {
         let p = lib.join("steamapps").join("common").join("MX Bikes");
-        if p.join("plugins").is_dir() || p.join("mxbikes.exe").is_file() {
+        if looks_like_game(&p) {
+            save_game_dir(&p);
             return Some(p);
         }
     }
@@ -93,11 +108,38 @@ fn game_dir() -> Option<PathBuf> {
         r"E:\Steam\steamapps\common\MX Bikes",
     ] {
         let p = PathBuf::from(p);
-        if p.join("plugins").is_dir() || p.join("mxbikes.exe").is_file() {
+        if looks_like_game(&p) {
+            save_game_dir(&p);
             return Some(p);
         }
     }
     None
+}
+
+fn looks_like_game(p: &Path) -> bool {
+    p.join("plugins").is_dir() || p.join("mxbikes.exe").is_file()
+}
+
+fn app_dir() -> Option<PathBuf> {
+    Some(PathBuf::from(std::env::var("LOCALAPPDATA").ok()?).join("Holeshot HUD"))
+}
+
+fn saved_game_dir() -> Option<PathBuf> {
+    let text = fs::read_to_string(app_dir()?.join("gamedir.txt")).ok()?;
+    let p = PathBuf::from(text.trim());
+    if p.as_os_str().is_empty() {
+        None
+    } else {
+        Some(p)
+    }
+}
+
+fn save_game_dir(p: &Path) {
+    let Some(dir) = app_dir() else {
+        return;
+    };
+    let _ = fs::create_dir_all(&dir);
+    let _ = fs::write(dir.join("gamedir.txt"), p.to_string_lossy().as_bytes());
 }
 
 fn steam_libraries() -> Vec<PathBuf> {

@@ -81,4 +81,7 @@ try {
 } catch {
     exit 2
 }
+$app = Join-Path $env:LOCALAPPDATA "Holeshot HUD"
+New-Item -ItemType Directory -Force -Path $app | Out-Null
+Set-Content -LiteralPath (Join-Path $app "gamedir.txt") -Value $game -Encoding UTF8
 exit 0

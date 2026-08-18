@@ -11,10 +11,13 @@ A browser demo of the same HUD widgets lives in [`web/`](web/). Build it with `b
 ## Download and install
 
 1. Download **[HoleshotHUD-Setup.exe](https://github.com/LeadingTrendTechnologies/HoleshotHUD/releases/latest/download/HoleshotHUD-Setup.exe)** (always the latest release).
-2. Run the Setup file. If SmartScreen appears, choose **More info → Run anyway**.
-3. Set MX Bikes to **borderless** or **windowed**.
-4. Start the game, then start **Holeshot HUD** from the desktop shortcut.
-5. Press **F8** for settings. Hold **Ctrl** and drag widgets to move or resize.
+2. Run the Setup file. If SmartScreen appears, choose **More info → Run anyway**. Setup installs to `%LOCALAPPDATA%\Holeshot HUD` (no admin).
+3. Setup finds Steam MX Bikes (registry + Steam library folders) and copies `mxbo.dlo` into the game `plugins` folder. If the game is not found, pick the folder that contains `mxbikes.exe`.
+4. Set MX Bikes to **borderless** or **windowed**.
+5. Start the game, then start **Holeshot HUD** from the desktop shortcut.
+6. Press **F8** for settings. Hold **Ctrl** and drag widgets to move or resize.
+
+The overlay copies the plugin again on launch if it is missing or outdated. The chosen game folder is saved next to the overlay so a manual pick still works later.
 
 Pull requests also build `HoleshotHUD-Setup.exe` as a workflow artifact for testing. That does not change the website download until you publish a `v*` tag.
 
@@ -43,8 +46,8 @@ pack.bat
 Push a tag to publish a downloadable release:
 
 ```bat
-git tag v0.1.2
-git push origin v0.1.2
+git tag v0.1.3
+git push origin v0.1.3
 ```
 
 ## Data wiki

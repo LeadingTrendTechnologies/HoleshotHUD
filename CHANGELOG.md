@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.3
+
+Installer remembers the MX Bikes folder, and a version tag only runs the Release pipeline.
+
+### Install
+
+- Setup still finds Steam MX Bikes from the registry and library folders, then copies `mxbo.dlo` into `plugins`
+- If you pick the game folder by hand, that path is saved to `%LOCALAPPDATA%\Holeshot HUD\gamedir.txt`
+- The overlay uses the saved folder on launch so plugin updates still copy when Steam search would miss
+- Uninstall removes the plugin from that saved folder
+
+### Other
+
+- Pushing a `Ship …` commit plus a `v*` tag runs only the Release workflow (Build and Pages skip)
+
 ## 0.1.2
 
 Dash session clock, extra laps, and race flags from recent motos. Horizontal Standings bar.

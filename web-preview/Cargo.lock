@@ -144,7 +144,7 @@ dependencies = [
 
 [[package]]
 name = "mxbo-hud"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "fontdue",
  "tiny-skia",
@@ -152,7 +152,7 @@ dependencies = [
 
 [[package]]
 name = "mxbo-web-preview"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "mxbo-hud",
  "tiny-skia",

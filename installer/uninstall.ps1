@@ -36,6 +36,16 @@ function Get-SteamLibraries {
 
 Get-Process -Name "Holeshot-HUD", "mxbo-overlay", "MXBO Overlay", "Holeshot HUD" -ErrorAction SilentlyContinue | Stop-Process -Force
 
+$saved = Join-Path $InstallDir "gamedir.txt"
+if (Test-Path $saved) {
+    $game = (Get-Content -LiteralPath $saved -Raw).Trim()
+    $plugin = Join-Path $game "plugins\mxbo.dlo"
+    if ($game -and (Test-Path $plugin)) {
+        Remove-Item -LiteralPath $plugin -Force
+        Write-Host "Removed $plugin"
+    }
+}
+
 foreach ($lib in Get-SteamLibraries) {
     $plugin = Join-Path $lib "steamapps\common\MX Bikes\plugins\mxbo.dlo"
     if (Test-Path $plugin) {
