@@ -8,6 +8,8 @@ on:
 
 jobs:
   windows:
+    # Version tags run Release only. Skip this duplicate Windows build on Ship commits.
+    if: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' || !startsWith(github.event.head_commit.message, 'Ship ') }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
