@@ -1,0 +1,44 @@
+# Relative
+
+Riders immediately ahead and behind you on track position, not classification order. Settings subtitle: “Riders just ahead and behind you”.
+
+## Code
+
+- Draw: `draw_relative` in `overlay/hud/src/render.rs`
+- Columns: `RelField` in `overlay/hud/src/config.rs`
+- Settings: `pane_relative` in `overlay/src/settings.rs`
+- In-game HUD copy: `drawRelative` in `src/hud/widgets.cpp`
+
+## Data
+
+Sorts `riders[].track_pos` wrapped around you (`wrap` so +0.5 / −0.5 is the far side of the loop). Focus is `focus_race_num`, else `local_race_num`.
+
+**Nearby riders** (`relative_count`) is count *each side*, not total rows. Visible set is up to `2 * count + 1` (ahead + you + behind).
+
+Classification is joined by race number for position, laps, bike, best/last, penalty, interval, status.
+
+## Behavior
+
+- Same chrome as Standings (header bar, track name, column headers, optional footer).
+- Your row is highlighted. Lapping colors on **other** rows: blue if they are a lap ahead and closing from behind, red if you are a lap ahead and closing on them (`lap_rel` / `lap_row_bg`). Off in warmup.
+- **Gap column is not classification gap.** It is `|wrapped_frac * track_length / local_speed|` in seconds (you show `0.0`). Speed floor is 4 so a stopped rider does not explode the number.
+- Rows slide when the nearby set changes (`REL_SLIDE`).
+- Duplicate race numbers are skipped. Empty names with `race_num <= 0` are skipped.
+
+Default columns on: Number, Name, Gap, Fastest, Last lap.
+
+## Do not regress
+
+- Do not sort Relative by standings position. It is on-track neighbors.
+- Keep the wrap (`d > 0.5` subtract 1, `d < -0.5` add 1) or the “nearest” set jumps across S/F.
+- Empty / no telemetry shows “Waiting for positions”.
+- No blue/red lapping row tints in warmup.
+
+## Change log
+
+- Early overlay — Track-pos relative board with count-each-side.
+- 0.1.0 — Configurable header fields.
+- 0.1.4 — Lapping row backgrounds (blue / red) using the same close-and-a-lap-ahead rule as map dots.
+- 0.1.8 — Hidden until **Show on overlay**.
+- 2026-08-18 — Wiki created. Gap remains estimated time from track delta / speed, not `gap_ms`.
+- 2026-08-19 — Warmup drops lapping row tints; practice laps are not race lapping.

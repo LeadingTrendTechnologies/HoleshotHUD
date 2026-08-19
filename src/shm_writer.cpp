@@ -9,7 +9,10 @@
 #include "shm/mxbo_shm.h"
 #include "config.h"
 #include "state.h"
+#include "str_util.h"
+#include "track_geom.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cmath>
 #include <cstring>
@@ -18,54 +21,6 @@
 
 namespace
 {
-    constexpr float kPi = 3.14159265358979323846f;
-    constexpr float kDeg = 180.0f / kPi;
-
-    void copyName(char* dest, int destSize, const char* src)
-    {
-        if (!dest || destSize <= 0)
-        {
-            return;
-        }
-        dest[0] = '\0';
-        if (!src)
-        {
-            return;
-        }
-        int n = 0;
-        while (src[n] && n + 1 < destSize)
-        {
-            dest[n] = src[n];
-            ++n;
-        }
-        dest[n] = '\0';
-    }
-
-    float deg2rad(float d)
-    {
-        return d * kPi / 180.0f;
-    }
-
-    void advanceAlongArc(float& x, float& y, float& angleDeg, float radius, float distance)
-    {
-        const float r = (std::fabs(radius) < 0.05f) ? 0.0f : radius;
-        if (r == 0.0f)
-        {
-            const float a = deg2rad(angleDeg);
-            x += std::sin(a) * distance;
-            y += std::cos(a) * distance;
-            return;
-        }
-        const float a = deg2rad(angleDeg);
-        const float dTheta = distance / r;
-        const float cx = x + std::cos(a) * r;
-        const float cy = y - std::sin(a) * r;
-        const float n = a + dTheta;
-        x = cx - std::cos(n) * r;
-        y = cy + std::sin(n) * r;
-        angleDeg += dTheta * kDeg;
-    }
-
     void tessellate(const PluginState& state, MxboShmPoint* out, int32_t* count)
     {
         *count = 0;
@@ -75,42 +30,19 @@ namespace
         const auto& segs = state.centerline();
         if (!segs.empty())
         {
-            float x = segs[0].startX;
-            float y = segs[0].startZ;
-            float heading = segs[0].angle;
             auto push = [&](float px, float pz) {
                 if (!pts.empty())
                 {
                     const float dx = px - pts.back().x;
                     const float dz = pz - pts.back().z;
-                    if (dx * dx + dz * dz < 0.04f)
+                    if (dx * dx + dz * dz < track_geom::kDedupDistSq)
                     {
                         return;
                     }
                 }
                 pts.push_back(MxboShmPoint{px, pz});
             };
-            push(x, y);
-            for (const auto& s : segs)
-            {
-                if (s.length <= 0.01f)
-                {
-                    continue;
-                }
-                if (s.type == 0 || std::fabs(s.radius) < 0.05f)
-                {
-                    advanceAlongArc(x, y, heading, 0.0f, s.length);
-                    push(x, y);
-                    continue;
-                }
-                const int steps = std::max(6, static_cast<int>(std::ceil(s.length / 0.55f)));
-                const float step = s.length / static_cast<float>(steps);
-                for (int i = 0; i < steps; ++i)
-                {
-                    advanceAlongArc(x, y, heading, s.radius, step);
-                    push(x, y);
-                }
-            }
+            track_geom::walkCenterline(segs, push);
         }
         else
         {
@@ -220,7 +152,7 @@ void ShmWriter::publish(const PluginState& state, const PluginConfig& config)
     local.localYaw = state.localYaw();
     local.localSpeed = state.localSpeed();
     local.localTrackPos = state.localTrackPos();
-    copyName(local.trackName, MXBO_TRACK_NAME, state.trackName().c_str());
+    copyBounded(local.trackName, MXBO_TRACK_NAME, state.trackName().c_str());
     local.trackLength = state.trackLength();
     local.sfMeters = state.startFinishMeters();
 
@@ -239,7 +171,7 @@ void ShmWriter::publish(const PluginState& state, const PluginConfig& config)
         d.trackPos = p.trackPos;
         d.crashed = p.crashed;
         const RaceEntry* e = state.findEntry(p.raceNum);
-        copyName(d.name, MXBO_NAME, e ? e->name.c_str() : "");
+        copyBounded(d.name, MXBO_NAME, e ? e->name.c_str() : "");
     }
 
     const int nStand = std::min(static_cast<int>(state.standings().size()), MXBO_MAX_STANDINGS);
@@ -260,10 +192,10 @@ void ShmWriter::publish(const PluginState& state, const PluginConfig& config)
         const TrackPos* tp = state.findTrackPos(s.raceNum);
         d.crashed = tp ? tp->crashed : 0;
         const RaceEntry* e = state.findEntry(s.raceNum);
-        copyName(d.name, MXBO_NAME, e ? e->name.c_str() : "");
-        copyName(d.bike, MXBO_NAME, e ? e->bikeShort.c_str() : "");
+        copyBounded(d.name, MXBO_NAME, e ? e->name.c_str() : "");
+        copyBounded(d.bike, MXBO_NAME, e ? e->bikeShort.c_str() : "");
         d.lastLapMs = s.lastLapMs;
-        copyName(d.category, MXBO_NAME, e ? e->category.c_str() : "");
+        copyBounded(d.category, MXBO_NAME, e ? e->category.c_str() : "");
     }
 
     local.map = MxboShmRect{config.map.x, config.map.y, config.map.w, config.map.h};

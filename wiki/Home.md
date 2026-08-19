@@ -33,16 +33,24 @@ MX Bikes
 
 Telemetry rate is whatever `Startup` returns (**50 Hz** now). Classification / track positions / vehicle data arrive on the game’s race tick, not necessarily 50 Hz.
 
-To add a widget: if the field is **Overlay**, draw it. If **Cached** / **Received** / **Unused**, add it to `PluginState` + `MxboShmSnapshot` (bump `MXBO_SHM_VERSION`) + overlay `shm.rs`, then draw.
+To add a widget: if the field is **Overlay**, draw it. If **Cached** / **Received** / **Unused**, add it to `PluginState` + `MxboShmSnapshot` (bump `MXBO_SHM_VERSION`) + overlay `shm.rs`, then draw. Add `wiki/widgets/<name>.md` and a row in [widgets.md](widgets.md).
 
 ---
 
+## Overlay widget wikis
+
+Per-widget behavior, pitfalls, and change history for agents: **[widgets.md](widgets.md)**.
+
 ## What the overlay already shows
 
-- Standings: place, `#`, name, gap (ms or laps)
-- Horizontal Standings: leader on the left, your name highlighted; lap/temp ends
-- Relative: riders near you on `m_fTrackPos`
-- Map: tessellated centerline, rider XZ + yaw, crash, S/F meters, track name
+- [Standings](widgets/standings.md): place, `#`, name, gap (ms or laps)
+- [Horizontal Standings](widgets/horizontal-standings.md): leader on the left, your name highlighted; lap/temp ends
+- [Relative](widgets/relative.md): riders near you on `m_fTrackPos`
+- [Map](widgets/map.md): tessellated centerline, rider XZ + yaw, crash, S/F meters, track name
+- [Minimap](widgets/minimap.md): circular zoomed track
+- [Radar](widgets/radar.md): side / rear proximity
+- [Dash](widgets/dash.md): gear, speed, session clock, flags
+- [Systems](widgets/systems.md): CPU / mem / FPS (also draws off-track)
 
 Local speed / yaw / crash / track pos are in SHM for the moving marker, not as their own widgets yet.
 
@@ -424,11 +432,13 @@ The plugin API does **not** include:
 
 ## Widget cheat sheet
 
+Existing overlay widgets: [widgets.md](widgets.md) (behavior + change logs). Fields below are plugin status, not the overlay UI.
+
 | Widget | Primary fields | Status |
 | --- | --- | --- |
-| Standings | classification + names | Overlay |
-| Relative | `m_fTrackPos` + names | Overlay |
-| Map | centerline + positions | Overlay |
+| [Standings](widgets/standings.md) | classification + names | Overlay |
+| [Relative](widgets/relative.md) | `m_fTrackPos` + names | Overlay |
+| [Map](widgets/map.md) | centerline + positions | Overlay |
 | Speed / gear / RPM | telemetry + event max/shift RPM | Need SHM |
 | Shift light | `m_iRPM` vs `m_iShiftRPM` | Need SHM |
 | Throttle / brakes / clutch | telemetry inputs | Need SHM |
@@ -455,7 +465,8 @@ The plugin API does **not** include:
 3. `src/state.h` / `src/state.cpp` — keep latest value  
 4. `src/shm/mxbo_shm.h` + `src/shm_writer.cpp` — publish  
 5. `overlay/src/shm.rs` — same C layout  
-6. `overlay/src/render.rs` — draw the widget  
-7. `src/config.h` — optional `show_*` + ini rect  
+6. `overlay/hud/src/render.rs` — draw the widget
+7. `src/config.h` — optional `show_*` + ini rect
+8. `wiki/widgets/<name>.md` — agent context + change log
 
 Enums without comments in the header (`m_iSession`, `m_iConditions`, `m_iType`, communication codes) should be logged once in-game before you hard-code labels.

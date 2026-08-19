@@ -1,5 +1,4 @@
 #include "vendor/piboso/mxb_api.h"
-#include "color.h"
 #include "config.h"
 #include "state.h"
 #include "hud/draw_list.h"
@@ -140,9 +139,46 @@ namespace
         g_layoutDirty = true;
     }
 
+    void stampIniWriteTime()
+    {
+        if (g_iniPath.empty())
+        {
+            return;
+        }
+        WIN32_FILE_ATTRIBUTE_DATA fad{};
+        if (GetFileAttributesExA(g_iniPath.c_str(), GetFileExInfoStandard, &fad))
+        {
+            g_iniWriteTime = fad.ftLastWriteTime;
+        }
+    }
+
     void publishHud()
     {
         g_shm.publish(g_state, g_config);
+    }
+
+    template <typename Fn>
+    void safeCall(Fn&& fn)
+    {
+        try
+        {
+            fn();
+        }
+        catch (...)
+        {
+        }
+    }
+
+    template <typename T, typename Fn>
+    void onCopied(void* data, int size, Fn&& fn)
+    {
+        safeCall([&] {
+            T dest{};
+            if (copySized(dest, data, size))
+            {
+                fn(dest);
+            }
+        });
     }
 }
 
@@ -171,6 +207,7 @@ __declspec(dllexport) int Startup(char* _szSavePath)
         g_savePath = _szSavePath ? _szSavePath : "";
         g_iniPath = joinPath(g_savePath.c_str(), "mxbo.ini");
         g_config.load(g_iniPath);
+        stampIniWriteTime();
         g_layoutDirty = true;
         g_shm.open();
         ensureOverlayCompat();
@@ -184,8 +221,7 @@ __declspec(dllexport) int Startup(char* _szSavePath)
 
 __declspec(dllexport) void Shutdown()
 {
-    try
-    {
+    safeCall([] {
         if (!g_iniPath.empty())
         {
             g_config.save(g_iniPath);
@@ -193,90 +229,55 @@ __declspec(dllexport) void Shutdown()
         g_state.clearEvent();
         g_draw.clear();
         g_shm.close();
-    }
-    catch (...)
-    {
-    }
+    });
 }
 
 __declspec(dllexport) void EventInit(void* _pData, int _iDataSize)
 {
-    try
-    {
+    safeCall([&] {
         SPluginsBikeEvent_t data{};
         copySized(data, _pData, _iDataSize);
         g_state.setEvent(data);
         g_layoutDirty = true;
-    }
-    catch (...)
-    {
-    }
+    });
 }
 
 __declspec(dllexport) void EventDeinit()
 {
-    try
-    {
+    safeCall([] {
         g_state.clearEvent();
         g_layoutDirty = true;
         publishHud();
-    }
-    catch (...)
-    {
-    }
+    });
 }
 
 __declspec(dllexport) void RunInit(void* _pData, int _iDataSize)
 {
     (void)_pData;
     (void)_iDataSize;
-    try
-    {
-        g_state.beginRun();
-    }
-    catch (...)
-    {
-    }
+    safeCall([] { g_state.beginRun(); });
 }
 
 __declspec(dllexport) void RunDeinit()
 {
-    try
-    {
+    safeCall([] {
         g_state.endRun();
         publishHud();
-    }
-    catch (...)
-    {
-    }
+    });
 }
 
 __declspec(dllexport) void RunStart()
 {
-    try
-    {
-        g_state.beginRun();
-    }
-    catch (...)
-    {
-    }
+    safeCall([] { g_state.beginRun(); });
 }
 
 __declspec(dllexport) void RunStop() {}
 
 __declspec(dllexport) void RunLap(void* _pData, int _iDataSize)
 {
-    try
-    {
-        SPluginsBikeLap_t data{};
-        if (copySized(data, _pData, _iDataSize))
-        {
-            g_state.setLocalLap(data.m_iLapNum, data.m_iLapTime);
-        }
-    }
-    catch (...)
-    {
-    }
+    onCopied<SPluginsBikeLap_t>(_pData, _iDataSize, [](const SPluginsBikeLap_t& data) {
+        g_state.setLocalLap(data.m_iLapNum, data.m_iLapTime);
+    });
 }
 
 __declspec(dllexport) void RunSplit(void* _pData, int _iDataSize)
@@ -287,17 +288,9 @@ __declspec(dllexport) void RunSplit(void* _pData, int _iDataSize)
 
 __declspec(dllexport) void RunTelemetry(void* _pData, int _iDataSize, float _fTime, float _fPos)
 {
-    try
-    {
-        SPluginsBikeData_t data{};
-        if (copySized(data, _pData, _iDataSize))
-        {
-            g_state.setTelemetry(data, _fTime, _fPos);
-        }
-    }
-    catch (...)
-    {
-    }
+    onCopied<SPluginsBikeData_t>(_pData, _iDataSize, [&](const SPluginsBikeData_t& data) {
+        g_state.setTelemetry(data, _fTime, _fPos);
+    });
 }
 
 __declspec(dllexport) int DrawInit(int* _piNumSprites, char** _pszSpriteName, int* _piNumFonts, char** _pszFontName)
@@ -342,9 +335,9 @@ __declspec(dllexport) void Draw(int _iState, int* _piNumQuads, void** _ppQuad, i
         }
 
         g_draw.clear();
-        if (g_draw.quads.capacity() < 2048)
+        if (g_draw.quads.capacity() < kDrawQuadReserve)
         {
-            g_draw.quads.reserve(2048);
+            g_draw.quads.reserve(kDrawQuadReserve);
         }
 
         if (g_layoutDirty || g_state.centerlineDirty())
@@ -392,122 +385,66 @@ __declspec(dllexport) void Draw(int _iState, int* _piNumQuads, void** _ppQuad, i
 
 __declspec(dllexport) void TrackCenterline(int _iNumSegments, SPluginsTrackSegment_t* _pasSegment, void* _pRaceData)
 {
-    try
-    {
+    safeCall([&] {
         if (_iNumSegments > 0 && !_pasSegment)
         {
             return;
         }
         g_state.setCenterline(_iNumSegments, _pasSegment, static_cast<const float*>(_pRaceData));
         g_layoutDirty = true;
-    }
-    catch (...)
-    {
-    }
+    });
 }
 
 __declspec(dllexport) void RaceEvent(void* _pData, int _iDataSize)
 {
-    try
-    {
-        SPluginsRaceEvent_t data{};
-        if (copySized(data, _pData, _iDataSize))
-        {
-            g_state.setRaceEvent(data);
-        }
-    }
-    catch (...)
-    {
-    }
+    onCopied<SPluginsRaceEvent_t>(_pData, _iDataSize, [](const SPluginsRaceEvent_t& data) {
+        g_state.setRaceEvent(data);
+    });
 }
 
 __declspec(dllexport) void RaceDeinit()
 {
-    try
-    {
+    safeCall([] {
         g_state.endRun();
         g_state.clearRace();
         g_layoutDirty = true;
         publishHud();
-    }
-    catch (...)
-    {
-    }
+    });
 }
 
 __declspec(dllexport) void RaceAddEntry(void* _pData, int _iDataSize)
 {
-    try
-    {
-        SPluginsRaceAddEntry_t data{};
-        if (copySized(data, _pData, _iDataSize))
-        {
-            g_state.addEntry(data);
-        }
-    }
-    catch (...)
-    {
-    }
+    onCopied<SPluginsRaceAddEntry_t>(_pData, _iDataSize, [](const SPluginsRaceAddEntry_t& data) {
+        g_state.addEntry(data);
+    });
 }
 
 __declspec(dllexport) void RaceRemoveEntry(void* _pData, int _iDataSize)
 {
-    try
-    {
-        SPluginsRaceRemoveEntry_t data{};
-        if (copySized(data, _pData, _iDataSize))
-        {
-            g_state.removeEntry(data.m_iRaceNum);
-        }
-    }
-    catch (...)
-    {
-    }
+    onCopied<SPluginsRaceRemoveEntry_t>(_pData, _iDataSize, [](const SPluginsRaceRemoveEntry_t& data) {
+        g_state.removeEntry(data.m_iRaceNum);
+    });
 }
 
 __declspec(dllexport) void RaceSession(void* _pData, int _iDataSize)
 {
-    try
-    {
-        SPluginsRaceSession_t data{};
-        if (copySized(data, _pData, _iDataSize))
-        {
-            g_state.setSession(data);
-        }
-    }
-    catch (...)
-    {
-    }
+    onCopied<SPluginsRaceSession_t>(_pData, _iDataSize, [](const SPluginsRaceSession_t& data) {
+        g_state.setSession(data);
+    });
 }
 
 __declspec(dllexport) void RaceSessionState(void* _pData, int _iDataSize)
 {
-    try
-    {
-        SPluginsRaceSessionState_t data{};
-        if (copySized(data, _pData, _iDataSize))
-        {
-            g_state.setSessionState(data);
-        }
-    }
-    catch (...)
-    {
-    }
+    onCopied<SPluginsRaceSessionState_t>(_pData, _iDataSize, [](const SPluginsRaceSessionState_t& data) {
+        g_state.setSessionState(data);
+    });
 }
 
 __declspec(dllexport) void RaceLap(void* _pData, int _iDataSize)
 {
-    try
-    {
-        SPluginsRaceLap_t data{};
-        if (copySized(data, _pData, _iDataSize))
-        {
-            g_state.setRaceLap(data.m_iRaceNum, data.m_iLapNum, data.m_iLapTime);
-        }
-    }
-    catch (...)
-    {
-    }
+    onCopied<SPluginsRaceLap_t>(_pData, _iDataSize, [](const SPluginsRaceLap_t& data) {
+        g_state.setRaceLap(data.m_iRaceNum, data.m_iLapNum, data.m_iLapTime);
+    });
 }
 
 __declspec(dllexport) void RaceSplit(void* _pData, int _iDataSize)
@@ -530,8 +467,7 @@ __declspec(dllexport) void RaceCommunication(void* _pData, int _iDataSize)
 
 __declspec(dllexport) void RaceClassification(void* _pData, int _iDataSize, void* _pArray, int _iElemSize)
 {
-    try
-    {
+    safeCall([&] {
         if (_iElemSize != static_cast<int>(sizeof(SPluginsRaceClassificationEntry_t)))
         {
             return;
@@ -548,16 +484,12 @@ __declspec(dllexport) void RaceClassification(void* _pData, int _iDataSize, void
             return;
         }
         g_state.setClassification(header, entries, n);
-    }
-    catch (...)
-    {
-    }
+    });
 }
 
 __declspec(dllexport) void RaceTrackPosition(int _iNumVehicles, void* _pArray, int _iElemSize)
 {
-    try
-    {
+    safeCall([&] {
         if (_iElemSize != static_cast<int>(sizeof(SPluginsRaceTrackPosition_t)))
         {
             return;
@@ -569,31 +501,19 @@ __declspec(dllexport) void RaceTrackPosition(int _iNumVehicles, void* _pArray, i
             return;
         }
         g_state.setTrackPositions(entries, n);
-    }
-    catch (...)
-    {
-    }
+    });
 }
 
 __declspec(dllexport) void RaceVehicleData(void* _pData, int _iDataSize)
 {
-    try
-    {
-        SPluginsRaceVehicleData_t data{};
-        if (copySized(data, _pData, _iDataSize))
-        {
-            g_state.setVehicleData(data);
-        }
-    }
-    catch (...)
-    {
-    }
+    onCopied<SPluginsRaceVehicleData_t>(_pData, _iDataSize, [](const SPluginsRaceVehicleData_t& data) {
+        g_state.setVehicleData(data);
+    });
 }
 
 __declspec(dllexport) int SpectateVehicles(int _iNumVehicles, void* _pVehicleData, int _iCurSelection, int* _piSelect)
 {
-    try
-    {
+    safeCall([&] {
         auto* vehicles = static_cast<SPluginsSpectateVehicle_t*>(_pVehicleData);
         const int n = std::clamp(_iNumVehicles, 0, kMaxRaceEntries);
         if (n > 0 && vehicles && _iCurSelection >= 0 && _iCurSelection < n)
@@ -601,12 +521,8 @@ __declspec(dllexport) int SpectateVehicles(int _iNumVehicles, void* _pVehicleDat
             g_state.setSpectateSelection(vehicles[_iCurSelection].m_iRaceNum);
         }
         (void)_piSelect;
-        return 0;
-    }
-    catch (...)
-    {
-        return 0;
-    }
+    });
+    return 0;
 }
 
 __declspec(dllexport) int SpectateCameras(int _iNumCameras, void* _pCameraData, int _iCurSelection, int* _piSelect)

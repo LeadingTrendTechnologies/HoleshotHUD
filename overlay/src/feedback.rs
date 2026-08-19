@@ -10,6 +10,7 @@ use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM
 
 use crate::record::{self, FeedbackLog};
 use crate::update;
+use crate::util::json_escape;
 
 const FEEDBACK_URL: &str = "https://holeshot-hud.vercel.app/api/feedback";
 const MAX_MESSAGE: usize = 1500;
@@ -454,22 +455,6 @@ fn log_excerpt(s: &str, max: usize) -> String {
     let start = s.len() - max;
     let start = s[start..].find('\n').map(|i| start + i + 1).unwrap_or(start);
     format!("… truncated …\n{}", &s[start..])
-}
-
-fn json_escape(s: &str) -> String {
-    let mut o = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '"' => o.push_str("\\\""),
-            '\\' => o.push_str("\\\\"),
-            '\n' => o.push_str("\\n"),
-            '\r' => o.push_str("\\r"),
-            '\t' => o.push_str("\\t"),
-            c if c.is_control() => {}
-            c => o.push(c),
-        }
-    }
-    o
 }
 
 fn clipboard_text() -> Option<String> {

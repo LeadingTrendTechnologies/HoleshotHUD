@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.1.9
+
+Systems widget, crash marks on radar, and warmup that no longer looks like a race.
+
+### Settings
+
+- **Settings key** on the Settings tab picks which key opens settings (F8 still the default; Medal uses F8)
+- **Systems** tab for CPU, memory, FPS, and per-app load
+
+### Overlay
+
+- **Systems** shows host load (HUD, MX Bikes, ReShade) even in the menu
+- Radar uses the same crash icon as the map when a rider is down
+- Warmup keeps slate map/minimap dots and un-tinted relative rows. Practice laps are not lapping
+- Horizontal Standings title is **WARMUP** during practice, not TIMED or LAP RACE
+
+### Dash and session
+
+- **Rev indicator** can be turned off
+- 4-lap motos ignore leftover `08:00` and show laps
+- A later start board after `00:10` stays a countdown instead of flashing frozen `08:00`
+
 ## 0.1.8
 
 Tab icons, widgets off until you turn them on, and uninstall from Settings.

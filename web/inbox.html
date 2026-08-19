@@ -36,7 +36,8 @@
     .filters { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
     .chip { background: #1c1c20; color: var(--dim); border: 0; border-radius: 999px; padding: 6px 12px; cursor: pointer; font-size: 13px; }
     .chip.on { background: #3a2414; color: var(--accent); }
-    .avg { margin-left: auto; color: var(--text); font-size: 14px; font-weight: 700; }
+    .stats { margin-left: auto; display: flex; gap: 16px; flex-wrap: wrap; align-items: baseline; }
+    .avg { color: var(--text); font-size: 14px; font-weight: 700; }
     .avg span { color: var(--accent); }
     .avg em { color: var(--dim); font-style: normal; font-weight: 500; font-size: 12px; }
     .card { padding: 14px 16px; margin-bottom: 10px; }
@@ -72,7 +73,10 @@
         <button class="chip" data-kind="rating" type="button">Ratings</button>
         <button class="chip" data-kind="bug" type="button">Bugs</button>
         <button class="chip" data-kind="feature" type="button">Features</button>
-        <p class="avg" id="avg"></p>
+        <div class="stats">
+          <p class="avg" id="avg"></p>
+          <p class="avg" id="dl"></p>
+        </div>
       </div>
       <div id="list"></div>
     </div>
@@ -84,8 +88,10 @@
     const app = document.getElementById("app");
     const list = document.getElementById("list");
     const avgEl = document.getElementById("avg");
+    const dlEl = document.getElementById("dl");
     let secret = sessionStorage.getItem("hh-inbox") || "";
     let items = [];
+    let downloads = null;
     let filter = "all";
 
     function showErr(msg) {
@@ -103,6 +109,7 @@
       if (!res.ok) throw new Error("Could not load the inbox.");
       const data = await res.json();
       items = data.items || [];
+      downloads = data.downloads || null;
       render();
     }
 
@@ -123,8 +130,24 @@
       avgEl.innerHTML = `Average <span>${avg.toFixed(1)} / 5</span> <em>(${scores.length} ${label})</em>`;
     }
 
+    function renderDownloads() {
+      const n = downloads && Number(downloads.installer);
+      if (!Number.isFinite(n)) {
+        dlEl.hidden = true;
+        dlEl.innerHTML = "";
+        return;
+      }
+      const latest = downloads.latest;
+      const extra = latest && latest.tag
+        ? ` · ${latest.installer} on ${latest.tag}`
+        : "";
+      dlEl.hidden = false;
+      dlEl.innerHTML = `Downloads <span>${n}</span> <em>installer only${extra}</em>`;
+    }
+
     function render() {
       renderAvg();
+      renderDownloads();
       const shown = items.filter((it) => filter === "all" || it.kind === filter);
       list.innerHTML = shown.length ? "" : "<p class='when'>Nothing here yet.</p>";
       for (const it of shown) {

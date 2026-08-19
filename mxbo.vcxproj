@@ -96,6 +96,8 @@
     <ClInclude Include="src\color.h" />
     <ClInclude Include="src\config.h" />
     <ClInclude Include="src\state.h" />
+    <ClInclude Include="src\str_util.h" />
+    <ClInclude Include="src\track_geom.h" />
     <ClInclude Include="src\shm_writer.h" />
     <ClInclude Include="src\shm\mxbo_shm.h" />
     <ClInclude Include="src\hud\draw_list.h" />

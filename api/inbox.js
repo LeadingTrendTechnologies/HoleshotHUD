@@ -89,6 +89,47 @@ async function deleteGist(token, id) {
   return gh.ok || gh.status === 204;
 }
 
+function isInstaller(name) {
+  return /setup\.exe$/i.test(String(name || ""));
+}
+
+function assetDownloads(rel) {
+  let n = 0;
+  for (const asset of rel.assets || []) {
+    if (isInstaller(asset.name)) n += Number(asset.download_count) || 0;
+  }
+  return n;
+}
+
+async function installerDownloads(token) {
+  try {
+    let total = 0;
+    let latest = null;
+    for (let page = 1; page <= 5; page += 1) {
+      const gh = await fetch(
+        `https://api.github.com/repos/LeadingTrendTechnologies/HoleshotHUD/releases?per_page=100&page=${page}`,
+        { headers: ghHeaders(token) }
+      );
+      if (!gh.ok) {
+        if (page === 1) return null;
+        break;
+      }
+      const batch = await gh.json();
+      if (!Array.isArray(batch) || batch.length === 0) break;
+      for (const rel of batch) {
+        if (rel.draft) continue;
+        const n = assetDownloads(rel);
+        total += n;
+        if (!latest) latest = { tag: rel.tag_name || "", installer: n };
+      }
+      if (batch.length < 100) break;
+    }
+    return { installer: total, latest };
+  } catch {
+    return null;
+  }
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, DELETE, OPTIONS");
@@ -118,7 +159,8 @@ module.exports = async function handler(req, res) {
       return;
     }
     if (req.method === "GET") {
-      res.status(200).json({ items: await listGists(token) });
+      const [items, downloads] = await Promise.all([listGists(token), installerDownloads(token)]);
+      res.status(200).json({ items, downloads });
       return;
     }
     if (req.method === "DELETE" && id) {

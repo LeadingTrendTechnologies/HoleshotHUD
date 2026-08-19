@@ -1,15 +1,14 @@
 use std::fs;
 use std::io::{self, Write};
-use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
+use crate::util::hidden_powershell;
+
 const REPO: &str = "LeadingTrendTechnologies/HoleshotHUD";
 const UA: &str = "mxbo-overlay";
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 static QUIT: AtomicBool = AtomicBool::new(false);
 static STATE: Mutex<UpdateState> = Mutex::new(UpdateState::Idle);
@@ -173,16 +172,6 @@ Start-Process -FilePath $dstExe -ArgumentList '--skip-update'
         .spawn()
         .map_err(|e| format!("Could not start updater: {e}"))?;
     Ok(())
-}
-
-fn hidden_powershell() -> Command {
-    let mut cmd = Command::new("powershell.exe");
-    cmd.args(["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden"])
-        .creation_flags(CREATE_NO_WINDOW)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    cmd
 }
 
 fn unzip(src: &Path, dest: &Path) -> Result<(), String> {

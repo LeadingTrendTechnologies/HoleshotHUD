@@ -295,9 +295,21 @@ pub fn draw(px: &mut Pixmap, fonts: &Fonts, snap: Option<&Snapshot>, cfg: &HudCo
         text(px, fonts, "Restart MX Bikes once so the HUD stays on top while you ride", 13.0, cx, 18.0, accent(), true);
     }
     let Some(s) = snap else {
+        if cfg.show_sys {
+            let sw = w as f32;
+            let sh = h as f32;
+            let _g = push_style(fonts, cfg.sys_bold, cfg.sys_font);
+            draw_sys(px, fonts, cfg, sw, sh);
+        }
         return;
     };
     if s.on_track == 0 && !settings_hint {
+        if cfg.show_sys {
+            let sw = w as f32;
+            let sh = h as f32;
+            let _g = push_style(fonts, cfg.sys_bold, cfg.sys_font);
+            draw_sys(px, fonts, cfg, sw, sh);
+        }
         return;
     }
 
@@ -321,7 +333,7 @@ pub fn draw(px: &mut Pixmap, fonts: &Fonts, snap: Option<&Snapshot>, cfg: &HudCo
     }
     if cfg.show_radar {
         let _g = push_style(fonts, cfg.radar_bold, cfg.radar_font);
-        draw_radar(px, s, cfg, sw, sh, age);
+        draw_radar(px, fonts, s, cfg, sw, sh, age);
     }
     if cfg.show_dash {
         let _g = push_style(fonts, cfg.dash_bold, cfg.dash_font);
@@ -330,6 +342,10 @@ pub fn draw(px: &mut Pixmap, fonts: &Fonts, snap: Option<&Snapshot>, cfg: &HudCo
     if cfg.show_ticker {
         let _g = push_style(fonts, cfg.ticker_bold, cfg.ticker_font);
         draw_ticker(px, fonts, s, cfg, sw, sh);
+    }
+    if cfg.show_sys {
+        let _g = push_style(fonts, cfg.sys_bold, cfg.sys_font);
+        draw_sys(px, fonts, cfg, sw, sh);
     }
     if settings_hint {
         draw_layout(px, fonts, s, cfg, sw, sh);
@@ -365,6 +381,9 @@ fn draw_layout(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
     }
     if cfg.show_ticker {
         layout_box(px, cfg.ticker.x * sw, cfg.ticker.y * sh, cfg.ticker.w * sw, cfg.ticker.h * sh, true);
+    }
+    if cfg.show_sys {
+        layout_box(px, cfg.sys.x * sw, cfg.sys.y * sh, cfg.sys.w * sw, cfg.sys.h * sh, false);
     }
     if cfg.show_dash {
         let _g = push_style(fonts, cfg.dash_bold, cfg.dash_font);
@@ -591,10 +610,6 @@ fn interval_text(s: &Snapshot, row: &crate::shm::Standing) -> String {
     }
 }
 
-fn standings_cols(cfg: &HudConfig) -> Vec<StField> {
-    cfg.standings_cols()
-}
-
 fn col_slots<T: Copy>(
     origin: f32,
     pad: f32,
@@ -726,6 +741,9 @@ fn closing_m(s: &Snapshot, along: f32) -> f32 {
 }
 
 fn lap_rel(s: &Snapshot, race_num: i32) -> LapRel {
+    if is_warmup(s) {
+        return LapRel::Same;
+    }
     let focus = if s.focus_race_num > 0 {
         s.focus_race_num
     } else {
@@ -981,6 +999,10 @@ fn leftover_practice_len(ms: i32) -> bool {
     ms >= 30 * 60_000
 }
 
+fn leftover_warmup_len(ms: i32) -> bool {
+    leftover_practice_len(ms) || standard_race_minutes(ms)
+}
+
 fn race_clock_ms(clock: i32) -> bool {
     clock >= 5 * 60_000 && clock <= 20 * 60_000
 }
@@ -1001,7 +1023,9 @@ fn standard_race_minutes(ms: i32) -> bool {
 
 fn effective_session_len_ms(s: &Snapshot) -> i32 {
     let total = session_len_ms(s.session_length);
-    if s.session_laps > 0 && leftover_practice_len(total) {
+    if s.session_laps >= 4 && leftover_warmup_len(total) {
+        0
+    } else if s.session_laps > 0 && leftover_practice_len(total) {
         0
     } else {
         total
@@ -1061,6 +1085,90 @@ static LAP_GREEN: AtomicI32 = AtomicI32::new(0);
 static LOCKED_SESSION_LEN: AtomicI32 = AtomicI32::new(0);
 static RACE_ARMED: AtomicI32 = AtomicI32::new(0);
 static LAST_SESSION_LAPS: AtomicI32 = AtomicI32::new(-1);
+static SYS_CPU: AtomicI32 = AtomicI32::new(0);
+static SYS_MEM: AtomicI32 = AtomicI32::new(0);
+static SYS_FPS: AtomicI32 = AtomicI32::new(0);
+static SYS_NET: AtomicI32 = AtomicI32::new(0);
+const SYS_PROC_N: usize = 4;
+const SYS_PROC_LABELS: [&str; SYS_PROC_N] = ["HUD", "MX Bikes", "MXB App", "ReShade"];
+static SYS_PROC_CPU: [AtomicI32; SYS_PROC_N] = [
+    AtomicI32::new(i32::MIN),
+    AtomicI32::new(i32::MIN),
+    AtomicI32::new(i32::MIN),
+    AtomicI32::new(i32::MIN),
+];
+static SYS_PROC_MEM: [AtomicI32; SYS_PROC_N] = [
+    AtomicI32::new(0),
+    AtomicI32::new(0),
+    AtomicI32::new(0),
+    AtomicI32::new(0),
+];
+static SYS_PROC_MEMP: [AtomicI32; SYS_PROC_N] = [
+    AtomicI32::new(0),
+    AtomicI32::new(0),
+    AtomicI32::new(0),
+    AtomicI32::new(0),
+];
+static SYS_PROC_ON: [AtomicI32; SYS_PROC_N] = [
+    AtomicI32::new(0),
+    AtomicI32::new(0),
+    AtomicI32::new(0),
+    AtomicI32::new(0),
+];
+
+#[derive(Clone, Copy, Default)]
+pub struct SysProc {
+    pub cpu: f32,
+    pub mem_mb: f32,
+    pub mem_pct: f32,
+    pub on: bool,
+}
+
+pub fn set_sys_stats(cpu: f32, mem: f32, fps: f32, net: f32) {
+    SYS_CPU.store((cpu.clamp(0.0, 100.0) * 10.0).round() as i32, Ordering::Relaxed);
+    SYS_MEM.store((mem.clamp(0.0, 100.0) * 10.0).round() as i32, Ordering::Relaxed);
+    SYS_FPS.store((fps.clamp(0.0, 999.0) * 10.0).round() as i32, Ordering::Relaxed);
+    SYS_NET.store((net.clamp(0.0, 100.0) * 10.0).round() as i32, Ordering::Relaxed);
+}
+
+pub fn set_sys_procs(procs: [SysProc; SYS_PROC_N]) {
+    for (i, p) in procs.iter().enumerate() {
+        let cpu = if !p.on || p.cpu < 0.0 {
+            i32::MIN
+        } else {
+            (p.cpu.clamp(0.0, 100.0) * 10.0).round() as i32
+        };
+        SYS_PROC_CPU[i].store(cpu, Ordering::Relaxed);
+        SYS_PROC_MEM[i].store((p.mem_mb.clamp(0.0, 1_000_000.0) * 10.0).round() as i32, Ordering::Relaxed);
+        SYS_PROC_MEMP[i].store((p.mem_pct.clamp(0.0, 100.0) * 10.0).round() as i32, Ordering::Relaxed);
+        SYS_PROC_ON[i].store(i32::from(p.on), Ordering::Relaxed);
+    }
+}
+
+fn sys_stats() -> (f32, f32, f32, f32) {
+    (
+        SYS_CPU.load(Ordering::Relaxed) as f32 / 10.0,
+        SYS_MEM.load(Ordering::Relaxed) as f32 / 10.0,
+        SYS_FPS.load(Ordering::Relaxed) as f32 / 10.0,
+        SYS_NET.load(Ordering::Relaxed) as f32 / 10.0,
+    )
+}
+
+fn sys_procs() -> [SysProc; SYS_PROC_N] {
+    std::array::from_fn(|i| {
+        let cpu_raw = SYS_PROC_CPU[i].load(Ordering::Relaxed);
+        SysProc {
+            cpu: if cpu_raw == i32::MIN {
+                -1.0
+            } else {
+                cpu_raw as f32 / 10.0
+            },
+            mem_mb: SYS_PROC_MEM[i].load(Ordering::Relaxed) as f32 / 10.0,
+            mem_pct: SYS_PROC_MEMP[i].load(Ordering::Relaxed) as f32 / 10.0,
+            on: SYS_PROC_ON[i].load(Ordering::Relaxed) != 0,
+        }
+    })
+}
 
 fn reset_session_clock_track() {
     LAST_SESSION_CLOCK.store(0, Ordering::Relaxed);
@@ -1140,6 +1248,18 @@ fn extra_laps(s: &Snapshot) -> i32 {
     }
 }
 
+fn is_warmup(s: &Snapshot) -> bool {
+    if overtime_active(s) || is_lap_race(s) {
+        return false;
+    }
+    // 1–3 is extras on a timed moto, not practice.
+    if s.session_laps > 0 && s.session_laps < 4 {
+        return false;
+    }
+    let total = session_len_ms(s.session_length);
+    leftover_practice_len(total) || matches!(session_len_minutes(total), 10 | 12 | 15 | 20)
+}
+
 fn is_lap_race(s: &Snapshot) -> bool {
     // Extra laps are 1–2, sometimes 3. Four or more is always a lap moto,
     // even when leftover warmup (10:00) is still sitting in session length.
@@ -1175,19 +1295,26 @@ fn leader_num_laps(s: &Snapshot) -> i32 {
 fn overtime_base(s: &Snapshot) -> i32 {
     let mut base = OVERTIME_BASE_LAP.load(Ordering::Relaxed);
     let local = focus_num_laps(s);
+    let lead = leader_num_laps(s);
     let local0 = OVERTIME_LOCAL_BASE.load(Ordering::Relaxed);
-    if local0 < 0 || (local0 == 0 && local > 0) {
+    // Ignore empty standings (0/0 at expiry). Rebase once real laps reappear.
+    if local > 0 && (local0 < 0 || local0 == 0) {
         OVERTIME_LOCAL_BASE.store(local, Ordering::Relaxed);
     }
-    if base < 0 {
-        base = leader_num_laps(s);
-        OVERTIME_BASE_LAP.store(base, Ordering::Relaxed);
+    if base < 0 || base == 0 {
+        if lead > 0 {
+            OVERTIME_BASE_LAP.store(lead, Ordering::Relaxed);
+            base = lead;
+        } else if base < 0 {
+            return -1;
+        }
     }
     base
 }
 
 fn extras_started(s: &Snapshot) -> bool {
-    overtime_active(s) && leader_num_laps(s) > overtime_base(s)
+    let base = overtime_base(s);
+    overtime_active(s) && base > 0 && leader_num_laps(s) > base
 }
 
 fn local_overtime_done(s: &Snapshot) -> i32 {
@@ -1197,7 +1324,8 @@ fn local_overtime_done(s: &Snapshot) -> i32 {
     }
     let _ = overtime_base(s);
     // Backmarkers who cross after the clock hits 0 are still finishing the timed lap.
-    // Extra laps start when the leader next crosses, then local crosses count.
+    // Extra laps start when the leader next crosses. That next local cross starts
+    // your extra; the one after that completes it.
     if !extras_started(s) {
         OVERTIME_LOCAL_BASE.store(local, Ordering::Relaxed);
         return 0;
@@ -1207,31 +1335,26 @@ fn local_overtime_done(s: &Snapshot) -> i32 {
         OVERTIME_LOCAL_BASE.store(local, Ordering::Relaxed);
         return 0;
     }
-    (local - local0).max(0)
+    (local - local0 - 1).max(0)
 }
 
-/// Extra laps after time are counted from the leader's finish-line crossings.
-/// Last lap is the Nth extra lap, so +2L is two crossings after time expires.
-fn overtime_last_at(n: i32) -> i32 {
-    n.max(1)
-}
-
-fn last_lap_arm_laps(s: &Snapshot) -> i32 {
-    overtime_base(s) + overtime_last_at(extra_laps(s).max(1))
-}
-
-fn race_last_armed(s: &Snapshot) -> bool {
-    if !overtime_active(s) || extra_laps(s) <= 0 {
-        return false;
+fn local_overtime_taken(s: &Snapshot) -> i32 {
+    let _ = local_overtime_done(s);
+    if !extras_started(s) {
+        return 0;
     }
-    let _ = overtime_base(s);
-    OVERTIME_BASE_LAP.load(Ordering::Relaxed) >= 0 && leader_num_laps(s) >= last_lap_arm_laps(s)
+    let local = focus_num_laps(s);
+    let local0 = OVERTIME_LOCAL_BASE.load(Ordering::Relaxed);
+    if local <= 0 || local0 < 0 {
+        return 0;
+    }
+    (local - local0).max(0)
 }
 
 fn overtime_lap_text(s: &Snapshot) -> String {
     let n = extra_laps(s).max(1);
-    let done = local_overtime_done(s).min(n);
-    format!("{done} / {n}")
+    let taken = local_overtime_taken(s).min(n);
+    format!("{taken} / {n}")
 }
 
 fn moving(s: &Snapshot) -> bool {
@@ -1418,7 +1541,13 @@ fn session_remain_ms(s: &Snapshot) -> Option<i32> {
     let leave_gate = in_gate && !gate_clock && !near_full && clock > 180_000;
     let wait_off_gate = in_gate && !gate_clock && near_full;
     let board_restart = in_gate && !post && last > 0 && clock > last + 2_000 && clock <= 180_000;
-    let gate = gate_clock && !drop_off_gate && !board_restart && !armed;
+    // A later 45s/30s board after 00:10 must stay a countdown. Don't swap in leftover 08:00
+    // until we've actually seen the race clock tick (Maryland 4-lap / 8:00 leftover).
+    let hold_gate_board = gate_clock
+        && !moving(s)
+        && !armed
+        && SAW_SESSION_TIME.load(Ordering::Relaxed) == 0;
+    let gate = gate_clock && !drop_off_gate && !armed && (!board_restart || hold_gate_board);
     let race_ticking = !gate_clock
         && last > 180_000
         && clock > 5_000
@@ -1428,7 +1557,8 @@ fn session_remain_ms(s: &Snapshot) -> Option<i32> {
     let waiting_for_race = (post || board_restart)
         && !armed
         && !race_ticking
-        && clock <= 180_000;
+        && clock <= 180_000
+        && !hold_gate_board;
 
     if drop_off_gate {
         IN_GATE.store(0, Ordering::Relaxed);
@@ -1464,6 +1594,9 @@ fn session_remain_ms(s: &Snapshot) -> Option<i32> {
         IN_GATE.store(0, Ordering::Relaxed);
         POST_GATE.store(1, Ordering::Relaxed);
         SESSION_CLOCK_MODE.store(1, Ordering::Relaxed);
+        if is_lap_race(s) {
+            return None;
+        }
         let shown = wait_display_ms(total, clock);
         LAST_SESSION_CLOCK.store(shown.max(total), Ordering::Relaxed);
         return Some(shown);
@@ -1770,7 +1903,7 @@ fn i_finished(s: &Snapshot) -> bool {
         return false;
     }
     if overtime_active(s) {
-        return race_last_armed(s) && laps_done(s) > last_lap_arm_laps(s);
+        return extras_started(s) && local_overtime_done(s) >= extra_laps(s).max(1);
     }
     laps_done(s) >= n
 }
@@ -1822,9 +1955,21 @@ fn meters_past_sf(s: &Snapshot) -> Option<f32> {
     Some((len - remain).max(0.0))
 }
 
+fn last_extra_started(s: &Snapshot) -> bool {
+    if !overtime_active(s) {
+        return true;
+    }
+    extras_started(s) && focus_num_laps(s) > OVERTIME_LOCAL_BASE.load(Ordering::Relaxed).max(0)
+}
+
 fn last_lap_cleared(s: &Snapshot) -> bool {
     if LAST_LAP_READY.load(Ordering::Relaxed) == 1 {
         return true;
+    }
+    // +1 extras report 1 lap left as soon as the leader starts overtime.
+    // Do not arm checkered until you have taken that extra yourself.
+    if !last_extra_started(s) {
+        return false;
     }
     let Some(remain) = meters_to_sf(s) else {
         return false;
@@ -1891,21 +2036,43 @@ fn dash_race_flag(s: &Snapshot) -> DashFlag {
     note_last_lap(s, left);
     if moving(s) && approaching_line(s) {
         match left {
-            Some(1) if last_lap_cleared(s) => return latch_checkered(),
-            Some(2) => pulse_white_hold(),
+            Some(0) | Some(1) if last_lap_cleared(s) => return latch_checkered(),
+            // Timed +2 extras use left=2 for the last extra. Lap motos must not:
+            // left=2 is still the penultimate lap (3 / 4), and the banner is already right.
+            Some(2) if !is_lap_race(s) => pulse_white_hold(),
             Some(1) => start_white_hold(),
             _ => {}
         }
-    } else if left == Some(1) && !last_lap_cleared(s) {
+    } else if left == Some(1) && last_extra_started(s) && !last_lap_cleared(s) {
         start_white_hold();
     }
-    if i_finished(s) && moving(s) && (approaching_line(s) || just_after_sf(s)) {
+    if i_finished(s)
+        && last_lap_cleared(s)
+        && moving(s)
+        && (approaching_line(s) || just_after_sf(s))
+    {
         return latch_checkered();
     }
     if white_holding() {
         DashFlag::White
     } else {
         DashFlag::None
+    }
+}
+
+fn race_progress_text(s: &Snapshot) -> String {
+    session_banner(s).1
+}
+
+fn race_progress_pair(text: &str) -> Option<(i32, i32)> {
+    let (a, b) = text.split_once('/')?;
+    Some((a.trim().parse().ok()?, b.trim().parse().ok()?))
+}
+
+fn race_laps_left_text(s: &Snapshot) -> String {
+    match race_progress_pair(&race_progress_text(s)) {
+        Some((cur, total)) => format!("{}", (total - cur).max(0)),
+        None => "--".into(),
     }
 }
 
@@ -2024,11 +2191,22 @@ fn class_position(s: &Snapshot) -> i32 {
         .unwrap_or(st.position.max(0))
 }
 
+fn format_local_clock(hour: u16, minute: u16) -> String {
+    let h24 = hour % 24;
+    let h12 = match h24 {
+        0 => 12,
+        13..=23 => h24 - 12,
+        _ => h24,
+    };
+    let ampm = if h24 < 12 { "AM" } else { "PM" };
+    format!("{h12}:{minute:02} {ampm}")
+}
+
 fn local_clock() -> String {
     #[cfg(target_arch = "wasm32")]
     {
         let mins = (anim_now() as i32 / 60).rem_euclid(24 * 60);
-        return format!("{:02}:{:02}", mins / 60, mins % 60);
+        return format_local_clock((mins / 60) as u16, (mins % 60) as u16);
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -2059,7 +2237,7 @@ fn local_clock() -> String {
         unsafe {
             GetLocalTime(&mut st);
         }
-        format!("{:02}:{:02}", st.hour, st.minute)
+        format_local_clock(st.hour, st.minute)
     }
 }
 
@@ -2081,29 +2259,8 @@ fn board_item(s: &Snapshot, cfg: &HudConfig, field: BoardField) -> Option<(char,
                 "P--".into()
             }
         }
-        BoardField::Session => session_banner(s).1,
-        BoardField::RaceTime => format_session_clock(s.session_time_ms),
-        BoardField::Lap => {
-            if is_lap_race(s) {
-                lap_race_text(s)
-            } else {
-                let lap = race_lap(s);
-                if s.session_laps > 0 {
-                    format!("{lap} / {}", s.session_laps)
-                } else if lap > 0 {
-                    format!("{lap}")
-                } else {
-                    "--".into()
-                }
-            }
-        }
-        BoardField::LapsLeft => {
-            if s.session_laps > 0 {
-                format!("{}", (s.session_laps - race_lap(s)).max(0))
-            } else {
-                "--".into()
-            }
-        }
+        BoardField::Session | BoardField::RaceTime | BoardField::Lap => race_progress_text(s),
+        BoardField::LapsLeft => race_laps_left_text(s),
         BoardField::Track => {
             let t = cstr(&s.track_name);
             if t.is_empty() {
@@ -2118,8 +2275,10 @@ fn board_item(s: &Snapshot, cfg: &HudConfig, field: BoardField) -> Option<(char,
         BoardField::LocalTime => local_clock(),
         BoardField::Riders => format!("{}", s.standing_count.max(s.rider_count).max(0)),
         BoardField::SessionType => {
-            if s.session_laps > 0 {
+            if is_lap_race(s) {
                 "Lap race".into()
+            } else if overtime_active(s) {
+                "Extra".into()
             } else if s.session_length > 0 {
                 "Timed".into()
             } else {
@@ -2229,7 +2388,7 @@ fn draw_standings(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig,
         return;
     }
 
-    let cols = standings_cols(cfg);
+    let cols = cfg.standings_cols();
     let pad = 8.0;
     let slots = col_slots(x, pad, w, &cols, |c| c.width(cfg) as f32, |c| matches!(c, StField::Name));
     let hdr_c = Color::from_rgba8(160, 160, 168, 220);
@@ -2369,12 +2528,17 @@ fn ticker_delta(focus: &crate::shm::Standing, row: &crate::shm::Standing) -> Str
     format_signed_delta(row.gap_ms - focus.gap_ms, row.gap_laps - focus.gap_laps)
 }
 
-fn ticker_meta_label(field: BoardField) -> &'static str {
+fn ticker_meta_label(field: BoardField, val: &str) -> &'static str {
     match field {
-        BoardField::Lap | BoardField::LapsLeft => "LAPS",
+        BoardField::Lap | BoardField::LapsLeft | BoardField::Session | BoardField::RaceTime => {
+            if val.contains('/') {
+                "LAPS"
+            } else {
+                "TIME"
+            }
+        }
         BoardField::Air => "TEMP",
         BoardField::Best | BoardField::SessionBest => "BEST",
-        BoardField::Session | BoardField::RaceTime => "TIME",
         BoardField::Position | BoardField::ClassPos => "POS",
         BoardField::Track => "TRACK",
         BoardField::Riders => "RIDERS",
@@ -2386,8 +2550,12 @@ fn ticker_meta_label(field: BoardField) -> &'static str {
 
 fn ticker_title(s: &Snapshot) -> String {
     let track = cstr(&s.track_name);
-    let kind = if s.session_laps > 0 {
+    let kind = if is_warmup(s) {
+        "WARMUP"
+    } else if is_lap_race(s) {
         "LAP RACE"
+    } else if overtime_active(s) {
+        "EXTRA"
     } else if s.session_length > 0 {
         "TIMED"
     } else {
@@ -2397,6 +2565,166 @@ fn ticker_title(s: &Snapshot) -> String {
         kind.into()
     } else {
         format!("{kind} - {}", track.to_uppercase())
+    }
+}
+
+fn fmt_sys_mem(mb: f32) -> String {
+    if mb < 0.05 {
+        "0 MB".into()
+    } else if mb < 9.95 {
+        format!("{mb:.1} MB")
+    } else if mb < 1024.0 {
+        format!("{:.0} MB", mb.round())
+    } else {
+        let gb = mb / 1024.0;
+        if gb < 9.95 {
+            format!("{gb:.1} GB")
+        } else {
+            format!("{:.0} GB", gb.round())
+        }
+    }
+}
+
+struct SysLine {
+    label: &'static str,
+    value: String,
+    fill: f32,
+    hot: f32,
+    sub: bool,
+    dim: bool,
+}
+
+fn draw_sys(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f32, sh: f32) {
+    let r = cfg.sys;
+    let x = r.x * sw;
+    let y = r.y * sh;
+    let w = r.w * sw;
+    let h = r.h * sh;
+    if w < 40.0 || h < 28.0 {
+        return;
+    }
+    let a = bg_a(cfg.sys_bg);
+    fill_round(px, x, y, w, h, 7.0, Color::from_rgba8(10, 10, 12, a));
+    let (cpu, mem, fps, net) = sys_stats();
+    let procs = sys_procs();
+    let mut lines: Vec<SysLine> = Vec::with_capacity(4 + SYS_PROC_N * 2);
+    let push_main = |lines: &mut Vec<SysLine>, label: &'static str, value: String, fill: f32, invert: bool| {
+        let fill = fill.clamp(0.0, 100.0);
+        let hot = if invert { 100.0 - fill } else { fill };
+        lines.push(SysLine {
+            label,
+            value,
+            fill,
+            hot,
+            sub: false,
+            dim: false,
+        });
+    };
+    push_main(&mut lines, "CPU", format!("{:.0}%", cpu.round()), cpu, false);
+    for (i, p) in procs.iter().enumerate() {
+        let known = p.on && p.cpu >= 0.0;
+        lines.push(SysLine {
+            label: SYS_PROC_LABELS[i],
+            value: if known {
+                format!("{:.0}%", p.cpu.round())
+            } else {
+                "—".into()
+            },
+            fill: if known { p.cpu.clamp(0.0, 100.0) } else { 0.0 },
+            hot: if known { p.cpu.clamp(0.0, 100.0) } else { 0.0 },
+            sub: true,
+            dim: !known,
+        });
+    }
+    push_main(&mut lines, "MEM", format!("{:.0}%", mem.round()), mem, false);
+    let mem_scale = procs
+        .iter()
+        .filter(|p| p.on)
+        .map(|p| p.mem_mb)
+        .fold(0.0f32, f32::max)
+        .max(1.0);
+    for (i, p) in procs.iter().enumerate() {
+        lines.push(SysLine {
+            label: SYS_PROC_LABELS[i],
+            value: if p.on {
+                fmt_sys_mem(p.mem_mb)
+            } else {
+                "—".into()
+            },
+            fill: if p.on {
+                (p.mem_mb / mem_scale * 100.0).clamp(0.0, 100.0)
+            } else {
+                0.0
+            },
+            hot: if p.on { p.mem_pct.clamp(0.0, 100.0) } else { 0.0 },
+            sub: true,
+            dim: !p.on,
+        });
+    }
+    push_main(
+        &mut lines,
+        "FPS",
+        format!("{:.0}", fps.round()),
+        (fps / 1.2).clamp(0.0, 100.0),
+        true,
+    );
+    push_main(&mut lines, "NET", format!("{:.0}%", net.round()), net, false);
+
+    let pad = (w * 0.07).clamp(6.0, 12.0);
+    let indent = (pad * 1.35).clamp(12.0, 18.0);
+    let weight: f32 = lines.iter().map(|l| if l.sub { 0.62 } else { 1.0 }).sum();
+    let unit = ((h - pad * 2.0) / weight.max(1.0)).max(8.0);
+    let main_fs = (unit * 0.46).clamp(9.0, 15.0);
+    let sub_fs = (unit * 0.62 * 0.50).clamp(8.0, 12.0);
+    let label_w = SYS_PROC_LABELS
+        .iter()
+        .map(|s| measure(fonts, s, sub_fs))
+        .fold(measure(fonts, "CPU", main_fs), f32::max)
+        + 6.0;
+    let mute = Color::from_rgba8(108, 108, 114, 255);
+    let mut ry = y + pad;
+    for line in &lines {
+        let row_h = if line.sub { unit * 0.62 } else { unit };
+        let fs = if line.sub { sub_fs } else { main_fs };
+        let inset = if line.sub { indent } else { 0.0 };
+        let bar = if line.sub {
+            Color::from_rgba8(150, 150, 158, if line.dim { 40 } else { 110 })
+        } else if line.hot >= 90.0 {
+            Color::from_rgba8(239, 68, 68, 230)
+        } else if line.hot >= 70.0 {
+            Color::from_rgba8(250, 180, 48, 230)
+        } else {
+            Color::from_rgba8(52, 211, 96, 220)
+        };
+        let lx = x + pad + inset;
+        text(
+            px,
+            fonts,
+            line.label,
+            fs,
+            lx,
+            ry + (row_h - fs) * 0.28,
+            if line.sub { mute } else { text_dim() },
+            false,
+        );
+        let bx = x + pad + inset + label_w + 4.0;
+        let val_w = measure(fonts, &line.value, fs);
+        let bw = (x + w - pad - val_w - 6.0 - bx).max(18.0);
+        let bh = (row_h * if line.sub { 0.28 } else { 0.32 }).clamp(3.0, 8.0);
+        let by = ry + (row_h - bh) * 0.45;
+        fill_round(px, bx, by, bw, bh, 2.0, Color::from_rgba8(255, 255, 255, 22));
+        fill_round(px, bx, by, bw * (line.fill / 100.0), bh, 2.0, bar);
+        text(
+            px,
+            fonts,
+            &line.value,
+            fs,
+            x + w - pad - val_w,
+            ry + (row_h - fs) * 0.28,
+            if line.sub { mute } else { text_col() },
+            false,
+        );
+        ry += row_h;
     }
 }
 
@@ -2651,7 +2979,7 @@ fn ticker_meta_copy(
     k: f32,
 ) -> Option<(String, String, f32, f32)> {
     let (_, val) = board_item(s, cfg, field)?;
-    let label = ticker_meta_label(field).to_string();
+    let label = ticker_meta_label(field, &val).to_string();
     let label_sz = (8.5 * k).clamp(7.5, 10.0);
     let val_sz = (h * 0.28).clamp(13.0, 20.0);
     Some((label, val, label_sz, val_sz))
@@ -2934,9 +3262,14 @@ fn dash_layout(fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) -
     let foot_pad = (h * 0.035).clamp(3.0, 6.0);
     let footer_h = (h * 0.20).clamp(16.0, 22.0);
     let mid_gap = (h * 0.04).clamp(4.0, 8.0);
-    let rev_h = (h * 0.12).clamp(11.0, 15.0);
-    let rev_y = y + (pad * 0.28).max(4.0);
-    let main_y = (rev_y + rev_h + 14.0).max(y + pad);
+    let (rev_h, rev_y, main_y) = if cfg.dash_rev {
+        let rev_h = (h * 0.12).clamp(11.0, 15.0);
+        let rev_y = y + (pad * 0.28).max(4.0);
+        let main_y = (rev_y + rev_h + 14.0).max(y + pad);
+        (rev_h, rev_y, main_y)
+    } else {
+        (0.0, y, y + pad)
+    };
     let main_h = (y + h - foot_pad - footer_h - mid_gap - main_y).max(36.0);
     let label = (h * 0.095).clamp(8.5, 11.0);
     let gear_n = (main_h * 0.58).clamp(20.0, 36.0);
@@ -2963,18 +3296,7 @@ fn dash_layout(fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) -
         .map(|st| st.position)
         .filter(|p| *p > 0);
     let ptxt = pos.map(|p| format!("P{p}")).unwrap_or_else(|| "P--".into());
-    let lap = race_lap(s);
-    let lap_txt = if session_remain_ms(s).is_some() {
-        session_banner(s).1
-    } else if is_lap_race(s) {
-        lap_race_text(s)
-    } else if s.session_laps > 0 {
-        format!("{lap} / {}", s.session_laps)
-    } else if lap > 0 {
-        format!("{lap}")
-    } else {
-        "--".into()
-    };
+    let lap_txt = race_progress_text(s);
     let foot: Vec<(char, String)> = [cfg.dash_left, cfg.dash_mid, cfg.dash_right]
         .into_iter()
         .filter_map(|field| dash_foot_item(s, cfg, field))
@@ -3180,27 +3502,8 @@ fn dash_foot_item(s: &Snapshot, cfg: &HudConfig, field: DashField) -> Option<(ch
             let n = if s.focus_race_num > 0 { s.focus_race_num } else { s.local_race_num };
             if n > 0 { format!("#{n}") } else { "--".into() }
         }
-        DashField::LapCount => {
-            if is_lap_race(s) {
-                lap_race_text(s)
-            } else {
-                let lap = race_lap(s);
-                if s.session_laps > 0 {
-                    format!("{lap} / {}", s.session_laps)
-                } else if lap > 0 {
-                    format!("{lap}")
-                } else {
-                    "--".into()
-                }
-            }
-        }
-        DashField::LapsLeft => {
-            if s.session_laps > 0 {
-                format!("{}", (s.session_laps - race_lap(s)).max(0))
-            } else {
-                "--".into()
-            }
-        }
+        DashField::LapCount => race_progress_text(s),
+        DashField::LapsLeft => race_laps_left_text(s),
         DashField::Last => {
             let ms = st.map(|r| r.last_lap_ms).filter(|ms| *ms > 0).unwrap_or(s.last_lap_ms);
             format_clock(ms)
@@ -3223,7 +3526,7 @@ fn dash_foot_item(s: &Snapshot, cfg: &HudConfig, field: DashField) -> Option<(ch
             .unwrap_or_else(|| "--".into()),
         DashField::Interval => st.map(|r| interval_text(s, r)).unwrap_or_else(|| "--".into()),
         DashField::Penalty => format_penalty(st.map(|r| r.penalty_ms).unwrap_or(0)),
-        DashField::Session => session_banner(s).1,
+        DashField::Session => race_progress_text(s),
         DashField::Bike => st
             .map(|r| cstr(&r.bike))
             .filter(|v| !v.is_empty())
@@ -3378,7 +3681,9 @@ fn draw_dash(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: 
         stroke_path(px, &path, Color::from_rgba8(220, 220, 224, ((a as u16 * 200) / 255).max(90) as u8), 1.4);
     }
 
-    draw_rev_bar(px, d.rev_x, d.rev_y, d.rev_w, d.rev_h, s.local_rpm, s.max_rpm, s.shift_rpm);
+    if cfg.dash_rev {
+        draw_rev_bar(px, d.rev_x, d.rev_y, d.rev_w, d.rev_h, s.local_rpm, s.max_rpm, s.shift_rpm);
+    }
 
     let white = Color::from_rgba8(248, 248, 250, 255);
     let dim = Color::from_rgba8(168, 168, 176, 255);
@@ -4470,7 +4775,7 @@ fn draw_radar_wedge(px: &mut Pixmap, ox: f32, oy: f32, sx: f32, sy: f32, left: b
     }
 }
 
-fn draw_radar(px: &mut Pixmap, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32, age: f32) {
+fn draw_radar(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32, age: f32) {
     let r = cfg.radar;
     let x = r.x * sw;
     let y = r.y * sh;
@@ -4522,7 +4827,7 @@ fn draw_radar(px: &mut Pixmap, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32, 
     let pred_z = s.local_z + s.local_vel_z * age;
     let (fx, fz, rx, rz) = radar_axes(s);
     let focus = s.focus_race_num;
-    let mut blips: Vec<(f32, f32, f32)> = Vec::new();
+    let mut blips: Vec<(f32, f32, f32, i32, bool)> = Vec::new();
     for i in 0..s.rider_count.max(0) as usize {
         let rider = &s.riders[i];
         if rider.race_num == focus {
@@ -4539,16 +4844,26 @@ fn draw_radar(px: &mut Pixmap, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32, 
             continue;
         }
         let dist = (fwd * fwd + lat * lat).sqrt();
-        blips.push((fwd, lat, dist));
+        blips.push((fwd, lat, dist, rider.race_num, rider.crashed != 0));
     }
     blips.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
-    for (fwd, lat, dist) in blips {
+    for (fwd, lat, dist, race_num, crashed) in blips {
         let (bx, by) = radar_to_screen(fwd, lat, ox, oy, sx, sy);
         let heat = radar_blip_heat(dist);
         let rad = radar_blip_radius(heat, size);
         fill_circle(px, bx, by, rad + 1.4, Color::from_rgba8(8, 8, 10, 220));
         fill_circle(px, bx, by, rad, radar_blip_color(heat));
+        draw_state_mark(px, fonts, bx, by, rad.max(6.5), rider_mark(s, race_num, crashed));
     }
+    let local_num = if focus > 0 { focus } else { s.local_race_num };
+    draw_state_mark(
+        px,
+        fonts,
+        ox,
+        oy,
+        bw.max(bh) * 0.45,
+        rider_mark(s, local_num, s.local_crashed != 0),
+    );
 }
 
 fn track_forward(s: &Snapshot, n: usize, px: f32, pz: f32) -> Option<(f32, f32)> {

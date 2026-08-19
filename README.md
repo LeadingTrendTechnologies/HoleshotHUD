@@ -53,10 +53,10 @@ pack.bat
 Push a tag to publish a downloadable release:
 
 ```bat
-git tag v0.1.8
-git push origin v0.1.8
+git tag v0.1.9
+git push origin v0.1.9
 ```
 
 ## Data wiki
 
-Plugin callbacks and fields: [wiki/Home.md](wiki/Home.md)
+Plugin callbacks and fields: [wiki/Home.md](wiki/Home.md). Overlay widget behavior and change history: [wiki/widgets.md](wiki/widgets.md).

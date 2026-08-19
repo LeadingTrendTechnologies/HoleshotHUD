@@ -212,6 +212,41 @@ impl Preview {
         let w = width.clamp(320, 1920);
         let h = height.clamp(180, 1080);
         let mut px = Pixmap::new(w, h).expect("pixmap");
+        if self.active == "sys" {
+            let t = self.t;
+            mxbo_hud::set_sys_stats(
+                42.0 + (t * 0.7).sin() * 8.0,
+                61.0 + (t * 0.25).sin() * 3.0,
+                89.0 + (t * 1.4).sin() * 6.0,
+                14.0 + (t * 0.9).sin() * 7.0,
+            );
+            mxbo_hud::set_sys_procs([
+                mxbo_hud::SysProc {
+                    cpu: 3.0 + (t * 0.9).sin() * 1.2,
+                    mem_mb: 92.0 + (t * 0.4).sin() * 6.0,
+                    mem_pct: 0.6,
+                    on: true,
+                },
+                mxbo_hud::SysProc {
+                    cpu: 18.0 + (t * 0.55).sin() * 4.0,
+                    mem_mb: 2100.0 + (t * 0.2).sin() * 80.0,
+                    mem_pct: 13.0,
+                    on: true,
+                },
+                mxbo_hud::SysProc {
+                    cpu: 6.0 + (t * 0.8).sin() * 2.0,
+                    mem_mb: 190.0 + (t * 0.35).sin() * 12.0,
+                    mem_pct: 1.2,
+                    on: true,
+                },
+                mxbo_hud::SysProc {
+                    cpu: -1.0,
+                    mem_mb: 48.0 + (t * 0.3).sin() * 4.0,
+                    mem_pct: 0.3,
+                    on: true,
+                },
+            ]);
+        }
         draw(
             &mut px,
             &self.fonts,
@@ -252,6 +287,7 @@ fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg.show_minimap = name == "minimap";
     cfg.show_radar = name == "radar";
     cfg.show_ticker = name == "ticker";
+    cfg.show_sys = name == "sys";
 }
 
 fn widget_id(name: &str) -> Option<WidgetId> {
@@ -263,6 +299,7 @@ fn widget_id(name: &str) -> Option<WidgetId> {
         "radar" => WidgetId::Radar,
         "dash" => WidgetId::Dash,
         "ticker" => WidgetId::Ticker,
+        "sys" => WidgetId::Sys,
         _ => return None,
     })
 }
@@ -315,6 +352,7 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "radar_bold" => cfg.radar_bold,
         "dash_bold" => cfg.dash_bold,
         "ticker_bold" => cfg.ticker_bold,
+        "sys_bold" => cfg.sys_bold,
         "ticker_title" => cfg.ticker_title,
         "ticker_autoscroll" => cfg.ticker_autoscroll,
         _ => return None,
@@ -369,6 +407,7 @@ fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
         "radar_bold" => cfg.radar_bold = on,
         "dash_bold" => cfg.dash_bold = on,
         "ticker_bold" => cfg.ticker_bold = on,
+        "sys_bold" => cfg.sys_bold = on,
         "ticker_title" => cfg.ticker_title = on,
         "ticker_autoscroll" => cfg.ticker_autoscroll = on,
         _ => {}
@@ -387,6 +426,7 @@ fn int_val(cfg: &HudConfig, key: &str) -> Option<i32> {
         "radar_bg" => cfg.radar_bg,
         "dash_bg" => cfg.dash_bg,
         "ticker_bg" => cfg.ticker_bg,
+        "sys_bg" => cfg.sys_bg,
         "ticker_count" => cfg.ticker_count,
         "st_font" => cfg.st_font,
         "rel_font" => cfg.rel_font,
@@ -395,6 +435,7 @@ fn int_val(cfg: &HudConfig, key: &str) -> Option<i32> {
         "radar_font" => cfg.radar_font,
         "dash_font" => cfg.dash_font,
         "ticker_font" => cfg.ticker_font,
+        "sys_font" => cfg.sys_font,
         _ => return None,
     })
 }
@@ -411,6 +452,7 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "radar_bg" => cfg.radar_bg = value.clamp(0, 100),
         "dash_bg" => cfg.dash_bg = value.clamp(0, 100),
         "ticker_bg" => cfg.ticker_bg = value.clamp(0, 100),
+        "sys_bg" => cfg.sys_bg = value.clamp(0, 100),
         "ticker_count" => cfg.ticker_count = value.clamp(3, 15),
         "st_font" => cfg.set_font_pct(WidgetId::Standings, value),
         "rel_font" => cfg.set_font_pct(WidgetId::Relative, value),
@@ -419,6 +461,7 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "radar_font" => cfg.set_font_pct(WidgetId::Radar, value),
         "dash_font" => cfg.set_font_pct(WidgetId::Dash, value),
         "ticker_font" => cfg.set_font_pct(WidgetId::Ticker, value),
+        "sys_font" => cfg.set_font_pct(WidgetId::Sys, value),
         _ => {}
     }
 }

@@ -139,7 +139,6 @@ public:
     int sessionTimeMs() const;
     int sessionLength() const { return m_sessionLength; }
 
-    float riderSpeed(int raceNum) const;
     const VehicleLive* findVehicle(int raceNum) const;
     const RaceEntry* findEntry(int raceNum) const;
     const StandingRow* findStanding(int raceNum) const;

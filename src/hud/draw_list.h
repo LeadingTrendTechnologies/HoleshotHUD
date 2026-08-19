@@ -2,12 +2,13 @@
 
 #include "vendor/piboso/mxb_api.h"
 #include "color.h"
+#include "str_util.h"
 
+#include <cstddef>
 #include <vector>
 
-constexpr int kHudFont = 1;
-constexpr int kSpriteCircle = 1;
 constexpr float kHeaderH = 0.026f;
+constexpr size_t kDrawQuadReserve = 2048;
 
 struct DrawList
 {
@@ -28,4 +29,3 @@ struct DrawList
 
 void formatGap(int gapMs, int gapLaps, char* out, int outSize);
 void formatEstGap(float seconds, char* out, int outSize);
-void truncateCopy(char* dest, size_t destSize, const char* src, int maxChars);

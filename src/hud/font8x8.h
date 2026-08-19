@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <cstring>
 
 // 8x8 glyphs for ASCII 32-126. Each byte is a row; LSB is the leftmost pixel.
 inline const std::uint8_t* glyph8x8(unsigned char c)

@@ -19,7 +19,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use crate::config::{
     update_config, with_config, BoardField, DashField, DotLabel, FontFamily, HudConfig, RelField,
-    SnapAlign, StField, Units, WidgetId,
+    SettingsKey, SnapAlign, StField, Units, WidgetId,
 };
 use crate::render::{fill_rect, measure, text, Fonts};
 
@@ -52,6 +52,7 @@ enum Tab {
     Radar,
     Dash,
     Ticker,
+    Sys,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -65,13 +66,16 @@ enum Hit {
     TabRadar,
     TabDash,
     TabTicker,
+    TabSys,
     StShow,
     RelShow,
     MapShow,
     MiniShow,
     RadarShow,
     DashShow,
+    DashRev,
     TickerShow,
+    SysShow,
     TickerTitle,
     TickerAutoscroll,
     StPos,
@@ -127,6 +131,7 @@ enum Hit {
     RadarBg,
     DashBg,
     TickerBg,
+    SysBg,
     StDec,
     StInc,
     RelDec,
@@ -151,6 +156,8 @@ enum Hit {
     UnitsOpen,
     UnitsMetric,
     UnitsImperial,
+    SettingsKeyOpen,
+    SettingsKeyPick(SettingsKey),
     DashFootOpen(u8),
     DashFootPick(u8, DashField),
     TickerFootOpen(u8),
@@ -196,6 +203,7 @@ enum Drop {
     MiniDot,
     FontFamily,
     Units,
+    SettingsKey,
     DashFoot(u8),
     TickerFoot(u8),
     Info(InfoBar, u8),
@@ -482,6 +490,7 @@ fn is_slider(hit: Hit) -> bool {
             | Hit::RadarBg
             | Hit::DashBg
             | Hit::TickerBg
+            | Hit::SysBg
             | Hit::StW(_)
             | Hit::RelW(_)
             | Hit::Font(_)
@@ -533,6 +542,7 @@ fn apply_slide(hit: Hit, mx: f32, x: f32, w: f32, min: i32, max: i32) {
         Hit::RadarBg => c.radar_bg = v,
         Hit::DashBg => c.dash_bg = v,
         Hit::TickerBg => c.ticker_bg = v,
+        Hit::SysBg => c.sys_bg = v,
         Hit::StW(i) => {
             if let Some(f) = c.st_order.get(i as usize).copied() {
                 f.set_width(c, v);
@@ -676,6 +686,10 @@ fn click(p: (f32, f32)) {
             set_tab(Tab::Ticker);
             return;
         }
+        Hit::TabSys => {
+            set_tab(Tab::Sys);
+            return;
+        }
         Hit::MapDotOpen => {
             toggle_drop(Drop::MapDot);
             return;
@@ -690,6 +704,10 @@ fn click(p: (f32, f32)) {
         }
         Hit::UnitsOpen => {
             toggle_drop(Drop::Units);
+            return;
+        }
+        Hit::SettingsKeyOpen => {
+            toggle_drop(Drop::SettingsKey);
             return;
         }
         Hit::DashFootOpen(slot) => {
@@ -797,7 +815,9 @@ fn click(p: (f32, f32)) {
         Hit::MiniShow => c.show_minimap = !c.show_minimap,
         Hit::RadarShow => c.show_radar = !c.show_radar,
         Hit::DashShow => c.show_dash = !c.show_dash,
+        Hit::DashRev => c.dash_rev = !c.dash_rev,
         Hit::TickerShow => c.show_ticker = !c.show_ticker,
+        Hit::SysShow => c.show_sys = !c.show_sys,
         Hit::TickerTitle => c.ticker_title = !c.ticker_title,
         Hit::TickerAutoscroll => c.ticker_autoscroll = !c.ticker_autoscroll,
         Hit::StPos => c.st_pos = !c.st_pos,
@@ -857,6 +877,7 @@ fn click(p: (f32, f32)) {
         Hit::FontFaster => c.font_family = FontFamily::FasterOne,
         Hit::UnitsMetric => c.units = Units::Metric,
         Hit::UnitsImperial => c.units = Units::Imperial,
+        Hit::SettingsKeyPick(key) => c.settings_key = key,
         Hit::DashFootPick(slot, field) => match slot {
             0 => c.dash_left = field,
             1 => c.dash_mid = field,
@@ -876,15 +897,16 @@ fn click(p: (f32, f32)) {
         Hit::TickerDec => c.ticker_count = (c.ticker_count - 1).max(3),
         Hit::TickerInc => c.ticker_count = (c.ticker_count + 1).min(15),
         Hit::TabApp | Hit::TabFeedback | Hit::TabSt | Hit::TabRel | Hit::TabMap | Hit::TabMini | Hit::TabRadar | Hit::TabDash
-        | Hit::TabTicker
-        | Hit::MapDotOpen | Hit::MiniDotOpen | Hit::FontOpen | Hit::UnitsOpen | Hit::DashFootOpen(_)
+        | Hit::TabTicker | Hit::TabSys
+        | Hit::MapDotOpen | Hit::MiniDotOpen | Hit::FontOpen | Hit::UnitsOpen | Hit::SettingsKeyOpen
+        | Hit::DashFootOpen(_)
         | Hit::TickerFootOpen(_)
         | Hit::InfoOpen(_, _)
         | Hit::UpdateCheck | Hit::UpdateInstall | Hit::StartWithWindows | Hit::MinimizeOnClose
         | Hit::AutoUpdateOnLaunch | Hit::QuitApp | Hit::Uninstall
         | Hit::FbRate | Hit::FbBug | Hit::FbFeature | Hit::FbStar(_) | Hit::FbText | Hit::FbAttach | Hit::FbSend
         | Hit::StDrag(_) | Hit::RelDrag(_)
-        | Hit::StBg | Hit::RelBg | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarBg | Hit::DashBg | Hit::TickerBg
+        | Hit::StBg | Hit::RelBg | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg
         | Hit::StW(_) | Hit::RelW(_) | Hit::Font(_) => {}
     });
 }
@@ -963,14 +985,18 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
         (Tab::Radar, Hit::TabRadar, "Radar", cfg.show_radar),
         (Tab::Dash, Hit::TabDash, "Dash", cfg.show_dash),
         (Tab::Ticker, Hit::TabTicker, "H-Standings", cfg.show_ticker),
+        (Tab::Sys, Hit::TabSys, "Systems", cfg.show_sys),
     ];
     for (t, hit, name, on) in widgets {
         nav_tab(px, fonts, 12.0, ty, SIDE_W - 24.0, 36.0, t == tab, on, name, hit, hover, &mut hits);
         ty += 40.0;
     }
-    fill_round(px, 12.0, h - 56.0, SIDE_W - 24.0, 40.0, 10.0, panel());
-    text(px, fonts, "F8  settings", 10.0, 22.0, h - 50.0, dim(), false);
-    text(px, fonts, "Ctrl + drag to move", 10.0, 22.0, h - 34.0, dim(), false);
+    let quit_h = 36.0;
+    let quit_y = h - 14.0 - quit_h;
+    fill_round(px, 12.0, quit_y - 48.0, SIDE_W - 24.0, 40.0, 10.0, panel());
+    text(px, fonts, &format!("{}  settings", cfg.settings_key.label()), 10.0, 22.0, quit_y - 42.0, dim(), false);
+    text(px, fonts, "Ctrl + drag to move", 10.0, 22.0, quit_y - 26.0, dim(), false);
+    sidebar_quit(px, fonts, 12.0, quit_y, SIDE_W - 24.0, quit_h, hover, &mut hits);
 
     let x = SIDE_W + 28.0;
     let cw = (w - x - 28.0).max(200.0);
@@ -985,6 +1011,7 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
         Tab::Radar => pane_radar(px, fonts, &cfg, hover, &mut hits, x, py, cw),
         Tab::Dash => pane_dash(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
         Tab::Ticker => pane_ticker(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
+        Tab::Sys => pane_sys(px, fonts, &cfg, hover, &mut hits, x, py, cw),
     };
 
     if let Some(ui) = UI.lock().unwrap().as_mut() {
@@ -1137,6 +1164,15 @@ fn nav_icon(px: &mut Pixmap, hit: Hit, cx: f32, cy: f32, c: Color) {
                 icon_stroke(px, &path, c, 1.4);
             }
         }
+        Hit::TabSys => {
+            fill_round(px, cx - 7.0, cy - 5.6, 14.0, 2.2, 1.1, c);
+            fill_round(px, cx - 7.0, cy - 1.1, 10.0, 2.2, 1.1, c);
+            fill_round(px, cx - 7.0, cy + 3.4, 7.0, 2.2, 1.1, c);
+        }
+        Hit::QuitApp => {
+            icon_stroke_circle(px, cx, cy, 6.2, c);
+            icon_stroke_line(px, cx, cy - 7.2, cx, cy - 1.2, c, 1.7);
+        }
         Hit::FbRate => fill_star(px, cx, cy, 6.2, c),
         Hit::FbBug => {
             let mut pb = PathBuilder::new();
@@ -1280,11 +1316,39 @@ fn pane_app(
         hover,
         hits,
     );
+    y = dropdown_row(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        "Settings key",
+        cfg.settings_key.label(),
+        open_drop == Some(Drop::SettingsKey),
+        Hit::SettingsKeyOpen,
+        &SettingsKey::ALL.map(|key| (Hit::SettingsKeyPick(key), key.label(), cfg.settings_key == key)),
+        hover,
+        hits,
+    );
+    text(px, fonts, "Medal and other clip apps use F8. F9 still rotates the clock log.", 11.0, x + 4.0, y + 2.0, dim(), false);
+    y += 22.0;
     y = section(px, fonts, x, y, "Startup");
     y = toggle_row(px, fonts, x, y, w, "Open when Windows starts", cfg.start_with_windows, Hit::StartWithWindows, hover, hits);
     y = toggle_row(px, fonts, x, y, w, "Minimize on close", cfg.minimize_on_close, Hit::MinimizeOnClose, hover, hits);
     if cfg.minimize_on_close {
-        text(px, fonts, "Closing the window hides settings. F8 brings them back.", 11.0, x + 4.0, y + 2.0, dim(), false);
+        text(
+            px,
+            fonts,
+            &format!(
+                "Closing the window hides settings. {} or the tray brings them back. Quit overlay exits.",
+                cfg.settings_key.label()
+            ),
+            11.0,
+            x + 4.0,
+            y + 2.0,
+            dim(),
+            false,
+        );
         y += 22.0;
     }
     y = section(px, fonts, x, y, "Updates");
@@ -1662,6 +1726,24 @@ fn fill_star(px: &mut Pixmap, cx: f32, cy: f32, r: f32, c: Color) {
     px.fill_path(&path, &p, FillRule::Winding, Transform::identity(), None);
 }
 
+fn sidebar_quit(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+) {
+    hits.push(HitBox { id: Hit::QuitApp, x, y, w, h });
+    let fill = if hover == Some(Hit::QuitApp) { chip_hover() } else { btn_bg() };
+    outlined(px, x, y, w, h, 8.0, fill);
+    let c = if hover == Some(Hit::QuitApp) { accent() } else { text_col() };
+    nav_icon(px, Hit::QuitApp, x + 18.0, y + h * 0.5, c);
+    text(px, fonts, "Quit overlay", 13.0, x + 32.0, y + 10.0, c, false);
+}
+
 fn action_btn(
     px: &mut Pixmap,
     fonts: &Fonts,
@@ -1894,6 +1976,7 @@ fn pane_dash(
     heading(px, fonts, x, y, "Dash", "Gear, speed, and footer stats");
     let mut y = y + 64.0;
     y = toggle_row(px, fonts, x, y, w, "Show on overlay", cfg.show_dash, Hit::DashShow, hover, hits);
+    y = toggle_row(px, fonts, x, y, w, "Rev indicator", cfg.dash_rev, Hit::DashRev, hover, hits);
     y = section(px, fonts, x, y, "Footer");
     y = dash_field_row(px, fonts, x, y, w, "Left", cfg.dash_left, 0, open_drop, hover, hits);
     y = dash_field_row(px, fonts, x, y, w, "Middle", cfg.dash_mid, 1, open_drop, hover, hits);
@@ -1924,6 +2007,23 @@ fn pane_ticker(
     y = stepper_row(px, fonts, x, y, w, "Riders shown", &cfg.ticker_count.to_string(), Hit::TickerDec, Hit::TickerInc, hover, hits);
     y = slider_row(px, fonts, x, y, w, "Panel opacity", cfg.ticker_bg, 0, 100, "%", Hit::TickerBg, hover, hits);
     look_section(px, fonts, x, y, w, WidgetId::Ticker, cfg, hover, hits)
+}
+
+fn pane_sys(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    cfg: &HudConfig,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+    x: f32,
+    y: f32,
+    w: f32,
+) -> f32 {
+    heading(px, fonts, x, y, "Systems", "CPU, memory, FPS, network, and per-app load");
+    let mut y = y + 64.0;
+    y = toggle_row(px, fonts, x, y, w, "Show on overlay", cfg.show_sys, Hit::SysShow, hover, hits);
+    y = slider_row(px, fonts, x, y, w, "Panel opacity", cfg.sys_bg, 0, 100, "%", Hit::SysBg, hover, hits);
+    look_section(px, fonts, x, y, w, WidgetId::Sys, cfg, hover, hits)
 }
 
 fn ticker_field_row(

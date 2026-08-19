@@ -38,7 +38,6 @@ private:
     void tessellate(const PluginState& state);
     void tessellateWorld(const PluginState& state);
     void fit(const HudRect& rect, const PluginState* extras = nullptr);
-    bool ridersOnMap(const PluginState& state) const;
     void worldToHud(float wx, float wz, float& hx, float& hy) const;
     bool sampleTrackPos(float trackPos, float& hx, float& hy) const;
     bool sampleDistance(float dist, float& hx, float& hy) const;

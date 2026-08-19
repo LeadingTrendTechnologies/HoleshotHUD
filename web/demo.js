@@ -210,6 +210,9 @@ function renderSettings() {
     html += stepperRow("ticker_count", "Riders shown", 3, 15);
     html += sliderRow("ticker_bg", "Panel opacity", 0, 100, "%");
     html += look("ticker");
+  } else if (w === "sys") {
+    html += sliderRow("sys_bg", "Panel opacity", 0, 100, "%");
+    html += look("sys");
   }
   html += snapGrid();
   settings.replaceChildren(el(html));

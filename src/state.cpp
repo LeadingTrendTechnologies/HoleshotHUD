@@ -1,25 +1,15 @@
 #include "state.h"
+#include "str_util.h"
 
 #include <algorithm>
-#include <cmath>
 #include <cstring>
 #include <string>
 
 namespace
 {
-    std::string copyCString(const char* s, size_t maxLen)
-    {
-        if (!s)
-        {
-            return {};
-        }
-        size_t n = 0;
-        while (n < maxLen && s[n] != '\0')
-        {
-            ++n;
-        }
-        return std::string(s, s + n);
-    }
+    constexpr float kTrailMinDistSq = 2.25f;
+    constexpr size_t kTrailMaxPoints = 1200;
+    constexpr size_t kTrailTrimBatch = 200;
 
     int clampCount(int n)
     {
@@ -178,6 +168,12 @@ namespace
         return len == 10 || len == 10 * 60000;
     }
 
+    // Leftover warmup / previous timed session. A 4+ lap moto must not inherit 8:00.
+    bool leftoverTimedLength(int len)
+    {
+        return warmupSized(len) || raceMinutes(len);
+    }
+
     int lengthToMs(int len, int totalLen)
     {
         if (len <= 0)
@@ -215,7 +211,7 @@ void PluginState::applySessionLength(int len)
             m_sessionRemain = len;
             return;
         }
-        if (m_sessionLaps >= 4 && warmupSized(len))
+        if (m_sessionLaps >= 4 && leftoverTimedLength(len))
         {
             return;
         }
@@ -268,22 +264,28 @@ void PluginState::setSession(const SPluginsRaceSession_t& s)
             && m_sessionLength < 60 && !likelyStartCountdown(len)
             && !likelyStartCountdown(m_sessionLength));
     m_sessionKind = s.m_iSession;
-    m_sessionLaps = laps;
+    // Don't let extras (1–3) replace a 4+ lap moto unless the session kind changed.
+    if (!(m_sessionLaps >= 4 && laps > 0 && laps < 4 && !newKind))
+    {
+        m_sessionLaps = laps;
+    }
     if (laps > 0 && practiceSized(m_sessionLength)
         && (len <= 0 || practiceSized(len) || len == m_sessionLength))
     {
         m_sessionLength = 0;
         m_sessionRemain = 0;
     }
-    // 10:00 leftover warmup must not become the length of a 4+ lap moto.
-    if (laps >= 4 && warmupSized(m_sessionLength)
-        && (len <= 0 || warmupSized(len) || len == m_sessionLength))
+    // Leftover 8:00 / 10:00 must not become the length of a 4+ lap moto.
+    if (m_sessionLaps >= 4 && leftoverTimedLength(m_sessionLength)
+        && (len <= 0 || leftoverTimedLength(len) || len == m_sessionLength))
     {
         m_sessionLength = 0;
         m_sessionRemain = 0;
     }
     // Warmup 10:00 then race 8:00 + 2L is a new format — don't keep the 10 minute lock.
-    if ((newKind || newFormat) && len > 0 && !likelyStartCountdown(len) && !practiceSized(len))
+    // A 4+ lap moto still ignores leftover 8:00 / 10:00 even if extras republish.
+    if ((newKind || newFormat) && len > 0 && !likelyStartCountdown(len) && !practiceSized(len)
+        && !(m_sessionLaps >= 4 && leftoverTimedLength(len)))
     {
         m_sessionLength = len;
         m_sessionRemain = len;
@@ -556,14 +558,14 @@ void PluginState::setTelemetry(const SPluginsBikeData_t& data, float time, float
     {
         const float dx = m_localX - m_trailLastX;
         const float dz = m_localZ - m_trailLastZ;
-        if (dx * dx + dz * dz > 2.25f)
+        if (dx * dx + dz * dz > kTrailMinDistSq)
         {
             m_trail.push_back({m_localX, m_localZ});
             m_trailLastX = m_localX;
             m_trailLastZ = m_localZ;
-            if (m_trail.size() > 1200)
+            if (m_trail.size() > kTrailMaxPoints)
             {
-                m_trail.erase(m_trail.begin(), m_trail.begin() + 200);
+                m_trail.erase(m_trail.begin(), m_trail.begin() + kTrailTrimBatch);
             }
         }
     }
@@ -594,20 +596,6 @@ const VehicleLive* PluginState::findVehicle(int raceNum) const
         return nullptr;
     }
     return &it->second;
-}
-
-float PluginState::riderSpeed(int raceNum) const
-{
-    const auto it = m_vehicles.find(raceNum);
-    if (it != m_vehicles.end() && it->second.active && it->second.speed > 0.5f)
-    {
-        return it->second.speed;
-    }
-    if (raceNum == m_localRaceNum && m_hasTelemetry)
-    {
-        return m_localSpeed;
-    }
-    return m_localSpeed;
 }
 
 const RaceEntry* PluginState::findEntry(int raceNum) const

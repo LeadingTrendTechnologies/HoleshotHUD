@@ -24,7 +24,6 @@ struct FontAtlas
 private:
     bool rasterize();
     AaGlyph m_glyphs[96];
-    AaGlyph m_missing;
     int m_cell = 16;
     int m_ascent = 13;
     bool m_ready = false;

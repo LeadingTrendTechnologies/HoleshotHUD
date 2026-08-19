@@ -10,9 +10,11 @@ mod settings;
 mod plugin;
 mod shm;
 mod startup;
+mod sys;
 mod tray;
 mod uninstall;
 mod update;
+mod util;
 
 use std::mem::size_of;
 use std::ptr::null_mut;
@@ -32,7 +34,7 @@ use windows::Win32::System::Diagnostics::ToolHelp::{
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
 use windows::Win32::System::Threading::Sleep;
-use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_F8, VK_F9};
+use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_F9};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateIconFromResourceEx, CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClassNameW,
     GetClientRect, GetSystemMetrics, GetWindowThreadProcessId, IsWindow, LoadCursorW, LoadImageW,
@@ -140,6 +142,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
     QueryPerformanceFrequency(&mut freq).ok();
     let mut zfix = compat::FullscreenFix::new();
     let mut editor = crate::layout::Editor::default();
+    let mut sys = crate::sys::Sampler::default();
     let mut f8_was = false;
     let mut f9_was = false;
     let mut next_game_scan = Instant::now();
@@ -226,11 +229,12 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
             let _ = SetCursor(cur);
         }
 
-        let f8 = unsafe { GetAsyncKeyState(VK_F8.0 as i32) < 0 };
-        if f8 && !f8_was {
+        let settings_vk = crate::config::with_config(|c| c.settings_key.vk());
+        let settings_down = unsafe { GetAsyncKeyState(settings_vk) < 0 };
+        if settings_down && !f8_was {
             crate::settings::show(host);
         }
-        f8_was = f8;
+        f8_was = settings_down;
         let f9 = unsafe { GetAsyncKeyState(VK_F9.0 as i32) < 0 };
         if f9 && !f9_was {
             crate::record::rotate();
@@ -247,7 +251,6 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         if let Some(s) = shm.as_ref().and_then(|s| s.read()) {
             last_snap = Some(s);
         }
-        let mut snap = last_snap.clone();
         if crate::update::should_quit() {
             return;
         }
@@ -258,28 +261,29 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
                 font_family = cfg.font_family;
             }
         }
-        if let Some(ref mut s) = snap {
+        if let Some(s) = last_snap.as_mut() {
             cfg.apply_to_snapshot(s);
         }
-        editor.tick(hwnd, x, y, w, h, snap.as_ref(), &cfg);
-        if let Some(ref mut s) = snap {
+        editor.tick(hwnd, x, y, w, h, last_snap.as_ref(), &cfg);
+        if let Some(s) = last_snap.as_mut() {
             editor.apply(s);
         }
         editor.apply_cfg(&mut cfg);
-        let raw_age = snap
+        let raw_age = last_snap
             .as_ref()
             .map(|s| qpc_age(s.tick_qpc, freq))
             .unwrap_or(999.0);
         let age = raw_age.clamp(0.0, 0.08);
         let live = raw_age < 2.5;
-        let hud = if live || layout_on { snap.as_ref() } else { None };
+        let hud = if live || layout_on { last_snap.as_ref() } else { None };
         if live {
-            if let Some(s) = snap.as_ref() {
+            if let Some(s) = last_snap.as_ref() {
                 crate::record::tick(s);
             }
         }
 
         let frame_start = Instant::now();
+        sys.tick(last_snap.as_ref().map(|s| s.seq));
         render::draw(
             &mut pixmap,
             &fonts,

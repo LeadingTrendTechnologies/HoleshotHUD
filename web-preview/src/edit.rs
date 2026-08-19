@@ -10,6 +10,7 @@ pub enum Target {
     Radar,
     Dash,
     Ticker,
+    Sys,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -55,6 +56,7 @@ pub fn parse_target(name: &str) -> Option<Target> {
         "minimap" => Target::Minimap,
         "radar" => Target::Radar,
         "ticker" => Target::Ticker,
+        "sys" => Target::Sys,
         _ => return None,
     })
 }
@@ -68,6 +70,7 @@ pub fn rect_of(cfg: &HudConfig, t: Target) -> Rect {
         Target::Radar => cfg.radar,
         Target::Dash => cfg.dash,
         Target::Ticker => cfg.ticker,
+        Target::Sys => cfg.sys,
     }
 }
 
@@ -84,6 +87,7 @@ pub fn set_rect(cfg: &mut HudConfig, t: Target, r: Rect) {
         Target::Radar => cfg.radar = r,
         Target::Dash => cfg.dash = r,
         Target::Ticker => cfg.ticker = r,
+        Target::Sys => cfg.sys = r,
     }
 }
 
@@ -187,6 +191,7 @@ pub fn resize(orig: Rect, handle: Handle, nx: f32, ny: f32, grab_x: f32, grab_y:
         Target::Radar => (72.0, 72.0),
         Target::Dash => (220.0, 100.0),
         Target::Ticker => (360.0, 44.0),
+        Target::Sys => (160.0, 90.0),
     };
     let min_w = min_w_px / ow;
     let min_h = min_h_px / oh;

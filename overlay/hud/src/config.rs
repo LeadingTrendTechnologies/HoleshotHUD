@@ -123,6 +123,83 @@ impl Units {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SettingsKey {
+    F6,
+    F7,
+    F8,
+    F10,
+    F11,
+    Insert,
+    Home,
+    End,
+}
+
+impl SettingsKey {
+    pub const ALL: [Self; 8] = [
+        Self::F6,
+        Self::F7,
+        Self::F8,
+        Self::F10,
+        Self::F11,
+        Self::Insert,
+        Self::Home,
+        Self::End,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::F6 => "F6",
+            Self::F7 => "F7",
+            Self::F8 => "F8",
+            Self::F10 => "F10",
+            Self::F11 => "F11",
+            Self::Insert => "Insert",
+            Self::Home => "Home",
+            Self::End => "End",
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::F6 => "f6",
+            Self::F7 => "f7",
+            Self::F8 => "f8",
+            Self::F10 => "f10",
+            Self::F11 => "f11",
+            Self::Insert => "insert",
+            Self::Home => "home",
+            Self::End => "end",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "f6" => Self::F6,
+            "f7" => Self::F7,
+            "f10" => Self::F10,
+            "f11" => Self::F11,
+            "insert" | "ins" => Self::Insert,
+            "home" => Self::Home,
+            "end" => Self::End,
+            _ => Self::F8,
+        }
+    }
+
+    pub fn vk(self) -> i32 {
+        match self {
+            Self::F6 => 0x75,
+            Self::F7 => 0x76,
+            Self::F8 => 0x77,
+            Self::F10 => 0x79,
+            Self::F11 => 0x7A,
+            Self::Insert => 0x2D,
+            Self::Home => 0x24,
+            Self::End => 0x23,
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum WidgetId {
     Standings,
@@ -132,6 +209,7 @@ pub enum WidgetId {
     Radar,
     Dash,
     Ticker,
+    Sys,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -477,6 +555,7 @@ pub struct HudConfig {
     pub radar: Rect,
     pub dash: Rect,
     pub ticker: Rect,
+    pub sys: Rect,
     pub show_standings: bool,
     pub show_relative: bool,
     pub show_map: bool,
@@ -484,6 +563,8 @@ pub struct HudConfig {
     pub show_radar: bool,
     pub show_dash: bool,
     pub show_ticker: bool,
+    pub show_sys: bool,
+    /// Plugin-only: when true the in-game HUD draws. Overlay still saves this key.
     pub ingame_hud: bool,
     pub standings_rows: i32,
     pub relative_count: i32,
@@ -540,6 +621,8 @@ pub struct HudConfig {
     pub radar_bg: i32,
     pub dash_bg: i32,
     pub ticker_bg: i32,
+    pub sys_bg: i32,
+    pub dash_rev: bool,
     pub dash_left: DashField,
     pub dash_mid: DashField,
     pub dash_right: DashField,
@@ -556,6 +639,7 @@ pub struct HudConfig {
     pub radar_font: i32,
     pub dash_font: i32,
     pub ticker_font: i32,
+    pub sys_font: i32,
     pub st_bold: bool,
     pub rel_bold: bool,
     pub map_bold: bool,
@@ -563,11 +647,13 @@ pub struct HudConfig {
     pub radar_bold: bool,
     pub dash_bold: bool,
     pub ticker_bold: bool,
+    pub sys_bold: bool,
     pub font_family: FontFamily,
     pub units: Units,
     pub start_with_windows: bool,
     pub minimize_on_close: bool,
     pub auto_update_on_launch: bool,
+    pub settings_key: SettingsKey,
     pub st_order: Vec<StField>,
     pub rel_order: Vec<RelField>,
     pub st_w_pos: i32,
@@ -643,6 +729,12 @@ impl HudConfig {
                 w: 0.88,
                 h: 0.055,
             },
+            sys: Rect {
+                x: 0.012,
+                y: 0.36,
+                w: 0.185,
+                h: 0.30,
+            },
             show_standings: false,
             show_relative: false,
             show_map: false,
@@ -650,6 +742,7 @@ impl HudConfig {
             show_radar: false,
             show_dash: false,
             show_ticker: false,
+            show_sys: false,
             ingame_hud: false,
             standings_rows: 12,
             relative_count: 3,
@@ -706,6 +799,8 @@ impl HudConfig {
             radar_bg: 86,
             dash_bg: 82,
             ticker_bg: 86,
+            sys_bg: 82,
+            dash_rev: true,
             dash_left: DashField::Engine,
             dash_mid: DashField::Air,
             dash_right: DashField::Best,
@@ -722,6 +817,7 @@ impl HudConfig {
             radar_font: 100,
             dash_font: 100,
             ticker_font: 100,
+            sys_font: 100,
             st_bold: false,
             rel_bold: false,
             map_bold: false,
@@ -729,11 +825,13 @@ impl HudConfig {
             radar_bold: false,
             dash_bold: false,
             ticker_bold: false,
+            sys_bold: false,
             font_family: FontFamily::Segoe,
             units: Units::Metric,
             start_with_windows: false,
             minimize_on_close: false,
             auto_update_on_launch: false,
+            settings_key: SettingsKey::F8,
             st_order: StField::ALL.to_vec(),
             rel_order: RelField::ALL.to_vec(),
             st_w_pos: 26,
@@ -815,6 +913,10 @@ impl HudConfig {
                 "ticker_y" => cfg.ticker.y = f,
                 "ticker_w" => cfg.ticker.w = f,
                 "ticker_h" => cfg.ticker.h = f.clamp(0.035, 0.07),
+                "sys_x" => cfg.sys.x = f,
+                "sys_y" => cfg.sys.y = f,
+                "sys_w" => cfg.sys.w = f,
+                "sys_h" => cfg.sys.h = f,
                 "show_standings" => cfg.show_standings = b,
                 "show_relative" => cfg.show_relative = b,
                 "show_map" => cfg.show_map = b,
@@ -822,6 +924,7 @@ impl HudConfig {
                 "show_radar" => cfg.show_radar = b,
                 "show_dash" => cfg.show_dash = b,
                 "show_ticker" => cfg.show_ticker = b,
+                "show_sys" => cfg.show_sys = b,
                 "ingame_hud" => cfg.ingame_hud = b,
                 "standings_rows" => cfg.standings_rows = val.parse().unwrap_or(12).max(3),
                 "relative_count" => cfg.relative_count = val.parse().unwrap_or(3).max(1),
@@ -881,6 +984,8 @@ impl HudConfig {
                 "radar_bg" => cfg.radar_bg = clamp_pct(val),
                 "dash_bg" => cfg.dash_bg = clamp_pct(val),
                 "ticker_bg" => cfg.ticker_bg = clamp_pct(val),
+                "sys_bg" => cfg.sys_bg = clamp_pct(val),
+                "dash_rev" => cfg.dash_rev = b,
                 "dash_left" => cfg.dash_left = DashField::parse(val),
                 "dash_mid" => cfg.dash_mid = DashField::parse(val),
                 "dash_right" => cfg.dash_right = DashField::parse(val),
@@ -897,6 +1002,7 @@ impl HudConfig {
                 "radar_font" => cfg.radar_font = clamp_font(val),
                 "dash_font" => cfg.dash_font = clamp_font(val),
                 "ticker_font" => cfg.ticker_font = clamp_font(val),
+                "sys_font" => cfg.sys_font = clamp_font(val),
                 "st_bold" => cfg.st_bold = b,
                 "rel_bold" => cfg.rel_bold = b,
                 "map_bold" => cfg.map_bold = b,
@@ -904,11 +1010,13 @@ impl HudConfig {
                 "radar_bold" => cfg.radar_bold = b,
                 "dash_bold" => cfg.dash_bold = b,
                 "ticker_bold" => cfg.ticker_bold = b,
+                "sys_bold" => cfg.sys_bold = b,
                 "font_family" => cfg.font_family = FontFamily::parse(val),
                 "units" => cfg.units = Units::parse(val),
                 "start_with_windows" => cfg.start_with_windows = b,
                 "minimize_on_close" => cfg.minimize_on_close = b,
                 "auto_update_on_launch" => cfg.auto_update_on_launch = b,
+                "settings_key" => cfg.settings_key = SettingsKey::parse(val),
                 "st_order" => cfg.st_order = parse_st_order(val),
                 "rel_order" => cfg.rel_order = parse_rel_order(val),
                 "st_w_pos" => cfg.st_w_pos = clamp_w(val),
@@ -963,8 +1071,9 @@ impl HudConfig {
              radar_x={}\nradar_y={}\nradar_w={}\nradar_h={}\n\
              dash_x={}\ndash_y={}\ndash_w={}\ndash_h={}\n\
              ticker_x={}\nticker_y={}\nticker_w={}\nticker_h={}\n\
+             sys_x={}\nsys_y={}\nsys_w={}\nsys_h={}\n\
              \n[Widgets]\n\
-             show_standings={}\nshow_relative={}\nshow_map={}\nshow_minimap={}\nshow_radar={}\nshow_dash={}\nshow_ticker={}\n\
+             show_standings={}\nshow_relative={}\nshow_map={}\nshow_minimap={}\nshow_radar={}\nshow_dash={}\nshow_ticker={}\nshow_sys={}\n\
              ingame_hud={}\nstandings_rows={}\nrelative_count={}\nticker_count={}\n\
              \n[Standings]\n\
              st_pos={}\nst_num={}\nst_name={}\nst_gap={}\nst_interval={}\nst_laps={}\nst_current={}\nst_best={}\nst_last={}\nst_status={}\n\
@@ -992,6 +1101,7 @@ impl HudConfig {
              radar_sides={}\nradar_rear={}\n\
              radar_bg={}\nradar_font={}\nradar_bold={}\n\
              \n[Dash]\n\
+             dash_rev={}\n\
              dash_left={}\ndash_mid={}\ndash_right={}\n\
              dash_bg={}\ndash_font={}\ndash_bold={}\n\
              \n[Ticker]\n\
@@ -999,8 +1109,10 @@ impl HudConfig {
              ticker_title={}\n\
              ticker_autoscroll={}\n\
              ticker_bg={}\nticker_font={}\nticker_bold={}\n\
+             \n[Sys]\n\
+             sys_bg={}\nsys_font={}\nsys_bold={}\n\
              \n[App]\n\
-             font_family={}\nunits={}\nstart_with_windows={}\nminimize_on_close={}\nauto_update_on_launch={}\n",
+             font_family={}\nunits={}\nsettings_key={}\nstart_with_windows={}\nminimize_on_close={}\nauto_update_on_launch={}\n",
             self.standings.x,
             self.standings.y,
             self.standings.w,
@@ -1029,6 +1141,10 @@ impl HudConfig {
             self.ticker.y,
             self.ticker.w,
             self.ticker.h,
+            self.sys.x,
+            self.sys.y,
+            self.sys.w,
+            self.sys.h,
             b(self.show_standings),
             b(self.show_relative),
             b(self.show_map),
@@ -1036,6 +1152,7 @@ impl HudConfig {
             b(self.show_radar),
             b(self.show_dash),
             b(self.show_ticker),
+            b(self.show_sys),
             b(self.ingame_hud),
             self.standings_rows,
             self.relative_count,
@@ -1129,6 +1246,7 @@ impl HudConfig {
             self.radar_bg,
             self.radar_font,
             b(self.radar_bold),
+            b(self.dash_rev),
             self.dash_left.key(),
             self.dash_mid.key(),
             self.dash_right.key(),
@@ -1142,8 +1260,12 @@ impl HudConfig {
             self.ticker_bg,
             self.ticker_font,
             b(self.ticker_bold),
+            self.sys_bg,
+            self.sys_font,
+            b(self.sys_bold),
             self.font_family.key(),
             self.units.key(),
+            self.settings_key.key(),
             b(self.start_with_windows),
             b(self.minimize_on_close),
             b(self.auto_update_on_launch),
@@ -1188,6 +1310,7 @@ impl HudConfig {
             WidgetId::Radar => self.radar_font,
             WidgetId::Dash => self.dash_font,
             WidgetId::Ticker => self.ticker_font,
+            WidgetId::Sys => self.sys_font,
         }
     }
 
@@ -1201,6 +1324,7 @@ impl HudConfig {
             WidgetId::Radar => self.radar_font = v,
             WidgetId::Dash => self.dash_font = v,
             WidgetId::Ticker => self.ticker_font = v,
+            WidgetId::Sys => self.sys_font = v,
         }
     }
 
@@ -1213,6 +1337,7 @@ impl HudConfig {
             WidgetId::Radar => self.radar_bold,
             WidgetId::Dash => self.dash_bold,
             WidgetId::Ticker => self.ticker_bold,
+            WidgetId::Sys => self.sys_bold,
         }
     }
 
@@ -1225,6 +1350,7 @@ impl HudConfig {
             WidgetId::Radar => self.radar_bold = on,
             WidgetId::Dash => self.dash_bold = on,
             WidgetId::Ticker => self.ticker_bold = on,
+            WidgetId::Sys => self.sys_bold = on,
         }
     }
 
@@ -1237,6 +1363,7 @@ impl HudConfig {
             WidgetId::Radar => &mut self.radar,
             WidgetId::Dash => &mut self.dash,
             WidgetId::Ticker => &mut self.ticker,
+            WidgetId::Sys => &mut self.sys,
         };
         snap_rect(r, align);
     }
@@ -1676,6 +1803,11 @@ mod tests {
         ] {
             assert_eq!(FontFamily::parse(family.key()), family, "{}", family.label());
         }
+        for key in SettingsKey::ALL {
+            assert_eq!(SettingsKey::parse(key.key()), key, "{}", key.label());
+        }
+        assert_eq!(SettingsKey::parse("ins"), SettingsKey::Insert);
+        assert_eq!(SettingsKey::parse("nope"), SettingsKey::F8);
     }
 
     #[test]
@@ -1688,6 +1820,7 @@ mod tests {
         assert!(!cfg.show_radar);
         assert!(!cfg.show_dash);
         assert!(!cfg.show_ticker);
+        assert!(!cfg.show_sys);
         assert!(cfg.ticker_title);
         assert_eq!(cfg.dash_left, DashField::Engine);
         assert_eq!(cfg.dash_mid, DashField::Air);
@@ -1704,6 +1837,7 @@ mod tests {
             WidgetId::Radar,
             WidgetId::Dash,
             WidgetId::Ticker,
+            WidgetId::Sys,
         ] {
             assert!(cfg.font_pct(id) >= 70);
         }

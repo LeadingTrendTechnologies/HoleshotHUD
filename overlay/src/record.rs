@@ -7,6 +7,8 @@ use std::time::Instant;
 use mxbo_hud::snapshot::{cstr, Snapshot};
 use mxbo_hud::{clock_sample, ClockSample};
 
+use crate::util::json_escape;
+
 const RACE_LOG: &str = "race.jsonl";
 const LAST_RACE: &str = "last-race.jsonl";
 const RACE_SEND: &str = "race-send.jsonl";
@@ -588,19 +590,6 @@ fn log_dirs() -> Vec<PathBuf> {
         }
     }
     dirs
-}
-
-fn json_escape(s: &str) -> String {
-    let mut o = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '"' => o.push_str("\\\""),
-            '\\' => o.push_str("\\\\"),
-            c if c.is_control() => {}
-            c => o.push(c),
-        }
-    }
-    o
 }
 
 #[cfg(test)]

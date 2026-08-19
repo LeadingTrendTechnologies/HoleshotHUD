@@ -1,4 +1,5 @@
 #include "map_hud.h"
+#include "track_geom.h"
 
 #include <algorithm>
 #include <cmath>
@@ -6,14 +7,6 @@
 
 namespace
 {
-    constexpr float kPi = 3.14159265358979323846f;
-    constexpr float kDeg = 180.0f / kPi;
-
-    float deg2rad(float d)
-    {
-        return d * kPi / 180.0f;
-    }
-
     double nowSeconds()
     {
         return pluginNowSeconds();
@@ -33,26 +26,6 @@ namespace
         }
         return d;
     }
-
-    void advanceAlongArc(float& x, float& y, float& angleDeg, float radius, float distance)
-    {
-        const float r = (std::fabs(radius) < 0.05f) ? 0.0f : radius;
-        if (r == 0.0f)
-        {
-            const float a = deg2rad(angleDeg);
-            x += std::sin(a) * distance;
-            y += std::cos(a) * distance;
-            return;
-        }
-        const float a = deg2rad(angleDeg);
-        const float dTheta = distance / r;
-        const float cx = x + std::cos(a) * r;
-        const float cy = y - std::sin(a) * r;
-        const float n = a + dTheta;
-        x = cx - std::cos(n) * r;
-        y = cy + std::sin(n) * r;
-        angleDeg += dTheta * kDeg;
-    }
 }
 
 void MapHud::tessellate(const PluginState& state)
@@ -70,11 +43,8 @@ void MapHud::tessellate(const PluginState& state)
         return;
     }
 
-    float x = segs[0].startX;
-    float y = segs[0].startZ;
-    float heading = segs[0].angle;
     float dist = 0.0f;
-    auto push = [&](float px, float pz) {
+    track_geom::walkCenterline(segs, [&](float px, float pz) {
         if (!m_poly.empty())
         {
             const float dx = px - m_poly.back().x;
@@ -83,29 +53,7 @@ void MapHud::tessellate(const PluginState& state)
         }
         m_poly.push_back(Vec2{px, pz});
         m_dist.push_back(dist);
-    };
-    push(x, y);
-
-    for (const auto& s : segs)
-    {
-        if (s.length <= 0.01f)
-        {
-            continue;
-        }
-        if (s.type == 0 || std::fabs(s.radius) < 0.05f)
-        {
-            advanceAlongArc(x, y, heading, 0.0f, s.length);
-            push(x, y);
-            continue;
-        }
-        const int steps = std::max(6, static_cast<int>(std::ceil(s.length / 0.55f)));
-        const float step = s.length / static_cast<float>(steps);
-        for (int i = 0; i < steps; ++i)
-        {
-            advanceAlongArc(x, y, heading, s.radius, step);
-            push(x, y);
-        }
-    }
+    });
 
     if (m_poly.size() < 2)
     {
@@ -692,39 +640,12 @@ void MapHud::bakeStatic()
         return;
     }
     DrawList tmp;
-    tmp.quads.reserve(2048);
+    tmp.quads.reserve(kDrawQuadReserve);
     addInteriorFill(tmp);
     addRibbon(tmp, 0.0040f, Palette::kTrackEdge);
     addRibbon(tmp, 0.0024f, Palette::kTrack);
     addStartFinish(tmp);
     m_staticQuads.swap(tmp.quads);
-}
-
-bool MapHud::ridersOnMap(const PluginState& state) const
-{
-    auto inside = [this](float hx, float hy) {
-        return hx >= m_xf.innerX && hx <= m_xf.innerX + m_xf.innerW &&
-               hy >= m_xf.innerY && hy <= m_xf.innerY + m_xf.innerH;
-    };
-    if (state.hasTelemetry())
-    {
-        float hx, hy;
-        worldToHud(state.localX(), state.localZ(), hx, hy);
-        if (inside(hx, hy))
-        {
-            return true;
-        }
-    }
-    for (const auto& p : state.trackPositions())
-    {
-        float hx, hy;
-        worldToHud(p.x, p.z, hx, hy);
-        if (inside(hx, hy))
-        {
-            return true;
-        }
-    }
-    return !state.hasTelemetry() && state.trackPositions().empty();
 }
 
 void MapHud::draw(DrawList& dl, const PluginState& state, const HudRect& rect)

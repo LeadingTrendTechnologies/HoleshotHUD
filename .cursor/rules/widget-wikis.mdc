@@ -1,0 +1,22 @@
+---
+description: Keep per-widget wikis current so later agents know why each HUD widget looks and behaves the way it does.
+globs: overlay/hud/**/*.rs,overlay/src/settings.rs,overlay/src/sys.rs,src/hud/**,wiki/widgets.md,wiki/widgets/**/*.md
+alwaysApply: false
+---
+
+# Widget wikis
+
+Before changing a HUD widget, read its page under `wiki/widgets/`. Index: `wiki/widgets.md`.
+
+| Widget | Wiki |
+| --- | --- |
+| Standings | `wiki/widgets/standings.md` |
+| Relative | `wiki/widgets/relative.md` |
+| Map | `wiki/widgets/map.md` |
+| Minimap | `wiki/widgets/minimap.md` |
+| Radar | `wiki/widgets/radar.md` |
+| Dash (clock, extras, flags) | `wiki/widgets/dash.md` |
+| Horizontal Standings (`Ticker`) | `wiki/widgets/horizontal-standings.md` |
+| Systems | `wiki/widgets/systems.md` |
+
+After a behavior, layout, settings, or color change, append a dated bullet to that page’s **Change log** (why, not just what). Update the **Do not regress** list if you add an invariant. Plugin-field status still belongs in `wiki/Home.md`.

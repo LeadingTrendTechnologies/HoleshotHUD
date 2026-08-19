@@ -1,7 +1,6 @@
 #include "layout.h"
 
 #include <algorithm>
-#include <cmath>
 #include <windows.h>
 
 namespace
@@ -79,7 +78,7 @@ LayoutEditor::Target LayoutEditor::hitTest(const PluginConfig& config, float mx,
     return Target::None;
 }
 
-HudRect* LayoutEditor::rectFor(PluginConfig& config, Target t) const
+const HudRect* LayoutEditor::rectFor(const PluginConfig& config, Target t) const
 {
     switch (t)
     {
@@ -90,15 +89,9 @@ HudRect* LayoutEditor::rectFor(PluginConfig& config, Target t) const
     }
 }
 
-const HudRect* LayoutEditor::rectFor(const PluginConfig& config, Target t) const
+HudRect* LayoutEditor::rectFor(PluginConfig& config, Target t) const
 {
-    switch (t)
-    {
-    case Target::Standings: return &config.standings;
-    case Target::Relative: return &config.relative;
-    case Target::Map: return &config.map;
-    default: return nullptr;
-    }
+    return const_cast<HudRect*>(rectFor(static_cast<const PluginConfig&>(config), t));
 }
 
 void LayoutEditor::update(PluginConfig& config, bool& layoutDirty, const std::string& iniPath)

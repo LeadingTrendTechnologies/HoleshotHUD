@@ -2,6 +2,7 @@ use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
+use crate::util::hidden_powershell;
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::System::Registry::{
@@ -139,24 +140,6 @@ fn spawn_exe(exe: &str, args: &[String]) -> bool {
         .stderr(Stdio::null())
         .spawn()
         .is_ok()
-}
-
-fn hidden_powershell() -> Command {
-    let mut cmd = Command::new("powershell.exe");
-    cmd.args([
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-WindowStyle",
-        "Hidden",
-    ])
-    .creation_flags(CREATE_NO_WINDOW)
-    .stdin(Stdio::null())
-    .stdout(Stdio::null())
-    .stderr(Stdio::null());
-    cmd
 }
 
 fn split_cmd(s: &str) -> Option<(String, Vec<String>)> {

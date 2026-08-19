@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
-#include <cstring>
 
 void DrawList::clear()
 {
@@ -259,24 +258,4 @@ void formatEstGap(float seconds, char* out, int outSize)
     {
         std::snprintf(out, outSize, "+%.2f", a);
     }
-}
-
-void truncateCopy(char* dest, size_t destSize, const char* src, int maxChars)
-{
-    if (!dest || destSize == 0)
-    {
-        return;
-    }
-    dest[0] = '\0';
-    if (!src)
-    {
-        return;
-    }
-    int n = 0;
-    while (src[n] && n < maxChars && static_cast<size_t>(n) + 1 < destSize)
-    {
-        dest[n] = src[n];
-        ++n;
-    }
-    dest[n] = '\0';
 }
