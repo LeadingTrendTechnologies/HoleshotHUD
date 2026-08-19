@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.10
+
+Settings dropdowns stay over the rows below them, options are A–Z, and plus/minus buttons use Font Awesome so they show in Exo 2.
+
+### Settings
+
+- Open dropdowns overlay the content under them instead of pushing the next row down
+- Dropdown options sort A–Z, with **None** first when the list has it
+- Stepper plus and minus use Font Awesome icons so they render in Exo 2
+
 ## 0.1.9
 
 Systems widget, race fonts with Exo 2 as the default, crash marks on radar, and warmup that no longer looks like a race.

@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
@@ -21,7 +22,7 @@ use crate::config::{
     update_config, with_config, BoardField, DashField, DotLabel, FontFamily, HudConfig, RelField,
     SettingsKey, SnapAlign, StField, Units, WidgetId,
 };
-use crate::render::{fill_rect, measure, text, Fonts};
+use crate::render::{fill_rect, icon, measure, text, Fonts};
 
 fn bg() -> Color { Color::from_rgba8(24, 25, 29, 255) }
 fn side() -> Color { Color::from_rgba8(8, 8, 10, 255) }
@@ -248,6 +249,19 @@ unsafe impl Send for SettingsUi {}
 
 static UI: Mutex<Option<SettingsUi>> = Mutex::new(None);
 static RAISING: AtomicBool = AtomicBool::new(false);
+
+struct PendingDrop {
+    mx: f32,
+    my: f32,
+    bw: f32,
+    mh: f32,
+    open_hit: Hit,
+    options: Vec<(Hit, &'static str, bool)>,
+}
+
+thread_local! {
+    static DROP_MENUS: RefCell<Vec<PendingDrop>> = RefCell::new(Vec::new());
+}
 
 const SIDE_W: f32 = 204.0;
 
@@ -965,6 +979,7 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
         )
     };
     let mut hits = Vec::new();
+    DROP_MENUS.with(|menus| menus.borrow_mut().clear());
 
     draw_brand(px, fonts);
     if let Some(r) = Rect::from_xywh(18.0, 72.0, SIDE_W - 36.0, 1.0) {
@@ -1015,6 +1030,7 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
         Tab::Ticker => pane_ticker(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
         Tab::Sys => pane_sys(px, fonts, &cfg, hover, &mut hits, x, py, cw),
     };
+    paint_drop_menus(px, fonts, hover, &mut hits);
 
     if let Some(ui) = UI.lock().unwrap().as_mut() {
         ui.hits = hits;
@@ -2484,9 +2500,9 @@ fn stepper_row(
     let by = y + 11.0;
     let ix = x + w - bw - 14.0;
     let dx = ix - 86.0 - bw;
-    btn(px, fonts, dx, by, bw, bh, "−", dec, hover, hits);
+    btn_icon(px, fonts, dx, by, bw, bh, '\u{f068}', dec, hover, hits);
     text(px, fonts, value, 13.0, dx + bw + 43.0, y + 16.0, text_col(), true);
-    btn(px, fonts, ix, by, bw, bh, "+", inc, hover, hits);
+    btn_icon(px, fonts, ix, by, bw, bh, '\u{f067}', inc, hover, hits);
     y + h + ROW_GAP
 }
 
@@ -2516,28 +2532,61 @@ fn dropdown_row(
     outlined(px, bx, by, bw, bh, 7.0, if hot { chip_hover() } else { bg() });
     text(px, fonts, value, 12.0, bx + 10.0, by + 6.0, text_col(), false);
     chevron(px, bx + bw - 14.0, by + bh * 0.5, open, muted());
-    if !open {
-        return y + h + ROW_GAP;
+    if open {
+        let options = sorted_drop_options(options);
+        let item_h = 28.0;
+        let pad = 5.0;
+        let mh = pad * 2.0 + item_h * options.len() as f32;
+        DROP_MENUS.with(|menus| {
+            menus.borrow_mut().push(PendingDrop {
+                mx: bx,
+                my: by + bh + 6.0,
+                bw,
+                mh,
+                open_hit,
+                options,
+            });
+        });
     }
-    let item_h = 28.0;
-    let pad = 5.0;
-    let mh = pad * 2.0 + item_h * options.len() as f32;
-    let mx = bx;
-    let my = by + bh + 6.0;
-    fill_round(px, mx - 1.0, my - 1.0, bw + 2.0, mh + 2.0, 10.0, Color::from_rgba8(0, 0, 0, 90));
-    outlined(px, mx, my, bw, mh, 9.0, Color::from_rgba8(24, 24, 28, 255));
-    for (i, (hit, name, selected)) in options.iter().enumerate() {
-        let iy = my + pad + i as f32 * item_h;
-        hits.push(HitBox { id: *hit, x: mx, y: iy, w: bw, h: item_h });
-        if hover == Some(*hit) {
-            fill_round(px, mx + 5.0, iy, bw - 10.0, item_h, 6.0, chip_hover());
-        } else if *selected {
-            fill_round(px, mx + 5.0, iy, bw - 10.0, item_h, 6.0, accent_dim());
+    y + h + ROW_GAP
+}
+
+fn sorted_drop_options(options: &[(Hit, &'static str, bool)]) -> Vec<(Hit, &'static str, bool)> {
+    let mut options = options.to_vec();
+    options.sort_by(|a, b| {
+        match (a.1.eq_ignore_ascii_case("none"), b.1.eq_ignore_ascii_case("none")) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.1.to_ascii_lowercase().cmp(&b.1.to_ascii_lowercase()),
         }
-        let col = if *selected { accent() } else { text_col() };
-        text(px, fonts, name, 12.0, mx + 12.0, iy + 6.0, col, false);
+    });
+    options
+}
+
+fn paint_drop_menus(px: &mut Pixmap, fonts: &Fonts, hover: Option<Hit>, hits: &mut Vec<HitBox>) {
+    let menus = DROP_MENUS.with(|menus| std::mem::take(&mut *menus.borrow_mut()));
+    for menu in menus {
+        let mx = menu.mx;
+        let my = menu.my;
+        let bw = menu.bw;
+        let mh = menu.mh;
+        hits.push(HitBox { id: menu.open_hit, x: mx, y: my, w: bw, h: mh });
+        fill_round(px, mx - 1.0, my - 1.0, bw + 2.0, mh + 2.0, 10.0, Color::from_rgba8(0, 0, 0, 90));
+        outlined(px, mx, my, bw, mh, 9.0, Color::from_rgba8(24, 24, 28, 255));
+        let item_h = 28.0;
+        let pad = 5.0;
+        for (i, (hit, name, selected)) in menu.options.iter().enumerate() {
+            let iy = my + pad + i as f32 * item_h;
+            hits.push(HitBox { id: *hit, x: mx, y: iy, w: bw, h: item_h });
+            if hover == Some(*hit) {
+                fill_round(px, mx + 5.0, iy, bw - 10.0, item_h, 6.0, chip_hover());
+            } else if *selected {
+                fill_round(px, mx + 5.0, iy, bw - 10.0, item_h, 6.0, accent_dim());
+            }
+            let col = if *selected { accent() } else { text_col() };
+            text(px, fonts, name, 12.0, mx + 12.0, iy + 6.0, col, false);
+        }
     }
-    y + h + ROW_GAP + mh + 8.0
 }
 
 fn chevron(px: &mut Pixmap, cx: f32, cy: f32, open: bool, c: Color) {
@@ -2575,14 +2624,14 @@ fn switch(px: &mut Pixmap, x: f32, y: f32, on: bool, hit: Hit, hover: Option<Hit
     fill_circle(px, kx, y + h * 0.5, 7.0, knob());
 }
 
-fn btn(
+fn btn_icon(
     px: &mut Pixmap,
     fonts: &Fonts,
     x: f32,
     y: f32,
     w: f32,
     h: f32,
-    label: &str,
+    ch: char,
     hit: Hit,
     hover: Option<Hit>,
     hits: &mut Vec<HitBox>,
@@ -2590,7 +2639,7 @@ fn btn(
     hits.push(HitBox { id: hit, x, y, w, h });
     let fill = if hover == Some(hit) { chip_hover() } else { panel() };
     outlined(px, x, y, w, h, 7.0, fill);
-    text(px, fonts, label, 15.0, x + w * 0.5, y + 4.0, text_col(), true);
+    icon(px, fonts, ch, 13.0, x + w * 0.5, y + 5.5, text_col(), true);
 }
 
 fn outlined(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, r: f32, fill: Color) {

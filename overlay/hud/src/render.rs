@@ -4487,7 +4487,7 @@ fn leader_num(s: &Snapshot) -> i32 {
         .unwrap_or(0)
 }
 
-fn icon(px: &mut Pixmap, fonts: &Fonts, ch: char, size: f32, mut x: f32, y: f32, color: Color, center: bool) {
+pub fn icon(px: &mut Pixmap, fonts: &Fonts, ch: char, size: f32, mut x: f32, y: f32, color: Color, center: bool) {
     let size = size * style_k();
     if center {
         x -= fonts.icons.metrics(ch, size).advance_width * 0.5;
