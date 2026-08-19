@@ -2,7 +2,7 @@ mod demo_track;
 mod edit;
 
 use mxbo_hud::config::{
-    BoardField, DashField, DotLabel, HudConfig, SnapAlign, Units, WidgetId,
+    BoardField, DashField, DotLabel, FontFamily, HudConfig, SnapAlign, Units, WidgetId,
 };
 use mxbo_hud::render::{draw, Fonts};
 use mxbo_hud::snapshot::{
@@ -44,8 +44,11 @@ pub struct Preview {
 impl Preview {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Result<Preview, JsValue> {
-        let fonts = Fonts::load().ok_or_else(|| JsValue::from_str("failed to load fonts"))?;
+        let fonts = Fonts::for_family(FontFamily::Exo2)
+            .or_else(Fonts::load)
+            .ok_or_else(|| JsValue::from_str("failed to load fonts"))?;
         let mut cfg = HudConfig::new();
+        cfg.font_family = FontFamily::Exo2;
         cfg.units = Units::Imperial;
         show_only(&mut cfg, "standings");
         center_widget(&mut cfg, "standings");

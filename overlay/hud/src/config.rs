@@ -13,21 +13,34 @@ pub enum FontFamily {
     Arial,
     Tahoma,
     Roboto,
-    Agency,
-    Industry,
-    FasterOne,
+    Exo2,
+    Teko,
+    Goldman,
+    Montserrat,
 }
 
 impl FontFamily {
+    pub const ALL: [Self; 8] = [
+        Self::Segoe,
+        Self::Arial,
+        Self::Tahoma,
+        Self::Roboto,
+        Self::Exo2,
+        Self::Teko,
+        Self::Goldman,
+        Self::Montserrat,
+    ];
+
     pub fn label(self) -> &'static str {
         match self {
             Self::Segoe => "Segoe UI",
             Self::Arial => "Arial",
             Self::Tahoma => "Tahoma",
             Self::Roboto => "Roboto",
-            Self::Agency => "Agency FB",
-            Self::Industry => "Industry",
-            Self::FasterOne => "Faster One",
+            Self::Exo2 => "Exo 2",
+            Self::Teko => "Teko",
+            Self::Goldman => "Goldman",
+            Self::Montserrat => "Montserrat",
         }
     }
 
@@ -37,9 +50,10 @@ impl FontFamily {
             Self::Arial => "arial",
             Self::Tahoma => "tahoma",
             Self::Roboto => "roboto",
-            Self::Agency => "agency",
-            Self::Industry => "industry",
-            Self::FasterOne => "faster",
+            Self::Exo2 => "exo2",
+            Self::Teko => "teko",
+            Self::Goldman => "goldman",
+            Self::Montserrat => "montserrat",
         }
     }
 
@@ -48,9 +62,14 @@ impl FontFamily {
             "arial" => Self::Arial,
             "tahoma" => Self::Tahoma,
             "roboto" => Self::Roboto,
-            "agency" | "agencyfb" => Self::Agency,
-            "industry" | "oswald" => Self::Industry,
-            "faster" | "fasterone" => Self::FasterOne,
+            "exo2" | "exo" | "agency" | "agencyfb" | "ethnocentric" | "racesport" | "race" => {
+                Self::Exo2
+            }
+            "teko" | "industry" | "oswald" => Self::Teko,
+            "goldman" | "aero" | "aeromatics" | "bebas" | "bebasneue" | "faster" | "fasterone" => {
+                Self::Goldman
+            }
+            "montserrat" | "impact" => Self::Montserrat,
             _ => Self::Segoe,
         }
     }
@@ -60,8 +79,7 @@ impl FontFamily {
             Self::Segoe => Some((r"C:\Windows\Fonts\segoeui.ttf", r"C:\Windows\Fonts\segoeuib.ttf")),
             Self::Arial => Some((r"C:\Windows\Fonts\arial.ttf", r"C:\Windows\Fonts\arialbd.ttf")),
             Self::Tahoma => Some((r"C:\Windows\Fonts\tahoma.ttf", r"C:\Windows\Fonts\tahomabd.ttf")),
-            Self::Agency => Some((r"C:\Windows\Fonts\AGENCYR.TTF", r"C:\Windows\Fonts\AGENCYB.TTF")),
-            Self::Roboto | Self::Industry | Self::FasterOne => None,
+            _ => None,
         }
     }
 }
@@ -826,7 +844,7 @@ impl HudConfig {
             dash_bold: false,
             ticker_bold: false,
             sys_bold: false,
-            font_family: FontFamily::Segoe,
+            font_family: FontFamily::Exo2,
             units: Units::Metric,
             start_with_windows: false,
             minimize_on_close: false,
@@ -1792,17 +1810,14 @@ mod tests {
         }
         assert_eq!(DotLabel::parse(DotLabel::Number.key()), DotLabel::Number);
         assert_eq!(DotLabel::parse(DotLabel::Position.key()), DotLabel::Position);
-        for family in [
-            FontFamily::Segoe,
-            FontFamily::Arial,
-            FontFamily::Tahoma,
-            FontFamily::Roboto,
-            FontFamily::Agency,
-            FontFamily::Industry,
-            FontFamily::FasterOne,
-        ] {
+        for family in FontFamily::ALL {
             assert_eq!(FontFamily::parse(family.key()), family, "{}", family.label());
         }
+        assert_eq!(FontFamily::parse("agency"), FontFamily::Exo2);
+        assert_eq!(FontFamily::parse("industry"), FontFamily::Teko);
+        assert_eq!(FontFamily::parse("faster"), FontFamily::Goldman);
+        assert_eq!(FontFamily::parse("bebas"), FontFamily::Goldman);
+        assert_eq!(FontFamily::parse("impact"), FontFamily::Montserrat);
         for key in SettingsKey::ALL {
             assert_eq!(SettingsKey::parse(key.key()), key, "{}", key.label());
         }
@@ -1822,6 +1837,7 @@ mod tests {
         assert!(!cfg.show_ticker);
         assert!(!cfg.show_sys);
         assert!(cfg.ticker_title);
+        assert_eq!(cfg.font_family, FontFamily::Exo2);
         assert_eq!(cfg.dash_left, DashField::Engine);
         assert_eq!(cfg.dash_mid, DashField::Air);
         assert_eq!(cfg.dash_right, DashField::Best);

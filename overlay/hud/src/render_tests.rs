@@ -132,6 +132,19 @@ fn fonts() -> Fonts {
     Fonts::for_family(FontFamily::Roboto).expect("bundled Roboto")
 }
 
+#[test]
+fn bundled_race_fonts_load() {
+    for family in [
+        FontFamily::Roboto,
+        FontFamily::Exo2,
+        FontFamily::Teko,
+        FontFamily::Goldman,
+        FontFamily::Montserrat,
+    ] {
+        Fonts::for_family(family).unwrap_or_else(|| panic!("load {}", family.label()));
+    }
+}
+
 fn draw_ok(s: &Snapshot, cfg: &HudConfig) {
     let mut px = Pixmap::new(1280, 720).expect("pixmap");
     draw(&mut px, &fonts(), Some(s), cfg, 1280, 720, 0.0, false, false);

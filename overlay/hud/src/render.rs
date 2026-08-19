@@ -191,7 +191,7 @@ fn font_from(bytes: &[u8]) -> Option<Font> {
 
 impl Fonts {
     pub fn load() -> Option<Self> {
-        Self::for_family(FontFamily::Segoe)
+        Self::for_family(FontFamily::Exo2)
     }
 
     pub fn for_family(family: FontFamily) -> Option<Self> {
@@ -247,19 +247,24 @@ impl Fonts {
                 None,
                 icons,
             ),
-            FontFamily::Agency => Self::embedded(
-                include_bytes!("../fonts/Michroma-Regular.ttf"),
-                None,
+            FontFamily::Exo2 => Self::embedded(
+                include_bytes!("../fonts/Exo2-ExtraBoldItalic.ttf"),
+                Some(include_bytes!("../fonts/Exo2-BlackItalic.ttf")),
                 icons,
             ),
-            FontFamily::Industry => Self::embedded(
-                include_bytes!("../fonts/Oswald-Regular.ttf"),
-                Some(include_bytes!("../fonts/Oswald-Bold.ttf")),
+            FontFamily::Teko => Self::embedded(
+                include_bytes!("../fonts/Teko-SemiBold.ttf"),
+                Some(include_bytes!("../fonts/Teko-Bold.ttf")),
                 icons,
             ),
-            FontFamily::FasterOne => Self::embedded(
-                include_bytes!("../fonts/FasterOne-Regular.ttf"),
-                None,
+            FontFamily::Goldman => Self::embedded(
+                include_bytes!("../fonts/Goldman-Regular.ttf"),
+                Some(include_bytes!("../fonts/Goldman-Bold.ttf")),
+                icons,
+            ),
+            FontFamily::Montserrat => Self::embedded(
+                include_bytes!("../fonts/Montserrat-ExtraBold.ttf"),
+                Some(include_bytes!("../fonts/Montserrat-Black.ttf")),
                 icons,
             ),
             _ => None,

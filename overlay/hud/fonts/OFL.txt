@@ -1,4 +1,11 @@
-Copyright 2012 The Faster Project Authors (https://github.com/etunni/faster), with Reserved Font Name 'Faster'
+Bundled HUD fonts (SIL Open Font License 1.1 unless noted):
+
+  Exo 2          Copyright 2017 The Exo 2 Project Authors
+  Teko           Copyright 2023 The Teko Project Authors
+  Goldman        Copyright 2020 The Goldman Project Authors
+  Montserrat     Copyright 2011 The Montserrat Project Authors
+
+  Roboto is licensed under the Apache License, Version 2.0.
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
@@ -16,9 +23,9 @@ efforts of academic and linguistic communities, and to provide a free and
 open framework in which fonts may be shared and improved in partnership
 with others.
 
-The OFL allows the licensed fonts to be used, studied, modified and
+The OFL allows the licensed fonts to be used, studied, modified, and
 redistributed freely as long as they are not sold by themselves. The
-fonts, including any derivative works, can be bundled, embedded, 
+fonts, including any derivative works, can be bundled, embedded,
 redistributed and/or sold with any software provided that any reserved
 names are not used by derivative works. The fonts and derivatives,
 however, cannot be released under any other type of license. The

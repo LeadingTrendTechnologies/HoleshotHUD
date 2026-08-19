@@ -2,12 +2,13 @@
 
 ## 0.1.9
 
-Systems widget, crash marks on radar, and warmup that no longer looks like a race.
+Systems widget, race fonts with Exo 2 as the default, crash marks on radar, and warmup that no longer looks like a race.
 
 ### Settings
 
 - **Settings key** on the Settings tab picks which key opens settings (F8 still the default; Medal uses F8)
 - **Systems** tab for CPU, memory, FPS, and per-app load
+- Font picker: **Exo 2**, **Teko**, **Goldman**, and **Montserrat** replace Agency FB, Industry, and Faster One. **Exo 2** is the default (overlay and website demo)
 
 ### Overlay
 
