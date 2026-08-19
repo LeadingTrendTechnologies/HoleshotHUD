@@ -13,7 +13,7 @@ This is the most stateful widget. Clock and flag bugs almost always belong here,
 - Settings: `pane_dash` in `overlay/src/settings.rs`
 - Footer fields: `DashField`
 
-Fixed body: gear | RPM + speed | position + lap/clock text. Footer is three slots (default Engine, Air, Best). Optional rev bar from `local_rpm` vs `max_rpm` / `shift_rpm`.
+Fixed body: gear | RPM + speed | position + lap/clock text. The RPM/speed column is sized from the widest digits (`0`–`9`), not the live value, so gear and position do not shift as RPM changes. Footer is three slots (default Engine, Air, Best). Optional rev bar from `local_rpm` vs `max_rpm` / `shift_rpm`.
 
 ## Session clock (hard-won)
 
@@ -53,3 +53,4 @@ Banner above the dash only (`draw_dash_wrap`). No striped side panels over the w
 - 0.1.4 — Warmup no longer stuck at `10:00`. Checkered does not leak into next warmup. White then checkered on last-lap approach. Timed extras: no flags until extras start; +1 is white then checkered.
 - 0.1.8 — Hidden until **Show on overlay**.
 - 2026-08-19 — 4-lap motos ignore leftover `08:00`. Later gate boards after `00:10` stay a countdown instead of flashing frozen `08:00`.
+- 2026-08-19 — RPM/speed column width is reserved from the widest digits so gear and position do not move as RPM ticks.

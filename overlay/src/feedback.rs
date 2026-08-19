@@ -324,6 +324,8 @@ fn send_error(e: &str) -> String {
     let e = e.to_ascii_lowercase();
     if e.contains("503") {
         "Couldn't send. Add FEEDBACK_GITHUB_TOKEN on Vercel.".into()
+    } else if e.contains("413") || e.contains("422") || e.contains("too large") {
+        "Couldn't send. Race log was too large.".into()
     } else if e.contains("gist") || e.contains("502") {
         "Couldn't send. Token needs gist access on Vercel.".into()
     } else if e.contains("404") || e.contains("not found") {

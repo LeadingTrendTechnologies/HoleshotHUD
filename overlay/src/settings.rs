@@ -170,6 +170,8 @@ enum Hit {
     UpdateInstall,
     StartWithWindows,
     MinimizeOnClose,
+    CloseWithGame,
+    OpenWithGame,
     AutoUpdateOnLaunch,
     QuitApp,
     Uninstall,
@@ -751,12 +753,27 @@ fn click(p: (f32, f32)) {
             close_drop();
             let on = crate::config::with_config(|c| !c.start_with_windows);
             crate::config::update_config(|c| c.start_with_windows = on);
-            crate::startup::set_enabled(on);
+            crate::startup::sync_from_config();
             return;
         }
         Hit::MinimizeOnClose => {
             close_drop();
             crate::config::update_config(|c| c.minimize_on_close = !c.minimize_on_close);
+            return;
+        }
+        Hit::CloseWithGame => {
+            close_drop();
+            crate::config::update_config(|c| c.close_with_game = !c.close_with_game);
+            return;
+        }
+        Hit::OpenWithGame => {
+            close_drop();
+            let on = crate::config::with_config(|c| !c.open_with_game);
+            crate::config::update_config(|c| c.open_with_game = on);
+            crate::startup::sync_from_config();
+            if on {
+                crate::startup::spawn_game_waiter();
+            }
             return;
         }
         Hit::AutoUpdateOnLaunch => {
@@ -919,6 +936,7 @@ fn click(p: (f32, f32)) {
         | Hit::TickerFootOpen(_)
         | Hit::InfoOpen(_, _)
         | Hit::UpdateCheck | Hit::UpdateInstall | Hit::StartWithWindows | Hit::MinimizeOnClose
+        | Hit::CloseWithGame | Hit::OpenWithGame
         | Hit::AutoUpdateOnLaunch | Hit::QuitApp | Hit::Uninstall
         | Hit::FbRate | Hit::FbBug | Hit::FbFeature | Hit::FbStar(_) | Hit::FbText | Hit::FbAttach | Hit::FbSend
         | Hit::StDrag(_) | Hit::RelDrag(_)
@@ -1368,6 +1386,16 @@ fn pane_app(
             dim(),
             false,
         );
+        y += 22.0;
+    }
+    y = toggle_row(px, fonts, x, y, w, "Close when MX Bikes closes", cfg.close_with_game, Hit::CloseWithGame, hover, hits);
+    if cfg.close_with_game {
+        text(px, fonts, "Quits the overlay a few seconds after the game exits.", 11.0, x + 4.0, y + 2.0, dim(), false);
+        y += 22.0;
+    }
+    y = toggle_row(px, fonts, x, y, w, "Open when MX Bikes opens", cfg.open_with_game, Hit::OpenWithGame, hover, hits);
+    if cfg.open_with_game {
+        text(px, fonts, "Starts the overlay when MX Bikes launches, including after a reboot.", 11.0, x + 4.0, y + 2.0, dim(), false);
         y += 22.0;
     }
     y = section(px, fonts, x, y, "Updates");

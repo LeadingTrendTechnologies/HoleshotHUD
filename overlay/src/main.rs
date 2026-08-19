@@ -22,14 +22,11 @@ use std::time::{Duration, Instant};
 
 use tiny_skia::Pixmap;
 use windows::core::w;
-use windows::Win32::Foundation::{BOOL, CloseHandle, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::Foundation::{BOOL, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     ClientToScreen, CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, SelectObject,
     AC_SRC_ALPHA, AC_SRC_OVER, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION, DIB_RGB_COLORS,
     HBITMAP, HDC, HGDIOBJ,
-};
-use windows::Win32::System::Diagnostics::ToolHelp::{
-    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
@@ -53,6 +50,12 @@ use crate::shm::Shm;
 static mut HOST: HWND = HWND(null_mut());
 
 fn main() {
+    if std::env::args().any(|a| a == "--wait-for-game") {
+        crate::startup::wait_for_mx_bikes();
+    }
+    if !crate::startup::claim_hud_instance() {
+        return;
+    }
     let loaded = crate::config::HudConfig::load_file();
     if loaded.auto_update_on_launch && crate::update::apply_on_launch() {
         return;
@@ -112,7 +115,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
     crate::startup::sync_from_config();
     apply_window_icons(host, icon_big, icon_small);
     crate::tray::add(host, icon_small);
-    let start_minimized = std::env::args().any(|a| a == "--minimized");
+    let start_minimized = std::env::args().any(|a| a == "--minimized" || a == "--wait-for-game");
     if start_minimized {
         let _ = ShowWindow(host, SW_SHOWMINNOACTIVE);
     } else {
@@ -122,7 +125,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
     let mut game = find_game_hwnd();
     let mut restart_hint = false;
     let mut compat_done = false;
-    if let Some(path) = mxbikes_pid().and_then(compat::exe_path_for_pid) {
+    if let Some(path) = crate::startup::mx_bikes_pid().and_then(compat::exe_path_for_pid) {
         restart_hint = compat::ensure_disable_fullscreen_optimizations(&path);
         compat_done = true;
     }
@@ -147,6 +150,8 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
     let mut f9_was = false;
     let mut next_game_scan = Instant::now();
     let mut placed = false;
+    let mut saw_game = crate::startup::mx_bikes_pid().is_some();
+    let mut game_gone_at: Option<Instant> = None;
 
     let mut msg = MSG::default();
     loop {
@@ -183,9 +188,25 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
             if game.is_none() {
                 crate::plugin::retry_if_needed();
             }
+            let game_on = crate::startup::mx_bikes_pid().is_some();
+            if game_on {
+                saw_game = true;
+                game_gone_at = None;
+            } else if saw_game {
+                let gone = *game_gone_at.get_or_insert_with(Instant::now);
+                let (close, reopen) = crate::config::with_config(|c| (c.close_with_game, c.open_with_game));
+                if close && gone.elapsed() >= Duration::from_secs(3) {
+                    if reopen {
+                        crate::startup::spawn_game_waiter();
+                    }
+                    crate::config::update_config(|_| {});
+                    crate::tray::remove();
+                    PostQuitMessage(0);
+                }
+            }
         }
         if !compat_done {
-            if let Some(path) = mxbikes_pid().and_then(compat::exe_path_for_pid) {
+            if let Some(path) = crate::startup::mx_bikes_pid().and_then(compat::exe_path_for_pid) {
                 restart_hint = compat::ensure_disable_fullscreen_optimizations(&path);
                 compat_done = true;
             }
@@ -445,38 +466,8 @@ unsafe fn create_overlay(
     .expect("overlay window")
 }
 
-fn mxbikes_pid() -> Option<u32> {
-    unsafe {
-        let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;
-        let mut pe = PROCESSENTRY32W {
-            dwSize: size_of::<PROCESSENTRY32W>() as u32,
-            ..Default::default()
-        };
-        let mut found = None;
-        if Process32FirstW(snap, &mut pe).is_ok() {
-            loop {
-                let len = pe
-                    .szExeFile
-                    .iter()
-                    .position(|&c| c == 0)
-                    .unwrap_or(pe.szExeFile.len());
-                let name = String::from_utf16_lossy(&pe.szExeFile[..len]).to_lowercase();
-                if name == "mxbikes.exe" {
-                    found = Some(pe.th32ProcessID);
-                    break;
-                }
-                if Process32NextW(snap, &mut pe).is_err() {
-                    break;
-                }
-            }
-        }
-        let _ = CloseHandle(snap);
-        found
-    }
-}
-
 fn find_game_hwnd() -> Option<HWND> {
-    let pid = mxbikes_pid()?;
+    let pid = crate::startup::mx_bikes_pid()?;
     struct St {
         pid: u32,
         best: HWND,

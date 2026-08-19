@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.11
+
+Dash numbers stay put as RPM changes, bug reports send during a moto, and the overlay can follow MX Bikes.
+
+### Settings
+
+- **Close when MX Bikes closes** quits the overlay a few seconds after the game exits
+- **Open when MX Bikes opens** starts the overlay when MX Bikes launches, including after a reboot
+
+### Overlay
+
+- Dash RPM/speed column width is reserved from the widest digits, so gear and position do not shift as RPM ticks
+- Bug reports attach the latest 700 KB of the race log so a send works mid-session
+
 ## 0.1.10
 
 Settings dropdowns stay over the rows below them, options are A–Z, and plus/minus buttons use Font Awesome so they show in Exo 2.

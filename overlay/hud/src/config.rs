@@ -670,6 +670,8 @@ pub struct HudConfig {
     pub units: Units,
     pub start_with_windows: bool,
     pub minimize_on_close: bool,
+    pub close_with_game: bool,
+    pub open_with_game: bool,
     pub auto_update_on_launch: bool,
     pub settings_key: SettingsKey,
     pub st_order: Vec<StField>,
@@ -848,6 +850,8 @@ impl HudConfig {
             units: Units::Metric,
             start_with_windows: false,
             minimize_on_close: false,
+            close_with_game: false,
+            open_with_game: false,
             auto_update_on_launch: false,
             settings_key: SettingsKey::F8,
             st_order: StField::ALL.to_vec(),
@@ -1033,6 +1037,8 @@ impl HudConfig {
                 "units" => cfg.units = Units::parse(val),
                 "start_with_windows" => cfg.start_with_windows = b,
                 "minimize_on_close" => cfg.minimize_on_close = b,
+                "close_with_game" => cfg.close_with_game = b,
+                "open_with_game" => cfg.open_with_game = b,
                 "auto_update_on_launch" => cfg.auto_update_on_launch = b,
                 "settings_key" => cfg.settings_key = SettingsKey::parse(val),
                 "st_order" => cfg.st_order = parse_st_order(val),
@@ -1130,7 +1136,7 @@ impl HudConfig {
              \n[Sys]\n\
              sys_bg={}\nsys_font={}\nsys_bold={}\n\
              \n[App]\n\
-             font_family={}\nunits={}\nsettings_key={}\nstart_with_windows={}\nminimize_on_close={}\nauto_update_on_launch={}\n",
+             font_family={}\nunits={}\nsettings_key={}\nstart_with_windows={}\nminimize_on_close={}\nclose_with_game={}\nopen_with_game={}\nauto_update_on_launch={}\n",
             self.standings.x,
             self.standings.y,
             self.standings.w,
@@ -1286,6 +1292,8 @@ impl HudConfig {
             self.settings_key.key(),
             b(self.start_with_windows),
             b(self.minimize_on_close),
+            b(self.close_with_game),
+            b(self.open_with_game),
             b(self.auto_update_on_launch),
         );
         let _ = fs::write(&path, body);

@@ -3246,6 +3246,10 @@ struct DashLay {
     foot: Vec<(char, String)>,
 }
 
+fn max_digit_w(fonts: &Fonts, size: f32) -> f32 {
+    ('0'..='9').map(|d| measure(fonts, d.encode_utf8(&mut [0; 4]), size)).fold(0.0, f32::max)
+}
+
 fn dash_box(fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) -> (f32, f32, f32, f32) {
     let lay = dash_layout(fonts, s, cfg, sw, sh);
     (lay.x, lay.y - lay.flag_h, lay.w, lay.h + lay.flag_h)
@@ -3308,8 +3312,9 @@ fn dash_layout(fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) -
         .collect();
 
     let gear_w = (main_h * 0.82).clamp(44.0, 56.0);
-    let mid_w = (measure(fonts, "RPM", label) + 8.0 + measure(fonts, &rpm, val).max(measure(fonts, "0000", val)))
-        .max(measure(fonts, speed_label, label) + 8.0 + measure(fonts, &speed, val).max(measure(fonts, "000", val)));
+    let digit = max_digit_w(fonts, val);
+    let mid_w = (measure(fonts, "RPM", label) + 8.0 + digit * 5.0)
+        .max(measure(fonts, speed_label, label) + 8.0 + digit * 3.0);
     let right_w = measure(fonts, &ptxt, pos_n).max(measure(fonts, &lap_txt, lap_sz));
     let mut foot_w = 0.0;
     for (ch, t) in &foot {

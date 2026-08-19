@@ -99,6 +99,7 @@ try {{ Wait-Process -Id {pid} -Timeout 40 -ErrorAction SilentlyContinue }} catch
 Start-Sleep -Milliseconds 600
 if ('{plugin}') {{ Remove-Item -LiteralPath '{plugin}' -Force -ErrorAction SilentlyContinue }}
 Remove-Item -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'Holeshot HUD' -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'Holeshot HUD game' -Force -ErrorAction SilentlyContinue
 $desktop = [Environment]::GetFolderPath('Desktop')
 $start = Join-Path ([Environment]::GetFolderPath('StartMenu')) 'Programs'
 foreach ($name in @('Holeshot HUD', 'MXBO Overlay')) {{

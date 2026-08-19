@@ -21,6 +21,14 @@ function clipRaw(s, n) {
   return t.length <= n ? t : `${t.slice(0, n)}…`;
 }
 
+function clipLogTail(s, n) {
+  const t = String(s || "");
+  if (t.length <= n) return { log: t, truncated: false };
+  const start = t.length - n;
+  const nl = t.indexOf("\n", start);
+  return { log: t.slice(nl >= 0 ? nl + 1 : start), truncated: true };
+}
+
 function kindOf(data) {
   if (data.kind === "bug") return "bug";
   if (data.kind === "feature") return "feature";
@@ -99,6 +107,11 @@ module.exports = async function handler(req, res) {
   }
 
   const data = readBody(req);
+  if (typeof data.log === "string" && data.log) {
+    const clipped = clipLogTail(data.log, 700_000);
+    data.log = clipped.log;
+    if (clipped.truncated) data.log_truncated = true;
+  }
   const kind = kindOf(data);
   const message = clipRaw(data.message, 4000).trim();
   const rating = Number(data.rating) || 0;
@@ -111,7 +124,7 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  const raw = typeof req.body === "string" ? req.body : JSON.stringify(data);
+  const raw = JSON.stringify(data);
   if (raw.length > MAX_BODY) {
     res.status(413).json({ error: "Feedback is too large." });
     return;

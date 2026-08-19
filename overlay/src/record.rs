@@ -13,6 +13,7 @@ const RACE_LOG: &str = "race.jsonl";
 const LAST_RACE: &str = "last-race.jsonl";
 const RACE_SEND: &str = "race-send.jsonl";
 const MAX_LOG: usize = 2 * 1024 * 1024;
+const MAX_SEND_LOG: usize = 700 * 1024;
 
 static LOG: Mutex<Option<ClockLog>> = Mutex::new(None);
 
@@ -380,17 +381,15 @@ pub fn feedback_log() -> Option<FeedbackLog> {
     let log = g.as_mut()?;
     log.flush();
     let mid_race = log.gate.saw_race && raw_has_race(&log.body);
-    if mid_race {
-        let out = snapshot_log(log.body.clone(), log.path.clone(), log.truncated);
-        drop(g);
-        return out;
-    }
     let last_path = log.last_path.clone();
     let last_truncated = log.last_truncated;
     let body = log.body.clone();
     let path = log.path.clone();
     let truncated = log.truncated;
     drop(g);
+    if mid_race {
+        return snapshot_log(body, path, truncated);
+    }
     if let Some(raw) = read_closed_log(&last_path) {
         return snapshot_log(raw, last_path, last_truncated);
     }
@@ -458,9 +457,10 @@ fn snapshot_log(raw: String, path: PathBuf, truncated: bool) -> Option<FeedbackL
         return None;
     }
     let track = peek_track(&raw);
+    let (body, truncated) = clip_send(raw, truncated);
     let send = path.parent().map(|dir| dir.join(RACE_SEND));
     if let Some(send) = send.as_ref() {
-        let _ = fs::write(send, raw.as_bytes());
+        let _ = fs::write(send, body.as_bytes());
     }
     Some(FeedbackLog {
         path: send.filter(|p| p.is_file()).unwrap_or_else(|| path.clone()),
@@ -468,7 +468,7 @@ fn snapshot_log(raw: String, path: PathBuf, truncated: bool) -> Option<FeedbackL
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| RACE_LOG.to_string()),
-        body: raw,
+        body,
         truncated,
         track,
     })
@@ -516,6 +516,16 @@ fn trim_body(body: &mut String) -> bool {
     let start = body[start..].find('\n').map(|i| start + i + 1).unwrap_or(start);
     body.replace_range(0..start, "");
     true
+}
+
+fn clip_send(mut body: String, already_truncated: bool) -> (String, bool) {
+    if body.len() <= MAX_SEND_LOG {
+        return (body, already_truncated);
+    }
+    let start = body.len() - MAX_SEND_LOG;
+    let start = body[start..].find('\n').map(|i| start + i + 1).unwrap_or(start);
+    body.replace_range(0..start, "");
+    (body, true)
 }
 
 fn raw_has_race(raw: &str) -> bool {
@@ -680,5 +690,19 @@ mod tests {
         assert!(trim_body(&mut body));
         assert!(body.len() <= MAX_LOG);
         assert!(raw_has_race(&body));
+    }
+
+    #[test]
+    fn clip_send_keeps_the_latest_tail() {
+        let mut body = String::from("{\"v\":1}\n");
+        while body.len() <= MAX_SEND_LOG {
+            body.push_str("{\"t\":1.0,\"cur\":1}\n");
+        }
+        body.push_str("{\"t\":9.0,\"cur\":2,\"track\":\"Glen\"}\n");
+        let (clipped, truncated) = clip_send(body, false);
+        assert!(truncated);
+        assert!(clipped.len() <= MAX_SEND_LOG);
+        assert!(clipped.contains("\"cur\":2"));
+        assert!(raw_has_race(&clipped));
     }
 }
