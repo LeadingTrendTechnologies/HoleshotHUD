@@ -16,6 +16,8 @@ inline double pluginNowSeconds()
 }
 
 constexpr int kMaxRaceEntries = 128;
+// Not yet written this session. 0 means the game sent 0 (lap moto / no clock).
+constexpr int kSessionLengthUnset = -1;
 
 struct RaceEntry
 {
@@ -87,7 +89,10 @@ public:
     void endRun();
     bool onTrack() const;
     void setLocalLap(int lapNum, int lapMs);
+    void setLocalSplit(int split, int timeMs, int bestDiff);
     void setRaceLap(int raceNum, int lapNum, int lapMs);
+    void setRaceSplit(int raceNum, int split, int timeMs);
+    void finishLapSectors(int lapNum, int lapMs);
     void addEntry(const SPluginsRaceAddEntry_t& e);
     void removeEntry(int raceNum);
     void setClassification(const SPluginsRaceClassification_t& header,
@@ -134,10 +139,20 @@ public:
     int currentLapMs() const;
     int currentLap() const { return m_currentLap; }
     int sessionLaps() const { return m_sessionLaps; }
+    int sessionKind() const { return m_sessionKind; }
+    int sessionState() const { return m_sessionState; }
     int maxRpm() const { return m_maxRpm; }
     int shiftRpm() const { return m_shiftRpm; }
     int sessionTimeMs() const;
     int sessionLength() const { return m_sessionLength; }
+
+    int sectorCount() const { return 3; }
+    int sectorLast() const { return m_sectorLast; }
+    int sectorCur(int i) const { return sectorAt(m_sectorCur, i); }
+    int sectorLastLap(int i) const { return sectorAt(m_sectorLastLap, i); }
+    int sectorBest(int i) const { return sectorAt(m_sectorBest, i); }
+    int sectorDelta(int i) const { return sectorAt(m_sectorDelta, i); }
+    int sectorDeltaValid() const { return m_sectorDeltaValid; }
 
     const VehicleLive* findVehicle(int raceNum) const;
     const RaceEntry* findEntry(int raceNum) const;
@@ -149,8 +164,12 @@ public:
 
 private:
     void resolveLocalRaceNum();
+    void noteSessionKind(int kind);
     void applySessionLength(int len);
     int remainToMs() const;
+    void recordSector(int idx, int timeMs, int bestDiff);
+    int mapSplitIndex(int split) const;
+    static int sectorAt(const int* values, int i);
 
     std::unordered_map<int, RaceEntry> m_entries;
     std::unordered_map<int, VehicleLive> m_vehicles;
@@ -192,12 +211,21 @@ private:
     int m_currentLap = 0;
     int m_sessionLaps = 0;
     int m_sessionKind = -1;
+    int m_sessionState = -1;
     int m_maxRpm = 0;
     int m_shiftRpm = 0;
     int m_sessionClock = 0;
-    int m_sessionLength = 0;
+    int m_sessionLength = kSessionLengthUnset;
     int m_sessionRemain = 0;
     std::unordered_map<int, int> m_lastLaps;
+
+    int m_sectorCur[3] = {};
+    int m_sectorLastLap[3] = {};
+    int m_sectorBest[3] = {};
+    int m_sectorDelta[3] = {};
+    int m_sectorDeltaValid = 0;
+    int m_sectorLast = -1;
+    int m_sectorFinishedLap = -1;
 
     bool m_centerlineDirty = false;
 };

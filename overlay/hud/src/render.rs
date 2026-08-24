@@ -6,6 +6,23 @@ use std::sync::Mutex;
 
 use crate::config::{BoardField, DashField, DotLabel, FontFamily, HudConfig, RelField, StField};
 use crate::shm::{cstr, Snapshot};
+pub use crate::race_store::{ClockSample, clock_sample};
+// Re-export clock / field helpers for `render_tests` (`use super::*`).
+#[allow(unused_imports)]
+pub(crate) use crate::race_store::{
+    class_position, extras_started, extra_laps, finish_earned, focus_num_laps,
+    focus_standing, format_countdown, format_gap, format_lap, format_session_clock,
+    i_finished, note_laps_to_run,
+    interval_text, interval_text_from_row, is_lap_race, is_warmup, lapped, laps_done, laps_left,
+    leader_finished, leader_num_laps, local_overtime_done, local_overtime_taken, moving,
+    overtime_active, prestart, race_lap, race_laps_left_text, race_over_for_me,
+    race_progress_text, reset_session_clock_track, rider_current_lap, session_banner,
+    session_best_ms, session_len_ms, session_remain_ms, standing_of, ticker_delta_from_row,
+    timed_clock_live, timed_race_flag, CHECKERED_LATCH, IN_GATE, LAP_GREEN, LAST_CUR_LAP,
+    CLOSING_ON_LINE, LAP_MID_SEEN, LAST_SESSION_SIG, LAST_SF_METERS, LEADER_FIN_LOCAL_BASE,
+    OVERTIME_LOCAL_BASE, POST_GATE, RaceFlag, RaceStore, SESSION_EXPIRED, SF_FRAC_CAND,
+    SF_FRAC_LEARNED, SF_LEARN_LAPS,
+};
 use fontdue::Font;
 use tiny_skia::{
     Color, FillRule, GradientStop, LineCap, LineJoin, LinearGradient, Paint, Path, PathBuilder,
@@ -320,6 +337,7 @@ pub fn draw(px: &mut Pixmap, fonts: &Fonts, snap: Option<&Snapshot>, cfg: &HudCo
 
     let sw = w as f32;
     let sh = h as f32;
+    let _race = RaceStore::tick(s);
     if s.show_standings != 0 {
         let _g = push_style(fonts, cfg.st_bold, cfg.st_font);
         draw_standings(px, fonts, s, cfg, sw, sh);
@@ -351,6 +369,10 @@ pub fn draw(px: &mut Pixmap, fonts: &Fonts, snap: Option<&Snapshot>, cfg: &HudCo
     if cfg.show_sys {
         let _g = push_style(fonts, cfg.sys_bold, cfg.sys_font);
         draw_sys(px, fonts, cfg, sw, sh);
+    }
+    if cfg.sector_visible() {
+        let _g = push_style(fonts, cfg.sector_bold, cfg.sector_font);
+        draw_sector(px, fonts, s, cfg, sw, sh);
     }
     if settings_hint {
         draw_layout(px, fonts, s, cfg, sw, sh);
@@ -389,6 +411,9 @@ fn draw_layout(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
     }
     if cfg.show_sys {
         layout_box(px, cfg.sys.x * sw, cfg.sys.y * sh, cfg.sys.w * sw, cfg.sys.h * sh, false);
+    }
+    if cfg.sector_visible() {
+        layout_box(px, cfg.sector.x * sw, cfg.sector.y * sh, cfg.sector.w * sw, cfg.sector.h * sh, false);
     }
     if cfg.show_dash {
         let _g = push_style(fonts, cfg.dash_bold, cfg.dash_font);
@@ -442,7 +467,8 @@ fn layout_box(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, ew_only: bool) {
 pub fn fill_rect(px: &mut Pixmap, r: Rect, c: Color) {
     let mut p = Paint::default();
     p.set_color(c);
-    p.anti_alias = true;
+    // tiny-skia debug-asserts on subpixel hairline AA rects; the integer path is also cheaper.
+    p.anti_alias = r.width() >= 2.0 && r.height() >= 2.0;
     px.fill_rect(r, &p, Transform::identity(), None);
 }
 
@@ -532,34 +558,6 @@ fn blit(px: &mut Pixmap, bitmap: &[u8], gw: usize, gh: usize, x: f32, y: f32, rg
     }
 }
 
-fn format_gap(ms: i32, laps: i32) -> String {
-    if laps != 0 {
-        return format!("+{laps}L");
-    }
-    if ms <= 0 {
-        return "---".into();
-    }
-    let sec = ms as f32 / 1000.0;
-    if sec >= 60.0 {
-        let m = (sec / 60.0) as i32;
-        format!("+{m}:{:04.1}", sec - m as f32 * 60.0)
-    } else {
-        format!("+{sec:.3}")
-    }
-}
-
-fn format_lap(ms: i32) -> String {
-    if ms <= 0 {
-        return "--".into();
-    }
-    let sec = ms as f32 / 1000.0;
-    if sec >= 60.0 {
-        let m = (sec / 60.0) as i32;
-        format!("{m}:{:06.3}", sec - m as f32 * 60.0)
-    } else {
-        format!("{sec:.3}")
-    }
-}
 
 fn standing_status(row: &crate::shm::Standing) -> Option<&'static str> {
     match row.state {
@@ -571,12 +569,6 @@ fn standing_status(row: &crate::shm::Standing) -> Option<&'static str> {
     }
 }
 
-fn standing_of(s: &Snapshot, race_num: i32) -> Option<&crate::shm::Standing> {
-    s.standings
-        .iter()
-        .take(s.standing_count.max(0) as usize)
-        .find(|st| st.race_num == race_num)
-}
 
 fn rider_crashed(s: &Snapshot, race_num: i32) -> bool {
     if s.focus_race_num == race_num && s.local_crashed != 0 {
@@ -596,24 +588,6 @@ fn format_penalty(ms: i32) -> String {
     }
 }
 
-fn interval_text(s: &Snapshot, row: &crate::shm::Standing) -> String {
-    if row.position <= 1 {
-        return "---".into();
-    }
-    let n = s.standing_count.max(0) as usize;
-    let Some(ahead) = s.standings[..n]
-        .iter()
-        .find(|st| st.position == row.position - 1)
-    else {
-        return "---".into();
-    };
-    let lap_delta = row.gap_laps - ahead.gap_laps;
-    if lap_delta != 0 {
-        format_gap(0, lap_delta)
-    } else {
-        format_gap(row.gap_ms - ahead.gap_ms, 0)
-    }
-}
 
 fn col_slots<T: Copy>(
     origin: f32,
@@ -757,10 +731,18 @@ fn lap_rel(s: &Snapshot, race_num: i32) -> LapRel {
     if race_num <= 0 || race_num == focus {
         return LapRel::Same;
     }
-    let Some(me) = standing_of(s, focus) else {
-        return LapRel::Same;
-    };
-    let Some(other) = standing_of(s, race_num) else {
+    let race = RaceStore::get();
+    let me = race
+        .field
+        .row_by_num(focus)
+        .map(|r| &r.standing)
+        .or_else(|| standing_of(s, focus));
+    let other = race
+        .field
+        .row_by_num(race_num)
+        .map(|r| &r.standing)
+        .or_else(|| standing_of(s, race_num));
+    let (Some(me), Some(other)) = (me, other) else {
         return LapRel::Same;
     };
     let Some(op) = rider_norm_pos(s, race_num) else {
@@ -972,97 +954,6 @@ fn format_board_gap(ms: i32, laps: i32, leader: bool) -> String {
     }
 }
 
-fn format_session_clock(ms: i32) -> String {
-    if ms <= 0 {
-        return "--:--:--".into();
-    }
-    let t = ms / 1000;
-    format!("{:02}:{:02}:{:02}", t / 3600, (t / 60) % 60, t % 60)
-}
-
-fn session_len_ms(len: i32) -> i32 {
-    if len <= 0 {
-        0
-    } else if len >= 1_000 {
-        len
-    } else if len >= 60 {
-        len * 1000
-    } else {
-        len * 60_000
-    }
-}
-
-fn session_len_minutes(ms: i32) -> i32 {
-    if ms < 60_000 {
-        0
-    } else {
-        (ms + 30_000) / 60_000
-    }
-}
-
-fn leftover_practice_len(ms: i32) -> bool {
-    ms >= 30 * 60_000
-}
-
-fn leftover_warmup_len(ms: i32) -> bool {
-    leftover_practice_len(ms) || standard_race_minutes(ms)
-}
-
-fn race_clock_ms(clock: i32) -> bool {
-    clock >= 5 * 60_000 && clock <= 20 * 60_000
-}
-
-fn wait_display_ms(total: i32, clock: i32) -> i32 {
-    if total > 0 {
-        total
-    } else if race_clock_ms(clock) {
-        clock
-    } else {
-        0
-    }
-}
-
-fn standard_race_minutes(ms: i32) -> bool {
-    matches!(session_len_minutes(ms), 5 | 6 | 8 | 10 | 12 | 15 | 20)
-}
-
-fn effective_session_len_ms(s: &Snapshot) -> i32 {
-    let total = session_len_ms(s.session_length);
-    if s.session_laps >= 4 && leftover_warmup_len(total) {
-        0
-    } else if s.session_laps > 0 && leftover_practice_len(total) {
-        0
-    } else {
-        total
-    }
-}
-
-fn format_countdown(remain_ms: i32) -> String {
-    let t = remain_ms.max(0) / 1000;
-    if t >= 3600 {
-        format!("{:02}:{:02}:{:02}", t / 3600, (t / 60) % 60, t % 60)
-    } else {
-        format!("{:02}:{:02}", t / 60, t % 60)
-    }
-}
-
-fn race_lap(s: &Snapshot) -> i32 {
-    if is_lap_race(s) {
-        let n = s.session_laps.max(1);
-        let done = focus_num_laps(s).max(0);
-        return (done + 1).clamp(1, n);
-    }
-    if s.current_lap > 0 {
-        return s.current_lap;
-    }
-    s.standings
-        .iter()
-        .take(s.standing_count.max(0) as usize)
-        .map(|row| row.num_laps)
-        .max()
-        .unwrap_or(0)
-        .max(0)
-}
 
 static STATUS_HINT: Mutex<String> = Mutex::new(String::new());
 
@@ -1072,24 +963,6 @@ pub fn set_status_hint(s: impl Into<String>) {
     }
 }
 
-static LAST_SESSION_CLOCK: AtomicI32 = AtomicI32::new(0);
-static SESSION_CLOCK_MODE: AtomicI32 = AtomicI32::new(0);
-static SAW_SESSION_TIME: AtomicI32 = AtomicI32::new(0);
-static SESSION_EXPIRED: AtomicI32 = AtomicI32::new(0);
-static OVERTIME_BASE_LAP: AtomicI32 = AtomicI32::new(-1);
-static OVERTIME_LOCAL_BASE: AtomicI32 = AtomicI32::new(-1);
-static CACHED_SESSION_LAPS: AtomicI32 = AtomicI32::new(0);
-static CHECKERED_LATCH: AtomicI32 = AtomicI32::new(0);
-static WHITE_HOLD_T0: AtomicI32 = AtomicI32::new(0);
-static LAST_LAP_READY: AtomicI32 = AtomicI32::new(0);
-static LAST_SESSION_SIG: AtomicI32 = AtomicI32::new(0);
-static LAST_CUR_LAP: AtomicI32 = AtomicI32::new(0);
-static IN_GATE: AtomicI32 = AtomicI32::new(0);
-static POST_GATE: AtomicI32 = AtomicI32::new(0);
-static LAP_GREEN: AtomicI32 = AtomicI32::new(0);
-static LOCKED_SESSION_LEN: AtomicI32 = AtomicI32::new(0);
-static RACE_ARMED: AtomicI32 = AtomicI32::new(0);
-static LAST_SESSION_LAPS: AtomicI32 = AtomicI32::new(-1);
 static SYS_CPU: AtomicI32 = AtomicI32::new(0);
 static SYS_MEM: AtomicI32 = AtomicI32::new(0);
 static SYS_FPS: AtomicI32 = AtomicI32::new(0);
@@ -1175,571 +1048,6 @@ fn sys_procs() -> [SysProc; SYS_PROC_N] {
     })
 }
 
-fn reset_session_clock_track() {
-    LAST_SESSION_CLOCK.store(0, Ordering::Relaxed);
-    SESSION_CLOCK_MODE.store(0, Ordering::Relaxed);
-    SAW_SESSION_TIME.store(0, Ordering::Relaxed);
-    SESSION_EXPIRED.store(0, Ordering::Relaxed);
-    OVERTIME_BASE_LAP.store(-1, Ordering::Relaxed);
-    OVERTIME_LOCAL_BASE.store(-1, Ordering::Relaxed);
-    CACHED_SESSION_LAPS.store(0, Ordering::Relaxed);
-    CHECKERED_LATCH.store(0, Ordering::Relaxed);
-    WHITE_HOLD_T0.store(0, Ordering::Relaxed);
-    LAST_LAP_READY.store(0, Ordering::Relaxed);
-    IN_GATE.store(0, Ordering::Relaxed);
-    POST_GATE.store(0, Ordering::Relaxed);
-    LAP_GREEN.store(0, Ordering::Relaxed);
-    LOCKED_SESSION_LEN.store(0, Ordering::Relaxed);
-    RACE_ARMED.store(0, Ordering::Relaxed);
-    LAST_SESSION_LAPS.store(-1, Ordering::Relaxed);
-}
-
-fn session_sig(s: &Snapshot) -> i32 {
-    let raw = s.session_length.max(0);
-    let locked = LOCKED_SESSION_LEN.load(Ordering::Relaxed);
-    if raw > locked {
-        LOCKED_SESSION_LEN.store(raw, Ordering::Relaxed);
-    } else if raw > 0 && locked >= 60 && raw < 60 {
-        LOCKED_SESSION_LEN.store(raw, Ordering::Relaxed);
-    } else if raw > 0 && locked > raw && locked < 60 && raw < 60 && s.session_laps > 0 {
-        LOCKED_SESSION_LEN.store(raw, Ordering::Relaxed);
-    }
-    LOCKED_SESSION_LEN.load(Ordering::Relaxed).max(raw)
-}
-
-fn note_session(s: &Snapshot) {
-    let sig = session_sig(s);
-    let prev = LAST_SESSION_SIG.swap(sig, Ordering::Relaxed);
-    if prev != 0 && prev != sig {
-        reset_session_clock_track();
-        LOCKED_SESSION_LEN.store(s.session_length.max(0), Ordering::Relaxed);
-        LAST_SESSION_SIG.store(session_sig(s), Ordering::Relaxed);
-    }
-    let laps = s.session_laps.max(0);
-    let prev_laps = LAST_SESSION_LAPS.swap(laps, Ordering::Relaxed);
-    let left_race = prev_laps > 0 && laps == 0;
-    let kind_changed = prev_laps > 0 && laps > 0 && (prev_laps >= 4) != (laps >= 4);
-    if left_race || kind_changed {
-        reset_session_clock_track();
-        LOCKED_SESSION_LEN.store(s.session_length.max(0), Ordering::Relaxed);
-        LAST_SESSION_SIG.store(session_sig(s), Ordering::Relaxed);
-        LAST_SESSION_LAPS.store(laps, Ordering::Relaxed);
-    }
-    let lap = s.current_lap.max(0);
-    let prev_lap = LAST_CUR_LAP.swap(lap, Ordering::Relaxed);
-    let race_over = CHECKERED_LATCH.load(Ordering::Relaxed) == 1
-        || SESSION_EXPIRED.load(Ordering::Relaxed) == 1
-        || LAP_GREEN.load(Ordering::Relaxed) == 1;
-    if prev_lap > 1 && lap <= 1 && (POST_GATE.load(Ordering::Relaxed) == 0 || race_over) {
-        reset_session_clock_track();
-        LOCKED_SESSION_LEN.store(s.session_length.max(0), Ordering::Relaxed);
-        LAST_SESSION_SIG.store(session_sig(s), Ordering::Relaxed);
-        LAST_SESSION_LAPS.store(laps, Ordering::Relaxed);
-        LAST_CUR_LAP.store(lap, Ordering::Relaxed);
-    }
-}
-
-fn extra_laps(s: &Snapshot) -> i32 {
-    if is_lap_race(s) {
-        return 0;
-    }
-    if s.session_laps > 0 {
-        CACHED_SESSION_LAPS.store(s.session_laps, Ordering::Relaxed);
-        s.session_laps
-    } else if SESSION_EXPIRED.load(Ordering::Relaxed) == 1 {
-        CACHED_SESSION_LAPS.load(Ordering::Relaxed)
-    } else {
-        0
-    }
-}
-
-fn is_warmup(s: &Snapshot) -> bool {
-    if overtime_active(s) || is_lap_race(s) {
-        return false;
-    }
-    // 1–3 is extras on a timed moto, not practice.
-    if s.session_laps > 0 && s.session_laps < 4 {
-        return false;
-    }
-    let total = session_len_ms(s.session_length);
-    leftover_practice_len(total) || matches!(session_len_minutes(total), 10 | 12 | 15 | 20)
-}
-
-fn is_lap_race(s: &Snapshot) -> bool {
-    // Extra laps are 1–2, sometimes 3. Four or more is always a lap moto,
-    // even when leftover warmup (10:00) is still sitting in session length.
-    if s.session_laps >= 4 {
-        return true;
-    }
-    if s.session_laps < 3 {
-        return false;
-    }
-    let total = session_len_ms(s.session_length);
-    if leftover_practice_len(total) || standard_race_minutes(total) {
-        return false;
-    }
-    true
-}
-
-fn lap_race_text(s: &Snapshot) -> String {
-    format!("{} / {}", race_lap(s), s.session_laps.max(1))
-}
-
-fn leader_num_laps(s: &Snapshot) -> i32 {
-    let rows = s.standing_count.max(0) as usize;
-    s.standings
-        .iter()
-        .take(rows)
-        .find(|row| row.position == 1)
-        .map(|row| row.num_laps)
-        .or_else(|| s.standings.iter().take(rows).map(|row| row.num_laps).max())
-        .unwrap_or(0)
-        .max(0)
-}
-
-fn overtime_base(s: &Snapshot) -> i32 {
-    let mut base = OVERTIME_BASE_LAP.load(Ordering::Relaxed);
-    let local = focus_num_laps(s);
-    let lead = leader_num_laps(s);
-    let local0 = OVERTIME_LOCAL_BASE.load(Ordering::Relaxed);
-    // Ignore empty standings (0/0 at expiry). Rebase once real laps reappear.
-    if local > 0 && (local0 < 0 || local0 == 0) {
-        OVERTIME_LOCAL_BASE.store(local, Ordering::Relaxed);
-    }
-    if base < 0 || base == 0 {
-        if lead > 0 {
-            OVERTIME_BASE_LAP.store(lead, Ordering::Relaxed);
-            base = lead;
-        } else if base < 0 {
-            return -1;
-        }
-    }
-    base
-}
-
-fn extras_started(s: &Snapshot) -> bool {
-    let base = overtime_base(s);
-    overtime_active(s) && base > 0 && leader_num_laps(s) > base
-}
-
-fn local_overtime_done(s: &Snapshot) -> i32 {
-    let local = focus_num_laps(s);
-    if local <= 0 {
-        return 0;
-    }
-    let _ = overtime_base(s);
-    // Backmarkers who cross after the clock hits 0 are still finishing the timed lap.
-    // Extra laps start when the leader next crosses. That next local cross starts
-    // your extra; the one after that completes it.
-    if !extras_started(s) {
-        OVERTIME_LOCAL_BASE.store(local, Ordering::Relaxed);
-        return 0;
-    }
-    let local0 = OVERTIME_LOCAL_BASE.load(Ordering::Relaxed);
-    if local0 < 0 {
-        OVERTIME_LOCAL_BASE.store(local, Ordering::Relaxed);
-        return 0;
-    }
-    (local - local0 - 1).max(0)
-}
-
-fn local_overtime_taken(s: &Snapshot) -> i32 {
-    let _ = local_overtime_done(s);
-    if !extras_started(s) {
-        return 0;
-    }
-    let local = focus_num_laps(s);
-    let local0 = OVERTIME_LOCAL_BASE.load(Ordering::Relaxed);
-    if local <= 0 || local0 < 0 {
-        return 0;
-    }
-    (local - local0).max(0)
-}
-
-fn overtime_lap_text(s: &Snapshot) -> String {
-    let n = extra_laps(s).max(1);
-    let taken = local_overtime_taken(s).min(n);
-    format!("{taken} / {n}")
-}
-
-fn moving(s: &Snapshot) -> bool {
-    s.local_speed >= 3.5
-}
-
-fn near_session_total(clock: i32, total: i32) -> bool {
-    if total <= 0 {
-        return false;
-    }
-    clock >= total || (clock - total).abs() < 30_000
-}
-
-fn is_gate_clock(clock: i32, total: i32) -> bool {
-    // Start boards are 2:00 / 0:50 / 0:30 / ~15s. Practice remaining at 3:00 is not a board.
-    let long_session = total > 180_000 || total <= 0;
-    long_session && clock >= 8_000 && clock <= 120_000 && (total <= 0 || clock * 3 < total)
-}
-
-fn clock_stuck(clock: i32, last: i32) -> bool {
-    static HOLD: Mutex<Option<(i32, f32)>> = Mutex::new(None);
-    clock_held_for(clock, last, 2.5, &HOLD)
-}
-
-fn board_held(clock: i32, last: i32) -> bool {
-    static HOLD: Mutex<Option<(i32, f32)>> = Mutex::new(None);
-    clock_held_for(clock, last, 0.6, &HOLD)
-}
-
-fn clock_held_for(clock: i32, last: i32, secs: f32, hold: &Mutex<Option<(i32, f32)>>) -> bool {
-    let Ok(mut hold) = hold.lock() else {
-        return false;
-    };
-    let now = anim_now();
-    if last > 0 && clock == last {
-        match *hold {
-            Some((prev, at)) if prev == clock => now - at >= secs,
-            _ => {
-                *hold = Some((clock, now));
-                false
-            }
-        }
-    } else {
-        *hold = Some((clock, now));
-        false
-    }
-}
-
-fn session_remain_ms(s: &Snapshot) -> Option<i32> {
-    note_session(s);
-    if is_lap_race(s) {
-        let clock = s.session_time_ms.max(0);
-        let last = LAST_SESSION_CLOCK.load(Ordering::Relaxed);
-        LAST_SESSION_CLOCK.store(clock, Ordering::Relaxed);
-        let counting_up = last > 0 && clock > last + 400;
-        let counting_down = last > 0
-            && clock < last
-            && last - clock < 5_000
-            && clock <= 180_000;
-        if LAP_GREEN.load(Ordering::Relaxed) == 1 {
-            IN_GATE.store(0, Ordering::Relaxed);
-            return None;
-        }
-        if counting_up || (moving(s) && counting_down && last <= 8_000) {
-            LAP_GREEN.store(1, Ordering::Relaxed);
-            IN_GATE.store(0, Ordering::Relaxed);
-            POST_GATE.store(1, Ordering::Relaxed);
-            return None;
-        }
-        if POST_GATE.load(Ordering::Relaxed) == 1 {
-            IN_GATE.store(0, Ordering::Relaxed);
-            return None;
-        }
-        let in_gate = IN_GATE.load(Ordering::Relaxed) == 1;
-        if in_gate && last > 0 && (clock > last + 400 || clock < 500 || clock > 180_000) {
-            POST_GATE.store(1, Ordering::Relaxed);
-            IN_GATE.store(0, Ordering::Relaxed);
-            return None;
-        }
-        if clock > 0 && clock <= 180_000 {
-            IN_GATE.store(1, Ordering::Relaxed);
-            RACE_ARMED.store(0, Ordering::Relaxed);
-            SESSION_EXPIRED.store(0, Ordering::Relaxed);
-            return Some(clock);
-        }
-        if in_gate {
-            POST_GATE.store(1, Ordering::Relaxed);
-        }
-        if moving(s) {
-            LAP_GREEN.store(1, Ordering::Relaxed);
-        }
-        IN_GATE.store(0, Ordering::Relaxed);
-        return None;
-    }
-    let total = effective_session_len_ms(s);
-    if total <= 0 && session_len_ms(s.session_length) <= 0 && s.session_laps <= 0 {
-        if RACE_ARMED.load(Ordering::Relaxed) == 1
-            && SESSION_EXPIRED.load(Ordering::Relaxed) == 1
-            && extra_laps(s) > 0
-        {
-            return Some(0);
-        }
-        if s.session_time_ms > 0 {
-            return Some(s.session_time_ms);
-        }
-        return None;
-    }
-    let last = LAST_SESSION_CLOCK.load(Ordering::Relaxed);
-    let raw = s.session_time_ms.max(0);
-    let saw = SAW_SESSION_TIME.load(Ordering::Relaxed) == 1;
-    let armed = RACE_ARMED.load(Ordering::Relaxed) == 1;
-    let in_gate_now = IN_GATE.load(Ordering::Relaxed) == 1;
-    let mut clock = if raw > total + 30_000 && total > 0 && last > 0 && !in_gate_now && armed {
-        last
-    } else {
-        raw
-    };
-    // Game republishes the 8s/10s board during a live race; keep the real remaining clock.
-    if armed
-        && last > 60_000
-        && clock >= 8_000
-        && clock <= 15_000
-        && clock + 20_000 < last
-    {
-        clock = last;
-    }
-    let near_full = near_session_total(clock, total);
-    let last_near_full = last > 0 && near_session_total(last, total);
-    let started = moving(s) || s.current_lap > 1;
-    // After a real race countdown, a snap back to session length (or 8s junk) is expiry.
-    if saw && armed && last > 0 && last + 30_000 < total && extra_laps(s) > 0 && last <= 90_000 {
-        let jump_to_length = (near_full || clock >= total) && clock > last + 20_000;
-        let jump_off_zero = last <= 15_000 && clock > last + 4_000;
-        if jump_to_length || jump_off_zero {
-            LAST_SESSION_CLOCK.store(last, Ordering::Relaxed);
-            SESSION_EXPIRED.store(1, Ordering::Relaxed);
-            let _ = overtime_base(s);
-            return Some(0);
-        }
-    }
-    if saw
-        && armed
-        && last > 0
-        && last + 30_000 < total
-        && near_full
-        && clock > last + 20_000
-    {
-        clock = last;
-    }
-    if s.session_laps <= 0
-        && last > 0
-        && last <= 20_000
-        && near_full
-        && last + 30_000 < total
-    {
-        LAST_SESSION_CLOCK.store(0, Ordering::Relaxed);
-        IN_GATE.store(0, Ordering::Relaxed);
-        return Some(0);
-    }
-    LAST_SESSION_CLOCK.store(clock, Ordering::Relaxed);
-    let in_gate = IN_GATE.load(Ordering::Relaxed) == 1;
-    let mut post = POST_GATE.load(Ordering::Relaxed) == 1;
-    let prestart_sized = |t: i32| t > 0 && t <= 120_000 && total > 180_000 && t * 3 < total;
-    if s.session_laps > 0 && prestart_sized(last) && near_full && !armed {
-        POST_GATE.store(1, Ordering::Relaxed);
-        post = true;
-    }
-    let short_clock = clock > 0 && clock <= 35_000 && (total <= 0 || clock * 3 < total) && total > 180_000;
-    let enter_gate =
-        is_gate_clock(clock, total) && !moving(s) && !post && !armed && s.session_laps > 0;
-    let gate_clock = enter_gate
-        || (!post && in_gate && clock > 0 && clock <= 180_000 && (total <= 0 || clock * 3 < total));
-    // Frozen 00:30 wait is a race board. Practice remaining that hitch-pauses is not.
-    let held_board = short_clock && board_held(clock, last) && !armed && s.session_laps > 0;
-    if held_board {
-        IN_GATE.store(0, Ordering::Relaxed);
-        POST_GATE.store(1, Ordering::Relaxed);
-        SESSION_CLOCK_MODE.store(1, Ordering::Relaxed);
-        let shown = wait_display_ms(total, clock);
-        LAST_SESSION_CLOCK.store(shown.max(total), Ordering::Relaxed);
-        return Some(shown);
-    }
-    let drop_off_gate = in_gate && last >= 8_000 && clock < 500;
-    let leave_gate = in_gate && !gate_clock && !near_full && clock > 180_000;
-    let wait_off_gate = in_gate && !gate_clock && near_full;
-    let board_restart = in_gate && !post && last > 0 && clock > last + 2_000 && clock <= 180_000;
-    // A later 45s/30s board after 00:10 must stay a countdown. Don't swap in leftover 08:00
-    // until we've actually seen the race clock tick (Maryland 4-lap / 8:00 leftover).
-    let hold_gate_board = gate_clock
-        && !moving(s)
-        && !armed
-        && SAW_SESSION_TIME.load(Ordering::Relaxed) == 0;
-    let gate = gate_clock && !drop_off_gate && !armed && (!board_restart || hold_gate_board);
-    let race_ticking = !gate_clock
-        && last > 180_000
-        && clock > 5_000
-        && clock < last
-        && last - clock >= 50
-        && last - clock < 5_000;
-    let waiting_for_race = (post || board_restart)
-        && !armed
-        && !race_ticking
-        && clock <= 180_000
-        && !hold_gate_board;
-
-    if drop_off_gate {
-        IN_GATE.store(0, Ordering::Relaxed);
-        POST_GATE.store(1, Ordering::Relaxed);
-        SESSION_CLOCK_MODE.store(1, Ordering::Relaxed);
-        SESSION_EXPIRED.store(0, Ordering::Relaxed);
-        let shown = wait_display_ms(total, clock);
-        LAST_SESSION_CLOCK.store(shown.max(total), Ordering::Relaxed);
-        if !armed {
-            return Some(shown);
-        }
-        RACE_ARMED.store(1, Ordering::Relaxed);
-    } else if leave_gate {
-        IN_GATE.store(0, Ordering::Relaxed);
-        POST_GATE.store(1, Ordering::Relaxed);
-        SESSION_CLOCK_MODE.store(1, Ordering::Relaxed);
-        SESSION_EXPIRED.store(0, Ordering::Relaxed);
-        SAW_SESSION_TIME.store(0, Ordering::Relaxed);
-        OVERTIME_BASE_LAP.store(-1, Ordering::Relaxed);
-        OVERTIME_LOCAL_BASE.store(-1, Ordering::Relaxed);
-        CHECKERED_LATCH.store(0, Ordering::Relaxed);
-        let shown = wait_display_ms(total, clock);
-        LAST_SESSION_CLOCK.store(shown.max(total), Ordering::Relaxed);
-        return Some(shown);
-    } else if wait_off_gate {
-        IN_GATE.store(0, Ordering::Relaxed);
-        POST_GATE.store(1, Ordering::Relaxed);
-        SESSION_CLOCK_MODE.store(1, Ordering::Relaxed);
-        let shown = wait_display_ms(total, clock);
-        LAST_SESSION_CLOCK.store(shown.max(total), Ordering::Relaxed);
-        return Some(shown);
-    } else if waiting_for_race {
-        IN_GATE.store(0, Ordering::Relaxed);
-        POST_GATE.store(1, Ordering::Relaxed);
-        SESSION_CLOCK_MODE.store(1, Ordering::Relaxed);
-        if is_lap_race(s) {
-            return None;
-        }
-        let shown = wait_display_ms(total, clock);
-        LAST_SESSION_CLOCK.store(shown.max(total), Ordering::Relaxed);
-        return Some(shown);
-    } else if gate {
-        IN_GATE.store(1, Ordering::Relaxed);
-        POST_GATE.store(0, Ordering::Relaxed);
-        SESSION_CLOCK_MODE.store(1, Ordering::Relaxed);
-        SESSION_EXPIRED.store(0, Ordering::Relaxed);
-        SAW_SESSION_TIME.store(0, Ordering::Relaxed);
-        OVERTIME_BASE_LAP.store(-1, Ordering::Relaxed);
-        OVERTIME_LOCAL_BASE.store(-1, Ordering::Relaxed);
-        CHECKERED_LATCH.store(0, Ordering::Relaxed);
-        RACE_ARMED.store(0, Ordering::Relaxed);
-    } else if race_ticking {
-        RACE_ARMED.store(1, Ordering::Relaxed);
-        POST_GATE.store(0, Ordering::Relaxed);
-        SESSION_CLOCK_MODE.store(1, Ordering::Relaxed);
-        IN_GATE.store(0, Ordering::Relaxed);
-    } else if !gate
-        && IN_GATE.load(Ordering::Relaxed) == 0
-        && RACE_ARMED.load(Ordering::Relaxed) == 1
-        && extra_laps(s) > 0
-        && SAW_SESSION_TIME.load(Ordering::Relaxed) == 1
-        && started
-        && last > 0
-        && last <= 90_000
-        && !last_near_full
-        && last + 30_000 < total
-        && near_full
-        && clock > last + 20_000
-    {
-        SESSION_EXPIRED.store(1, Ordering::Relaxed);
-        let _ = overtime_base(s);
-        return Some(0);
-    } else if near_full
-        && SESSION_EXPIRED.load(Ordering::Relaxed) == 0
-        && !(SESSION_CLOCK_MODE.load(Ordering::Relaxed) == 2 && last_near_full && started)
-    {
-        SESSION_CLOCK_MODE.store(1, Ordering::Relaxed);
-        SESSION_EXPIRED.store(0, Ordering::Relaxed);
-        OVERTIME_BASE_LAP.store(-1, Ordering::Relaxed);
-        OVERTIME_LOCAL_BASE.store(-1, Ordering::Relaxed);
-        CHECKERED_LATCH.store(0, Ordering::Relaxed);
-    } else if !gate && last > 0 && clock + 400 < last {
-        SESSION_CLOCK_MODE.store(1, Ordering::Relaxed);
-    } else if last > 0
-        && clock > last + 400
-        && !near_full
-        && !gate
-        && clock * 4 < total * 3
-        && last * 4 < total * 3
-        && last > 45_000
-    {
-        SESSION_CLOCK_MODE.store(2, Ordering::Relaxed);
-    }
-
-    let cap = |c: i32| if total > 0 { c.min(total) } else { c.max(0) };
-    let remain = if gate {
-        cap(clock)
-    } else {
-        match SESSION_CLOCK_MODE.load(Ordering::Relaxed) {
-            2 => (total - clock).max(0),
-            1 => {
-                if clock <= 0 {
-                    if started && last > 2000 && !near_full && !drop_off_gate && !leave_gate {
-                        0
-                    } else {
-                        total
-                    }
-                } else {
-                    cap(clock)
-                }
-            }
-            _ => {
-                if clock <= 0 {
-                    total
-                } else {
-                    cap(clock)
-                }
-            }
-        }
-    };
-
-    if !gate && remain > 4000 {
-        SAW_SESSION_TIME.store(1, Ordering::Relaxed);
-    }
-
-    if SESSION_EXPIRED.load(Ordering::Relaxed) == 1 {
-        if near_full && remain > 20_000 && !started {
-            SESSION_EXPIRED.store(0, Ordering::Relaxed);
-            OVERTIME_BASE_LAP.store(-1, Ordering::Relaxed);
-            OVERTIME_LOCAL_BASE.store(-1, Ordering::Relaxed);
-            CHECKERED_LATCH.store(0, Ordering::Relaxed);
-            return Some(remain);
-        }
-        return Some(0);
-    }
-
-    let timed_out = remain <= 800
-        || (clock_stuck(clock, last) && remain > 0 && remain <= 2_000);
-    let raced = RACE_ARMED.load(Ordering::Relaxed) == 1
-        || (SAW_SESSION_TIME.load(Ordering::Relaxed) == 1 && last > 60_000);
-    if !gate
-        && started
-        && timed_out
-        && extra_laps(s) > 0
-        && raced
-        && SAW_SESSION_TIME.load(Ordering::Relaxed) == 1
-    {
-        RACE_ARMED.store(1, Ordering::Relaxed);
-        SESSION_EXPIRED.store(1, Ordering::Relaxed);
-        let _ = overtime_base(s);
-        return Some(0);
-    }
-    Some(remain)
-}
-
-fn overtime_active(s: &Snapshot) -> bool {
-    extra_laps(s) > 0
-        && RACE_ARMED.load(Ordering::Relaxed) == 1
-        && SAW_SESSION_TIME.load(Ordering::Relaxed) == 1
-        && SESSION_EXPIRED.load(Ordering::Relaxed) == 1
-}
-
-fn prestart(s: &Snapshot) -> bool {
-    if IN_GATE.load(Ordering::Relaxed) == 1 {
-        return true;
-    }
-    if overtime_active(s) {
-        return false;
-    }
-    if moving(s) {
-        return false;
-    }
-    let total = session_len_ms(s.session_length);
-    let clock = s.session_time_ms.max(0);
-    s.current_lap <= 1 || laps_done(s) <= 0 || (total > 0 && near_session_total(clock, total))
-}
 
 fn norm_track_pos(s: &Snapshot, pos: f32) -> f32 {
     if pos < 0.0 {
@@ -1775,12 +1083,32 @@ fn focus_track_pos(s: &Snapshot) -> f32 {
     norm_track_pos(s, raw)
 }
 
+fn lap_meters(s: &Snapshot) -> f32 {
+    if s.track_length > 10.0 {
+        s.track_length
+    } else {
+        1200.0
+    }
+}
+
 fn sf_frac(s: &Snapshot) -> f32 {
+    // A crossing we watched beats `sf_meters`, which stays 0 when the game never
+    // sends a centerline — that would park the flag window at the centerline origin.
+    let learned = SF_FRAC_LEARNED.load(Ordering::Relaxed);
+    if learned >= 0 {
+        return (learned as f32 / 10_000.0).rem_euclid(1.0);
+    }
     if s.track_length > 1.0 && s.sf_meters >= 0.0 {
         (s.sf_meters / s.track_length).rem_euclid(1.0)
     } else {
         0.0
     }
+}
+
+/// True when we have no idea where the line is: nothing learned, no centerline, and
+/// `sf_meters` still at its default.
+fn sf_uncalibrated(s: &Snapshot) -> bool {
+    SF_FRAC_LEARNED.load(Ordering::Relaxed) < 0 && s.poly_count <= 0 && s.sf_meters <= 0.0
 }
 
 fn dist_to_sf(pos: f32, sf: f32) -> f32 {
@@ -1797,18 +1125,11 @@ fn meters_to_sf(s: &Snapshot) -> Option<f32> {
     if pos < 0.0 {
         return None;
     }
-    let remain = dist_to_sf(pos, sf_frac(s));
-    if s.track_length > 10.0 {
-        Some(remain * s.track_length)
-    } else {
-        Some(remain * 1200.0)
-    }
+    Some(dist_to_sf(pos, sf_frac(s)) * lap_meters(s))
 }
 
 const FLAG_LINE_M: f32 = 80.0;
 const FLAG_LINE_MIN_M: f32 = 4.0;
-const LAST_LAP_CLEAR_M: f32 = 80.0;
-const WHITE_HOLD_MS: i32 = 5_000;
 
 fn approaching_line(s: &Snapshot) -> bool {
     meters_to_sf(s).is_some_and(|m| m > FLAG_LINE_MIN_M && m <= FLAG_LINE_M)
@@ -1824,377 +1145,122 @@ fn approaching_finish(s: &Snapshot) -> bool {
     approaching_line(s)
 }
 
-fn just_after_sf(s: &Snapshot) -> bool {
-    let pos = focus_track_pos(s);
-    if pos < 0.0 {
-        return false;
-    }
-    let remain = dist_to_sf(pos, sf_frac(s));
-    if s.track_length > 10.0 {
-        let past = (1.0 - remain) * s.track_length;
-        remain > 0.55 && past <= 40.0
-    } else {
-        remain >= 0.96
-    }
-}
+const SF_AGREE_FRAC: f32 = 0.05;
 
-fn laps_done(s: &Snapshot) -> i32 {
-    let st = focus_num_laps(s);
-    let on = s.current_lap;
-    if on > 0 && st >= on + 2 {
-        (on - 1).max(0)
-    } else {
-        st
-    }
-}
-
-fn rider_current_lap(s: &Snapshot, race_num: i32, num_laps: i32) -> i32 {
-    let done = num_laps.max(0);
-    let focus = if s.focus_race_num > 0 {
-        s.focus_race_num
-    } else {
-        s.local_race_num
-    };
-    if race_num == focus && s.current_lap > done {
-        s.current_lap
-    } else {
-        done + 1
-    }
-}
-
-fn focus_num_laps(s: &Snapshot) -> i32 {
-    let focus = if s.focus_race_num > 0 {
-        s.focus_race_num
-    } else {
-        s.local_race_num
-    };
-    s.standings
-        .iter()
-        .take(s.standing_count.max(0) as usize)
-        .find(|row| row.race_num == focus)
-        .map(|row| row.num_laps)
-        .unwrap_or_else(|| {
-            if s.current_lap > 0 {
-                (s.current_lap - 1).max(0)
-            } else {
-                0
-            }
-        })
-        .max(0)
-}
-
-fn timed_clock_live(s: &Snapshot) -> bool {
-    !is_lap_race(s) && !overtime_active(s) && s.session_time_ms > 1000
-}
-
-fn lap_race_racing(s: &Snapshot) -> bool {
-    is_lap_race(s)
-        && IN_GATE.load(Ordering::Relaxed) == 0
-        && (LAP_GREEN.load(Ordering::Relaxed) == 1 || laps_done(s) > 0 || s.current_lap > 1)
-}
-
-fn i_finished(s: &Snapshot) -> bool {
-    if prestart(s) || timed_clock_live(s) {
-        return false;
-    }
-    if lap_race_racing(s) {
-        return laps_done(s) >= s.session_laps;
-    }
-    let n = extra_laps(s);
-    if n <= 0 {
-        return false;
-    }
-    if s.session_length > 0 && !overtime_active(s) {
-        return false;
-    }
-    if overtime_active(s) {
-        return extras_started(s) && local_overtime_done(s) >= extra_laps(s).max(1);
-    }
-    laps_done(s) >= n
-}
-
-fn laps_left(s: &Snapshot) -> Option<i32> {
-    if prestart(s) || timed_clock_live(s) {
-        return None;
-    }
-    if lap_race_racing(s) {
-        return Some((s.session_laps - laps_done(s)).max(0));
-    }
-    if overtime_active(s) {
-        let n = extra_laps(s).max(1);
-        return Some((n - local_overtime_done(s)).max(0));
-    }
-    None
-}
-
-fn now_ms() -> i32 {
-    (anim_now() * 1000.0) as i32
-}
-
-fn pulse_white_hold() {
-    WHITE_HOLD_T0.store(now_ms().max(1), Ordering::Relaxed);
-}
-
-fn start_white_hold() {
-    if WHITE_HOLD_T0.load(Ordering::Relaxed) == 0 {
-        pulse_white_hold();
-    }
-}
-
-fn white_holding() -> bool {
-    let t0 = WHITE_HOLD_T0.load(Ordering::Relaxed);
-    t0 > 0 && now_ms().wrapping_sub(t0) < WHITE_HOLD_MS
-}
-
-fn expire_white_hold() {
-    WHITE_HOLD_T0.store(0, Ordering::Relaxed);
-}
-
-fn meters_past_sf(s: &Snapshot) -> Option<f32> {
-    let remain = meters_to_sf(s)?;
-    let len = if s.track_length > 10.0 {
-        s.track_length
-    } else {
-        1200.0
-    };
-    Some((len - remain).max(0.0))
-}
-
-fn last_extra_started(s: &Snapshot) -> bool {
-    if !overtime_active(s) {
-        return true;
-    }
-    extras_started(s) && focus_num_laps(s) > OVERTIME_LOCAL_BASE.load(Ordering::Relaxed).max(0)
-}
-
-fn last_lap_cleared(s: &Snapshot) -> bool {
-    if LAST_LAP_READY.load(Ordering::Relaxed) == 1 {
-        return true;
-    }
-    // +1 extras report 1 lap left as soon as the leader starts overtime.
-    // Do not arm checkered until you have taken that extra yourself.
-    if !last_extra_started(s) {
-        return false;
-    }
-    let Some(remain) = meters_to_sf(s) else {
-        return false;
-    };
-    let Some(past) = meters_past_sf(s) else {
-        return false;
-    };
-    if past > LAST_LAP_CLEAR_M && remain > LAST_LAP_CLEAR_M {
-        LAST_LAP_READY.store(1, Ordering::Relaxed);
-        true
-    } else {
-        false
-    }
-}
-
-fn note_last_lap(s: &Snapshot, left: Option<i32>) {
-    if overtime_active(s) && !extras_started(s) {
-        LAST_LAP_READY.store(0, Ordering::Relaxed);
+/// A lap counted at `frac` of the way round. Two sightings within 5% of a lap of each
+/// other confirm the line; a lone odd one only replaces the candidate.
+fn note_line_sighting(frac: f32) {
+    let ticks = (frac * 10_000.0).round() as i32;
+    let cand = SF_FRAC_CAND.swap(ticks, Ordering::Relaxed);
+    if cand < 0 {
         return;
     }
-    match left {
-        Some(1) => {
-            let _ = last_lap_cleared(s);
-        }
-        Some(n) if n >= 2 => LAST_LAP_READY.store(0, Ordering::Relaxed),
-        _ => {}
+    let d = (frac - cand as f32 / 10_000.0).abs();
+    if d.min(1.0 - d) <= SF_AGREE_FRAC {
+        SF_FRAC_LEARNED.store(ticks, Ordering::Relaxed);
     }
+}
+
+/// Watch the S/F line: learn where it is from your own crossings, remember whether you
+/// have been round the far side, and keep the previous distance so the run-in must close.
+fn note_line_progress(s: &Snapshot) {
+    let Some(remain) = meters_to_sf(s) else {
+        return;
+    };
+    let len = lap_meters(s);
+    let laps = focus_num_laps(s);
+    let prev_laps = SF_LEARN_LAPS.swap(laps, Ordering::Relaxed);
+    if prev_laps >= 0 && laps > prev_laps {
+        LAP_MID_SEEN.store(0, Ordering::Relaxed);
+        if moving(s) {
+            // We are a frame or so past the line; back out that much travel.
+            let overshoot = (s.local_speed / 60.0 / len).clamp(0.0, 0.02);
+            let frac = (focus_track_pos(s) - overshoot).rem_euclid(1.0);
+            note_line_sighting(frac);
+        }
+    }
+    let frac = remain / len;
+    if (0.4..=0.6).contains(&frac) {
+        LAP_MID_SEEN.store(1, Ordering::Relaxed);
+    }
+    let prev = LAST_SF_METERS.swap(remain.round() as i32, Ordering::Relaxed);
+    let closing = prev >= 0 && remain < prev as f32 - 0.5;
+    CLOSING_ON_LINE.store(closing as i32, Ordering::Relaxed);
+}
+
+/// You are closing on the line, not sitting in the window or heading away from it.
+fn closing_on_line() -> bool {
+    CLOSING_ON_LINE.load(Ordering::Relaxed) == 1
+}
+
+/// The run-in that starts your final lap. This is the only flag decision that depends on
+/// track geometry, so it is heavily guarded and simply does not fire when the data is bad.
+fn final_lap_approach(s: &Snapshot) -> bool {
+    if sf_uncalibrated(s) || !moving(s) || !approaching_line(s) {
+        return false;
+    }
+    LAP_MID_SEEN.load(Ordering::Relaxed) == 1 && closing_on_line()
+}
+
+fn reset_flag_state() -> DashFlag {
+    CHECKERED_LATCH.store(0, Ordering::Relaxed);
+    DashFlag::None
 }
 
 fn latch_checkered() -> DashFlag {
     CHECKERED_LATCH.store(1, Ordering::Relaxed);
-    expire_white_hold();
     DashFlag::Checkered
 }
 
+/// One path for lap motos and timed extras. Checkered comes only from crossing the line
+/// with no laps to run; white covers the run-in to the final lap and the lap itself.
 fn dash_race_flag(s: &Snapshot) -> DashFlag {
-    let remain = session_remain_ms(s);
     if s.on_track == 0 {
-        CHECKERED_LATCH.store(0, Ordering::Relaxed);
-        expire_white_hold();
-        LAST_LAP_READY.store(0, Ordering::Relaxed);
-        return DashFlag::None;
+        return reset_flag_state();
     }
-    if remain.is_some_and(|r| r > 60_000) || prestart(s) || timed_clock_live(s) {
-        CHECKERED_LATCH.store(0, Ordering::Relaxed);
-        expire_white_hold();
-        LAST_LAP_READY.store(0, Ordering::Relaxed);
-        return DashFlag::None;
+    note_line_progress(s);
+    let store = RaceStore::get();
+    let stale = {
+        let b = &store.clock.banner.1;
+        b.is_empty() || b == "--:--"
+    };
+    if is_lap_race(s) {
+        // Gate boards run a countdown; no flags until the race is actually under way.
+        let remain = if stale {
+            session_remain_ms(s)
+        } else {
+            store.clock.remain_ms
+        };
+        if remain.is_some_and(|r| r > 60_000) {
+            return reset_flag_state();
+        }
+    } else if stale {
+        // Keep the count-only flag latch in step when the store has not ticked yet.
+        let _ = timed_race_flag(s);
+    }
+    if prestart(s) {
+        return reset_flag_state();
     }
     if CHECKERED_LATCH.load(Ordering::Relaxed) == 1 {
         return DashFlag::Checkered;
     }
-    if overtime_active(s) && !extras_started(s) {
-        if extra_laps(s) <= 1 && moving(s) && approaching_line(s) {
-            pulse_white_hold();
-        }
-        return if white_holding() {
-            DashFlag::White
-        } else {
-            DashFlag::None
-        };
-    }
     let left = laps_left(s);
-    note_last_lap(s, left);
-    if moving(s) && approaching_line(s) {
-        match left {
-            Some(0) | Some(1) if last_lap_cleared(s) => return latch_checkered(),
-            // Timed +2 extras use left=2 for the last extra. Lap motos must not:
-            // left=2 is still the penultimate lap (3 / 4), and the banner is already right.
-            Some(2) if !is_lap_race(s) => pulse_white_hold(),
-            Some(1) => start_white_hold(),
-            _ => {}
-        }
-    } else if left == Some(1) && last_extra_started(s) && !last_lap_cleared(s) {
-        start_white_hold();
-    }
-    if i_finished(s)
-        && last_lap_cleared(s)
-        && moving(s)
-        && (approaching_line(s) || just_after_sf(s))
-    {
-        return latch_checkered();
-    }
-    if white_holding() {
-        DashFlag::White
-    } else {
-        DashFlag::None
+    note_laps_to_run(s, left);
+    match left {
+        // You crossed the line with nothing left to run. Never gated on speed, so a
+        // slow roll over the line still gets waved off. `finish_earned` keeps a single
+        // glitched frame from waving you off mid-race.
+        Some(0) if finish_earned(s) => latch_checkered(),
+        Some(0) | Some(1) => DashFlag::White,
+        Some(2) if final_lap_approach(s) => DashFlag::White,
+        // The leader is done, so whatever lap you are on is your last.
+        _ if leader_finished(s) => DashFlag::White,
+        _ => DashFlag::None,
     }
 }
 
-fn race_progress_text(s: &Snapshot) -> String {
-    session_banner(s).1
-}
 
-fn race_progress_pair(text: &str) -> Option<(i32, i32)> {
-    let (a, b) = text.split_once('/')?;
-    Some((a.trim().parse().ok()?, b.trim().parse().ok()?))
-}
 
-fn race_laps_left_text(s: &Snapshot) -> String {
-    match race_progress_pair(&race_progress_text(s)) {
-        Some((cur, total)) => format!("{}", (total - cur).max(0)),
-        None => "--".into(),
-    }
-}
-
-fn session_banner(s: &Snapshot) -> (char, String) {
-    if is_lap_race(s) {
-        if let Some(remain) = session_remain_ms(s) {
-            if remain > 0 && remain <= 180_000 {
-                return ('\u{f2f2}', format_countdown(remain));
-            }
-        }
-        OVERTIME_BASE_LAP.store(-1, Ordering::Relaxed);
-        OVERTIME_LOCAL_BASE.store(-1, Ordering::Relaxed);
-        return ('\u{f11e}', lap_race_text(s));
-    }
-    if let Some(remain) = session_remain_ms(s) {
-        if remain > 1000 && SESSION_EXPIRED.load(Ordering::Relaxed) == 0 {
-            OVERTIME_BASE_LAP.store(-1, Ordering::Relaxed);
-            OVERTIME_LOCAL_BASE.store(-1, Ordering::Relaxed);
-        }
-        if overtime_active(s) {
-            return ('\u{f11e}', overtime_lap_text(s));
-        }
-        ('\u{f2f2}', format_countdown(remain))
-    } else if s.session_laps > 0 {
-        OVERTIME_BASE_LAP.store(-1, Ordering::Relaxed);
-        OVERTIME_LOCAL_BASE.store(-1, Ordering::Relaxed);
-        ('\u{f11e}', format!("{} / {}", race_lap(s), s.session_laps))
-    } else {
-        OVERTIME_BASE_LAP.store(-1, Ordering::Relaxed);
-        OVERTIME_LOCAL_BASE.store(-1, Ordering::Relaxed);
-        ('\u{f2f2}', format_session_clock(s.session_time_ms))
-    }
-}
-
-/// Compact session-clock fields for a JSONL trace the overlay writes while you ride.
-pub struct ClockSample {
-    pub seq: u32,
-    pub session_length: i32,
-    pub session_laps: i32,
-    pub session_time_ms: i32,
-    pub current_lap: i32,
-    pub current_lap_ms: i32,
-    pub last_lap_ms: i32,
-    pub local_speed: f32,
-    pub local_track_pos: f32,
-    pub on_track: i32,
-    pub local_laps: i32,
-    pub leader_laps: i32,
-    pub standing_count: i32,
-    pub dash: String,
-    pub remain_ms: i32,
-    pub mode: i32,
-    pub gate: i32,
-    pub armed: i32,
-    pub expired: i32,
-    pub saw: i32,
-    pub locked_len: i32,
-    pub ot_local: i32,
-    pub ot_lead: i32,
-}
-
-pub fn clock_sample(s: &Snapshot) -> ClockSample {
-    let remain = session_remain_ms(s);
-    let dash = session_banner(s).1;
-    ClockSample {
-        seq: s.seq,
-        session_length: s.session_length,
-        session_laps: s.session_laps,
-        session_time_ms: s.session_time_ms,
-        current_lap: s.current_lap,
-        current_lap_ms: s.current_lap_ms,
-        last_lap_ms: s.last_lap_ms,
-        local_speed: s.local_speed,
-        local_track_pos: s.local_track_pos,
-        on_track: s.on_track,
-        local_laps: focus_num_laps(s),
-        leader_laps: leader_num_laps(s),
-        standing_count: s.standing_count,
-        dash,
-        remain_ms: remain.unwrap_or(-1),
-        mode: SESSION_CLOCK_MODE.load(Ordering::Relaxed),
-        gate: IN_GATE.load(Ordering::Relaxed),
-        armed: RACE_ARMED.load(Ordering::Relaxed),
-        expired: SESSION_EXPIRED.load(Ordering::Relaxed),
-        saw: SAW_SESSION_TIME.load(Ordering::Relaxed),
-        locked_len: LOCKED_SESSION_LEN.load(Ordering::Relaxed),
-        ot_local: OVERTIME_LOCAL_BASE.load(Ordering::Relaxed),
-        ot_lead: OVERTIME_BASE_LAP.load(Ordering::Relaxed),
-    }
-}
-
-fn session_best_ms(s: &Snapshot) -> i32 {
-    s.standings
-        .iter()
-        .take(s.standing_count.max(0) as usize)
-        .map(|row| row.best_lap_ms)
-        .filter(|ms| *ms > 0)
-        .min()
-        .unwrap_or(0)
-}
-
-fn class_position(s: &Snapshot) -> i32 {
-    let Some(st) = focus_standing(s) else {
-        return 0;
-    };
-    let cat = cstr(&st.category);
-    if cat.is_empty() {
-        return st.position.max(0);
-    }
-    s.standings
-        .iter()
-        .take(s.standing_count.max(0) as usize)
-        .filter(|row| cstr(&row.category) == cat)
-        .position(|row| row.race_num == st.race_num)
-        .map(|i| i as i32 + 1)
-        .unwrap_or(st.position.max(0))
-}
 
 fn format_local_clock(hour: u16, minute: u16) -> String {
     let h24 = hour % 24;
@@ -2250,7 +1316,13 @@ fn board_item(s: &Snapshot, cfg: &HudConfig, field: BoardField) -> Option<(char,
     if field == BoardField::None {
         return None;
     }
-    let st = focus_standing(s);
+    let race = RaceStore::get();
+    let st = race
+        .field
+        .focus
+        .and_then(|i| race.field.rows.get(i))
+        .map(|r| &r.standing)
+        .or_else(|| focus_standing(s));
     let text = match field {
         BoardField::None => return None,
         BoardField::Position => st
@@ -2276,7 +1348,14 @@ fn board_item(s: &Snapshot, cfg: &HudConfig, field: BoardField) -> Option<(char,
         }
         BoardField::Air => cfg.units.format_temp(s.air_temp),
         BoardField::Best => format_clock(dash_best_ms(s)),
-        BoardField::SessionBest => format_clock(session_best_ms(s)),
+        BoardField::SessionBest => {
+            let best = if race.field.session_best_ms > 0 {
+                race.field.session_best_ms
+            } else {
+                session_best_ms(s)
+            };
+            format_clock(best)
+        }
         BoardField::LocalTime => local_clock(),
         BoardField::Riders => format!("{}", s.standing_count.max(s.rider_count).max(0)),
         BoardField::SessionType => {
@@ -2403,13 +1482,18 @@ fn draw_standings(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig,
         .map(|(_, cx, cw)| bike_bar_end(*cx, *cw));
 
     let purple = Color::from_rgba8(196, 112, 255, 255);
-    let best_ms = slice
-        .iter()
-        .chain(s.standings.iter().take(n))
-        .map(|row| row.best_lap_ms)
-        .filter(|ms| *ms > 0)
-        .min()
-        .unwrap_or(0);
+    let race = RaceStore::get();
+    let best_ms = if race.field.session_best_ms > 0 {
+        race.field.session_best_ms
+    } else {
+        slice
+            .iter()
+            .chain(s.standings.iter().take(n))
+            .map(|row| row.best_lap_ms)
+            .filter(|ms| *ms > 0)
+            .min()
+            .unwrap_or(0)
+    };
     let you_bg = you_row_bg();
     let stripe_c = Color::from_rgba8(0, 0, 0, ((a as u16 * 70) / 255) as u8);
     let out_c = Color::from_rgba8(110, 110, 116, 255);
@@ -2466,9 +1550,23 @@ fn draw_standings(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig,
                 StField::Name => (cstr(&row.name).to_string(), name_c, false),
                 StField::Bike => (cstr(&row.bike).to_string(), name_c, false),
                 StField::Gap => (format_board_gap(row.gap_ms, row.gap_laps, row.position <= 1), dim, true),
-                StField::Interval => (interval_text(s, row), dim, true),
+                StField::Interval => {
+                    let txt = race
+                        .field
+                        .row_by_num(row.race_num)
+                        .map(interval_text_from_row)
+                        .unwrap_or_else(|| interval_text(s, row));
+                    (txt, dim, true)
+                }
                 StField::Laps => (format!("{}", row.num_laps.max(0)), dim, true),
-                StField::Current => (format!("{}", rider_current_lap(s, row.race_num, row.num_laps)), dim, true),
+                StField::Current => {
+                    let lap = race
+                        .field
+                        .row_by_num(row.race_num)
+                        .map(|r| r.current_lap)
+                        .unwrap_or_else(|| rider_current_lap(s, row.race_num, row.num_laps));
+                    (format!("{lap}"), dim, true)
+                }
                 StField::Best => (format_lap(row.best_lap_ms), if best_ms > 0 && row.best_lap_ms == best_ms && !out { purple } else { dim }, true),
                 StField::Last => {
                     let ms = if row.last_lap_ms > 0 {
@@ -2536,7 +1634,7 @@ fn ticker_delta(focus: &crate::shm::Standing, row: &crate::shm::Standing) -> Str
 fn ticker_meta_label(field: BoardField, val: &str) -> &'static str {
     match field {
         BoardField::Lap | BoardField::LapsLeft | BoardField::Session | BoardField::RaceTime => {
-            if val.contains('/') {
+            if val.contains('/') || val.starts_with('+') {
                 "LAPS"
             } else {
                 "TIME"
@@ -2570,6 +1668,97 @@ fn ticker_title(s: &Snapshot) -> String {
         kind.into()
     } else {
         format!("{kind} - {}", track.to_uppercase())
+    }
+}
+
+fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) {
+    let r = cfg.sector;
+    let x = r.x * sw;
+    let y = r.y * sh;
+    let w = r.w * sw;
+    let h = r.h * sh;
+    if w < 48.0 || h < 36.0 {
+        return;
+    }
+    let a = bg_a(cfg.sector_bg);
+    fill_round(px, x, y, w, h, 7.0, Color::from_rgba8(10, 10, 12, a));
+    let pad = (w * 0.07).clamp(6.0, 12.0);
+    let n = 3usize;
+    let row_h = ((h - pad * 2.0) / n as f32).max(12.0);
+    let fs = (row_h * 0.48).clamp(9.0, 16.0);
+    let label_w = measure(fonts, "S3", fs) + 8.0;
+    let delta_w = measure(fonts, "+00.000", fs) + 4.0;
+    let time_x = x + pad + label_w;
+    let time_w = (w - pad * 2.0 - label_w - delta_w).max(28.0);
+    let delta_x = time_x + time_w;
+    let purple = Color::from_rgba8(196, 112, 255, 255);
+    for i in 0..n {
+        let row = sector_row(s, i);
+        let ry = y + pad + i as f32 * row_h;
+        if row.fresh {
+            if let Some(rrt) = rr(x + 3.0, ry, w - 6.0, row_h) {
+                fill_rect(px, rrt, Color::from_rgba8(255, 148, 48, 28));
+            }
+        }
+        let time_c = if row.pending {
+            text_dim()
+        } else if row.new_best {
+            purple
+        } else if row.slower {
+            behind_col()
+        } else {
+            text_col()
+        };
+        let delta_c = if row.pending || !row.has_delta {
+            text_dim()
+        } else if row.new_best {
+            purple
+        } else if row.slower {
+            behind_col()
+        } else {
+            ahead_col()
+        };
+        text(px, fonts, row.label, fs, x + pad, ry + (row_h - fs) * 0.28, text_dim(), false);
+        col_text(px, fonts, &row.time, fs, time_x, time_w, ry + (row_h - fs) * 0.28, time_c, true);
+        col_text(px, fonts, &row.delta, fs, delta_x, delta_w, ry + (row_h - fs) * 0.28, delta_c, true);
+    }
+}
+
+struct SectorRowView {
+    label: &'static str,
+    time: String,
+    delta: String,
+    pending: bool,
+    has_delta: bool,
+    new_best: bool,
+    slower: bool,
+    fresh: bool,
+}
+
+fn sector_row(s: &Snapshot, i: usize) -> SectorRowView {
+    const LABELS: [&str; 3] = ["S1", "S2", "S3"];
+    let label = LABELS.get(i).copied().unwrap_or("S?");
+    let cur = s.sector_cur.get(i).copied().unwrap_or(0);
+    let last = s.sector_last_lap.get(i).copied().unwrap_or(0);
+    let best = s.sector_best.get(i).copied().unwrap_or(0);
+    let delta = s.sector_delta.get(i).copied().unwrap_or(0);
+    let has_delta = (s.sector_delta_valid & (1 << i)) != 0;
+    let pending = cur <= 0;
+    let time_ms = if cur > 0 { cur } else { last };
+    let new_best = !pending && ((has_delta && delta < 0) || (best > 0 && cur == best && delta <= 0));
+    SectorRowView {
+        label,
+        time: format_lap(time_ms),
+        delta: if pending || !has_delta {
+            "--".into()
+        } else {
+            format_delta_ms(delta)
+        },
+        pending,
+        has_delta: has_delta && !pending,
+        new_best,
+        slower: !pending && has_delta && delta > 0,
+        fresh: s.sector_last == i as i32,
     }
 }
 
@@ -2744,19 +1933,6 @@ fn draw_ticker(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
     let cut = (h * 0.16).clamp(8.0, 14.0);
     if a > 0 {
         fill_skew(px, x, y, w, h, cut, Color::from_rgba8(16, 16, 20, a));
-        let step = 7.0;
-        let dot = Color::from_rgba8(180, 180, 188, ((a as u16 * 38) / 255).max(10) as u8);
-        let mut dy = y + 5.0;
-        while dy < y + h - 4.0 {
-            let mut dx = x + 10.0 + ((dy - y) as i32 % 14) as f32;
-            while dx < x + w - 10.0 {
-                if let Some(rrt) = rr(dx, dy, 1.3, 1.3) {
-                    fill_rect(px, rrt, dot);
-                }
-                dx += step;
-            }
-            dy += step;
-        }
         fill_skew(px, x + 1.0, y, w - 2.0, 2.2, cut * 0.2, accent());
     }
 
@@ -2852,12 +2028,21 @@ fn draw_ticker(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
     }
     let want = cfg.ticker_count.clamp(3, 15) as usize;
     let (vis, card_w) = hstand_layout(cards_w, k, want, n);
+    let race = RaceStore::get();
     let focus = s.focus_race_num;
-    let fi = (0..n).find(|&i| s.standings[i].race_num == focus).unwrap_or(0);
+    let fi = race
+        .field
+        .focus
+        .or_else(|| (0..n).find(|&i| s.standings[i].race_num == focus))
+        .unwrap_or(0);
     let Some(focus_row) = s.standings.get(fi) else {
         return;
     };
-    let best_ms = session_best_ms(s);
+    let best_ms = if race.field.session_best_ms > 0 {
+        race.field.session_best_ms
+    } else {
+        session_best_ms(s)
+    };
     let gap = HS_CARD_GAP;
     let stride = card_w + gap;
     let scroll = if cfg.ticker_autoscroll && n > vis {
@@ -3122,7 +2307,11 @@ fn draw_ticker_card(
     } else if let Some(st) = standing_status(row) {
         st.to_string()
     } else {
-        ticker_delta(focus, row)
+        RaceStore::get()
+            .field
+            .row_by_num(row.race_num)
+            .map(ticker_delta_from_row)
+            .unwrap_or_else(|| ticker_delta(focus, row))
     };
     text(px, fonts, &gap, gap_sz, text_x, y + h * 0.52, gap_c, false);
     if best_ms > 0 && row.best_lap_ms == best_ms && !out {
@@ -3145,6 +2334,9 @@ fn draw_ticker_card(
 const MAX_SAFE: usize = 40;
 
 fn dash_pos_col() -> Color { Color::from_rgba8(232, 120, 23, 255) }
+
+/// Amber for the lapped tag: reads as a warning without competing with the orange position.
+fn dash_lapped_col() -> Color { Color::from_rgba8(226, 186, 74, 255) }
 
 static DASH_VIS: Mutex<crate::shm::Rect> = Mutex::new(crate::shm::Rect {
     x: 0.41,
@@ -3243,8 +2435,14 @@ struct DashLay {
     speed_label: &'static str,
     ptxt: String,
     lap_txt: String,
+    lapped: bool,
+    tag_sz: f32,
     foot: Vec<(char, String)>,
 }
+
+/// Shown beside the lap/clock text when you are a lap or more down.
+const LAPPED_TAG: &str = "~Lapped";
+const LAPPED_GAP: f32 = 6.0;
 
 fn max_digit_w(fonts: &Fonts, size: f32) -> f32 {
     ('0'..='9').map(|d| measure(fonts, d.encode_utf8(&mut [0; 4]), size)).fold(0.0, f32::max)
@@ -3306,6 +2504,14 @@ fn dash_layout(fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) -
         .filter(|p| *p > 0);
     let ptxt = pos.map(|p| format!("P{p}")).unwrap_or_else(|| "P--".into());
     let lap_txt = race_progress_text(s);
+    let lapped = lapped(s);
+    let tag_sz = (lap_sz * 0.82).max(9.0);
+    let lap_row_w = measure(fonts, &lap_txt, lap_sz)
+        + if lapped {
+            LAPPED_GAP + measure(fonts, LAPPED_TAG, tag_sz)
+        } else {
+            0.0
+        };
     let foot: Vec<(char, String)> = [cfg.dash_left, cfg.dash_mid, cfg.dash_right]
         .into_iter()
         .filter_map(|field| dash_foot_item(s, cfg, field))
@@ -3315,7 +2521,7 @@ fn dash_layout(fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) -
     let digit = max_digit_w(fonts, val);
     let mid_w = (measure(fonts, "RPM", label) + 8.0 + digit * 5.0)
         .max(measure(fonts, speed_label, label) + 8.0 + digit * 3.0);
-    let right_w = measure(fonts, &ptxt, pos_n).max(measure(fonts, &lap_txt, lap_sz));
+    let right_w = measure(fonts, &ptxt, pos_n).max(lap_row_w);
     let mut foot_w = 0.0;
     for (ch, t) in &foot {
         foot_w += fonts.icons.metrics(*ch, icon_s).advance_width + 5.0 + measure(fonts, t, fsz);
@@ -3375,6 +2581,8 @@ fn dash_layout(fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) -
         speed_label,
         ptxt,
         lap_txt,
+        lapped,
+        tag_sz,
         foot,
     }
 }
@@ -3475,13 +2683,16 @@ fn format_delta_ms(ms: i32) -> String {
     }
 }
 
-fn focus_standing(s: &Snapshot) -> Option<&crate::shm::Standing> {
-    let focus = if s.focus_race_num > 0 { s.focus_race_num } else { s.local_race_num };
-    standing_of(s, focus)
-}
 
 fn dash_best_ms(s: &Snapshot) -> i32 {
-    let standing_best = focus_standing(s).map(|st| st.best_lap_ms).unwrap_or(0);
+    let race = RaceStore::get();
+    let standing_best = race
+        .field
+        .focus
+        .and_then(|i| race.field.rows.get(i))
+        .map(|r| r.standing.best_lap_ms)
+        .or_else(|| focus_standing(s).map(|st| st.best_lap_ms))
+        .unwrap_or(0);
     [s.best_lap_ms, standing_best]
         .into_iter()
         .filter(|ms| *ms > 0)
@@ -3493,7 +2704,13 @@ fn dash_foot_item(s: &Snapshot, cfg: &HudConfig, field: DashField) -> Option<(ch
     if field == DashField::None {
         return None;
     }
-    let st = focus_standing(s);
+    let race = RaceStore::get();
+    let st = race
+        .field
+        .focus
+        .and_then(|i| race.field.rows.get(i))
+        .map(|r| &r.standing)
+        .or_else(|| focus_standing(s));
     let text = match field {
         DashField::None => return None,
         DashField::Speed => format!("{} {}", cfg.units.format_speed(s.local_speed), cfg.units.speed_label()),
@@ -3534,7 +2751,14 @@ fn dash_foot_item(s: &Snapshot, cfg: &HudConfig, field: DashField) -> Option<(ch
         DashField::Gap => st
             .map(|r| format_board_gap(r.gap_ms, r.gap_laps, r.position <= 1))
             .unwrap_or_else(|| "--".into()),
-        DashField::Interval => st.map(|r| interval_text(s, r)).unwrap_or_else(|| "--".into()),
+        DashField::Interval => st
+            .and_then(|r| {
+                race.field
+                    .row_by_num(r.race_num)
+                    .map(interval_text_from_row)
+                    .or_else(|| Some(interval_text(s, r)))
+            })
+            .unwrap_or_else(|| "--".into()),
         DashField::Penalty => format_penalty(st.map(|r| r.penalty_ms).unwrap_or(0)),
         DashField::Session => race_progress_text(s),
         DashField::Bike => st
@@ -3712,7 +2936,14 @@ fn draw_dash(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: 
 
     text_bold(px, fonts, &d.ptxt, d.pos_n, d.right_x + 1.0, d.main_y + d.main_h * 0.10 + 1.0, Color::from_rgba8(20, 12, 6, 160), false);
     text_bold(px, fonts, &d.ptxt, d.pos_n, d.right_x, d.main_y + d.main_h * 0.10, dash_pos_col(), false);
-    text(px, fonts, &d.lap_txt, d.lap_sz, d.right_x, d.main_y + d.main_h * 0.68, white, false);
+    let lap_y = d.main_y + d.main_h * 0.68;
+    text(px, fonts, &d.lap_txt, d.lap_sz, d.right_x, lap_y, white, false);
+    if d.lapped {
+        // Baselines differ with the smaller size, so nudge down to sit on the lap text.
+        let tag_x = d.right_x + measure(fonts, &d.lap_txt, d.lap_sz) + LAPPED_GAP;
+        let tag_y = lap_y + (d.lap_sz - d.tag_sz) * 0.72;
+        text(px, fonts, LAPPED_TAG, d.tag_sz, tag_x, tag_y, dash_lapped_col(), false);
+    }
 
     if !d.foot.is_empty() {
         let fy = d.y + d.h - d.foot_pad - d.footer_h + 1.0;
@@ -3827,14 +3058,18 @@ fn draw_relative(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, 
         .map(|(_, cx, cw)| bike_bar_end(*cx, *cw));
 
     let purple = Color::from_rgba8(196, 112, 255, 255);
-    let best_ms = s
-        .standings
-        .iter()
-        .take(s.standing_count.max(0) as usize)
-        .map(|row| row.best_lap_ms)
-        .filter(|ms| *ms > 0)
-        .min()
-        .unwrap_or(0);
+    let race = RaceStore::get();
+    let best_ms = if race.field.session_best_ms > 0 {
+        race.field.session_best_ms
+    } else {
+        s.standings
+            .iter()
+            .take(s.standing_count.max(0) as usize)
+            .map(|row| row.best_lap_ms)
+            .filter(|ms| *ms > 0)
+            .min()
+            .unwrap_or(0)
+    };
     let you_bg = you_row_bg();
     let stripe_c = Color::from_rgba8(0, 0, 0, ((a as u16 * 70) / 255) as u8);
     let out_c = Color::from_rgba8(110, 110, 116, 255);
@@ -3876,7 +3111,8 @@ fn draw_relative(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, 
         let (ri, wrapped) = order[*oi];
         let rider = &s.riders[ri];
         let is_self = rider.race_num == focus;
-        let st = standing_of(s, rider.race_num);
+        let race_row = race.field.row_by_num(rider.race_num);
+        let st = race_row.map(|r| &r.standing).or_else(|| standing_of(s, rider.race_num));
         let cat = st.map(|r| cstr(&r.category)).unwrap_or_default();
         let bike_name = st.map(|r| cstr(&r.bike)).unwrap_or_default();
         let accent_c = bike_color(&bike_name, &cat);
@@ -3927,12 +3163,26 @@ fn draw_relative(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, 
                     true,
                 ),
                 RelField::Current => (
-                    format!("{}", rider_current_lap(s, rider.race_num, st.map(|r| r.num_laps).unwrap_or(0))),
+                    format!(
+                        "{}",
+                        race_row
+                            .map(|r| r.current_lap)
+                            .unwrap_or_else(|| {
+                                rider_current_lap(s, rider.race_num, st.map(|r| r.num_laps).unwrap_or(0))
+                            })
+                    ),
                     dim,
                     true,
                 ),
                 RelField::Penalty => (st.map(|r| format_penalty(r.penalty_ms)).unwrap_or_default(), dim, true),
-                RelField::Interval => (st.map(|r| interval_text(s, r)).unwrap_or_default(), dim, true),
+                RelField::Interval => (
+                    race_row
+                        .map(interval_text_from_row)
+                        .or_else(|| st.map(|r| interval_text(s, r)))
+                        .unwrap_or_default(),
+                    dim,
+                    true,
+                ),
                 RelField::Crashed => {
                     if rider.crashed != 0 || st.is_some_and(|r| r.crashed != 0) {
                         ("CRASH".into(), behind_col(), true)

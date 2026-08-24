@@ -14,6 +14,7 @@ enum Target {
     Dash,
     Ticker,
     Sys,
+    Sector,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -48,6 +49,7 @@ pub struct Editor {
     dash: Option<Rect>,
     ticker: Option<Rect>,
     sys: Option<Rect>,
+    sector: Option<Rect>,
     drag: Option<Drag>,
     mouse_was_down: bool,
 }
@@ -84,6 +86,9 @@ impl Editor {
         }
         if let Some(s) = self.sys {
             cfg.sys = s;
+        }
+        if let Some(s) = self.sector {
+            cfg.sector = s;
         }
     }
 
@@ -140,6 +145,7 @@ impl Editor {
                 Target::Dash => self.dash = Some(r),
                 Target::Ticker => self.ticker = Some(r),
                 Target::Sys => self.sys = Some(r),
+                Target::Sector => self.sector = Some(r),
             }
             let _ = overlay;
         }
@@ -159,6 +165,7 @@ impl Editor {
         self.dash = None;
         self.ticker = None;
         self.sys = None;
+        self.sector = None;
     }
 
     fn save(&self, snap: Option<&Snapshot>) {
@@ -173,6 +180,7 @@ impl Editor {
         let dash = self.dash;
         let ticker = self.ticker;
         let sys = self.sys;
+        let sector = self.sector;
         crate::config::update_config(|cfg| {
             cfg.map = map;
             cfg.standings = standings;
@@ -191,6 +199,9 @@ impl Editor {
             }
             if let Some(s) = sys {
                 cfg.sys = s;
+            }
+            if let Some(s) = sector {
+                cfg.sector = s;
             }
         });
     }
@@ -262,6 +273,7 @@ fn rect_of(s: &Snapshot, ed: &Editor, cfg: &HudConfig, t: Target) -> Rect {
         }
         Target::Ticker => ed.ticker.unwrap_or(cfg.ticker),
         Target::Sys => ed.sys.unwrap_or(cfg.sys),
+        Target::Sector => ed.sector.unwrap_or(cfg.sector),
     }
 }
 
@@ -275,14 +287,16 @@ fn shown(s: &Snapshot, cfg: &HudConfig, t: Target) -> bool {
         Target::Dash => cfg.show_dash,
         Target::Ticker => cfg.show_ticker,
         Target::Sys => cfg.show_sys,
+        Target::Sector => cfg.sector_visible(),
     }
 }
 
 fn hit(s: &Snapshot, ed: &Editor, cfg: &HudConfig, x: f32, y: f32, ow: i32, oh: i32) -> Option<(Target, Handle)> {
-    const ORDER: [Target; 8] = [
+    const ORDER: [Target; 9] = [
         Target::Dash,
         Target::Ticker,
         Target::Sys,
+        Target::Sector,
         Target::Minimap,
         Target::Radar,
         Target::Map,
@@ -372,6 +386,7 @@ fn min_px(t: Target) -> (f32, f32) {
         Target::Dash => (220.0, 100.0),
         Target::Ticker => (360.0, 44.0),
         Target::Sys => (160.0, 90.0),
+        Target::Sector => (140.0, 72.0),
     }
 }
 

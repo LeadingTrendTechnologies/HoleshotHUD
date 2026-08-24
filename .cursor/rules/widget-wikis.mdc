@@ -18,5 +18,6 @@ Before changing a HUD widget, read its page under `wiki/widgets/`. Index: `wiki/
 | Dash (clock, extras, flags) | `wiki/widgets/dash.md` |
 | Horizontal Standings (`Ticker`) | `wiki/widgets/horizontal-standings.md` |
 | Systems | `wiki/widgets/systems.md` |
+| Sectors | `wiki/widgets/sector.md` |
 
 After a behavior, layout, settings, or color change, append a dated bullet to that page’s **Change log** (why, not just what). Update the **Do not regress** list if you add an invariant. Plugin-field status still belongs in `wiki/Home.md`.

@@ -237,7 +237,7 @@ impl ClockLog {
         let t = self.started.elapsed().as_secs_f32();
         let track = cstr(&snap.track_name);
         let line = format!(
-            "{{\"t\":{t:.2},\"seq\":{},\"track\":\"{}\",\"len\":{},\"laps\":{},\"time\":{},\"cur\":{},\"lap_ms\":{},\"last_ms\":{},\"spd\":{:.1},\"pos\":{:.3},\"on\":{},\"ll\":{},\"ld\":{},\"n\":{},\"dash\":\"{}\",\"rem\":{},\"mode\":{},\"gate\":{},\"arm\":{},\"exp\":{},\"saw\":{},\"lock\":{},\"otl\":{},\"otb\":{}}}",
+            "{{\"t\":{t:.2},\"seq\":{},\"track\":\"{}\",\"len\":{},\"laps\":{},\"time\":{},\"cur\":{},\"lap_ms\":{},\"last_ms\":{},\"spd\":{:.1},\"pos\":{:.3},\"on\":{},\"ll\":{},\"ld\":{},\"n\":{},\"dash\":\"{}\",\"rem\":{},\"mode\":{},\"gate\":{},\"arm\":{},\"exp\":{},\"saw\":{},\"lock\":{},\"otl\":{},\"otb\":{},\"flag\":{},\"left\":{}}}",
             s.seq,
             json_escape(&track),
             s.session_length,
@@ -262,6 +262,8 @@ impl ClockLog {
             s.locked_len,
             s.ot_local,
             s.ot_lead,
+            s.flag,
+            s.laps_left,
         );
         self.body.push_str(&line);
         self.body.push('\n');
@@ -346,10 +348,13 @@ impl SessionGate {
         }
         let track = track.trim();
         let racing = current_lap > 0 || time_ms > 8000 || (on_track != 0 && time_ms > 3000);
+        let clock_restart = self.time_ms >= 20_000
+            && time_ms < 2_500
+            && !(self.laps > 0 && laps == self.laps && laps < 4);
         let new_session = self.saw_race
             && ((!self.track.is_empty() && !track.is_empty() && self.track != track)
                 || (self.laps > 0 && laps > 0 && self.laps != laps)
-                || (self.time_ms >= 20_000 && time_ms < 2_500));
+                || clock_restart);
         self.track = if track.is_empty() {
             self.track.clone()
         } else {
@@ -638,6 +643,16 @@ mod tests {
         let mut g = SessionGate::default();
         g.update("Glen", 0, 8, 90_000, 2, 1);
         assert_eq!(g.update("Glen", 0, 8, 800, 0, 1), SessionEvent::NewSession);
+    }
+
+    #[test]
+    fn timed_plus_one_expiry_keeps_the_same_session() {
+        let mut g = SessionGate::default();
+        g.update("Timberline", 1, 480_000, 30_000, 6, 1);
+        assert_eq!(
+            g.update("Timberline", 1, 480_000, 1_020, 7, 1),
+            SessionEvent::Continue
+        );
     }
 
     #[test]

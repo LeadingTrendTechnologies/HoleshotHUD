@@ -65,11 +65,22 @@ void PluginState::clearRace()
     m_currentLap = 0;
     m_sessionLaps = 0;
     m_sessionKind = -1;
+    m_sessionState = -1;
     m_sessionClock = 0;
-    m_sessionLength = 0;
+    m_sessionLength = kSessionLengthUnset;
     m_sessionRemain = 0;
     m_lastLaps.clear();
     m_inRun = false;
+    for (int i = 0; i < 3; ++i)
+    {
+        m_sectorCur[i] = 0;
+        m_sectorLastLap[i] = 0;
+        m_sectorBest[i] = 0;
+        m_sectorDelta[i] = 0;
+    }
+    m_sectorDeltaValid = 0;
+    m_sectorLast = -1;
+    m_sectorFinishedLap = -1;
 }
 
 void PluginState::setEvent(const SPluginsBikeEvent_t& ev)
@@ -113,6 +124,12 @@ void PluginState::setRaceEvent(const SPluginsRaceEvent_t& ev)
 void PluginState::beginRun()
 {
     m_inRun = true;
+    for (int i = 0; i < 3; ++i)
+    {
+        m_sectorCur[i] = 0;
+    }
+    m_sectorLast = -1;
+    m_sectorFinishedLap = -1;
 }
 
 void PluginState::endRun()
@@ -133,7 +150,12 @@ namespace
 {
     bool likelyStartCountdown(int len)
     {
-        return len >= 15 && len <= 180;
+        if (len >= 15 && len <= 180)
+        {
+            return true;
+        }
+        // Remaining time published as milliseconds (00:50 board = 50000).
+        return len >= 1000 && len <= 180 * 1000;
     }
 
     bool likelySessionMinutes(int len)
@@ -180,6 +202,10 @@ namespace
         {
             return 0;
         }
+        if (totalLen < 0)
+        {
+            totalLen = 0;
+        }
         // 1000–100000 is already milliseconds (e.g. 01:40 remaining = 99992).
         // Treating that as seconds made the overlay jump back to 08:00.
         if (len >= 1000)
@@ -198,10 +224,25 @@ namespace
     }
 }
 
+void PluginState::noteSessionKind(int kind)
+{
+    if (m_sessionKind >= 0 && kind != m_sessionKind)
+    {
+        m_sessionLength = kSessionLengthUnset;
+        m_sessionRemain = 0;
+        m_sessionLaps = 0;
+    }
+    m_sessionKind = kind;
+}
+
 void PluginState::applySessionLength(int len)
 {
     if (len <= 0)
     {
+        if (m_sessionLength < 0)
+        {
+            m_sessionLength = 0;
+        }
         return;
     }
     if (m_sessionLength <= 0)
@@ -263,7 +304,10 @@ void PluginState::setSession(const SPluginsRaceSession_t& s)
         || (len > 0 && m_sessionLength > 0 && len != m_sessionLength && len < 60
             && m_sessionLength < 60 && !likelyStartCountdown(len)
             && !likelyStartCountdown(m_sessionLength));
-    m_sessionKind = s.m_iSession;
+    // Kind change drops cached length/laps so leftover 8:00 is not locked
+    // when this session publishes 0. -1 = not written yet; 0 = game sent 0.
+    noteSessionKind(s.m_iSession);
+    m_sessionState = s.m_iSessionState;
     // Don't let extras (1–3) replace a 4+ lap moto unless the session kind changed.
     if (!(m_sessionLaps >= 4 && laps > 0 && laps < 4 && !newKind))
     {
@@ -274,6 +318,13 @@ void PluginState::setSession(const SPluginsRaceSession_t& s)
     {
         m_sessionLength = 0;
         m_sessionRemain = 0;
+    }
+    // Leftover 00:50 start board must not become the length of a 2-lap moto.
+    if (m_sessionLaps >= 2 && likelyStartCountdown(m_sessionLength)
+        && (len <= 0 || likelyStartCountdown(len) || len == m_sessionLength))
+    {
+        m_sessionLength = 0;
+        m_sessionRemain = len > 0 ? len : m_sessionRemain;
     }
     // Leftover 8:00 / 10:00 must not become the length of a 4+ lap moto.
     if (m_sessionLaps >= 4 && leftoverTimedLength(m_sessionLength)
@@ -292,7 +343,11 @@ void PluginState::setSession(const SPluginsRaceSession_t& s)
         return;
     }
     applySessionLength(len);
-    if (len > 0 && m_sessionRemain <= 0)
+    if (m_sessionLength < 0 && (len <= 0 || !likelyStartCountdown(len)))
+    {
+        m_sessionLength = 0;
+    }
+    if (len > 0 && m_sessionRemain <= 0 && m_sessionLength > 0)
     {
         m_sessionRemain = len;
     }
@@ -300,8 +355,14 @@ void PluginState::setSession(const SPluginsRaceSession_t& s)
 
 void PluginState::setSessionState(const SPluginsRaceSessionState_t& s)
 {
+    noteSessionKind(s.m_iSession);
+    m_sessionState = s.m_iSessionState;
     applySessionLength(s.m_iSessionLength);
-    if (s.m_iSessionLength <= 0)
+    if (m_sessionLength < 0 && (s.m_iSessionLength <= 0 || !likelyStartCountdown(s.m_iSessionLength)))
+    {
+        m_sessionLength = 0;
+    }
+    if (s.m_iSessionLength <= 0 || m_sessionLength <= 0)
     {
         return;
     }
@@ -345,6 +406,103 @@ void PluginState::setRaceLap(int raceNum, int lapNum, int lapMs)
         return;
     }
     setLocalLap(lapNum, lapMs);
+    if (lapMs > 0)
+    {
+        finishLapSectors(lapNum, lapMs);
+    }
+}
+
+void PluginState::setLocalSplit(int split, int timeMs, int bestDiff)
+{
+    if (m_localRaceNum >= 0 && focusRaceNum() != m_localRaceNum)
+    {
+        return;
+    }
+    recordSector(mapSplitIndex(split), timeMs, bestDiff);
+}
+
+void PluginState::setRaceSplit(int raceNum, int split, int timeMs)
+{
+    const int focus = focusRaceNum();
+    if (raceNum != focus && raceNum != m_localRaceNum)
+    {
+        return;
+    }
+    recordSector(mapSplitIndex(split), timeMs, 0);
+}
+
+int PluginState::sectorAt(const int* values, int i)
+{
+    if (i < 0 || i >= 3)
+    {
+        return 0;
+    }
+    return values[i];
+}
+
+int PluginState::mapSplitIndex(int split) const
+{
+    if (split <= 0)
+    {
+        return 0;
+    }
+    if (split == 1)
+    {
+        return m_sectorCur[0] > 0 ? 1 : 0;
+    }
+    return 1;
+}
+
+void PluginState::recordSector(int idx, int timeMs, int bestDiff)
+{
+    if (idx < 0 || idx >= 3 || timeMs <= 0)
+    {
+        return;
+    }
+    const int oldBest = m_sectorBest[idx];
+    m_sectorCur[idx] = timeMs;
+    m_sectorLast = idx;
+    if (oldBest > 0)
+    {
+        m_sectorDelta[idx] = timeMs - oldBest;
+        m_sectorDeltaValid |= (1 << idx);
+    }
+    else if (bestDiff != 0)
+    {
+        m_sectorDelta[idx] = bestDiff;
+        m_sectorDeltaValid |= (1 << idx);
+    }
+    else
+    {
+        m_sectorDelta[idx] = 0;
+        m_sectorDeltaValid &= ~(1 << idx);
+    }
+    if (oldBest <= 0 || timeMs < oldBest)
+    {
+        m_sectorBest[idx] = timeMs;
+    }
+}
+
+void PluginState::finishLapSectors(int lapNum, int lapMs)
+{
+    if (lapNum == m_sectorFinishedLap)
+    {
+        return;
+    }
+    m_sectorFinishedLap = lapNum;
+    if (m_sectorCur[0] > 0 && m_sectorCur[1] > 0 && lapMs > m_sectorCur[0] + m_sectorCur[1])
+    {
+        recordSector(2, lapMs - m_sectorCur[0] - m_sectorCur[1], 0);
+    }
+    for (int i = 0; i < 3; ++i)
+    {
+        if (m_sectorCur[i] > 0)
+        {
+            m_sectorLastLap[i] = m_sectorCur[i];
+        }
+        m_sectorCur[i] = 0;
+    }
+    m_sectorLast = -1;
 }
 
 int PluginState::sessionTimeMs() const

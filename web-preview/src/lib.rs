@@ -291,6 +291,8 @@ fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg.show_radar = name == "radar";
     cfg.show_ticker = name == "ticker";
     cfg.show_sys = name == "sys";
+    cfg.show_sector = name == "sector";
+    cfg.feature_sector = name == "sector";
 }
 
 fn widget_id(name: &str) -> Option<WidgetId> {
@@ -303,6 +305,7 @@ fn widget_id(name: &str) -> Option<WidgetId> {
         "dash" => WidgetId::Dash,
         "ticker" => WidgetId::Ticker,
         "sys" => WidgetId::Sys,
+        "sector" => WidgetId::Sector,
         _ => return None,
     })
 }
@@ -356,6 +359,7 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "dash_bold" => cfg.dash_bold,
         "ticker_bold" => cfg.ticker_bold,
         "sys_bold" => cfg.sys_bold,
+        "sector_bold" => cfg.sector_bold,
         "ticker_title" => cfg.ticker_title,
         "ticker_autoscroll" => cfg.ticker_autoscroll,
         _ => return None,
@@ -411,6 +415,7 @@ fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
         "dash_bold" => cfg.dash_bold = on,
         "ticker_bold" => cfg.ticker_bold = on,
         "sys_bold" => cfg.sys_bold = on,
+        "sector_bold" => cfg.sector_bold = on,
         "ticker_title" => cfg.ticker_title = on,
         "ticker_autoscroll" => cfg.ticker_autoscroll = on,
         _ => {}
@@ -430,6 +435,7 @@ fn int_val(cfg: &HudConfig, key: &str) -> Option<i32> {
         "dash_bg" => cfg.dash_bg,
         "ticker_bg" => cfg.ticker_bg,
         "sys_bg" => cfg.sys_bg,
+        "sector_bg" => cfg.sector_bg,
         "ticker_count" => cfg.ticker_count,
         "st_font" => cfg.st_font,
         "rel_font" => cfg.rel_font,
@@ -439,6 +445,7 @@ fn int_val(cfg: &HudConfig, key: &str) -> Option<i32> {
         "dash_font" => cfg.dash_font,
         "ticker_font" => cfg.ticker_font,
         "sys_font" => cfg.sys_font,
+        "sector_font" => cfg.sector_font,
         _ => return None,
     })
 }
@@ -456,6 +463,7 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "dash_bg" => cfg.dash_bg = value.clamp(0, 100),
         "ticker_bg" => cfg.ticker_bg = value.clamp(0, 100),
         "sys_bg" => cfg.sys_bg = value.clamp(0, 100),
+        "sector_bg" => cfg.sector_bg = value.clamp(0, 100),
         "ticker_count" => cfg.ticker_count = value.clamp(3, 15),
         "st_font" => cfg.set_font_pct(WidgetId::Standings, value),
         "rel_font" => cfg.set_font_pct(WidgetId::Relative, value),
@@ -465,6 +473,7 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "dash_font" => cfg.set_font_pct(WidgetId::Dash, value),
         "ticker_font" => cfg.set_font_pct(WidgetId::Ticker, value),
         "sys_font" => cfg.set_font_pct(WidgetId::Sys, value),
+        "sector_font" => cfg.set_font_pct(WidgetId::Sector, value),
         _ => {}
     }
 }
@@ -578,6 +587,13 @@ fn demo_snapshot() -> Snapshot {
     s.last_lap_ms = 73_220;
     s.current_lap = 8;
     s.local_gear = 3;
+    s.sector_count = 3;
+    s.sector_last = 0;
+    s.sector_cur = [24_180, 0, 0];
+    s.sector_last_lap = [24_310, 25_820, 23_090];
+    s.sector_best = [24_050, 25_640, 22_910];
+    s.sector_delta = [130, 0, 0];
+    s.sector_delta_valid = 0b001;
     s.local_speed = 18.0;
     let (poly, length, sf, name) = captured_track();
     write_name(&mut s.track_name, &name);
@@ -759,6 +775,20 @@ fn animate(s: &mut Snapshot, t: f32, dt: f32) {
         }
     }
     apply_radar_pack(s, t);
+    let lap_t = (s.local_track_pos.rem_euclid(1.0) * 3.0) as i32;
+    s.sector_last = (lap_t - 1).clamp(-1, 2);
+    s.sector_cur = match lap_t {
+        0 => [0, 0, 0],
+        1 => [24_180, 0, 0],
+        2 => [24_180, 25_760, 0],
+        _ => [0, 0, 0],
+    };
+    s.sector_delta = [130, 120, 0];
+    s.sector_delta_valid = match lap_t {
+        1 => 0b001,
+        2 => 0b011,
+        _ => 0,
+    };
     refresh_standings(s);
 }
 

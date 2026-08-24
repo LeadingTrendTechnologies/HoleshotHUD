@@ -42,19 +42,43 @@ Restart MX Bikes after installing or updating the plugin.
 
 Needs Visual Studio 2022 (C++ desktop) and [Rust](https://rustup.rs/).
 
+From **cmd**:
+
 ```bat
 build.bat
 pack.bat
 ```
 
+From **Git Bash**, prefix with `cmd.exe //c` so `/c` is not treated as a path:
+
+```bash
+cmd.exe //c build.bat
+```
+
 `build.bat` compiles `out\Release\mxbo.dlo` and `overlay\target\release\Holeshot-HUD.exe`.  
 `pack.bat` writes `dist\HoleshotHUD-Setup.exe` (needs [Inno Setup 6](https://jrsoftware.org/isinfo.php)).
+
+If cargo fails with **Access is denied** on `Holeshot-HUD.exe`, quit the overlay (tray → **Quit overlay**) or, from Git Bash:
+
+```bash
+cmd.exe //c "taskkill /IM Holeshot-HUD.exe /F"
+```
+
+### Local debug
+
+`cargo run` (debug) unlocks the experimental **Sectors** tab. `build.bat` is release, so that tab stays hidden until **Sector times (experimental)** is on in Settings → Labs. Turn on **Show on overlay** either way.
+
+```bash
+cmd.exe //c "cargo run --manifest-path overlay\Cargo.toml --bin Holeshot-HUD"
+```
+
+Dev builds optimize crates like tiny-skia (`opt-level = 3`) so the HUD stays smooth. The first `cargo run` after a clean build takes longer; later ones are incremental. For a full release binary, use `build.bat`.
 
 Push a tag to publish a downloadable release:
 
 ```bat
-git tag v0.1.11
-git push origin v0.1.11
+git tag v0.1.12
+git push origin v0.1.12
 ```
 
 ## Data wiki

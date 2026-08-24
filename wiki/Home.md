@@ -3,7 +3,7 @@
 Everything the PiBoSo plugin API can send this project, and whether we already keep it.
 
 Source of truth: `src/vendor/piboso/mxb_api.h` (data version **8**, interface **9**).  
-The game loads `mxbo.dlo` and calls the exported functions below. The plugin may copy fields into `PluginState`, then into shared memory `Local\MXBOHudV1` for the Rust overlay.
+The game loads `mxbo.dlo` and calls the exported functions below. The plugin may copy fields into `PluginState`, then into shared memory `Local\MXBOHudV9` for the Rust overlay.
 
 **Status**
 
@@ -50,6 +50,7 @@ Per-widget behavior, pitfalls, and change history for agents: **[widgets.md](wid
 - [Minimap](widgets/minimap.md): circular zoomed track
 - [Radar](widgets/radar.md): side / rear proximity
 - [Dash](widgets/dash.md): gear, speed, session clock, flags
+- [Sectors](widgets/sector.md): S1–S3 times (labs flag)
 - [Systems](widgets/systems.md): CPU / mem / FPS (also draws off-track)
 
 Local speed / yaw / crash / track pos are in SHM for the moving marker, not as their own widgets yet.
@@ -173,7 +174,7 @@ This is the richest per-frame feed. **Only a handful of fields are kept.**
 | `m_iLapTime` | int | Last lap time (ms) |
 | `m_iBest` | int | Best lap (ms) |
 
-### `RunSplit` → `SPluginsBikeSplit_t` — **Unused**
+### `RunSplit` → `SPluginsBikeSplit_t` — **Overlay**
 
 | Field | Type | Widget ideas |
 | --- | --- | --- |
@@ -235,24 +236,24 @@ If centerline is missing, the plugin records a local XZ **trail** as a fallback 
 
 ## 7. Session (`RaceSession` / `RaceSessionState`)
 
-### `SPluginsRaceSession_t` — Received then discarded (`setSession` is a no-op)
+### `SPluginsRaceSession_t` — Overlay (`setSession`)
 
-| Field | Type | Widget ideas |
+| Field | Type | Status | Notes |
+| --- | --- | --- | --- |
+| `m_iSession` | int | Overlay | Session kind (`session_kind`). Logged: **warmup = 5**, **race 2 = 7**. Kind is **which moto**, not lap vs timed: race 2 was `7` for both **8:00 +1** and a **4-lap** moto. Race 1 not dumped yet (likely **6**). Kind does **not** change when you leave the gate. |
+| `m_iSessionState` | int | Overlay | Session state (`session_state`). **16** = running (warmup and race 2 on track). **256** = race 2 on the start gate. |
+| `m_iSessionLength` | int | Overlay | Time-limited session (minutes, seconds, or ms — plugin normalizes). Plugin cache is **`-1` until this session writes a length**; **`0` means the game sent 0** (lap moto). Kind change clears the cache so leftover warmup minutes are not locked. |
+| `m_iSessionNumLaps` | int | Overlay | Lap moto length, or extras on a timed set |
+| `m_iConditions` | int | Unused | Conditions |
+| `m_fAirTemperature` | float | Overlay | Air temp |
+
+### `SPluginsRaceSessionState_t` — Overlay (`setSessionState`)
+
+| Field | Type | Status |
 | --- | --- | --- |
-| `m_iSession` | int | Session kind |
-| `m_iSessionState` | int | Running / cooldown / etc. |
-| `m_iSessionLength` | int | Time-limited session (likely ms or seconds — **confirm**) |
-| `m_iSessionNumLaps` | int | Lap-limited race |
-| `m_iConditions` | int | Conditions |
-| `m_fAirTemperature` | float | Air temp |
-
-### `SPluginsRaceSessionState_t` — **Unused** (`RaceSessionState` empty)
-
-| Field | Type |
-| --- | --- |
-| `m_iSession` | int |
-| `m_iSessionState` | int |
-| `m_iSessionLength` | int | Remaining or elapsed length |
+| `m_iSession` | int | Overlay | Updates `session_kind` |
+| `m_iSessionState` | int | Overlay | Updates `session_state` |
+| `m_iSessionLength` | int | Overlay | Remaining or elapsed length |
 
 Classification header also has `m_iSessionTime` (see below).
 
@@ -274,7 +275,7 @@ All **Unused** today.
 | `m_aiSplit[2]` | int | Two stored split times |
 | `m_iBest` | int | Best lap ms |
 
-### `RaceSplit` → `SPluginsRaceSplit_t`
+### `RaceSplit` → `SPluginsRaceSplit_t` — **Overlay**
 
 | Field | Type |
 | --- | --- |
@@ -408,9 +409,10 @@ Already published (version **1**):
 - Track: name, length, S/F meters, polyline
 - Riders: race num, XZ, yaw, track pos, crashed, name
 - Standings: race num, position, state, best lap, laps, gap ms/laps, pit, name
+- Session: length, laps, remaining clock, **kind** (`m_iSession`), **state** (`m_iSessionState`) — SHM version **9**
 - Layout: map / standings / relative rects + show flags + row counts
 
-**Not published yet** (but available in the API or `PluginState`): penalty, bike names, session, laps/splits, holeshot, comms, RPM/gear/inputs/temps/fuel/suspension, per-rider `VehicleLive`, pitch/roll, spectate camera list.
+**Not published yet** (but available in the API or `PluginState`): penalty, bike names, laps/splits, holeshot, comms, RPM/gear/inputs/temps/fuel/suspension, per-rider `VehicleLive`, pitch/roll, spectate camera list.
 
 Bump `MXBO_SHM_VERSION` when you add fields; keep C and Rust `#[repr(C)]` layouts identical.
 
@@ -439,7 +441,9 @@ Existing overlay widgets: [widgets.md](widgets.md) (behavior + change logs). Fie
 | [Standings](widgets/standings.md) | classification + names | Overlay |
 | [Relative](widgets/relative.md) | `m_fTrackPos` + names | Overlay |
 | [Map](widgets/map.md) | centerline + positions | Overlay |
-| Speed / gear / RPM | telemetry + event max/shift RPM | Need SHM |
+| Speed / gear / RPM | telemetry + event max/shift RPM | Overlay (dash) |
+| [Systems](widgets/systems.md) | host meters | Overlay |
+| [Sectors](widgets/sector.md) | `RunSplit` / `RaceSplit` | Overlay (labs flag) |
 | Shift light | `m_iRPM` vs `m_iShiftRPM` | Need SHM |
 | Throttle / brakes / clutch | telemetry inputs | Need SHM |
 | Lean / pitch | `m_fRoll` / `m_fPitch` or `m_fLean` | Need SHM |
@@ -448,8 +452,8 @@ Existing overlay widgets: [widgets.md](widgets.md) (behavior + change logs). Fie
 | Suspension | length / velocity / max travel | Need SHM |
 | G-meter | acceleration XYZ | Need SHM |
 | Wheel slip | wheel speed vs chassis velocity | Need SHM |
-| Current / last / best lap | `RunLap` / `RaceLap` | Unused callbacks |
-| Sector delta | `RunSplit` / `RaceSplit` | Unused callbacks |
+| Current / last / best lap | `RunLap` / `RaceLap` | Overlay (dash / standings) |
+| Sector delta | `RunSplit` / `RaceSplit` | Overlay (labs: Sectors) |
 | Session timer / laps to go | `RaceSession` + classification header | Unused |
 | Penalty banner | `m_iPenalty` + `RaceCommunication` | Cached / unused |
 | Holeshot | `RaceHoleshot` | Unused |

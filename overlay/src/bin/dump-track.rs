@@ -18,7 +18,8 @@ fn main() {
     });
     let n = snap.poly_count.clamp(0, shm::MAX_POLY as i32) as usize;
     if n < 8 {
-        eprintln!("No track path yet ({} points). Load a session on the track, then run this again.", n);
+        eprint!("{}", snap.dump_text());
+        eprintln!("No track path yet ({n} points). Load a session on the track, then run this again.");
         std::process::exit(1);
     }
     let name = cstr(&snap.track_name);

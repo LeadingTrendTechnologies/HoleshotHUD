@@ -18,7 +18,8 @@ pub struct Shm {
 impl Shm {
     pub fn open() -> Option<Self> {
         unsafe {
-            let map = OpenFileMappingW(FILE_MAP_READ.0, false, w!("Local\\MXBOHudV1")).ok()?;
+            // Must match MXBO_SHM_NAME in src/shm/mxbo_shm.h (versioned with SHM layout).
+            let map = OpenFileMappingW(FILE_MAP_READ.0, false, w!("Local\\MXBOHudV9")).ok()?;
             let view = MapViewOfFile(map, FILE_MAP_READ, 0, 0, mem::size_of::<Snapshot>());
             if view.Value.is_null() {
                 return None;
@@ -39,14 +40,44 @@ impl Shm {
                 if s1 & 1 != 0 {
                     continue;
                 }
-                let copy = ptr::read_volatile(src);
+                let magic = ptr::read_volatile(ptr::addr_of!((*src).magic));
+                let version = ptr::read_volatile(ptr::addr_of!((*src).version));
+                let size = ptr::read_volatile(ptr::addr_of!((*src).size)) as usize;
+                let max = mem::size_of::<Snapshot>();
+                if magic != MAGIC || version < 8 || version > VERSION || size < 64 || size > max {
+                    compiler_fence(Ordering::Acquire);
+                    let s2 = (*seq_ptr).load(Ordering::Acquire);
+                    if s1 == s2 {
+                        return None;
+                    }
+                    continue;
+                }
+                let mut copy = Snapshot::default();
+                ptr::copy_nonoverlapping(src as *const u8, (&mut copy as *mut Snapshot).cast(), size);
                 compiler_fence(Ordering::Acquire);
                 let s2 = (*seq_ptr).load(Ordering::Acquire);
-                if s1 == s2 && copy.magic == MAGIC && copy.version == VERSION {
+                if s1 == s2 {
+                    if version < VERSION {
+                        copy.session_kind = -1;
+                        copy.session_state = -1;
+                    }
                     return Some(copy);
                 }
             }
             None
+        }
+    }
+
+    /// Peek SHM magic/version/seq/size without a full seqlock copy.
+    /// Used by Holeshot-HUD; dump-track links this module but does not call it.
+    #[allow(dead_code)]
+    pub fn header(&self) -> Option<(u32, u32, u32, u32)> {
+        unsafe {
+            let src = self.view.Value as *const Snapshot;
+            if src.is_null() {
+                return None;
+            }
+            Some(((*src).magic, (*src).version, (*src).seq, (*src).size))
         }
     }
 }

@@ -1,8 +1,9 @@
 use super::*;
 use crate::config::{BoardField, DashField, FontFamily, HudConfig, RelField, StField};
+use crate::race_store::{effective_extra_laps, effective_race_laps};
 use crate::shm::{write_name, Point, Rider, Snapshot, Standing, MAGIC, VERSION};
 use std::sync::{Mutex, OnceLock};
-use tiny_skia::Pixmap;
+use tiny_skia::{Color, Pixmap, Rect};
 
 fn session_lock() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -98,6 +99,30 @@ fn live_snap() -> Snapshot {
     s
 }
 
+/// Put the focus rider at `pos` round the lap and let the flag logic see the step.
+fn ride_to(s: &mut Snapshot, pos: f32) -> DashFlag {
+    s.local_track_pos = pos;
+    s.riders[1].track_pos = pos;
+    dash_race_flag(s)
+}
+
+/// Walk from just after the line round to the 80 m run-in. The geometry guards need a
+/// mid-lap sighting and a closing step before the early white can arm.
+fn ride_lap_to_line(s: &mut Snapshot) -> DashFlag {
+    for pos in [0.10, 0.30, 0.50, 0.70, 0.85, 0.90] {
+        ride_to(s, pos);
+    }
+    ride_to(s, 0.92)
+}
+
+/// Cross the line: laps tick over just past S/F, which is also where the overlay learns
+/// where the line is.
+fn cross_line(s: &mut Snapshot, laps: i32, lap_num: i32) -> DashFlag {
+    s.standings[1].num_laps = laps;
+    s.current_lap = lap_num;
+    ride_to(s, 0.01)
+}
+
 fn expire_timed(s: &mut Snapshot) {
     expire_timed_extras(s, 2);
 }
@@ -148,6 +173,13 @@ fn bundled_race_fonts_load() {
 fn draw_ok(s: &Snapshot, cfg: &HudConfig) {
     let mut px = Pixmap::new(1280, 720).expect("pixmap");
     draw(&mut px, &fonts(), Some(s), cfg, 1280, 720, 0.0, false, false);
+}
+
+#[test]
+fn hairline_fill_rect_does_not_panic() {
+    let mut px = Pixmap::new(64, 64).expect("pixmap");
+    let r = Rect::from_xywh(10.4, 10.4, 1.3, 1.3).expect("rect");
+    fill_rect(&mut px, r, Color::from_rgba8(180, 180, 188, 40));
 }
 
 #[test]
@@ -233,7 +265,8 @@ fn standings_and_relative_board_fields() {
     timed.session_laps = 12;
     timed.session_length = 0;
     assert_eq!(board_item(&timed, &cfg, BoardField::Lap).unwrap().1, "6 / 12");
-    assert_eq!(board_item(&timed, &cfg, BoardField::LapsLeft).unwrap().1, "6");
+    // Laps left counts the lap you are on: 6 / 12 means seven still to run.
+    assert_eq!(board_item(&timed, &cfg, BoardField::LapsLeft).unwrap().1, "7");
     assert_eq!(board_item(&timed, &cfg, BoardField::Lap).unwrap().1, session_banner(&timed).1);
     assert_eq!(dash_foot_item(&timed, &cfg, DashField::LapCount).unwrap().1, session_banner(&timed).1);
     assert_eq!(board_item(&timed, &cfg, BoardField::SessionType).unwrap().1, "Lap race");
@@ -365,15 +398,15 @@ fn timed_session_shows_zero_of_extra_laps_until_local_cross() {
     let _g = session_lock();
     let mut s = live_snap();
     expire_timed(&mut s);
-    assert_eq!(session_banner(&s).1, "0 / 2");
+    assert_eq!(session_banner(&s).1, "0 / +2");
     s.standings[0].num_laps = 6;
-    assert_eq!(session_banner(&s).1, "0 / 2", "leader cross must not increment");
+    assert_eq!(session_banner(&s).1, "0 / +2", "leader cross must not increment");
     s.standings[1].num_laps = 6;
     s.current_lap = 7;
-    assert_eq!(session_banner(&s).1, "1 / 2", "first extra cross starts the extra");
+    assert_eq!(session_banner(&s).1, "1 / +2", "first extra cross starts the extra");
     s.standings[1].num_laps = 7;
     s.current_lap = 8;
-    assert_eq!(session_banner(&s).1, "2 / 2");
+    assert_eq!(session_banner(&s).1, "2 / +2");
 }
 
 #[test]
@@ -400,27 +433,27 @@ fn last_place_cross_at_expiry_stays_zero_until_leader_then_local() {
     let _ = session_remain_ms(&s);
     s.session_time_ms = 400;
     assert_eq!(session_remain_ms(&s), Some(0));
-    assert_eq!(session_banner(&s).1, "0 / 2");
+    assert_eq!(session_banner(&s).1, "0 / +2");
     s.standings[1].num_laps = 3;
     s.current_lap = 4;
     assert_eq!(
         session_banner(&s).1,
-        "0 / 2",
+        "0 / +2",
         "local cross before the leader starts extras must not count"
     );
     s.standings[0].num_laps = 4;
-    assert_eq!(session_banner(&s).1, "0 / 2");
+    assert_eq!(session_banner(&s).1, "0 / +2");
     s.standings[1].num_laps = 4;
     s.current_lap = 5;
-    assert_eq!(session_banner(&s).1, "1 / 2", "first extra cross starts the extra");
+    assert_eq!(session_banner(&s).1, "1 / +2", "first extra cross starts the extra");
     s.standings[0].num_laps = 5;
     s.standings[1].num_laps = 5;
     s.current_lap = 6;
-    assert_eq!(session_banner(&s).1, "2 / 2");
+    assert_eq!(session_banner(&s).1, "2 / +2");
     s.standings[0].num_laps = 6;
     s.standings[1].num_laps = 6;
     s.current_lap = 7;
-    assert_eq!(session_banner(&s).1, "2 / 2");
+    assert_eq!(session_banner(&s).1, "2 / +2");
 }
 
 #[test]
@@ -429,36 +462,25 @@ fn timed_plus_one_cross_before_leader_stays_zero_until_next_pass() {
     let mut s = live_snap();
     expire_timed_extras(&mut s, 1);
     s.local_speed = 18.0;
-    s.local_track_pos = 0.97;
-    s.riders[1].track_pos = 0.97;
-    assert_eq!(session_banner(&s).1, "0 / 1");
+    assert_eq!(session_banner(&s).1, "+1");
     s.standings[1].num_laps = 6;
     s.current_lap = 7;
     assert_eq!(
         session_banner(&s).1,
-        "0 / 1",
+        "+1",
         "pass after time expire does not count until the leader starts extras"
     );
-    s.standings[0].num_laps = 6;
-    assert_eq!(session_banner(&s).1, "0 / 1", "leader start extras still 0 / 1 until you pass");
-    s.local_track_pos = 0.40;
-    s.riders[1].track_pos = 0.40;
     assert_eq!(dash_race_flag(&s), DashFlag::None);
-    s.local_track_pos = 0.97;
-    s.riders[1].track_pos = 0.97;
-    assert_eq!(dash_race_flag(&s), DashFlag::White);
+    s.standings[0].num_laps = 6;
+    assert_eq!(session_banner(&s).1, "+1", "leader start extras still 0 / 1 until you pass");
+    // Premature cross bumped your base to 6, so the lap you are on still does not count.
+    assert_eq!(ride_to(&mut s, 0.40), DashFlag::None, "one more lap before your extra");
     s.standings[1].num_laps = 7;
     s.current_lap = 8;
-    s.local_track_pos = 0.02;
-    s.riders[1].track_pos = 0.02;
-    expire_white_hold();
-    assert_eq!(session_banner(&s).1, "1 / 1");
-    assert_ne!(dash_race_flag(&s), DashFlag::Checkered);
-    s.local_track_pos = 0.40;
-    s.riders[1].track_pos = 0.40;
-    let _ = dash_race_flag(&s);
-    s.local_track_pos = 0.97;
-    s.riders[1].track_pos = 0.97;
+    assert_eq!(session_banner(&s).1, "+1");
+    assert_eq!(dash_race_flag(&s), DashFlag::White, "on the counted extra after premature cross");
+    s.standings[1].num_laps = 8;
+    s.current_lap = 9;
     assert_eq!(dash_race_flag(&s), DashFlag::Checkered);
 }
 
@@ -485,17 +507,17 @@ fn overtime_ignores_standings_catch_up_after_expiry() {
     let _ = session_remain_ms(&s);
     s.session_time_ms = 400;
     assert_eq!(session_remain_ms(&s), Some(0));
-    assert_eq!(session_banner(&s).1, "0 / 2");
+    assert_eq!(session_banner(&s).1, "0 / +2");
     s.standings[1].num_laps = 5;
-    assert_eq!(session_banner(&s).1, "0 / 2");
+    assert_eq!(session_banner(&s).1, "0 / +2");
     s.standings[0].num_laps = 6;
-    assert_eq!(session_banner(&s).1, "0 / 2");
+    assert_eq!(session_banner(&s).1, "0 / +2");
     s.standings[1].num_laps = 6;
     s.current_lap = 7;
-    assert_eq!(session_banner(&s).1, "1 / 2", "first extra cross starts the extra");
+    assert_eq!(session_banner(&s).1, "1 / +2", "first extra cross starts the extra");
     s.standings[1].num_laps = 7;
     s.current_lap = 8;
-    assert_eq!(session_banner(&s).1, "2 / 2");
+    assert_eq!(session_banner(&s).1, "2 / +2");
 }
 
 #[test]
@@ -504,49 +526,29 @@ fn white_flag_waits_for_local_last_lap_not_leader_crossing() {
     let mut s = live_snap();
     expire_timed(&mut s);
     s.local_speed = 18.0;
-    s.local_track_pos = 0.97;
-    s.riders[1].track_pos = 0.97;
     assert_eq!(dash_race_flag(&s), DashFlag::None, "no flags until extras start");
-    s.local_track_pos = 0.88;
-    s.riders[1].track_pos = 0.88;
-    assert_eq!(dash_race_flag(&s), DashFlag::None);
     s.standings[0].num_laps = 6;
-    assert_eq!(dash_race_flag(&s), DashFlag::None);
+    assert_eq!(dash_race_flag(&s), DashFlag::None, "+2 still has 2 left — not white yet");
     s.standings[0].num_laps = 7;
     s.standings[1].num_laps = 5;
     s.current_lap = 6;
-    s.local_track_pos = 0.40;
-    s.riders[1].track_pos = 0.40;
     assert_eq!(dash_race_flag(&s), DashFlag::None);
-    s.local_track_pos = 0.97;
-    s.riders[1].track_pos = 0.97;
-    assert_eq!(dash_race_flag(&s), DashFlag::White);
+    // You start first extra: taken=1, done=0, left=2 → not last.
     s.standings[1].num_laps = 6;
     s.current_lap = 7;
-    assert_eq!(dash_race_flag(&s), DashFlag::White, "white holds through the extra start");
     s.local_track_pos = 0.40;
     s.riders[1].track_pos = 0.40;
-    assert_eq!(dash_race_flag(&s), DashFlag::White);
-    expire_white_hold();
-    assert_eq!(dash_race_flag(&s), DashFlag::None);
-    s.local_track_pos = 0.97;
-    s.riders[1].track_pos = 0.97;
-    assert_eq!(dash_race_flag(&s), DashFlag::White, "first extra finish is still not checkered on +2");
+    assert_eq!(dash_race_flag(&s), DashFlag::None, "first of +2 is not white");
+    // The run-in that starts your last extra is white.
+    assert_eq!(ride_lap_to_line(&mut s), DashFlag::White);
+    // Finish first / on last: done=1, left=1 → white.
     s.standings[1].num_laps = 7;
     s.current_lap = 8;
-    assert_eq!(dash_race_flag(&s), DashFlag::White);
-    s.local_track_pos = 0.40;
-    s.riders[1].track_pos = 0.40;
-    expire_white_hold();
-    let _ = dash_race_flag(&s);
-    s.local_track_pos = 0.97;
-    s.riders[1].track_pos = 0.97;
-    assert_eq!(dash_race_flag(&s), DashFlag::Checkered);
+    assert_eq!(dash_race_flag(&s), DashFlag::White, "white on last remaining extra");
+    // Complete both extras.
     s.standings[1].num_laps = 8;
     s.current_lap = 9;
-    s.local_track_pos = 0.80;
-    s.riders[1].track_pos = 0.80;
-    assert_eq!(dash_race_flag(&s), DashFlag::Checkered, "checkered holds until you leave the session");
+    assert_eq!(dash_race_flag(&s), DashFlag::Checkered);
     s.on_track = 0;
     assert_eq!(dash_race_flag(&s), DashFlag::None);
 }
@@ -607,31 +609,17 @@ fn timed_plus_one_shows_white_then_checkered() {
     let mut s = live_snap();
     expire_timed_extras(&mut s, 1);
     s.local_speed = 18.0;
-    s.local_track_pos = 0.40;
-    s.riders[1].track_pos = 0.40;
-    assert_eq!(dash_race_flag(&s), DashFlag::None);
-    s.local_track_pos = 0.97;
-    s.riders[1].track_pos = 0.97;
-    assert_eq!(dash_race_flag(&s), DashFlag::White, "white as you start the last extra");
+    assert_eq!(dash_race_flag(&s), DashFlag::None, "no flags until extras start");
+    // Leader starts extras. The lap you are on does not count, so your extra is still
+    // one crossing away: two laps to run, no flag away from the run-in.
     s.standings[0].num_laps = 6;
-    s.standings[1].num_laps = 5;
-    s.current_lap = 6;
-    assert_eq!(dash_race_flag(&s), DashFlag::White);
-    s.standings[1].num_laps = 6;
-    s.current_lap = 7;
-    s.local_track_pos = 0.40;
-    s.riders[1].track_pos = 0.40;
-    assert_eq!(dash_race_flag(&s), DashFlag::White);
-    expire_white_hold();
-    assert_eq!(dash_race_flag(&s), DashFlag::None);
-    s.local_track_pos = 0.97;
-    s.riders[1].track_pos = 0.97;
-    assert_eq!(dash_race_flag(&s), DashFlag::Checkered);
-    s.standings[1].num_laps = 6;
-    s.current_lap = 7;
-    s.local_track_pos = 0.20;
-    s.riders[1].track_pos = 0.20;
-    assert_eq!(dash_race_flag(&s), DashFlag::Checkered);
+    assert_eq!(ride_to(&mut s, 0.40), DashFlag::None, "the lap you are on is not the extra");
+    assert_eq!(ride_lap_to_line(&mut s), DashFlag::White, "run-in onto your extra");
+    // Your crossing starts the extra: white for the whole lap.
+    cross_line(&mut s, 6, 7);
+    assert_eq!(dash_race_flag(&s), DashFlag::White, "white on the extra lap");
+    assert_eq!(ride_to(&mut s, 0.50), DashFlag::White);
+    assert_eq!(cross_line(&mut s, 7, 8), DashFlag::Checkered);
     s.on_track = 0;
     assert_eq!(dash_race_flag(&s), DashFlag::None);
 }
@@ -642,34 +630,22 @@ fn timed_plus_one_first_extra_crossing_is_white_not_checkered() {
     let mut s = live_snap();
     expire_timed_extras(&mut s, 1);
     s.local_speed = 18.0;
-    s.local_track_pos = 0.40;
-    s.riders[1].track_pos = 0.40;
     s.standings[0].num_laps = 6;
     s.standings[1].num_laps = 5;
     s.current_lap = 6;
-    assert_eq!(dash_race_flag(&s), DashFlag::None);
-    s.local_track_pos = 0.97;
-    s.riders[1].track_pos = 0.97;
     assert_eq!(
-        dash_race_flag(&s),
-        DashFlag::White,
-        "first extra approach after extras start is white"
+        ride_to(&mut s, 0.40),
+        DashFlag::None,
+        "the lap running when the leader starts extras is not yours"
     );
+    // Your first extra crossing puts you on the last lap — white, never checkered.
+    cross_line(&mut s, 6, 7);
+    assert_eq!(dash_race_flag(&s), DashFlag::White);
     assert_ne!(dash_race_flag(&s), DashFlag::Checkered);
-    s.standings[1].num_laps = 6;
-    s.current_lap = 7;
-    s.local_track_pos = 0.02;
-    s.riders[1].track_pos = 0.02;
-    expire_white_hold();
-    assert_eq!(session_banner(&s).1, "1 / 1", "last-lap start shows 1 / 1");
-    assert_ne!(dash_race_flag(&s), DashFlag::Checkered, "checkered waits for the next approach");
-    s.local_track_pos = 0.40;
-    s.riders[1].track_pos = 0.40;
-    let _ = dash_race_flag(&s);
-    s.local_track_pos = 0.97;
-    s.riders[1].track_pos = 0.97;
-    assert_eq!(dash_race_flag(&s), DashFlag::Checkered);
-    assert_eq!(session_banner(&s).1, "1 / 1", "last-lap start shows 1 / 1");
+    assert_eq!(ride_lap_to_line(&mut s), DashFlag::White, "finish run-in stays white");
+    assert_eq!(session_banner(&s).1, "+1");
+    assert_eq!(cross_line(&mut s, 7, 8), DashFlag::Checkered);
+    assert_eq!(session_banner(&s).1, "+1");
 }
 
 #[test]
@@ -695,38 +671,32 @@ fn timed_plus_one_empty_standings_at_expiry_does_not_start_extras() {
     let _ = session_remain_ms(&s);
     s.session_time_ms = 400;
     assert_eq!(session_remain_ms(&s), Some(0));
-    assert_eq!(session_banner(&s).1, "0 / 1");
+    assert_eq!(session_banner(&s).1, "+1");
     s.standings[0].num_laps = 1;
-    assert_eq!(session_banner(&s).1, "0 / 1", "leader standings recovery is not extras start");
+    assert_eq!(session_banner(&s).1, "+1", "leader standings recovery is not extras start");
     s.standings[1].num_laps = 1;
     s.current_lap = 2;
-    assert_eq!(session_banner(&s).1, "0 / 1", "timed-lap finish after recovery is not an extra");
-    s.local_track_pos = 0.97;
-    s.riders[1].track_pos = 0.97;
+    assert_eq!(session_banner(&s).1, "+1", "timed-lap finish after recovery is not an extra");
+    assert_eq!(dash_race_flag(&s), DashFlag::None, "no flag until extras truly start");
     s.standings[0].num_laps = 2;
-    assert_eq!(dash_race_flag(&s), DashFlag::White);
-    assert_eq!(session_banner(&s).1, "0 / 1");
+    assert_eq!(
+        dash_race_flag(&s),
+        DashFlag::None,
+        "the lap you are on when the leader starts extras is not the extra"
+    );
+    assert_eq!(session_banner(&s).1, "+1");
     s.standings[1].num_laps = 2;
     s.current_lap = 3;
-    s.local_track_pos = 0.02;
-    s.riders[1].track_pos = 0.02;
-    expire_white_hold();
-    assert_eq!(session_banner(&s).1, "1 / 1", "last-lap start shows 1 / 1");
-    assert_ne!(dash_race_flag(&s), DashFlag::Checkered);
-    s.local_track_pos = 0.40;
-    s.riders[1].track_pos = 0.40;
-    let _ = dash_race_flag(&s);
-    s.local_track_pos = 0.97;
-    s.riders[1].track_pos = 0.97;
-    assert_eq!(dash_race_flag(&s), DashFlag::Checkered);
+    assert_eq!(dash_race_flag(&s), DashFlag::White);
+    assert_eq!(session_banner(&s).1, "+1", "last-lap start shows 1 / 1");
     s.standings[1].num_laps = 3;
     s.current_lap = 4;
-    assert_eq!(session_banner(&s).1, "1 / 1");
+    assert_eq!(dash_race_flag(&s), DashFlag::Checkered);
     let cfg = HudConfig::new();
-    assert_eq!(board_item(&s, &cfg, BoardField::Lap).unwrap().1, "1 / 1");
-    assert_eq!(board_item(&s, &cfg, BoardField::Session).unwrap().1, "1 / 1");
-    assert_eq!(dash_foot_item(&s, &cfg, DashField::LapCount).unwrap().1, "1 / 1");
-    assert_eq!(ticker_meta_label(BoardField::Lap, "1 / 1"), "LAPS");
+    assert_eq!(board_item(&s, &cfg, BoardField::Lap).unwrap().1, "+1");
+    assert_eq!(board_item(&s, &cfg, BoardField::Session).unwrap().1, "+1");
+    assert_eq!(dash_foot_item(&s, &cfg, DashField::LapCount).unwrap().1, "+1");
+    assert_eq!(ticker_meta_label(BoardField::Lap, "+1"), "LAPS");
 }
 
 #[test]
@@ -770,38 +740,37 @@ fn lap_race_shows_white_then_checkered() {
     s.session_time_ms = 50_000;
     s.local_speed = 18.0;
     let _ = session_remain_ms(&s);
-    s.standings[1].num_laps = 1;
-    s.current_lap = 2;
-    s.local_track_pos = 0.40;
-    s.riders[1].track_pos = 0.40;
-    assert_eq!(dash_race_flag(&s), DashFlag::None);
-    s.local_track_pos = 0.97;
-    s.riders[1].track_pos = 0.97;
-    assert_eq!(dash_race_flag(&s), DashFlag::None, "penultimate approach is not white");
+
+    // Lap 2 of 3.
+    cross_line(&mut s, 1, 2);
     assert_eq!(session_banner(&s).1, "2 / 3");
-    s.standings[1].num_laps = 2;
-    s.current_lap = 3;
+    assert_eq!(ride_to(&mut s, 0.40), DashFlag::None);
+    assert_eq!(
+        ride_lap_to_line(&mut s),
+        DashFlag::White,
+        "white on the run-in that starts the last lap"
+    );
+
+    // Lap 3 of 3 — white the whole way, never checkered before the line.
+    cross_line(&mut s, 2, 3);
     assert_eq!(session_banner(&s).1, "3 / 3");
-    assert_eq!(dash_race_flag(&s), DashFlag::White, "white when last lap starts");
-    s.local_track_pos = 0.40;
-    s.riders[1].track_pos = 0.40;
     assert_eq!(dash_race_flag(&s), DashFlag::White);
-    expire_white_hold();
-    assert_eq!(dash_race_flag(&s), DashFlag::None);
-    s.local_track_pos = 0.97;
-    s.riders[1].track_pos = 0.97;
-    assert_eq!(dash_race_flag(&s), DashFlag::Checkered);
-    s.standings[1].num_laps = 3;
-    s.current_lap = 4;
-    s.local_track_pos = 0.80;
-    s.riders[1].track_pos = 0.80;
-    assert_eq!(dash_race_flag(&s), DashFlag::Checkered);
+    assert_eq!(ride_to(&mut s, 0.40), DashFlag::White, "white mid last lap");
+    assert_eq!(
+        ride_lap_to_line(&mut s),
+        DashFlag::White,
+        "still white on the finish run-in"
+    );
+
+    assert_eq!(cross_line(&mut s, 3, 4), DashFlag::Checkered);
+    assert_eq!(ride_to(&mut s, 0.20), DashFlag::Checkered, "checkered latches");
     s.on_track = 0;
     assert_eq!(dash_race_flag(&s), DashFlag::None);
 }
 
+/// The finish run-in is still white. Checkered needs the crossing, not proximity.
 #[test]
-fn lap_race_checkered_waits_until_finish_approach() {
+fn lap_race_checkered_waits_for_the_line() {
     let _g = session_lock();
     reset_session();
     let mut s = live_snap();
@@ -812,25 +781,374 @@ fn lap_race_checkered_waits_until_finish_approach() {
     s.local_speed = 18.0;
     s.standings[0].num_laps = 2;
     s.standings[1].num_laps = 2;
-    s.local_track_pos = 0.97;
-    s.riders[1].track_pos = 0.97;
     assert_eq!(session_banner(&s).1, "3 / 4");
-    assert_eq!(dash_race_flag(&s), DashFlag::None, "3 / 4 approach is not last lap");
+    assert_eq!(ride_to(&mut s, 0.40), DashFlag::None, "mid lap 3 of 4");
+    assert_eq!(
+        ride_lap_to_line(&mut s),
+        DashFlag::White,
+        "run-in onto the last lap"
+    );
+
+    cross_line(&mut s, 3, 4);
+    assert_eq!(session_banner(&s).1, "4 / 4");
+    assert_eq!(ride_to(&mut s, 0.40), DashFlag::White);
+    assert_eq!(
+        ride_lap_to_line(&mut s),
+        DashFlag::White,
+        "80 m short of the finish is not checkered"
+    );
+    assert_eq!(cross_line(&mut s, 4, 5), DashFlag::Checkered);
+    assert_eq!(ride_to(&mut s, 0.20), DashFlag::Checkered);
+}
+
+#[test]
+fn four_lap_race_white_on_last_lap_start_not_checkered() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_length = 0;
+    s.session_laps = 4;
+    s.session_time_ms = 0;
+    s.local_speed = 18.0;
+    // Two laps still to run after this one — no flags anywhere on the lap.
+    s.standings[0].num_laps = 1;
+    s.standings[1].num_laps = 1;
+    s.current_lap = 2;
+    assert_eq!(session_banner(&s).1, "2 / 4");
+    assert_eq!(ride_to(&mut s, 0.40), DashFlag::None);
+    assert_eq!(ride_lap_to_line(&mut s), DashFlag::None);
+
+    // Lap 3 of 4: the run-in onto the last lap is white.
+    cross_line(&mut s, 2, 3);
+    assert_eq!(session_banner(&s).1, "3 / 4");
+    assert_eq!(ride_to(&mut s, 0.40), DashFlag::None);
+    assert_eq!(ride_lap_to_line(&mut s), DashFlag::White);
+    assert_ne!(dash_race_flag(&s), DashFlag::Checkered);
+
+    cross_line(&mut s, 3, 4);
+    assert_eq!(session_banner(&s).1, "4 / 4");
+    assert_eq!(
+        dash_race_flag(&s),
+        DashFlag::White,
+        "white when last lap starts"
+    );
+    assert_ne!(dash_race_flag(&s), DashFlag::Checkered);
+}
+
+/// A lap down when the leader takes the finish: the race is over, so you are waved off
+/// at the line even though you never completed the distance.
+#[test]
+fn lapped_rider_gets_checkered_when_leader_finishes() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_length = 0;
+    s.session_laps = 5;
+    s.session_time_ms = 0;
+    s.local_speed = 18.0;
+    // You are on lap 4 of 5, the leader is on their last lap.
+    s.standings[0].num_laps = 4;
     s.standings[1].num_laps = 3;
     s.current_lap = 4;
+    s.standings[1].gap_laps = 1;
+    assert_eq!(session_banner(&s).1, "4 / 5");
+    assert_eq!(
+        ride_to(&mut s, 0.40),
+        DashFlag::None,
+        "two of your own laps still to run"
+    );
+
+    // Leader crosses to finish while you are still out on track. The lap you are on is
+    // now your last, so the total drops to the four laps you will actually run.
+    s.standings[0].num_laps = 5;
+    assert!(leader_finished(&s));
+    assert!(!race_over_for_me(&s), "not until you reach the line");
+    assert_eq!(effective_race_laps(&s), 4);
     assert_eq!(session_banner(&s).1, "4 / 4");
+    assert_eq!(ride_to(&mut s, 0.60), DashFlag::White);
+    assert_eq!(
+        ride_lap_to_line(&mut s),
+        DashFlag::White,
+        "still white on the run-in"
+    );
+
+    // Your crossing ends it, one lap short of the moto but the full shortened race.
+    assert_eq!(cross_line(&mut s, 4, 5), DashFlag::Checkered);
+    assert!(race_over_for_me(&s));
+    assert!(i_finished(&s));
+    assert_eq!(
+        session_banner(&s).1,
+        "4 / 4",
+        "the total follows the race you ran, not the moto distance"
+    );
+    assert_eq!(race_laps_left_text(&s), "0");
+}
+
+/// The `~Lapped` tag follows the classification gap, and must stay off the gate, out of
+/// warmup, and away from anyone who is merely being caught.
+#[test]
+fn lapped_tag_tracks_the_classification_gap() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_length = 0;
+    s.session_laps = 5;
+    s.session_time_ms = 0;
+    s.local_speed = 18.0;
+    s.standings[0].num_laps = 3;
+    s.standings[1].num_laps = 3;
+    s.current_lap = 4;
+    assert!(!lapped(&s), "same lap as the leader");
+
+    s.standings[1].gap_laps = 1;
+    assert!(lapped(&s), "a lap down");
+    s.standings[1].gap_laps = 2;
+    assert!(lapped(&s), "two laps down");
+    // The tag widens the right column, so make sure the dash still lays out and draws.
+    let cfg = HudConfig::new();
+    assert!(dash_layout(&fonts(), &s, &cfg, 1280.0, 720.0).lapped);
+    draw_ok(&s, &cfg);
+
+    // Not on the gate, and not while off track.
+    IN_GATE.store(1, std::sync::atomic::Ordering::Relaxed);
+    assert!(!lapped(&s), "no tag on the gate");
+    IN_GATE.store(0, std::sync::atomic::Ordering::Relaxed);
+    s.on_track = 0;
+    assert!(!lapped(&s), "no tag off track");
+    s.on_track = 1;
+
+    // Warmup has no leader to be a lap behind.
+    let mut warm = s;
+    warm.session_laps = 0;
+    warm.session_length = 10;
+    assert!(is_warmup(&warm));
+    assert!(!lapped(&warm), "no tag in warmup");
+}
+
+/// Winning must not stretch the total: your own finish latches the leader base at your
+/// full lap count, and `+1` past it would read `5 / 6` on a 5-lap moto.
+#[test]
+fn winner_keeps_the_full_lap_total() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_length = 0;
+    s.session_laps = 5;
+    s.session_time_ms = 0;
+    s.local_speed = 18.0;
+    s.standings[0].num_laps = 4;
+    s.standings[1].num_laps = 4;
+    s.current_lap = 5;
+    assert_eq!(session_banner(&s).1, "5 / 5");
+    assert_eq!(dash_race_flag(&s), DashFlag::White, "on the last lap");
+    assert_eq!(cross_line(&mut s, 5, 6), DashFlag::Checkered);
+    assert_eq!(effective_race_laps(&s), 5);
+    assert_eq!(session_banner(&s).1, "5 / 5");
+}
+
+/// Same rule on a timed race: the leader completing their extras ends it for everyone.
+#[test]
+fn lapped_rider_gets_checkered_when_leader_finishes_extras() {
+    let _g = session_lock();
+    let mut s = live_snap();
+    expire_timed_extras(&mut s, 1);
+    s.local_speed = 18.0;
+    // Leader starts their extra a lap up on you; you are still on the timed lap.
+    s.standings[0].num_laps = 6;
+    s.standings[1].num_laps = 5;
+    s.current_lap = 6;
+    assert!(extras_started(&s));
+    assert!(!leader_finished(&s));
+
+    // Leader completes the extra and takes the finish.
+    s.standings[0].num_laps = 7;
+    assert!(leader_finished(&s));
+    assert!(!race_over_for_me(&s));
+    assert_eq!(ride_to(&mut s, 0.40), DashFlag::White);
+    assert_eq!(cross_line(&mut s, 6, 7), DashFlag::Checkered);
+    assert!(i_finished(&s));
+}
+
+/// The run-in white is the only flag that trusts track geometry, so it stays off until
+/// the position data has actually shown a lap going past.
+#[test]
+fn early_white_needs_a_real_run_in() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_length = 0;
+    s.session_laps = 4;
+    s.session_time_ms = 0;
+    s.local_speed = 18.0;
+    s.standings[0].num_laps = 2;
+    s.standings[1].num_laps = 2;
+    s.current_lap = 3;
+
+    // Dropped straight into the window with no lap behind us — nothing to go on.
+    assert_eq!(ride_to(&mut s, 0.92), DashFlag::None, "no mid-lap sighting yet");
+    // Half a lap out, then closing in: a real run-in.
+    ride_to(&mut s, 0.50);
+    assert_eq!(ride_to(&mut s, 0.96), DashFlag::White, "closing — run-in armed");
+    // Still inside the window but drifting back from the line.
+    assert_eq!(ride_to(&mut s, 0.94), DashFlag::None, "not closing on the line");
+}
+
+/// With no centerline and no learned line, the window position is a guess, so the early
+/// white is suppressed. Lap counting still delivers white and checkered.
+#[test]
+fn no_track_geometry_still_flags_from_lap_count() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_length = 0;
+    s.session_laps = 4;
+    s.session_time_ms = 0;
+    s.local_speed = 18.0;
+    s.poly_count = 0;
+    s.sf_meters = 0.0;
+    s.standings[0].num_laps = 2;
+    s.standings[1].num_laps = 2;
+    s.current_lap = 3;
+    ride_to(&mut s, 0.50);
+    assert_eq!(
+        ride_lap_to_line(&mut s),
+        DashFlag::None,
+        "no early white without a known line"
+    );
+    // The last lap and the finish need no geometry at all.
+    s.standings[1].num_laps = 3;
+    s.current_lap = 4;
     assert_eq!(dash_race_flag(&s), DashFlag::White);
-    assert_ne!(dash_race_flag(&s), DashFlag::Checkered);
-    expire_white_hold();
-    s.local_track_pos = 0.40;
-    s.riders[1].track_pos = 0.40;
+    s.standings[1].num_laps = 4;
+    s.current_lap = 5;
+    assert_eq!(dash_race_flag(&s), DashFlag::Checkered);
+}
+
+/// 8:00 + 2 where you cross after time expiry but before the leader. That crossing does
+/// not count, so you run one uncounted lap and then two extras. Flags must not appear on
+/// the uncounted lap, and must not flicker on either run-in.
+#[test]
+fn timed_plus_two_uncounted_lap_then_two_extras() {
+    let _g = session_lock();
+    let mut s = live_snap();
+    expire_timed_extras(&mut s, 2);
+    s.local_speed = 18.0;
+    // You cross just after the clock hits zero; the leader has not crossed yet.
+    s.standings[1].num_laps = 6;
+    s.current_lap = 7;
     assert_eq!(dash_race_flag(&s), DashFlag::None);
-    s.local_track_pos = 0.97;
-    s.riders[1].track_pos = 0.97;
-    assert_eq!(dash_race_flag(&s), DashFlag::Checkered);
-    s.local_track_pos = 0.20;
-    s.riders[1].track_pos = 0.20;
-    assert_eq!(dash_race_flag(&s), DashFlag::Checkered);
+    // Leader crosses and starts the extras. You are mid-lap, so this lap is uncounted:
+    // three laps still to run.
+    s.standings[0].num_laps = 6;
+    assert!(extras_started(&s));
+    assert_eq!(laps_left(&s), Some(3));
+    assert_eq!(session_banner(&s).1, "0 / +2");
+    assert_eq!(ride_to(&mut s, 0.40), DashFlag::None);
+    assert_eq!(
+        ride_lap_to_line(&mut s),
+        DashFlag::None,
+        "no flag on the run-in of the uncounted lap"
+    );
+
+    // First extra: two to run, so only the run-in is white.
+    cross_line(&mut s, 7, 8);
+    assert_eq!(laps_left(&s), Some(2));
+    assert_eq!(session_banner(&s).1, "1 / +2");
+    assert_eq!(ride_to(&mut s, 0.40), DashFlag::None);
+    assert_eq!(ride_lap_to_line(&mut s), DashFlag::White, "run-in onto the last extra");
+
+    // Last extra: white all the way, checkered only on the line.
+    cross_line(&mut s, 8, 9);
+    assert_eq!(laps_left(&s), Some(1));
+    assert_eq!(session_banner(&s).1, "2 / +2");
+    assert_eq!(ride_to(&mut s, 0.40), DashFlag::White);
+    assert_eq!(ride_lap_to_line(&mut s), DashFlag::White);
+    assert_eq!(cross_line(&mut s, 9, 10), DashFlag::Checkered);
+}
+
+/// Lapped during the extras of a timed race: the total extras drop the same way a lap
+/// moto's total does, so `1 / +2` becomes the single extra you will actually run.
+#[test]
+fn lapped_during_extras_shortens_the_extra_count() {
+    let _g = session_lock();
+    let mut s = live_snap();
+    expire_timed_extras(&mut s, 2);
+    s.local_speed = 18.0;
+    // Leader starts the extras while you are mid-lap, so you have three laps to run.
+    s.standings[0].num_laps = 6;
+    assert_eq!(session_banner(&s).1, "0 / +2");
+    assert_eq!(effective_extra_laps(&s), 2);
+    assert_eq!(ride_to(&mut s, 0.40), DashFlag::None);
+
+    // The leader completes both extras before you have taken either. You are waved off
+    // at your next crossing, so only one extra is yours.
+    s.standings[0].num_laps = 8;
+    assert!(leader_finished(&s));
+    assert_eq!(effective_extra_laps(&s), 1);
+    assert_eq!(session_banner(&s).1, "+1", "a single extra drops the `n / +n` form");
+    assert_eq!(dash_race_flag(&s), DashFlag::White);
+    assert_eq!(cross_line(&mut s, 6, 7), DashFlag::Checkered);
+}
+
+/// A frame where the session fields glitch into looking like a lap race puts extras (2)
+/// against real lap counts, so `session_laps - laps_done` goes negative and clamps to
+/// zero. That must not wave you off mid-race.
+#[test]
+fn glitched_lap_race_frame_does_not_latch_checkered() {
+    let _g = session_lock();
+    let mut s = live_snap();
+    expire_timed_extras(&mut s, 2);
+    s.local_speed = 18.0;
+    s.standings[0].num_laps = 6;
+    cross_line(&mut s, 6, 7);
+    assert_eq!(laps_left(&s), Some(2), "on your first extra");
+    assert!(!finish_earned(&s));
+
+    // Session length drops out for a frame, so the clock heuristics read a lap moto.
+    let mut glitch = s;
+    glitch.session_length = 0;
+    glitch.session_time_ms = 0;
+    assert_ne!(
+        dash_race_flag(&glitch),
+        DashFlag::Checkered,
+        "a glitched frame must not finish the race"
+    );
+    // Back to normal: still riding, still white on the run-in.
+    assert_eq!(ride_lap_to_line(&mut s), DashFlag::White);
+    assert_eq!(cross_line(&mut s, 7, 8), DashFlag::White);
+    assert_eq!(cross_line(&mut s, 8, 9), DashFlag::Checkered);
+}
+
+/// Two agreeing crossings pin the line down even when `sf_meters` points elsewhere.
+#[test]
+fn learned_line_overrides_a_wrong_sf_meters() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_length = 0;
+    s.session_laps = 6;
+    s.session_time_ms = 0;
+    s.local_speed = 18.0;
+    // The game claims the line is a third of the way round; laps actually tick at 0.75.
+    s.sf_meters = 330.0;
+    s.standings[0].num_laps = 1;
+    s.standings[1].num_laps = 1;
+    s.current_lap = 2;
+    ride_to(&mut s, 0.50);
+
+    for (laps, lap_num) in [(2, 3), (3, 4)] {
+        s.standings[1].num_laps = laps;
+        s.current_lap = lap_num;
+        ride_to(&mut s, 0.76);
+        ride_to(&mut s, 0.50);
+    }
+    let learned = SF_FRAC_LEARNED.load(Ordering::Relaxed);
+    assert!(learned > 7_000 && learned < 8_000, "learned {learned}");
+    // One stray crossing somewhere else must not move it.
+    s.standings[1].num_laps = 4;
+    s.current_lap = 5;
+    ride_to(&mut s, 0.20);
+    assert_eq!(SF_FRAC_LEARNED.load(Ordering::Relaxed), learned);
 }
 
 #[test]
@@ -1226,7 +1544,7 @@ fn sighting_jump_to_race_length_still_allows_gate() {
     assert_eq!(session_banner(&s).1, "07:59");
     s.session_time_ms = 400;
     assert_eq!(session_remain_ms(&s), Some(0));
-    assert_eq!(session_banner(&s).1, "0 / 1");
+    assert_eq!(session_banner(&s).1, "+1");
 }
 
 #[test]
@@ -1351,7 +1669,7 @@ fn long_timed_race_does_not_expire_on_green_clock_sweep() {
     let _ = session_remain_ms(&s);
     s.session_time_ms = 505_000;
     assert_eq!(session_remain_ms(&s), Some(0));
-    assert_eq!(session_banner(&s).1, "0 / 2");
+    assert_eq!(session_banner(&s).1, "0 / +2");
 }
 
 #[test]
@@ -1482,6 +1800,90 @@ fn lap_race_keeps_gate_countdown_after_one_moving_frame() {
 }
 
 #[test]
+fn two_lap_moto_with_leftover_start_board_shows_laps() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_length = 50_000;
+    s.session_laps = 2;
+    s.session_time_ms = 36_290;
+    s.current_lap = 6;
+    s.local_speed = 0.0;
+    s.standings[0].num_laps = 0;
+    s.standings[1].num_laps = 0;
+    assert_eq!(session_banner(&s).1, "00:36");
+    s.session_time_ms = 1_000;
+    assert_eq!(session_banner(&s).1, "00:01");
+    s.session_time_ms = 50_000;
+    s.local_speed = 16.0;
+    assert_eq!(session_banner(&s).1, "1 / 2");
+    s.standings[1].num_laps = 1;
+    s.current_lap = 2;
+    assert_eq!(session_banner(&s).1, "2 / 2");
+    assert!(!overtime_active(&s));
+}
+
+#[test]
+fn six_minute_plus_two_unset_length_keeps_countdown_after_gate() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_length = 0;
+    s.session_laps = 2;
+    s.session_time_ms = 6 * 60 * 1000;
+    s.current_lap = 1;
+    s.local_speed = 0.0;
+    s.standings[0].num_laps = 0;
+    s.standings[1].num_laps = 0;
+    assert_eq!(session_banner(&s).1, "06:00");
+    assert!(!is_lap_race(&s));
+    // Gate board after we already saw the race clock.
+    s.session_time_ms = 10_000;
+    let gate = session_banner(&s).1;
+    assert!(gate.starts_with("00:"), "gate board, got {gate}");
+    // Live race resumes — must not become a 2-lap moto.
+    s.session_time_ms = 5 * 60 * 1000 + 30_000;
+    s.local_speed = 18.0;
+    s.current_lap = 2;
+    s.standings[0].num_laps = 1;
+    s.standings[1].num_laps = 1;
+    let text = session_banner(&s).1;
+    assert!(!is_lap_race(&s));
+    assert!(
+        text.contains(':') && !text.contains('/'),
+        "timed +2 must keep countdown, got {text}"
+    );
+    assert!(!text.contains("+"), "live timed clock must not show +extras, got {text}");
+}
+
+#[test]
+fn six_minute_plus_two_leftover_start_board_shows_countdown() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    // Plugin left a ~50s board in session_length while the live clock is 6:00 +2.
+    s.session_length = 50_000;
+    s.session_laps = 2;
+    s.session_time_ms = 6 * 60 * 1000;
+    s.current_lap = 1;
+    s.local_speed = 0.0;
+    s.standings[0].num_laps = 0;
+    s.standings[1].num_laps = 0;
+    assert_eq!(session_banner(&s).1, "06:00");
+    assert!(!is_lap_race(&s));
+    s.session_time_ms = 6 * 60 * 1000 - 2_000;
+    s.local_speed = 18.0;
+    s.current_lap = 2;
+    s.standings[0].num_laps = 1;
+    s.standings[1].num_laps = 1;
+    let text = session_banner(&s).1;
+    assert!(
+        text.contains(':') && !text.contains('+') && !text.contains('/'),
+        "leftover board length must not force 1 / 2, got {text}"
+    );
+}
+
+#[test]
 fn practice_zero_does_not_restore_session_length() {
     let _g = session_lock();
     reset_session();
@@ -1496,7 +1898,29 @@ fn practice_zero_does_not_restore_session_length() {
     s.local_speed = 19.0;
     assert_eq!(session_banner(&s).1, "00:01");
     s.session_time_ms = 40 * 60 * 1000;
-    assert_eq!(session_banner(&s).1, "00:00");
+    assert_eq!(session_banner(&s).1, "", "warmup over — no sticky 00:00");
+    // Junk 00:30 after expiry must stay blank.
+    s.session_time_ms = 30_000;
+    assert_eq!(session_banner(&s).1, "");
+}
+
+#[test]
+fn warmup_expired_hides_clock() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_length = 10;
+    s.session_laps = 0;
+    s.session_time_ms = 10 * 60 * 1000;
+    s.current_lap = 2;
+    s.local_speed = 14.0;
+    assert_eq!(session_banner(&s).1, "10:00");
+    s.session_time_ms = 2_000;
+    assert_eq!(session_banner(&s).1, "00:02");
+    s.session_time_ms = 400;
+    assert_eq!(session_banner(&s).1, "", "practice at zero hides the clock");
+    s.session_time_ms = 30_000;
+    assert_eq!(session_banner(&s).1, "", "no sticky 00:30 after warmup ends");
 }
 
 #[test]
@@ -1668,14 +2092,14 @@ fn timed_race_switches_to_laps_when_clock_jumps_back_to_length() {
     s.session_time_ms = 505_000;
     assert_eq!(session_remain_ms(&s), Some(0));
     assert!(overtime_active(&s));
-    assert_eq!(session_banner(&s).1, "0 / 2");
+    assert_eq!(session_banner(&s).1, "0 / +2");
     s.standings[0].num_laps = 6;
     s.current_lap = 7;
     s.standings[1].num_laps = 6;
-    assert_eq!(session_banner(&s).1, "1 / 2", "first extra cross starts the extra");
+    assert_eq!(session_banner(&s).1, "1 / +2", "first extra cross starts the extra");
     s.standings[1].num_laps = 7;
     s.current_lap = 8;
-    assert_eq!(session_banner(&s).1, "2 / 2");
+    assert_eq!(session_banner(&s).1, "2 / +2");
 }
 
 #[test]
@@ -1838,6 +2262,21 @@ fn each_widget_renders_without_panic() {
         },
     ]);
     draw_ok(&only, &cfg);
+
+    cfg.show_sys = false;
+    cfg.feature_sector = true;
+    cfg.show_sector = true;
+    let mut sector = only;
+    sector.sector_count = 3;
+    sector.sector_last = 1;
+    sector.sector_cur = [24_180, 25_760, 0];
+    sector.sector_last_lap = [24_310, 25_820, 23_090];
+    sector.sector_best = [24_050, 25_640, 22_910];
+    sector.sector_delta = [130, 120, 0];
+    sector.sector_delta_valid = 0b011;
+    draw_ok(&sector, &cfg);
+    cfg.feature_sector = false;
+    draw_ok(&sector, &cfg);
 }
 
 #[test]
@@ -1856,6 +2295,86 @@ fn hidden_widgets_do_not_need_live_telemetry() {
     s.show_relative = 0;
     s.show_map = 0;
     draw_ok(&s, &cfg);
+}
+
+#[test]
+fn warmup_then_five_minute_plus_one_shows_countdown_not_plus_one() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    // Warmup: length unset, live 10:00 — sets SAW (and may arm).
+    s.session_length = 0;
+    s.session_laps = 0;
+    s.session_time_ms = 10 * 60 * 1000;
+    s.current_lap = 2;
+    s.local_speed = 14.0;
+    s.standings[0].num_laps = 1;
+    s.standings[1].num_laps = 1;
+    assert_eq!(session_banner(&s).1, "10:00");
+    s.session_time_ms = 9 * 60 * 1000;
+    assert_eq!(session_banner(&s).1, "09:00");
+
+    // Race 5:00 +1 — must not inherit warmup SAW/ARMED as already-expired extras.
+    s.session_length = 5;
+    s.session_laps = 1;
+    s.session_time_ms = 5 * 60 * 1000;
+    s.current_lap = 1;
+    s.local_speed = 0.0;
+    s.standings[0].num_laps = 0;
+    s.standings[1].num_laps = 0;
+    assert_eq!(session_banner(&s).1, "05:00");
+    assert!(!overtime_active(&s));
+    assert_ne!(session_banner(&s).1, "+1");
+
+    s.session_time_ms = 5 * 60 * 1000 - 1_000;
+    s.local_speed = 18.0;
+    s.current_lap = 2;
+    s.standings[0].num_laps = 1;
+    s.standings[1].num_laps = 1;
+    let remain = session_remain_ms(&s).expect("race ticking");
+    assert!(remain < 5 * 60 * 1000);
+    assert!(remain > 4 * 60 * 1000);
+    assert_eq!(session_banner(&s).1, "04:59");
+    assert!(!overtime_active(&s));
+}
+
+#[test]
+fn race_store_tick_once_matches_banner_for_five_plus_one() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_length = 0;
+    s.session_laps = 0;
+    s.session_time_ms = 10 * 60 * 1000;
+    s.current_lap = 2;
+    s.local_speed = 14.0;
+    let _ = RaceStore::tick(&s);
+    s.session_time_ms = 9 * 60 * 1000;
+    let _ = RaceStore::tick(&s);
+
+    s.session_length = 5;
+    s.session_laps = 1;
+    s.session_time_ms = 5 * 60 * 1000;
+    s.current_lap = 1;
+    s.local_speed = 0.0;
+    s.standings[0].num_laps = 0;
+    s.standings[1].num_laps = 0;
+    let first = RaceStore::tick(&s);
+    assert_eq!(first.clock.banner.1, "05:00");
+    assert!(!first.clock.expired);
+
+    s.session_time_ms = 5 * 60 * 1000 - 2_000;
+    s.local_speed = 18.0;
+    s.current_lap = 2;
+    s.standings[0].num_laps = 1;
+    s.standings[1].num_laps = 1;
+    let a = RaceStore::tick(&s);
+    let b = RaceStore::get();
+    assert_eq!(a.clock.banner.1, b.clock.banner.1);
+    assert_eq!(a.clock.banner.1, "04:58");
+    // Second get without another tick must not require re-mutating remain.
+    assert_eq!(race_progress_text(&s), "04:58");
+    assert!(!overtime_active(&s));
 }
 
 #[test]

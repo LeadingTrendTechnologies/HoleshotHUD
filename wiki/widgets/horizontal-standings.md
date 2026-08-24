@@ -28,6 +28,7 @@ Settings subtitle: “Your name is highlighted in the field”.
 
 ## Change log
 
+- 2026-08-24 — Card gap-vs-you and session best come from shared `RaceStore`. No visual change.
 - 0.1.2 — Horizontal Standings bar added (leader left, you highlighted).
 - 0.1.8 — Hidden until **Show on overlay**.
-- 2026-08-19 — Warmup header is `WARMUP - TRACK`, not `TIMED` / `LAP RACE`.
+- 2026-08-20 — Dropped the carbon-fiber dot grid on the bar background; those per-pixel fills stalled the whole HUD.

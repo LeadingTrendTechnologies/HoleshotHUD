@@ -1,4 +1,4 @@
-#![windows_subsystem = "windows"]
+// #![windows_subsystem = "windows"]
 
 mod compat;
 mod config;
@@ -18,6 +18,7 @@ mod util;
 
 use std::mem::size_of;
 use std::ptr::null_mut;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use tiny_skia::Pixmap;
@@ -33,23 +34,102 @@ use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerforma
 use windows::Win32::System::Threading::Sleep;
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_F9};
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateIconFromResourceEx, CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClassNameW,
-    GetClientRect, GetSystemMetrics, GetWindowThreadProcessId, IsWindow, LoadCursorW, LoadImageW,
-    LookupIconIdFromDirectoryEx, PeekMessageW, PostQuitMessage, RegisterClassExW, SendMessageW,
-    SetCursor, SetWindowPos, ShowWindow, TranslateMessage, UpdateLayeredWindow, HWND_TOPMOST,
-    ICON_BIG, ICON_SMALL, IDC_ARROW, IMAGE_ICON, LR_DEFAULTCOLOR, MSG, PM_REMOVE, SM_CXSCREEN,
-    SM_CYSCREEN, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_MINIMIZE, SW_SHOWMINNOACTIVE, SW_SHOWNOACTIVATE,
-    ULW_ALPHA, WM_ACTIVATE, WM_CLOSE, WM_DESTROY, WM_QUIT, WM_SETCURSOR, WM_SETICON, WNDCLASSEXW,
-    WS_CAPTION, WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
-    WS_EX_TRANSPARENT, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_POPUP, WS_SYSMENU,
+    CreateIconFromResourceEx, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
+    GetClassNameW, GetClientRect, GetSystemMetrics, GetWindowThreadProcessId, IsWindow, LoadCursorW,
+    LoadImageW, LookupIconIdFromDirectoryEx, PeekMessageW, PostQuitMessage, RegisterClassExW,
+    SendMessageW, SetCursor, SetWindowPos, ShowWindow, TranslateMessage, UpdateLayeredWindow,
+    HWND_TOPMOST, ICON_BIG, ICON_SMALL, IDC_ARROW, IMAGE_ICON, LR_DEFAULTCOLOR, MSG, PM_REMOVE,
+    SM_CXSCREEN, SM_CYSCREEN, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_MINIMIZE, SW_SHOWMINNOACTIVE,
+    SW_SHOWNOACTIVATE, ULW_ALPHA, WM_ACTIVATE, WM_CLOSE, WM_DESTROY, WM_QUIT, WM_SETCURSOR,
+    WM_SETICON, WNDCLASSEXW, WS_CAPTION, WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
+    WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_POPUP,
+    WS_SYSMENU,
 };
 
 use crate::render::Fonts;
-use crate::shm::Shm;
+use crate::shm::{Shm, Snapshot, VERSION};
 
 static mut HOST: HWND = HWND(null_mut());
+static QUITTING: AtomicBool = AtomicBool::new(false);
+
+/// Save is caller's job. Tears down tray/windows and ends the process so the exe unlocks for rebuilds.
+pub(crate) fn quit_app() {
+    if QUITTING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    crate::startup::kill_other_hud_processes();
+    crate::tray::remove();
+    crate::compat::stop_background_threads();
+    unsafe {
+        let host = HOST;
+        if !host.0.is_null() && IsWindow(host).as_bool() {
+            let _ = DestroyWindow(host);
+        }
+        HOST = HWND(null_mut());
+        PostQuitMessage(0);
+    }
+    std::process::exit(0);
+}
+
+fn write_shm_dump(text: &str) -> Option<std::path::PathBuf> {
+    eprint!("\n*** F9 SHM dump ***\n{text}");
+    let mut paths = Vec::new();
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        paths.push(
+            std::path::PathBuf::from(local)
+                .join("Holeshot HUD")
+                .join("logs")
+                .join("snapshot.txt"),
+        );
+    }
+    paths.push(std::env::temp_dir().join("Holeshot HUD").join("logs").join("snapshot.txt"));
+    for path in paths {
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        if std::fs::write(&path, text.as_bytes()).is_ok() {
+            eprintln!("*** wrote {} ***\n", path.display());
+            return Some(path);
+        }
+    }
+    eprintln!("*** F9 dump failed to write snapshot.txt ***\n");
+    None
+}
+
+fn f9_dump_text(shm: Option<&Shm>, snap: Option<&Snapshot>) -> String {
+    if let Some(s) = snap {
+        return s.dump_text();
+    }
+    let mut o = String::from("No live Snapshot (overlay SHM version mismatch or plugin not publishing).\n");
+    o.push_str(&format!("overlay VERSION={VERSION} rust_size={}\n", std::mem::size_of::<Snapshot>()));
+    match shm {
+        None => o.push_str("OpenFileMapping Local\\MXBOHudV9 failed. Start MX Bikes with mxbo.dlo loaded.\n"),
+        Some(s) => match s.header() {
+            Some((magic, version, seq, size)) => {
+                o.push_str(&format!(
+                    "SHM header magic={magic:#x} version={version} seq={seq} size={size}\n"
+                ));
+                if version != VERSION {
+                    o.push_str(
+                        "Restart MX Bikes after build.bat so the plugin matches this overlay.\n",
+                    );
+                }
+            }
+            None => o.push_str("SHM view is null.\n"),
+        },
+    }
+    o
+}
 
 fn main() {
+    std::panic::set_hook(Box::new(|info| {
+        let text = format!("{info}\n{}", std::backtrace::Backtrace::force_capture());
+        if let Ok(local) = std::env::var("LOCALAPPDATA") {
+            let dir = std::path::PathBuf::from(local).join("Holeshot HUD").join("logs");
+            let _ = std::fs::create_dir_all(&dir);
+                let _ = std::fs::write(dir.join("panic.txt"), text.as_bytes());
+        }
+    }));
     if std::env::args().any(|a| a == "--wait-for-game") {
         crate::startup::wait_for_mx_bikes();
     }
@@ -156,11 +236,14 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
     let mut msg = MSG::default();
     loop {
         while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
-            if msg.message == WM_QUIT || crate::update::should_quit() {
-                return;
+            if msg.message == WM_QUIT || crate::update::should_quit() || QUITTING.load(Ordering::SeqCst) {
+                quit_app();
             }
             let _ = TranslateMessage(&msg);
             DispatchMessageW(&msg);
+        }
+        if QUITTING.load(Ordering::SeqCst) || crate::update::should_quit() {
+            quit_app();
         }
 
         if !IsWindow(hwnd).as_bool() {
@@ -200,8 +283,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
                         crate::startup::spawn_game_waiter();
                     }
                     crate::config::update_config(|_| {});
-                    crate::tray::remove();
-                    PostQuitMessage(0);
+                    quit_app();
                 }
             }
         }
@@ -257,13 +339,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         }
         f8_was = settings_down;
         let f9 = unsafe { GetAsyncKeyState(VK_F9.0 as i32) < 0 };
-        if f9 && !f9_was {
-            crate::record::rotate();
-            match crate::record::path() {
-                Some(p) => mxbo_hud::set_status_hint(format!("Clock log: {}", p.display())),
-                None => mxbo_hud::set_status_hint("Clock log failed — see AppData\\Local\\Holeshot HUD\\logs\\boot.txt"),
-            }
-        }
+        let f9_hit = f9 && !f9_was;
         f9_was = f9;
 
         if shm.is_none() {
@@ -272,8 +348,28 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         if let Some(s) = shm.as_ref().and_then(|s| s.read()) {
             last_snap = Some(s);
         }
-        if crate::update::should_quit() {
-            return;
+        if f9_hit {
+            crate::record::rotate();
+            let text = f9_dump_text(shm.as_ref(), last_snap.as_ref());
+            let dump_hint = write_shm_dump(&text);
+            match (crate::record::path(), dump_hint) {
+                (Some(p), Some(d)) => mxbo_hud::set_status_hint(format!(
+                    "Clock log: {} | SHM dump: {}",
+                    p.display(),
+                    d.display()
+                )),
+                (Some(p), None) => mxbo_hud::set_status_hint(format!(
+                    "Clock log: {} | dump write failed",
+                    p.display()
+                )),
+                (None, Some(d)) => mxbo_hud::set_status_hint(format!("SHM dump: {}", d.display())),
+                (None, None) => mxbo_hud::set_status_hint(
+                    "Clock log failed — see AppData\\Local\\Holeshot HUD\\logs\\boot.txt",
+                ),
+            }
+        }
+        if crate::update::should_quit() || QUITTING.load(Ordering::SeqCst) {
+            quit_app();
         }
         let mut cfg = crate::config::with_config(|c| c.clone());
         if cfg.font_family != font_family {
@@ -409,14 +505,14 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                 return LRESULT(0);
             }
             crate::config::update_config(|_| {});
-            crate::tray::remove();
-            PostQuitMessage(0);
+            quit_app();
             return LRESULT(0);
         }
         if msg == WM_DESTROY {
-            crate::config::update_config(|_| {});
-            crate::tray::remove();
-            PostQuitMessage(0);
+            if !QUITTING.load(Ordering::SeqCst) {
+                crate::config::update_config(|_| {});
+                quit_app();
+            }
             return LRESULT(0);
         }
     } else if msg == WM_SETCURSOR {

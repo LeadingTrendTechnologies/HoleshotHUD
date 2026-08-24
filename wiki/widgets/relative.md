@@ -36,6 +36,7 @@ Default columns on: Number, Name, Gap, Fastest, Last lap.
 
 ## Change log
 
+- 2026-08-24 — Classification join (position / laps / interval) reads shared `RaceStore`; still sorts by track_pos. No visual change.
 - Early overlay — Track-pos relative board with count-each-side.
 - 0.1.0 — Configurable header fields.
 - 0.1.4 — Lapping row backgrounds (blue / red) using the same close-and-a-lap-ahead rule as map dots.

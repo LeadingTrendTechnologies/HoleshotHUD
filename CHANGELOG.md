@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.1.12
+
+Sectors widget (experimental), flag and lap logic that matches real motos, and safer session data over shared memory.
+
+### Settings
+
+- **Sector times (experimental)** unlocks the Sectors widget and tab in release builds
+
+### Overlay
+
+- **Sectors** widget (S1–S3 times and delta vs best)
+- Fixed the white/checkered flags flickering on timed races with extra laps (`8:00 + 2`). If the clock ran out mid-lap, the lap you were on did not count and the flags treated it as though it did, so white appeared a lap early; and a momentary glitch in the session fields could flash the checkered mid-race
+- On a timed race with extras, the lap you are running when the leader starts the extras correctly counts for nothing, so `8:00 + 2` from a mid-lap expiry is one lap plus two extras
+- Checkered flag waits until you cross the line instead of appearing on the run-in, on both lap motos and timed extras
+- White flag now covers the run-in that starts your final lap and stays up for the whole lap, so it no longer disappears in the middle
+- Getting lapped is handled: when the leader takes the finish the race is over, so you see white and then the checkered on your next crossing
+- Dash shows a `~Lapped` tag next to the lap/clock text while you are a lap or more down, so it is obvious why your lap total shrank
+- Getting lapped now shortens the lap total to the race you actually run, so a 5-lap moto you finish a lap down reads `4 / 4` instead of `4 / 5`. Timed races shrink their extra laps the same way
+- The start/finish position for the flag window is learned from your own lap crossings rather than trusting the plugin's value, which is missing on tracks that send no centerline and put the window at the wrong point on track
+- **Laps left** counts the lap you are on, so the final lap reads `1` instead of `0`, and it can no longer disagree with the flags
+- 2-lap motos no longer show as timed `+2` extras when a leftover start board (`00:50`) is sitting in session length
+- Race trace (`race.jsonl`) records the flag on the dash and the laps remaining, so a flag complaint can be diagnosed from a log
+- F9 SHM dump includes `session_kind` / `session_state` (`m_iSession`, `m_iSessionState`) so warmup vs race 1 vs race 2 can be labeled from a log
+- Plugin session length is `-1` until the current session writes it, so leftover warmup `8:00` is not kept when a lap moto publishes `0`
+- Shared memory mapping is `Local\MXBOHudV9` with a size check on open, so a leftover smaller section cannot be overrun inside the game process
+
 ## 0.1.11
 
 Dash numbers stay put as RPM changes, bug reports send during a moto, and the overlay can follow MX Bikes.

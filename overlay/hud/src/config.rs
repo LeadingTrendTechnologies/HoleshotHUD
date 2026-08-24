@@ -228,6 +228,7 @@ pub enum WidgetId {
     Dash,
     Ticker,
     Sys,
+    Sector,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -574,6 +575,7 @@ pub struct HudConfig {
     pub dash: Rect,
     pub ticker: Rect,
     pub sys: Rect,
+    pub sector: Rect,
     pub show_standings: bool,
     pub show_relative: bool,
     pub show_map: bool,
@@ -582,6 +584,9 @@ pub struct HudConfig {
     pub show_dash: bool,
     pub show_ticker: bool,
     pub show_sys: bool,
+    pub show_sector: bool,
+    /// Off by default. Sector tab and overlay stay hidden until this is on.
+    pub feature_sector: bool,
     /// Plugin-only: when true the in-game HUD draws. Overlay still saves this key.
     pub ingame_hud: bool,
     pub standings_rows: i32,
@@ -640,6 +645,7 @@ pub struct HudConfig {
     pub dash_bg: i32,
     pub ticker_bg: i32,
     pub sys_bg: i32,
+    pub sector_bg: i32,
     pub dash_rev: bool,
     pub dash_left: DashField,
     pub dash_mid: DashField,
@@ -658,6 +664,7 @@ pub struct HudConfig {
     pub dash_font: i32,
     pub ticker_font: i32,
     pub sys_font: i32,
+    pub sector_font: i32,
     pub st_bold: bool,
     pub rel_bold: bool,
     pub map_bold: bool,
@@ -666,6 +673,7 @@ pub struct HudConfig {
     pub dash_bold: bool,
     pub ticker_bold: bool,
     pub sys_bold: bool,
+    pub sector_bold: bool,
     pub font_family: FontFamily,
     pub units: Units,
     pub start_with_windows: bool,
@@ -755,6 +763,12 @@ impl HudConfig {
                 w: 0.185,
                 h: 0.30,
             },
+            sector: Rect {
+                x: 0.805,
+                y: 0.50,
+                w: 0.18,
+                h: 0.15,
+            },
             show_standings: false,
             show_relative: false,
             show_map: false,
@@ -763,6 +777,8 @@ impl HudConfig {
             show_dash: false,
             show_ticker: false,
             show_sys: false,
+            show_sector: false,
+            feature_sector: false,
             ingame_hud: false,
             standings_rows: 12,
             relative_count: 3,
@@ -820,6 +836,7 @@ impl HudConfig {
             dash_bg: 82,
             ticker_bg: 86,
             sys_bg: 82,
+            sector_bg: 82,
             dash_rev: true,
             dash_left: DashField::Engine,
             dash_mid: DashField::Air,
@@ -838,6 +855,7 @@ impl HudConfig {
             dash_font: 100,
             ticker_font: 100,
             sys_font: 100,
+            sector_font: 100,
             st_bold: false,
             rel_bold: false,
             map_bold: false,
@@ -846,6 +864,7 @@ impl HudConfig {
             dash_bold: false,
             ticker_bold: false,
             sys_bold: false,
+            sector_bold: false,
             font_family: FontFamily::Exo2,
             units: Units::Metric,
             start_with_windows: false,
@@ -939,6 +958,10 @@ impl HudConfig {
                 "sys_y" => cfg.sys.y = f,
                 "sys_w" => cfg.sys.w = f,
                 "sys_h" => cfg.sys.h = f,
+                "sector_x" => cfg.sector.x = f,
+                "sector_y" => cfg.sector.y = f,
+                "sector_w" => cfg.sector.w = f,
+                "sector_h" => cfg.sector.h = f,
                 "show_standings" => cfg.show_standings = b,
                 "show_relative" => cfg.show_relative = b,
                 "show_map" => cfg.show_map = b,
@@ -947,6 +970,8 @@ impl HudConfig {
                 "show_dash" => cfg.show_dash = b,
                 "show_ticker" => cfg.show_ticker = b,
                 "show_sys" => cfg.show_sys = b,
+                "show_sector" => cfg.show_sector = b,
+                "feature_sector" => cfg.feature_sector = b,
                 "ingame_hud" => cfg.ingame_hud = b,
                 "standings_rows" => cfg.standings_rows = val.parse().unwrap_or(12).max(3),
                 "relative_count" => cfg.relative_count = val.parse().unwrap_or(3).max(1),
@@ -1007,6 +1032,7 @@ impl HudConfig {
                 "dash_bg" => cfg.dash_bg = clamp_pct(val),
                 "ticker_bg" => cfg.ticker_bg = clamp_pct(val),
                 "sys_bg" => cfg.sys_bg = clamp_pct(val),
+                "sector_bg" => cfg.sector_bg = clamp_pct(val),
                 "dash_rev" => cfg.dash_rev = b,
                 "dash_left" => cfg.dash_left = DashField::parse(val),
                 "dash_mid" => cfg.dash_mid = DashField::parse(val),
@@ -1025,6 +1051,7 @@ impl HudConfig {
                 "dash_font" => cfg.dash_font = clamp_font(val),
                 "ticker_font" => cfg.ticker_font = clamp_font(val),
                 "sys_font" => cfg.sys_font = clamp_font(val),
+                "sector_font" => cfg.sector_font = clamp_font(val),
                 "st_bold" => cfg.st_bold = b,
                 "rel_bold" => cfg.rel_bold = b,
                 "map_bold" => cfg.map_bold = b,
@@ -1033,6 +1060,7 @@ impl HudConfig {
                 "dash_bold" => cfg.dash_bold = b,
                 "ticker_bold" => cfg.ticker_bold = b,
                 "sys_bold" => cfg.sys_bold = b,
+                "sector_bold" => cfg.sector_bold = b,
                 "font_family" => cfg.font_family = FontFamily::parse(val),
                 "units" => cfg.units = Units::parse(val),
                 "start_with_windows" => cfg.start_with_windows = b,
@@ -1096,8 +1124,9 @@ impl HudConfig {
              dash_x={}\ndash_y={}\ndash_w={}\ndash_h={}\n\
              ticker_x={}\nticker_y={}\nticker_w={}\nticker_h={}\n\
              sys_x={}\nsys_y={}\nsys_w={}\nsys_h={}\n\
+             sector_x={}\nsector_y={}\nsector_w={}\nsector_h={}\n\
              \n[Widgets]\n\
-             show_standings={}\nshow_relative={}\nshow_map={}\nshow_minimap={}\nshow_radar={}\nshow_dash={}\nshow_ticker={}\nshow_sys={}\n\
+             show_standings={}\nshow_relative={}\nshow_map={}\nshow_minimap={}\nshow_radar={}\nshow_dash={}\nshow_ticker={}\nshow_sys={}\nshow_sector={}\n\
              ingame_hud={}\nstandings_rows={}\nrelative_count={}\nticker_count={}\n\
              \n[Standings]\n\
              st_pos={}\nst_num={}\nst_name={}\nst_gap={}\nst_interval={}\nst_laps={}\nst_current={}\nst_best={}\nst_last={}\nst_status={}\n\
@@ -1135,8 +1164,10 @@ impl HudConfig {
              ticker_bg={}\nticker_font={}\nticker_bold={}\n\
              \n[Sys]\n\
              sys_bg={}\nsys_font={}\nsys_bold={}\n\
+             \n[Sector]\n\
+             sector_bg={}\nsector_font={}\nsector_bold={}\n\
              \n[App]\n\
-             font_family={}\nunits={}\nsettings_key={}\nstart_with_windows={}\nminimize_on_close={}\nclose_with_game={}\nopen_with_game={}\nauto_update_on_launch={}\n",
+             font_family={}\nunits={}\nsettings_key={}\nstart_with_windows={}\nminimize_on_close={}\nclose_with_game={}\nopen_with_game={}\nauto_update_on_launch={}\nfeature_sector={}\n",
             self.standings.x,
             self.standings.y,
             self.standings.w,
@@ -1169,6 +1200,10 @@ impl HudConfig {
             self.sys.y,
             self.sys.w,
             self.sys.h,
+            self.sector.x,
+            self.sector.y,
+            self.sector.w,
+            self.sector.h,
             b(self.show_standings),
             b(self.show_relative),
             b(self.show_map),
@@ -1177,6 +1212,7 @@ impl HudConfig {
             b(self.show_dash),
             b(self.show_ticker),
             b(self.show_sys),
+            b(self.show_sector),
             b(self.ingame_hud),
             self.standings_rows,
             self.relative_count,
@@ -1287,6 +1323,9 @@ impl HudConfig {
             self.sys_bg,
             self.sys_font,
             b(self.sys_bold),
+            self.sector_bg,
+            self.sector_font,
+            b(self.sector_bold),
             self.font_family.key(),
             self.units.key(),
             self.settings_key.key(),
@@ -1295,6 +1334,7 @@ impl HudConfig {
             b(self.close_with_game),
             b(self.open_with_game),
             b(self.auto_update_on_launch),
+            b(self.feature_sector),
         );
         let _ = fs::write(&path, body);
         self.loaded_mtime = fs::metadata(&path).and_then(|m| m.modified()).ok();
@@ -1337,6 +1377,7 @@ impl HudConfig {
             WidgetId::Dash => self.dash_font,
             WidgetId::Ticker => self.ticker_font,
             WidgetId::Sys => self.sys_font,
+            WidgetId::Sector => self.sector_font,
         }
     }
 
@@ -1351,6 +1392,7 @@ impl HudConfig {
             WidgetId::Dash => self.dash_font = v,
             WidgetId::Ticker => self.ticker_font = v,
             WidgetId::Sys => self.sys_font = v,
+            WidgetId::Sector => self.sector_font = v,
         }
     }
 
@@ -1364,6 +1406,7 @@ impl HudConfig {
             WidgetId::Dash => self.dash_bold,
             WidgetId::Ticker => self.ticker_bold,
             WidgetId::Sys => self.sys_bold,
+            WidgetId::Sector => self.sector_bold,
         }
     }
 
@@ -1377,6 +1420,7 @@ impl HudConfig {
             WidgetId::Dash => self.dash_bold = on,
             WidgetId::Ticker => self.ticker_bold = on,
             WidgetId::Sys => self.sys_bold = on,
+            WidgetId::Sector => self.sector_bold = on,
         }
     }
 
@@ -1390,6 +1434,7 @@ impl HudConfig {
             WidgetId::Dash => &mut self.dash,
             WidgetId::Ticker => &mut self.ticker,
             WidgetId::Sys => &mut self.sys,
+            WidgetId::Sector => &mut self.sector,
         };
         snap_rect(r, align);
     }
@@ -1400,6 +1445,15 @@ impl HudConfig {
             cols.push(RelField::Name);
         }
         cols
+    }
+
+    /// Debug `cargo run` unlocks Sectors. Release (`build.bat`) only honors `feature_sector`.
+    pub fn sector_unlocked(&self) -> bool {
+        cfg!(debug_assertions) || self.feature_sector
+    }
+
+    pub fn sector_visible(&self) -> bool {
+        self.sector_unlocked() && self.show_sector
     }
 }
 
@@ -1844,6 +1898,8 @@ mod tests {
         assert!(!cfg.show_dash);
         assert!(!cfg.show_ticker);
         assert!(!cfg.show_sys);
+        assert!(!cfg.show_sector);
+        assert!(!cfg.feature_sector);
         assert!(cfg.ticker_title);
         assert_eq!(cfg.font_family, FontFamily::Exo2);
         assert_eq!(cfg.dash_left, DashField::Engine);
@@ -1862,6 +1918,7 @@ mod tests {
             WidgetId::Dash,
             WidgetId::Ticker,
             WidgetId::Sys,
+            WidgetId::Sector,
         ] {
             assert!(cfg.font_pct(id) >= 70);
         }
@@ -1893,5 +1950,19 @@ mod tests {
         cfg.rel_best = false;
         cfg.rel_last = false;
         assert_eq!(cfg.relative_cols(), vec![RelField::Name]);
+    }
+
+    #[test]
+    fn sector_needs_flag_or_debug_and_show() {
+        let mut cfg = HudConfig::new();
+        assert!(!cfg.feature_sector);
+        assert!(!cfg.sector_visible());
+        cfg.show_sector = true;
+        assert_eq!(cfg.sector_unlocked(), cfg!(debug_assertions));
+        assert_eq!(cfg.sector_visible(), cfg!(debug_assertions));
+        cfg.feature_sector = true;
+        assert!(cfg.sector_visible());
+        cfg.show_sector = false;
+        assert!(!cfg.sector_visible());
     }
 }

@@ -277,13 +277,22 @@ __declspec(dllexport) void RunLap(void* _pData, int _iDataSize)
 {
     onCopied<SPluginsBikeLap_t>(_pData, _iDataSize, [](const SPluginsBikeLap_t& data) {
         g_state.setLocalLap(data.m_iLapNum, data.m_iLapTime);
+        if (data.m_iLapTime > 0)
+        {
+            const int focus = g_state.focusRaceNum();
+            if (focus < 0 || focus == g_state.localRaceNum())
+            {
+                g_state.finishLapSectors(data.m_iLapNum, data.m_iLapTime);
+            }
+        }
     });
 }
 
 __declspec(dllexport) void RunSplit(void* _pData, int _iDataSize)
 {
-    (void)_pData;
-    (void)_iDataSize;
+    onCopied<SPluginsBikeSplit_t>(_pData, _iDataSize, [](const SPluginsBikeSplit_t& data) {
+        g_state.setLocalSplit(data.m_iSplit, data.m_iSplitTime, data.m_iBestDiff);
+    });
 }
 
 __declspec(dllexport) void RunTelemetry(void* _pData, int _iDataSize, float _fTime, float _fPos)
@@ -449,8 +458,9 @@ __declspec(dllexport) void RaceLap(void* _pData, int _iDataSize)
 
 __declspec(dllexport) void RaceSplit(void* _pData, int _iDataSize)
 {
-    (void)_pData;
-    (void)_iDataSize;
+    onCopied<SPluginsRaceSplit_t>(_pData, _iDataSize, [](const SPluginsRaceSplit_t& data) {
+        g_state.setRaceSplit(data.m_iRaceNum, data.m_iSplit, data.m_iSplitTime);
+    });
 }
 
 __declspec(dllexport) void RaceHoleshot(void* _pData, int _iDataSize)

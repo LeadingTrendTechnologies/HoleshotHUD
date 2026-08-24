@@ -6,13 +6,15 @@
 extern "C" {
 #endif
 
-#define MXBO_SHM_NAME L"Local\\MXBOHudV1"
-#define MXBO_SHM_NAME_A "Local\\MXBOHudV1"
 #define MXBO_SHM_MAGIC 0x4F42584Du /* 'MXBO' */
-#define MXBO_SHM_VERSION 7
+#define MXBO_SHM_VERSION 9
+/* Versioned name so a leftover smaller mapping cannot be remapped and overrun. */
+#define MXBO_SHM_NAME L"Local\\MXBOHudV9"
+#define MXBO_SHM_NAME_A "Local\\MXBOHudV9"
 #define MXBO_MAX_POLY 1024
 #define MXBO_MAX_RIDERS 64
 #define MXBO_MAX_STANDINGS 40
+#define MXBO_MAX_SECTORS 3
 #define MXBO_NAME 32
 #define MXBO_TRACK_NAME 64
 
@@ -115,6 +117,17 @@ typedef struct MxboShmSnapshot
     int32_t sessionTimeMs;
     int32_t sessionLength;
     int32_t bestLapMs;
+
+    int32_t sectorCount;
+    int32_t sectorLast;
+    int32_t sectorCur[MXBO_MAX_SECTORS];
+    int32_t sectorLastLap[MXBO_MAX_SECTORS];
+    int32_t sectorBest[MXBO_MAX_SECTORS];
+    int32_t sectorDelta[MXBO_MAX_SECTORS];
+    int32_t sectorDeltaValid;
+
+    int32_t sessionKind;
+    int32_t sessionState;
 } MxboShmSnapshot;
 
 #ifdef __cplusplus

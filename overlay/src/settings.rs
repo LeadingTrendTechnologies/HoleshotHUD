@@ -3,9 +3,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use tiny_skia::{Color, FillRule, LineCap, LineJoin, Paint, Path, PathBuilder, Pixmap, PixmapPaint, Rect, Stroke, Transform};
-use windows::Win32::Foundation::{BOOL, HWND, LPARAM, WPARAM};
+use windows::Win32::Foundation::{BOOL, HWND, LPARAM, POINT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CreateSolidBrush, DeleteObject, EndPaint, FillRect, GetDC, ReleaseDC,
+    BeginPaint, CreateSolidBrush, DeleteObject, EndPaint, FillRect, GetDC, ReleaseDC, ScreenToClient,
     SetDIBitsToDevice, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HGDIOBJ, PAINTSTRUCT,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, ReleaseCapture, SetCapture, VK_CONTROL};
@@ -54,6 +54,7 @@ enum Tab {
     Dash,
     Ticker,
     Sys,
+    Sector,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -68,6 +69,7 @@ enum Hit {
     TabDash,
     TabTicker,
     TabSys,
+    TabSector,
     StShow,
     RelShow,
     MapShow,
@@ -77,6 +79,8 @@ enum Hit {
     DashRev,
     TickerShow,
     SysShow,
+    SectorShow,
+    FeatureSector,
     TickerTitle,
     TickerAutoscroll,
     StPos,
@@ -133,6 +137,7 @@ enum Hit {
     DashBg,
     TickerBg,
     SysBg,
+    SectorBg,
     StDec,
     StInc,
     RelDec,
@@ -245,6 +250,10 @@ struct SettingsUi {
     slide: Option<SlideDrag>,
     scroll: f32,
     content_h: f32,
+    nav_scroll: f32,
+    nav_content_h: f32,
+    nav_top: f32,
+    nav_bottom: f32,
 }
 
 unsafe impl Send for SettingsUi {}
@@ -281,6 +290,10 @@ pub fn attach(host: HWND) {
         slide: None,
         scroll: 0.0,
         content_h: 0.0,
+        nav_scroll: 0.0,
+        nav_content_h: 0.0,
+        nav_top: 0.0,
+        nav_bottom: 0.0,
     });
 }
 
@@ -413,8 +426,21 @@ pub fn handle_message(msg: u32, wp: WPARAM, lp: LPARAM) -> bool {
         WM_MOUSEWHEEL => {
             let delta = ((wp.0 as u32 >> 16) as i16) as f32;
             if let Some(ui) = UI.lock().unwrap().as_mut() {
-                let max = (ui.content_h - 520.0).max(0.0);
-                ui.scroll = (ui.scroll - delta * 0.4).clamp(0.0, max);
+                let mut pt = POINT {
+                    x: (lp.0 as i32) as i16 as i32,
+                    y: ((lp.0 as i32) >> 16) as i16 as i32,
+                };
+                let over_nav = unsafe { ScreenToClient(ui.host, &mut pt) }.as_bool()
+                    && (pt.x as f32) < SIDE_W
+                    && (pt.y as f32) >= ui.nav_top
+                    && (pt.y as f32) < ui.nav_bottom;
+                if over_nav {
+                    let max = (ui.nav_content_h - (ui.nav_bottom - ui.nav_top)).max(0.0);
+                    ui.nav_scroll = (ui.nav_scroll - delta * 0.4).clamp(0.0, max);
+                } else {
+                    let max = (ui.content_h - 520.0).max(0.0);
+                    ui.scroll = (ui.scroll - delta * 0.4).clamp(0.0, max);
+                }
             }
             true
         }
@@ -508,6 +534,7 @@ fn is_slider(hit: Hit) -> bool {
             | Hit::DashBg
             | Hit::TickerBg
             | Hit::SysBg
+            | Hit::SectorBg
             | Hit::StW(_)
             | Hit::RelW(_)
             | Hit::Font(_)
@@ -560,6 +587,7 @@ fn apply_slide(hit: Hit, mx: f32, x: f32, w: f32, min: i32, max: i32) {
         Hit::DashBg => c.dash_bg = v,
         Hit::TickerBg => c.ticker_bg = v,
         Hit::SysBg => c.sys_bg = v,
+        Hit::SectorBg => c.sector_bg = v,
         Hit::StW(i) => {
             if let Some(f) = c.st_order.get(i as usize).copied() {
                 f.set_width(c, v);
@@ -707,6 +735,10 @@ fn click(p: (f32, f32)) {
             set_tab(Tab::Sys);
             return;
         }
+        Hit::TabSector => {
+            set_tab(Tab::Sector);
+            return;
+        }
         Hit::MapDotOpen => {
             toggle_drop(Drop::MapDot);
             return;
@@ -773,6 +805,9 @@ fn click(p: (f32, f32)) {
             crate::startup::sync_from_config();
             if on {
                 crate::startup::spawn_game_waiter();
+            } else {
+                // Turning off: stop leftover HUD waiters from an older build.
+                crate::startup::kill_other_hud_processes();
             }
             return;
         }
@@ -784,9 +819,7 @@ fn click(p: (f32, f32)) {
         Hit::QuitApp => {
             close_drop();
             crate::config::update_config(|_| {});
-            unsafe {
-                windows::Win32::UI::WindowsAndMessaging::PostQuitMessage(0);
-            }
+            crate::quit_app();
             return;
         }
         Hit::Uninstall => {
@@ -797,9 +830,7 @@ fn click(p: (f32, f32)) {
             };
             if crate::uninstall::confirm(host) && crate::uninstall::start(host) {
                 crate::config::update_config(|_| {});
-                unsafe {
-                    windows::Win32::UI::WindowsAndMessaging::PostQuitMessage(0);
-                }
+                crate::quit_app();
             }
             return;
         }
@@ -850,6 +881,13 @@ fn click(p: (f32, f32)) {
         Hit::DashRev => c.dash_rev = !c.dash_rev,
         Hit::TickerShow => c.show_ticker = !c.show_ticker,
         Hit::SysShow => c.show_sys = !c.show_sys,
+        Hit::SectorShow => c.show_sector = !c.show_sector,
+        Hit::FeatureSector => {
+            c.feature_sector = !c.feature_sector;
+            if !c.feature_sector {
+                c.show_sector = false;
+            }
+        },
         Hit::TickerTitle => c.ticker_title = !c.ticker_title,
         Hit::TickerAutoscroll => c.ticker_autoscroll = !c.ticker_autoscroll,
         Hit::StPos => c.st_pos = !c.st_pos,
@@ -930,7 +968,7 @@ fn click(p: (f32, f32)) {
         Hit::TickerDec => c.ticker_count = (c.ticker_count - 1).max(3),
         Hit::TickerInc => c.ticker_count = (c.ticker_count + 1).min(15),
         Hit::TabApp | Hit::TabFeedback | Hit::TabSt | Hit::TabRel | Hit::TabMap | Hit::TabMini | Hit::TabRadar | Hit::TabDash
-        | Hit::TabTicker | Hit::TabSys
+        | Hit::TabTicker | Hit::TabSys | Hit::TabSector
         | Hit::MapDotOpen | Hit::MiniDotOpen | Hit::FontOpen | Hit::UnitsOpen | Hit::SettingsKeyOpen
         | Hit::DashFootOpen(_)
         | Hit::TickerFootOpen(_)
@@ -940,9 +978,15 @@ fn click(p: (f32, f32)) {
         | Hit::AutoUpdateOnLaunch | Hit::QuitApp | Hit::Uninstall
         | Hit::FbRate | Hit::FbBug | Hit::FbFeature | Hit::FbStar(_) | Hit::FbText | Hit::FbAttach | Hit::FbSend
         | Hit::StDrag(_) | Hit::RelDrag(_)
-        | Hit::StBg | Hit::RelBg | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg
+        | Hit::StBg | Hit::RelBg | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg
         | Hit::StW(_) | Hit::RelW(_) | Hit::Font(_) => {}
     });
+    if id == Hit::FeatureSector && !with_config(|c| c.sector_unlocked()) {
+        let on_sector = UI.lock().unwrap().as_ref().is_some_and(|u| u.tab == Tab::Sector);
+        if on_sector {
+            set_tab(Tab::App);
+        }
+    }
 }
 
 fn set_tab(tab: Tab) {
@@ -985,7 +1029,7 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
     }
 
     let cfg = with_config(|c| c.clone());
-    let (tab, hover, open_drop, drag, scroll) = {
+    let (tab, hover, open_drop, drag, scroll, nav_scroll) = {
         let ui = UI.lock().unwrap();
         let ui = ui.as_ref();
         (
@@ -994,25 +1038,22 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
             ui.and_then(|u| u.open_drop),
             ui.and_then(|u| u.drag),
             ui.map(|u| u.scroll).unwrap_or(0.0),
+            ui.map(|u| u.nav_scroll).unwrap_or(0.0),
         )
+    };
+    let tab = if tab == Tab::Sector && !cfg.sector_unlocked() {
+        Tab::App
+    } else {
+        tab
     };
     let mut hits = Vec::new();
     DROP_MENUS.with(|menus| menus.borrow_mut().clear());
 
-    draw_brand(px, fonts);
-    if let Some(r) = Rect::from_xywh(18.0, 72.0, SIDE_W - 36.0, 1.0) {
-        fill_rect(px, r, row_line());
-    }
-
-    let mut ty = 84.0;
-    ty = nav_group(px, fonts, 12.0, ty, "General");
-    nav_tab(px, fonts, 12.0, ty, SIDE_W - 24.0, 36.0, tab == Tab::App, true, "Settings", Hit::TabApp, hover, &mut hits);
-    ty += 40.0;
-    nav_tab(px, fonts, 12.0, ty, SIDE_W - 24.0, 36.0, tab == Tab::Feedback, true, "Feedback", Hit::TabFeedback, hover, &mut hits);
-    ty += 40.0;
-    ty += 6.0;
-    ty = nav_group(px, fonts, 12.0, ty, "Widgets");
-    let widgets = [
+    let quit_h = 36.0;
+    let quit_y = h - 14.0 - quit_h;
+    let clip_bottom = (quit_y - 56.0).max(80.0);
+    let clip_top = draw_nav_head(px, fonts, tab, hover, &mut hits);
+    let mut widgets = vec![
         (Tab::Standings, Hit::TabSt, "Standings", cfg.show_standings),
         (Tab::Relative, Hit::TabRel, "Relative", cfg.show_relative),
         (Tab::Map, Hit::TabMap, "Map", cfg.show_map),
@@ -1022,12 +1063,33 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
         (Tab::Ticker, Hit::TabTicker, "H-Standings", cfg.show_ticker),
         (Tab::Sys, Hit::TabSys, "Systems", cfg.show_sys),
     ];
-    for (t, hit, name, on) in widgets {
-        nav_tab(px, fonts, 12.0, ty, SIDE_W - 24.0, 36.0, t == tab, on, name, hit, hover, &mut hits);
-        ty += 40.0;
+    if cfg.sector_unlocked() {
+        widgets.push((Tab::Sector, Hit::TabSector, "Sectors", cfg.show_sector));
     }
-    let quit_h = 36.0;
-    let quit_y = h - 14.0 - quit_h;
+    let nav_content_h = widgets.len() as f32 * 40.0;
+    let view_h = (clip_bottom - clip_top).max(0.0);
+    let nav_max = (nav_content_h - view_h).max(0.0);
+    let nav_scroll = nav_scroll.clamp(0.0, nav_max);
+    let clip = Some((clip_top, clip_bottom));
+    let mut wy = clip_top - nav_scroll;
+    for (t, hit, name, on) in &widgets {
+        nav_tab(px, fonts, 12.0, wy, SIDE_W - 24.0, 36.0, *t == tab, *on, name, *hit, hover, &mut hits, clip);
+        wy += 40.0;
+    }
+    if let Some(r) = Rect::from_xywh(0.0, 0.0, SIDE_W, clip_top) {
+        fill_rect(px, r, side());
+    }
+    draw_nav_head(px, fonts, tab, hover, &mut Vec::new());
+    if let Some(r) = Rect::from_xywh(0.0, clip_bottom, SIDE_W, (h - clip_bottom).max(0.0)) {
+        fill_rect(px, r, side());
+    }
+    if nav_max > 1.0 && view_h > 8.0 {
+        let track_x = SIDE_W - 7.0;
+        let thumb_h = (view_h * view_h / nav_content_h).clamp(16.0, view_h);
+        let thumb_y = clip_top + nav_scroll / nav_max * (view_h - thumb_h);
+        fill_round(px, track_x, clip_top + 4.0, 3.0, (view_h - 8.0).max(4.0), 1.5, Color::from_rgba8(255, 255, 255, 18));
+        fill_round(px, track_x, thumb_y, 3.0, thumb_h, 1.5, Color::from_rgba8(255, 255, 255, 48));
+    }
     fill_round(px, 12.0, quit_y - 48.0, SIDE_W - 24.0, 40.0, 10.0, panel());
     text(px, fonts, &format!("{}  settings", cfg.settings_key.label()), 10.0, 22.0, quit_y - 42.0, dim(), false);
     text(px, fonts, "Ctrl + drag to move", 10.0, 22.0, quit_y - 26.0, dim(), false);
@@ -1047,6 +1109,7 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
         Tab::Dash => pane_dash(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
         Tab::Ticker => pane_ticker(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
         Tab::Sys => pane_sys(px, fonts, &cfg, hover, &mut hits, x, py, cw),
+        Tab::Sector => pane_sector(px, fonts, &cfg, hover, &mut hits, x, py, cw),
     };
     paint_drop_menus(px, fonts, hover, &mut hits);
 
@@ -1055,7 +1118,32 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
         ui.content_h = bottom + scroll;
         let max = (ui.content_h - h + 24.0).max(0.0);
         ui.scroll = ui.scroll.clamp(0.0, max);
+        ui.nav_top = clip_top;
+        ui.nav_bottom = clip_bottom;
+        ui.nav_content_h = nav_content_h;
+        ui.nav_scroll = nav_scroll;
     }
+}
+
+fn draw_nav_head(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    tab: Tab,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+) -> f32 {
+    draw_brand(px, fonts);
+    if let Some(r) = Rect::from_xywh(18.0, 72.0, SIDE_W - 36.0, 1.0) {
+        fill_rect(px, r, row_line());
+    }
+    let mut ty = 84.0;
+    ty = nav_group(px, fonts, 12.0, ty, "General");
+    nav_tab(px, fonts, 12.0, ty, SIDE_W - 24.0, 36.0, tab == Tab::App, true, "Settings", Hit::TabApp, hover, hits, None);
+    ty += 40.0;
+    nav_tab(px, fonts, 12.0, ty, SIDE_W - 24.0, 36.0, tab == Tab::Feedback, true, "Feedback", Hit::TabFeedback, hover, hits, None);
+    ty += 40.0;
+    ty += 6.0;
+    nav_group(px, fonts, 12.0, ty, "Widgets")
 }
 
 fn brand_logo() -> &'static Pixmap {
@@ -1205,6 +1293,11 @@ fn nav_icon(px: &mut Pixmap, hit: Hit, cx: f32, cy: f32, c: Color) {
             fill_round(px, cx - 7.0, cy - 1.1, 10.0, 2.2, 1.1, c);
             fill_round(px, cx - 7.0, cy + 3.4, 7.0, 2.2, 1.1, c);
         }
+        Hit::TabSector => {
+            fill_round(px, cx - 6.8, cy - 5.4, 13.6, 3.2, 1.0, c);
+            fill_round(px, cx - 6.8, cy - 1.1, 13.6, 3.2, 1.0, c);
+            fill_round(px, cx - 6.8, cy + 3.2, 13.6, 3.2, 1.0, c);
+        }
         Hit::QuitApp => {
             icon_stroke_circle(px, cx, cy, 6.2, c);
             icon_stroke_line(px, cx, cy - 7.2, cx, cy - 1.2, c, 1.7);
@@ -1280,8 +1373,20 @@ fn nav_tab(
     hit: Hit,
     hover: Option<Hit>,
     hits: &mut Vec<HitBox>,
+    clip: Option<(f32, f32)>,
 ) {
-    hits.push(HitBox { id: hit, x, y, w, h });
+    if let Some((top, bot)) = clip {
+        if y + h <= top || y >= bot {
+            return;
+        }
+        let hy = y.max(top);
+        let hh = (y + h).min(bot) - hy;
+        if hh > 1.0 {
+            hits.push(HitBox { id: hit, x, y: hy, w, h: hh });
+        }
+    } else {
+        hits.push(HitBox { id: hit, x, y, w, h });
+    }
     if selected {
         fill_round(px, x, y, w, h, 8.0, tab_on());
     } else if hover == Some(hit) {
@@ -1395,9 +1500,18 @@ fn pane_app(
     }
     y = toggle_row(px, fonts, x, y, w, "Open when MX Bikes opens", cfg.open_with_game, Hit::OpenWithGame, hover, hits);
     if cfg.open_with_game {
-        text(px, fonts, "Starts the overlay when MX Bikes launches, including after a reboot.", 11.0, x + 4.0, y + 2.0, dim(), false);
+        text(px, fonts, "Starts the overlay when MX Bikes launches (background wait — not the HUD exe).", 11.0, x + 4.0, y + 2.0, dim(), false);
         y += 22.0;
     }
+    y = section(px, fonts, x, y, "Labs");
+    y = toggle_row(px, fonts, x, y, w, "Sector times (experimental)", cfg.feature_sector, Hit::FeatureSector, hover, hits);
+    let labs = if cfg!(debug_assertions) {
+        "Debug builds always show the Sectors tab. This toggle is for release."
+    } else {
+        "Adds a Sectors tab. Off until you turn this on."
+    };
+    text(px, fonts, labs, 11.0, x + 4.0, y + 2.0, dim(), false);
+    y += 22.0;
     y = section(px, fonts, x, y, "Updates");
     y = toggle_row(px, fonts, x, y, w, "Update automatically on launch", cfg.auto_update_on_launch, Hit::AutoUpdateOnLaunch, hover, hits);
     if cfg.auto_update_on_launch {
@@ -2071,6 +2185,23 @@ fn pane_sys(
     y = toggle_row(px, fonts, x, y, w, "Show on overlay", cfg.show_sys, Hit::SysShow, hover, hits);
     y = slider_row(px, fonts, x, y, w, "Panel opacity", cfg.sys_bg, 0, 100, "%", Hit::SysBg, hover, hits);
     look_section(px, fonts, x, y, w, WidgetId::Sys, cfg, hover, hits)
+}
+
+fn pane_sector(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    cfg: &HudConfig,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+    x: f32,
+    y: f32,
+    w: f32,
+) -> f32 {
+    heading(px, fonts, x, y, "Sectors", "Split times and delta vs your best");
+    let mut y = y + 64.0;
+    y = toggle_row(px, fonts, x, y, w, "Show on overlay", cfg.show_sector, Hit::SectorShow, hover, hits);
+    y = slider_row(px, fonts, x, y, w, "Panel opacity", cfg.sector_bg, 0, 100, "%", Hit::SectorBg, hover, hits);
+    look_section(px, fonts, x, y, w, WidgetId::Sector, cfg, hover, hits)
 }
 
 fn ticker_field_row(

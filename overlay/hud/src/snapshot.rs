@@ -1,8 +1,9 @@
 pub const MAGIC: u32 = 0x4F42584D;
-pub const VERSION: u32 = 7;
+pub const VERSION: u32 = 9;
 pub const MAX_POLY: usize = 1024;
 pub const MAX_RIDERS: usize = 64;
 pub const MAX_STANDINGS: usize = 40;
+pub const MAX_SECTORS: usize = 3;
 pub const NAME: usize = 32;
 pub const TRACK_NAME: usize = 64;
 
@@ -138,6 +139,15 @@ pub struct Snapshot {
     pub session_time_ms: i32,
     pub session_length: i32,
     pub best_lap_ms: i32,
+    pub sector_count: i32,
+    pub sector_last: i32,
+    pub sector_cur: [i32; MAX_SECTORS],
+    pub sector_last_lap: [i32; MAX_SECTORS],
+    pub sector_best: [i32; MAX_SECTORS],
+    pub sector_delta: [i32; MAX_SECTORS],
+    pub sector_delta_valid: i32,
+    pub session_kind: i32,
+    pub session_state: i32,
 }
 
 impl Default for Snapshot {
@@ -205,6 +215,15 @@ impl Default for Snapshot {
             session_time_ms: 0,
             session_length: 0,
             best_lap_ms: 0,
+            sector_count: MAX_SECTORS as i32,
+            sector_last: -1,
+            sector_cur: [0; MAX_SECTORS],
+            sector_last_lap: [0; MAX_SECTORS],
+            sector_best: [0; MAX_SECTORS],
+            sector_delta: [0; MAX_SECTORS],
+            sector_delta_valid: 0,
+            session_kind: -1,
+            session_state: -1,
         }
     }
 }
@@ -219,6 +238,158 @@ pub fn write_name(dest: &mut [u8], src: &str) {
     let bytes = src.as_bytes();
     let n = bytes.len().min(dest.len().saturating_sub(1));
     dest[..n].copy_from_slice(&bytes[..n]);
+}
+
+impl Snapshot {
+    /// Human dump of SHM scalars plus occupied riders / standings / poly samples.
+    pub fn dump_text(&self) -> String {
+        use std::fmt::Write;
+        let mut o = String::new();
+        let _ = writeln!(o, "=== MxboShmSnapshot v{} ===", self.version);
+        if self.version > 0 && self.version < VERSION {
+            let _ = writeln!(
+                o,
+                "plugin SHM v{} — session_kind/state are not in this plugin. Quit MX Bikes, run build.bat, start the game again.",
+                self.version
+            );
+        }
+        let _ = writeln!(
+            o,
+            "magic={:#x} seq={} size={} rust_size={} tick_qpc={}",
+            self.magic,
+            self.seq,
+            self.size,
+            std::mem::size_of::<Self>(),
+            self.tick_qpc
+        );
+        let _ = writeln!(
+            o,
+            "local_race_num={} focus_race_num={} has_telemetry={} local_crashed={}",
+            self.local_race_num, self.focus_race_num, self.has_telemetry, self.local_crashed
+        );
+        let _ = writeln!(
+            o,
+            "local_xz=({:.3},{:.3}) vel=({:.3},{:.3}) yaw={:.3} speed={:.2} track_pos={:.4}",
+            self.local_x,
+            self.local_z,
+            self.local_vel_x,
+            self.local_vel_z,
+            self.local_yaw,
+            self.local_speed,
+            self.local_track_pos
+        );
+        let _ = writeln!(
+            o,
+            "track={:?} length={:.1} sf_meters={:.1}",
+            cstr(&self.track_name),
+            self.track_length,
+            self.sf_meters
+        );
+        let _ = writeln!(
+            o,
+            "show map={} standings={} relative={} standings_rows={} relative_count={}",
+            self.show_map, self.show_standings, self.show_relative, self.standings_rows, self.relative_count
+        );
+        let _ = writeln!(
+            o,
+            "rects map=({:.3},{:.3},{:.3},{:.3}) standings=({:.3},{:.3},{:.3},{:.3}) relative=({:.3},{:.3},{:.3},{:.3})",
+            self.map.x, self.map.y, self.map.w, self.map.h,
+            self.standings_rect.x, self.standings_rect.y, self.standings_rect.w, self.standings_rect.h,
+            self.relative.x, self.relative.y, self.relative.w, self.relative.h
+        );
+        let _ = writeln!(
+            o,
+            "gear={} rpm={} max_rpm={} shift_rpm={} engine_temp={:.1} air_temp={:.1}",
+            self.local_gear, self.local_rpm, self.max_rpm, self.shift_rpm, self.engine_temp, self.air_temp
+        );
+        let _ = writeln!(
+            o,
+            "laps current={} last_ms={} current_ms={} best_ms={} session_laps={} on_track={}",
+            self.current_lap,
+            self.last_lap_ms,
+            self.current_lap_ms,
+            self.best_lap_ms,
+            self.session_laps,
+            self.on_track
+        );
+        let _ = writeln!(
+            o,
+            "session_kind={} session_state={} session_time_ms={} session_length={}",
+            self.session_kind, self.session_state, self.session_time_ms, self.session_length
+        );
+        if self.version > 0 && self.version < VERSION {
+            let _ = writeln!(
+                o,
+                "(session_kind/state stay -1 until mxbo.dlo is rebuilt and MX Bikes is restarted)"
+            );
+        }
+        let _ = writeln!(
+            o,
+            "sectors count={} last={} cur={:?} last_lap={:?} best={:?} delta={:?} valid={}",
+            self.sector_count,
+            self.sector_last,
+            self.sector_cur,
+            self.sector_last_lap,
+            self.sector_best,
+            self.sector_delta,
+            self.sector_delta_valid
+        );
+
+        let pn = self.poly_count.clamp(0, MAX_POLY as i32) as usize;
+        let _ = writeln!(o, "poly_count={pn}");
+        let poly_end = if pn <= 6 { pn } else { 3 };
+        for i in 0..poly_end {
+            let p = &self.poly[i];
+            let _ = writeln!(o, "  poly[{i}]=({:.2},{:.2})", p.x, p.z);
+        }
+        if pn > 6 {
+            let _ = writeln!(o, "  ...");
+            for i in pn - 2..pn {
+                let p = &self.poly[i];
+                let _ = writeln!(o, "  poly[{i}]=({:.2},{:.2})", p.x, p.z);
+            }
+        }
+
+        let rn = self.rider_count.clamp(0, MAX_RIDERS as i32) as usize;
+        let _ = writeln!(o, "rider_count={rn}");
+        for (i, r) in self.riders.iter().enumerate().take(rn) {
+            let _ = writeln!(
+                o,
+                "  rider[{i}] #{} {:?} xz=({:.2},{:.2}) yaw={:.2} pos={:.4} crashed={}",
+                r.race_num,
+                cstr(&r.name),
+                r.x,
+                r.z,
+                r.yaw,
+                r.track_pos,
+                r.crashed
+            );
+        }
+
+        let sn = self.standing_count.clamp(0, MAX_STANDINGS as i32) as usize;
+        let _ = writeln!(o, "standing_count={sn}");
+        for (i, st) in self.standings.iter().enumerate().take(sn) {
+            let _ = writeln!(
+                o,
+                "  stand[{i}] P{} #{} {:?} {} {} laps={} last={} best={} gap={} gap_laps={} pit={} pen={} crashed={} state={}",
+                st.position,
+                st.race_num,
+                cstr(&st.name),
+                cstr(&st.bike),
+                cstr(&st.category),
+                st.num_laps,
+                st.last_lap_ms,
+                st.best_lap_ms,
+                st.gap_ms,
+                st.gap_laps,
+                st.pit,
+                st.penalty_ms,
+                st.crashed,
+                st.state
+            );
+        }
+        o
+    }
 }
 
 #[cfg(test)]
@@ -242,5 +413,31 @@ mod tests {
         assert!(s.standings_rect.h > 0.0);
         assert_eq!(s.show_standings, 1);
         assert_eq!(s.on_track, 0);
+    }
+
+    #[test]
+    fn snapshot_dump_skips_empty_arrays() {
+        let mut s = Snapshot::default();
+        s.poly_count = 8;
+        s.poly[0] = Point { x: 1.0, z: 2.0 };
+        s.poly[7] = Point { x: 9.0, z: 8.0 };
+        s.rider_count = 1;
+        s.riders[0].race_num = 12;
+        write_name(&mut s.riders[0].name, "Troy");
+        s.standing_count = 1;
+        s.standings[0].position = 1;
+        s.standings[0].race_num = 12;
+        let dump = s.dump_text();
+        assert!(dump.contains("session_laps=0"));
+        assert!(dump.contains("session_kind=-1"));
+        assert!(dump.contains("session_state=-1"));
+        assert!(dump.contains("poly_count=8"));
+        assert!(dump.contains("poly[0]="));
+        assert!(dump.contains("poly[7]="));
+        assert!(!dump.contains("poly[4]="));
+        assert!(dump.contains("rider_count=1"));
+        assert!(dump.contains("#12"));
+        assert!(dump.contains("Troy"));
+        assert!(!dump.contains("rider[1]"));
     }
 }

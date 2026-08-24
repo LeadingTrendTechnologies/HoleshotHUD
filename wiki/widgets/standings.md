@@ -5,6 +5,7 @@ Vertical classification board: place, number, name, and timing columns. Settings
 ## Code
 
 - Draw: `draw_standings` in `overlay/hud/src/render.rs`
+- Classification view: `RaceStore` / `RaceField` in `overlay/hud/src/race_store.rs` (interval, current lap, session best)
 - Columns / header / footer: `StField`, `BoardField`, `HudConfig` in `overlay/hud/src/config.rs`
 - Settings pane: `pane_standings` in `overlay/src/settings.rs`
 - In-game HUD copy (not the overlay): `drawStandings` in `src/hud/widgets.cpp`
@@ -37,6 +38,7 @@ Default columns on: Position, Number, Name, Gap, Fastest, Last lap.
 
 ## Change log
 
+- 2026-08-24 — Interval / current lap / session best read from shared `RaceStore` after each frame tick. No visual change.
 - 0.1.0 — Configurable header fields (shared with Relative).
 - 0.1.4 — Lapping row tints live on Relative, not this table. Map/minimap got the slate / blue / red rider-dot rules that standings does not use for rows.
 - 0.1.8 — Hidden until **Show on overlay**. Sidebar tab has its own icon.

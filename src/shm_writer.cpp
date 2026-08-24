@@ -81,25 +81,48 @@ namespace
 bool ShmWriter::open()
 {
     close();
+    const DWORD bytes = static_cast<DWORD>(sizeof(MxboShmSnapshot));
+    SetLastError(0);
     m_map = CreateFileMappingW(
         INVALID_HANDLE_VALUE,
         nullptr,
         PAGE_READWRITE,
         0,
-        static_cast<DWORD>(sizeof(MxboShmSnapshot)),
+        bytes,
         MXBO_SHM_NAME);
     if (!m_map)
     {
         return false;
     }
-    m_view = MapViewOfFile(m_map, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(MxboShmSnapshot));
+    const bool existed = GetLastError() == ERROR_ALREADY_EXISTS;
+    // An existing smaller section (old plugin) must not be memset/memcpy past its
+    // end — that corrupts the game process and can GS-fail in mxbikes.exe.
+    if (existed)
+    {
+        MEMORY_BASIC_INFORMATION info{};
+        m_view = MapViewOfFile(m_map, FILE_MAP_ALL_ACCESS, 0, 0, 0);
+        if (!m_view || !VirtualQuery(m_view, &info, sizeof(info)) || info.RegionSize < bytes)
+        {
+            close();
+            return false;
+        }
+        UnmapViewOfFile(m_view);
+        m_view = nullptr;
+    }
+    m_view = MapViewOfFile(m_map, FILE_MAP_ALL_ACCESS, 0, 0, bytes);
     if (!m_view)
     {
         CloseHandle(m_map);
         m_map = nullptr;
         return false;
     }
-    std::memset(m_view, 0, sizeof(MxboShmSnapshot));
+    MEMORY_BASIC_INFORMATION mapped{};
+    if (!VirtualQuery(m_view, &mapped, sizeof(mapped)) || mapped.RegionSize < bytes)
+    {
+        close();
+        return false;
+    }
+    std::memset(m_view, 0, bytes);
     auto* snap = static_cast<MxboShmSnapshot*>(m_view);
     snap->magic = MXBO_SHM_MAGIC;
     snap->version = MXBO_SHM_VERSION;
@@ -231,8 +254,22 @@ void ShmWriter::publish(const PluginState& state, const PluginConfig& config)
     }
     local.currentLap = lap;
     local.sessionLaps = state.sessionLaps();
+    local.sessionKind = state.sessionKind();
+    local.sessionState = state.sessionState();
     local.sessionTimeMs = state.sessionTimeMs();
-    local.sessionLength = state.sessionLength();
+    // Plugin uses -1 = unset this session; never publish that into SHM.
+    local.sessionLength = std::max(0, state.sessionLength());
+
+    local.sectorCount = state.sectorCount();
+    local.sectorLast = state.sectorLast();
+    local.sectorDeltaValid = state.sectorDeltaValid();
+    for (int i = 0; i < MXBO_MAX_SECTORS; ++i)
+    {
+        local.sectorCur[i] = state.sectorCur(i);
+        local.sectorLastLap[i] = state.sectorLastLap(i);
+        local.sectorBest[i] = state.sectorBest(i);
+        local.sectorDelta[i] = state.sectorDelta(i);
+    }
 
     auto* dst = static_cast<MxboShmSnapshot*>(m_view);
     const uint32_t odd = dst->seq | 1u;

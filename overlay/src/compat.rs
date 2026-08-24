@@ -27,18 +27,26 @@ const FLAG: &str = "DISABLEDXMAXIMIZEDWINDOWEDMODE";
 const ZBID_IMMERSIVE_NOTIFICATION: u32 = 4;
 
 static UNCLIP: AtomicBool = AtomicBool::new(false);
+static BG_RUN: AtomicBool = AtomicBool::new(true);
 
 fn spawn_unclip_thread() {
-    thread::spawn(|| loop {
-        if UNCLIP.load(Ordering::Relaxed) {
-            unsafe {
-                let _ = ClipCursor(None);
+    thread::spawn(|| {
+        while BG_RUN.load(Ordering::Relaxed) {
+            if UNCLIP.load(Ordering::Relaxed) {
+                unsafe {
+                    let _ = ClipCursor(None);
+                }
+                thread::sleep(Duration::from_millis(1));
+            } else {
+                thread::sleep(Duration::from_millis(16));
             }
-            thread::sleep(Duration::from_millis(1));
-        } else {
-            thread::sleep(Duration::from_millis(16));
         }
     });
+}
+
+pub fn stop_background_threads() {
+    BG_RUN.store(false, Ordering::Relaxed);
+    UNCLIP.store(false, Ordering::Relaxed);
 }
 
 type CreateWindowInBandFn = unsafe extern "system" fn(

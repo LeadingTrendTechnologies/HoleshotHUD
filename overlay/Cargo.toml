@@ -1,6 +1,6 @@
 [package]
 name = "mxbo-overlay"
-version = "0.1.11"
+version = "0.1.12"
 edition = "2021"
 
 [[bin]]
@@ -44,3 +44,10 @@ windows = { version = "0.58", features = [
     "Win32_NetworkManagement_Ndis",
     "Win32_Security",
 ] }
+
+# `cargo run` stays debug (Sectors unlocked) but tiny-skia in opt-level 0 is too slow for the HUD.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
