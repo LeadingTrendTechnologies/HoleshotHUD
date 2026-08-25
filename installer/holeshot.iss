@@ -1,5 +1,5 @@
 #ifndef MyAppVersion
-#define MyAppVersion "0.1.14"
+#define MyAppVersion "0.1.15"
 #endif
 #ifndef SourceDir
 #define SourceDir "."
@@ -43,7 +43,7 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 
 [Files]
 Source: "{#SourceDir}\Holeshot-HUD.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#SourceDir}\mxbo.dlo"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceDir}\Holeshot-HUD.dlo"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\Install-Plugin.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\Uninstall.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\Uninstall.bat"; DestDir: "{app}"; Flags: ignoreversion
@@ -60,6 +60,13 @@ Filename: "{app}\{#MyAppExeName}"; Description: "Start {#MyAppName}"; Flags: now
 [UninstallRun]
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Uninstall.ps1"" -Silent"; Flags: runhidden waituntilterminated; RunOnceId: "RemovePlugin"
 
+; Wipe leftovers Inno did not install (settings, game folder path, logs) and the app folder itself.
+[UninstallDelete]
+Type: filesandordirs; Name: "{app}"
+Type: filesandordirs; Name: "{localappdata}\MXBO Overlay"
+Type: files; Name: "{userdocs}\PiBoSo\MX Bikes\Holeshot-HUD.ini"
+Type: files; Name: "{userdocs}\PiBoSo\MX Bikes\mxbo.ini"
+
 [Code]
 function RunPluginInstall(const GameDir: String): Integer;
 var
@@ -67,7 +74,7 @@ var
   ResultCode: Integer;
 begin
   Args := '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\Install-Plugin.ps1') +
-    '" -PluginSrc "' + ExpandConstant('{app}\mxbo.dlo') + '"';
+    '" -PluginSrc "' + ExpandConstant('{app}\Holeshot-HUD.dlo') + '"';
   if GameDir <> '' then
     Args := Args + ' -GameDir "' + GameDir + '"';
   if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
@@ -107,5 +114,5 @@ begin
   if Code = 3 then
     MsgBox('That folder does not look like MX Bikes (missing mxbikes.exe / plugins).', mbError, MB_OK)
   else
-    MsgBox('Could not copy mxbo.dlo into MX Bikes. Fully quit the game and run Setup again.', mbError, MB_OK);
+    MsgBox('Could not copy Holeshot-HUD.dlo into MX Bikes. Fully quit the game and run Setup again.', mbError, MB_OK);
 end;

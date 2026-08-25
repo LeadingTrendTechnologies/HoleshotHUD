@@ -19,7 +19,7 @@ Open the inbox to filter ratings, bugs, and feature asks. **Done** deletes that 
 
 1. Download **[HoleshotHUD-Setup.exe](https://github.com/LeadingTrendTechnologies/HoleshotHUD/releases/latest/download/HoleshotHUD-Setup.exe)** (always the latest release).
 2. Run the Setup file. If SmartScreen appears, choose **More info → Run anyway**. Setup installs to `%LOCALAPPDATA%\Holeshot HUD` (no admin).
-3. Setup finds Steam MX Bikes (registry + Steam library folders) and copies `mxbo.dlo` into the game `plugins` folder. If the game is not found, pick the folder that contains `mxbikes.exe`.
+3. Setup finds Steam MX Bikes (registry + Steam library folders) and copies `Holeshot-HUD.dlo` into the game `plugins` folder. If the game is not found, pick the folder that contains `mxbikes.exe`.
 4. Set MX Bikes to **borderless** or **windowed**.
 5. Start the game, then start **Holeshot HUD** from the desktop shortcut.
 6. Press **F8** for settings. Hold **Ctrl** and drag widgets to move or resize.
@@ -32,9 +32,9 @@ Uninstall from Windows Settings, or run `Uninstall.bat` in `%LOCALAPPDATA%\Holes
 
 ## Use
 
-The plugin (`mxbo.dlo`) reads the game and writes shared memory. The overlay is a transparent window on top of MX Bikes.
+The plugin (`Holeshot-HUD.dlo`) reads the game and writes shared memory. The overlay is a transparent window on top of MX Bikes.
 
-Layout is saved to `Documents\PiBoSo\MX Bikes\mxbo.ini`.
+Layout is saved to `Documents\PiBoSo\MX Bikes\Holeshot-HUD.ini`. Uninstall deletes that file and AppData leftovers so a reinstall is a fresh install.
 
 Restart MX Bikes after installing or updating the plugin.
 
@@ -55,7 +55,7 @@ From **Git Bash**, prefix with `cmd.exe //c` so `/c` is not treated as a path:
 cmd.exe //c build.bat
 ```
 
-`build.bat` compiles `out\Release\mxbo.dlo` and `overlay\target\release\Holeshot-HUD.exe`.  
+`build.bat` compiles `out\Release\Holeshot-HUD.dlo` and `overlay\target\release\Holeshot-HUD.exe`.  
 `pack.bat` writes `dist\HoleshotHUD-Setup.exe` (needs [Inno Setup 6](https://jrsoftware.org/isinfo.php)).
 
 If cargo fails with **Access is denied** on `Holeshot-HUD.exe`, quit the overlay (tray → **Quit overlay**) or, from Git Bash:
@@ -77,8 +77,8 @@ Dev builds optimize crates like tiny-skia (`opt-level = 3`) so the HUD stays smo
 Push a tag to publish a downloadable release:
 
 ```bat
-git tag v0.1.14
-git push origin v0.1.14
+git tag v0.1.15
+git push origin v0.1.15
 ```
 
 ## Data wiki

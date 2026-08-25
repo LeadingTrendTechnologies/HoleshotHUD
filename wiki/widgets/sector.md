@@ -10,7 +10,7 @@ This widget is **behind a feature flag**. Debug `cargo run` unlocks the Sectors 
 - Plugin: `RunSplit` / `RaceSplit` → `PluginState::recordSector` in `src/state.cpp`
 - SHM: `sectorCur` / `sectorLastLap` / `sectorBest` / `sectorDelta` / `sectorDeltaValid` (version 8)
 - Settings: `pane_sector` in `overlay/src/settings.rs`
-- Flag: `HudConfig::feature_sector` (`feature_sector=1` in mxbo.ini)
+- Flag: `HudConfig::feature_sector` (`feature_sector=1` in Holeshot-HUD.ini)
 
 MX Bikes reports two mid-lap splits (`m_aiSplit[2]`). S1 and S2 come from those callbacks. S3 is lap time minus S1 minus S2 when `RunLap` / `RaceLap` fires.
 

@@ -14,7 +14,7 @@
     <VCProjectVersion>17.0</VCProjectVersion>
     <ProjectGuid>{A7C4E1B2-9F3D-4C18-8E55-1B2C3D4E5F60}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>mxbo</RootNamespace>
+    <RootNamespace>HoleshotHUD</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -35,7 +35,7 @@
   <PropertyGroup>
     <OutDir>$(ProjectDir)out\$(Configuration)\</OutDir>
     <IntDir>$(ProjectDir)out\obj\$(Configuration)\</IntDir>
-    <TargetName>mxbo</TargetName>
+    <TargetName>Holeshot-HUD</TargetName>
     <TargetExt>.dlo</TargetExt>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -58,7 +58,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>gdi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <ModuleDefinitionFile>mxbo.def</ModuleDefinitionFile>
-      <ImportLibrary>$(OutDir)mxbo.lib</ImportLibrary>
+      <ImportLibrary>$(OutDir)Holeshot-HUD.lib</ImportLibrary>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -77,7 +77,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>gdi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <ModuleDefinitionFile>mxbo.def</ModuleDefinitionFile>
-      <ImportLibrary>$(OutDir)mxbo.lib</ImportLibrary>
+      <ImportLibrary>$(OutDir)Holeshot-HUD.lib</ImportLibrary>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>

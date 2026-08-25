@@ -8,7 +8,10 @@ use windows::Win32::System::Registry::{
     REG_SZ,
 };
 
-const EMBEDDED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/mxbo.dlo"));
+const PLUGIN_FILE: &str = "Holeshot-HUD.dlo";
+const LEGACY_PLUGIN_FILE: &str = "mxbo.dlo";
+
+const EMBEDDED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/Holeshot-HUD.dlo"));
 
 static NEED_RETRY: AtomicBool = AtomicBool::new(false);
 
@@ -26,13 +29,14 @@ pub fn retry_if_needed() {
 }
 
 pub fn remove() {
-    if let Some(dest) = plugin_dest() {
-        let _ = fs::remove_file(dest);
+    if let Some(dir) = game_dir().map(|g| g.join("plugins")) {
+        let _ = fs::remove_file(dir.join(PLUGIN_FILE));
+        let _ = fs::remove_file(dir.join(LEGACY_PLUGIN_FILE));
     }
 }
 
 pub fn dest_path() -> Option<PathBuf> {
-    plugin_dest()
+    Some(game_dir()?.join("plugins").join(PLUGIN_FILE))
 }
 
 fn install_once() -> Result<bool, ()> {
@@ -43,6 +47,7 @@ fn install_once() -> Result<bool, ()> {
             if existing == bytes {
                 if let Some(game) = dest.parent().and_then(|p| p.parent()) {
                     save_game_dir(game);
+                    remove_legacy_plugin(game);
                 }
                 return Ok(false);
             }
@@ -55,11 +60,16 @@ fn install_once() -> Result<bool, ()> {
         Ok(()) => {
             if let Some(game) = dest.parent().and_then(|p| p.parent()) {
                 save_game_dir(game);
+                remove_legacy_plugin(game);
             }
             Ok(false)
         }
         Err(_) => Ok(true),
     }
+}
+
+fn remove_legacy_plugin(game: &Path) {
+    let _ = fs::remove_file(game.join("plugins").join(LEGACY_PLUGIN_FILE));
 }
 
 fn plugin_bytes() -> Option<Vec<u8>> {
@@ -80,15 +90,18 @@ fn sidecar_plugin() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let dir = exe.parent()?;
     let names = [
-        dir.join("mxbo.dlo"),
-        dir.join("../../../out/Release/mxbo.dlo"),
-        dir.join("../../out/Release/mxbo.dlo"),
+        dir.join(PLUGIN_FILE),
+        dir.join("../../../out/Release").join(PLUGIN_FILE),
+        dir.join("../../out/Release").join(PLUGIN_FILE),
+        // Dev / old packs until everything is rebuilt.
+        dir.join(LEGACY_PLUGIN_FILE),
+        dir.join("../../../out/Release").join(LEGACY_PLUGIN_FILE),
     ];
     names.into_iter().find(|p| p.is_file())
 }
 
 fn plugin_dest() -> Option<PathBuf> {
-    Some(game_dir()?.join("plugins").join("mxbo.dlo"))
+    Some(game_dir()?.join("plugins").join(PLUGIN_FILE))
 }
 
 fn game_dir() -> Option<PathBuf> {

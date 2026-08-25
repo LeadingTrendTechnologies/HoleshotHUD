@@ -146,7 +146,9 @@ fn apply(version: &str, url: &str) -> Result<(), String> {
     unzip(&zip, &extracted)?;
     let src_exe = find_file(&extracted, |n| n.ends_with(".exe"))
         .ok_or_else(|| "Update zip is missing the overlay.".to_string())?;
-    let src_dlo = find_file(&extracted, |n| n.eq_ignore_ascii_case("mxbo.dlo"));
+    let src_dlo = find_file(&extracted, |n| {
+        n.eq_ignore_ascii_case("Holeshot-HUD.dlo") || n.eq_ignore_ascii_case("mxbo.dlo")
+    });
     let script = work.join("apply.ps1");
     let pid = std::process::id();
     let plugin = src_dlo
@@ -163,20 +165,23 @@ try {{ Wait-Process -Id $pidToWait -Timeout 40 -ErrorAction SilentlyContinue }} 
 Start-Sleep -Milliseconds 800
 Copy-Item -LiteralPath $srcExe -Destination $dstExe -Force
 if ($srcDlo -and (Test-Path -LiteralPath $srcDlo)) {{
-  $game = $null
+  $pluginsDir = $null
   foreach ($key in @('HKCU:\Software\Valve\Steam','HKLM:\SOFTWARE\WOW6432Node\Valve\Steam','HKLM:\SOFTWARE\Valve\Steam')) {{
     try {{ $steam = (Get-ItemProperty -Path $key -ErrorAction Stop).InstallPath }} catch {{ $steam = $null }}
     if ($steam) {{
-      $c = Join-Path $steam 'steamapps\common\MX Bikes\plugins\mxbo.dlo'
-      if (Test-Path (Split-Path $c)) {{ $game = $c; break }}
+      $c = Join-Path $steam 'steamapps\common\MX Bikes\plugins'
+      if (Test-Path $c) {{ $pluginsDir = $c; break }}
     }}
   }}
   foreach ($drive in @('C','D','E')) {{
-    $c = "${{drive}}:\Steam\steamapps\common\MX Bikes\plugins\mxbo.dlo"
-    if (-not $game -and (Test-Path (Split-Path $c))) {{ $game = $c }}
+    $c = "${{drive}}:\Steam\steamapps\common\MX Bikes\plugins"
+    if (-not $pluginsDir -and (Test-Path $c)) {{ $pluginsDir = $c }}
   }}
-  if ($game) {{
-    try {{ Copy-Item -LiteralPath $srcDlo -Destination $game -Force }} catch {{}}
+  if ($pluginsDir) {{
+    try {{
+      Copy-Item -LiteralPath $srcDlo -Destination (Join-Path $pluginsDir 'Holeshot-HUD.dlo') -Force
+      Remove-Item -LiteralPath (Join-Path $pluginsDir 'mxbo.dlo') -Force -ErrorAction SilentlyContinue
+    }} catch {{}}
   }}
 }}
 $env:HOLESHOT_SKIP_UPDATE = '1'

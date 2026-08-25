@@ -3,7 +3,7 @@
 Everything the PiBoSo plugin API can send this project, and whether we already keep it.
 
 Source of truth: `src/vendor/piboso/mxb_api.h` (data version **8**, interface **9**).  
-The game loads `mxbo.dlo` and calls the exported functions below. The plugin may copy fields into `PluginState`, then into shared memory `Local\MXBOHudV9` for the Rust overlay.
+The game loads `Holeshot-HUD.dlo` and calls the exported functions below. The plugin may copy fields into `PluginState`, then into shared memory `Local\MXBOHudV9` for the Rust overlay.
 
 **Status**
 

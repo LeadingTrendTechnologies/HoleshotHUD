@@ -77,7 +77,8 @@ if (-not (Test-MxBikesDir $game)) {
 $plugins = Join-Path $game "plugins"
 New-Item -ItemType Directory -Force -Path $plugins | Out-Null
 try {
-    Copy-Item -LiteralPath $PluginSrc -Destination (Join-Path $plugins "mxbo.dlo") -Force
+    Copy-Item -LiteralPath $PluginSrc -Destination (Join-Path $plugins "Holeshot-HUD.dlo") -Force
+    Remove-Item -LiteralPath (Join-Path $plugins "mxbo.dlo") -Force -ErrorAction SilentlyContinue
 } catch {
     exit 2
 }

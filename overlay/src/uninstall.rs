@@ -20,7 +20,7 @@ pub fn confirm(host: HWND) -> bool {
     unsafe {
         MessageBoxW(
             host,
-            w!("This removes Holeshot HUD, the MX Bikes plugin, and shortcuts. Continue?"),
+            w!("This removes Holeshot HUD, the MX Bikes plugin, shortcuts, and saved settings. Continue?"),
             w!("Uninstall Holeshot HUD"),
             MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2,
         ) == IDYES
@@ -88,6 +88,10 @@ fn launch_fallback() -> bool {
         .as_ref()
         .map(|p| p.display().to_string().replace('\'', "''"))
         .unwrap_or_default();
+    let settings = mxbo_hud::config::ini_path()
+        .display()
+        .to_string()
+        .replace('\'', "''");
     let wipe_install = match (exe.as_ref().and_then(|p| p.parent()), app.as_ref()) {
         (Some(dir), Some(app_dir)) => dir == app_dir,
         _ => false,
@@ -107,10 +111,12 @@ foreach ($name in @('Holeshot HUD', 'MXBO Overlay')) {{
     if (Test-Path $lnk) {{ Remove-Item -LiteralPath $lnk -Force -ErrorAction SilentlyContinue }}
   }}
 }}
+if ('{settings}') {{ Remove-Item -LiteralPath '{settings}' -Force -ErrorAction SilentlyContinue }}
 if ({wipe}) {{
   Remove-Item -LiteralPath '{install}' -Recurse -Force -ErrorAction SilentlyContinue
 }} elseif ('{install}') {{
   Remove-Item -LiteralPath (Join-Path '{install}' 'logs') -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath (Join-Path '{install}' 'Holeshot-HUD.ini') -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath (Join-Path '{install}' 'mxbo.ini') -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath (Join-Path '{install}' 'gamedir.txt') -Force -ErrorAction SilentlyContinue
 }}

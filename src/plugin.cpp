@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <fstream>
 #include <string>
 
 namespace
@@ -205,8 +206,21 @@ __declspec(dllexport) int Startup(char* _szSavePath)
     try
     {
         g_savePath = _szSavePath ? _szSavePath : "";
-        g_iniPath = joinPath(g_savePath.c_str(), "mxbo.ini");
-        g_config.load(g_iniPath);
+        g_iniPath = joinPath(g_savePath.c_str(), "Holeshot-HUD.ini");
+        std::string loadPath = g_iniPath;
+        {
+            std::ifstream probe(g_iniPath);
+            if (!probe.good())
+            {
+                const std::string legacy = joinPath(g_savePath.c_str(), "mxbo.ini");
+                std::ifstream old(legacy);
+                if (old.good())
+                {
+                    loadPath = legacy;
+                }
+            }
+        }
+        g_config.load(loadPath);
         stampIniWriteTime();
         g_layoutDirty = true;
         g_shm.open();
@@ -225,6 +239,11 @@ __declspec(dllexport) void Shutdown()
         if (!g_iniPath.empty())
         {
             g_config.save(g_iniPath);
+            const std::string legacy = joinPath(g_savePath.c_str(), "mxbo.ini");
+            if (_stricmp(legacy.c_str(), g_iniPath.c_str()) != 0)
+            {
+                DeleteFileA(legacy.c_str());
+            }
         }
         g_state.clearEvent();
         g_draw.clear();

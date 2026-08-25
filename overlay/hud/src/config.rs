@@ -906,12 +906,16 @@ impl HudConfig {
 
     pub fn load_file() -> Self {
         let path = ini_path();
+        let legacy = legacy_ini_path();
         let mut cfg = Self::new();
-        let Ok(text) = fs::read_to_string(&path) else {
+        let text = fs::read_to_string(&path)
+            .or_else(|_| fs::read_to_string(&legacy));
+        let Ok(text) = text else {
             cfg.save();
             return cfg;
         };
-        cfg.loaded_mtime = fs::metadata(&path).and_then(|m| m.modified()).ok();
+        let meta_path = if path.is_file() { &path } else { &legacy };
+        cfg.loaded_mtime = fs::metadata(meta_path).and_then(|m| m.modified()).ok();
         let mut saw_last_cols = false;
         for raw in text.lines() {
             let line = raw.trim();
@@ -1114,7 +1118,7 @@ impl HudConfig {
             let _ = fs::create_dir_all(dir);
         }
         let body = format!(
-            "# mxbo HUD layout (normalized 0..1, origin top-left)\n\
+            "# Holeshot HUD layout (normalized 0..1, origin top-left)\n\
              [Layout]\n\
              standings_x={}\nstandings_y={}\nstandings_w={}\nstandings_h={}\n\
              relative_x={}\nrelative_y={}\nrelative_w={}\nrelative_h={}\n\
@@ -1338,6 +1342,10 @@ impl HudConfig {
         );
         let _ = fs::write(&path, body);
         self.loaded_mtime = fs::metadata(&path).and_then(|m| m.modified()).ok();
+        let legacy = legacy_ini_path();
+        if legacy != path {
+            let _ = fs::remove_file(legacy);
+        }
     }
 
     pub fn apply_to_snapshot(&self, s: &mut Snapshot) {
@@ -1838,6 +1846,15 @@ fn move_to<T>(items: &mut Vec<T>, from: usize, to: usize) {
 }
 
 pub fn ini_path() -> PathBuf {
+    let home = std::env::var("USERPROFILE").unwrap_or_else(|_| "C:\\Users\\Public".into());
+    PathBuf::from(home)
+        .join("Documents")
+        .join("PiBoSo")
+        .join("MX Bikes")
+        .join("Holeshot-HUD.ini")
+}
+
+fn legacy_ini_path() -> PathBuf {
     let home = std::env::var("USERPROFILE").unwrap_or_else(|_| "C:\\Users\\Public".into());
     PathBuf::from(home)
         .join("Documents")

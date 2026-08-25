@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.15
+
+Uninstall clears saved settings so a reinstall starts blank, and the plugin is branded Holeshot-HUD.
+
+### Settings
+
+- Uninstall removes `Documents\PiBoSo\MX Bikes\Holeshot-HUD.ini` (and leftover `mxbo.ini`), plus AppData logs and the remembered MX Bikes folder path. Reinstalling no longer keeps the old layout
+
+### Overlay
+
+- The MX Bikes plugin is `Holeshot-HUD.dlo` (not `mxbo.dlo`). Install and update remove any leftover `mxbo.dlo` so the game does not load both
+- Layout file is `Documents\PiBoSo\MX Bikes\Holeshot-HUD.ini` (reads old `mxbo.ini` once, then saves under the new name)
+
 ## 0.1.14
 
 No console window when you start the overlay.
@@ -192,7 +205,7 @@ Installer remembers the MX Bikes folder, and a version tag only runs the Release
 
 ### Install
 
-- Setup still finds Steam MX Bikes from the registry and library folders, then copies `mxbo.dlo` into `plugins`
+- Setup still finds Steam MX Bikes from the registry and library folders, then copies `Holeshot-HUD.dlo` into `plugins`
 - If you pick the game folder by hand, that path is saved to `%LOCALAPPDATA%\Holeshot HUD\gamedir.txt`
 - The overlay uses the saved folder on launch so plugin updates still copy when Steam search would miss
 - Uninstall removes the plugin from that saved folder
@@ -233,7 +246,7 @@ One-click Windows installer and a website download that always gets the latest r
 - `HoleshotHUD-Setup.exe` installs the overlay, desktop shortcut, and MX Bikes plugin
 - Website **Download for Windows** always fetches the latest tagged Setup.exe
 - Pull requests build that same installer as a CI artifact
-- Overlay copies `mxbo.dlo` into MX Bikes on launch if the game folder can be found
+- Overlay copies `Holeshot-HUD.dlo` into MX Bikes on launch if the game folder can be found
 
 ### Dash and session
 

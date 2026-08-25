@@ -5,6 +5,9 @@ $ErrorActionPreference = "Continue"
 $AppName = "Holeshot HUD"
 $InstallDir = Join-Path $env:LOCALAPPDATA $AppName
 $LegacyDir = Join-Path $env:LOCALAPPDATA "MXBO Overlay"
+# Same path the overlay uses for layout / options (HudConfig::ini_path).
+$SettingsIni = Join-Path $env:USERPROFILE "Documents\PiBoSo\MX Bikes\Holeshot-HUD.ini"
+$LegacySettingsIni = Join-Path $env:USERPROFILE "Documents\PiBoSo\MX Bikes\mxbo.ini"
 
 function Get-SteamLibraries {
     $roots = @()
@@ -34,6 +37,40 @@ function Get-SteamLibraries {
     $libs | Select-Object -Unique
 }
 
+function Remove-SavedSettings {
+    foreach ($ini in @($SettingsIni, $LegacySettingsIni)) {
+        if (Test-Path -LiteralPath $ini) {
+            Remove-Item -LiteralPath $ini -Force -ErrorAction SilentlyContinue
+            Write-Host "Removed $ini"
+        }
+    }
+    foreach ($dir in @($InstallDir, $LegacyDir)) {
+        if (-not (Test-Path -LiteralPath $dir)) { continue }
+        foreach ($name in @("Holeshot-HUD.ini", "mxbo.ini", "gamedir.txt")) {
+            $p = Join-Path $dir $name
+            if (Test-Path -LiteralPath $p) {
+                Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue
+            }
+        }
+        $logs = Join-Path $dir "logs"
+        if (Test-Path -LiteralPath $logs) {
+            Remove-Item -LiteralPath $logs -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Remove-PluginFromGame([string]$game) {
+    if (-not $game) { return }
+    $plugins = Join-Path $game "plugins"
+    foreach ($name in @("Holeshot-HUD.dlo", "mxbo.dlo")) {
+        $plugin = Join-Path $plugins $name
+        if (Test-Path -LiteralPath $plugin) {
+            Remove-Item -LiteralPath $plugin -Force -ErrorAction SilentlyContinue
+            Write-Host "Removed $plugin"
+        }
+    }
+}
+
 Get-Process -Name "Holeshot-HUD", "mxbo-overlay", "MXBO Overlay", "Holeshot HUD" -ErrorAction SilentlyContinue | Stop-Process -Force
 Remove-Item -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'Holeshot HUD' -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'Holeshot HUD game' -Force -ErrorAction SilentlyContinue
@@ -41,19 +78,11 @@ Remove-Item -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -
 $saved = Join-Path $InstallDir "gamedir.txt"
 if (Test-Path $saved) {
     $game = (Get-Content -LiteralPath $saved -Raw).Trim()
-    $plugin = Join-Path $game "plugins\mxbo.dlo"
-    if ($game -and (Test-Path $plugin)) {
-        Remove-Item -LiteralPath $plugin -Force
-        Write-Host "Removed $plugin"
-    }
+    Remove-PluginFromGame $game
 }
 
 foreach ($lib in Get-SteamLibraries) {
-    $plugin = Join-Path $lib "steamapps\common\MX Bikes\plugins\mxbo.dlo"
-    if (Test-Path $plugin) {
-        Remove-Item -LiteralPath $plugin -Force
-        Write-Host "Removed $plugin"
-    }
+    Remove-PluginFromGame (Join-Path $lib "steamapps\common\MX Bikes")
 }
 
 $desktop = [Environment]::GetFolderPath("Desktop")
@@ -63,6 +92,11 @@ foreach ($name in @($AppName, "MXBO Overlay")) {
         if (Test-Path $lnk) { Remove-Item -LiteralPath $lnk -Force }
     }
 }
+
+# Always drop layout / options and AppData leftovers so a reinstall is brand new.
+# During Inno -Silent, leave the install folder itself for the uninstaller to finish;
+# [UninstallDelete] then removes {app}. Standalone uninstall wipes the folders below.
+Remove-SavedSettings
 
 if ($Silent) {
     exit 0

@@ -377,7 +377,7 @@ impl Snapshot {
         if self.version > 0 && self.version < VERSION {
             let _ = writeln!(
                 o,
-                "(session_kind/state stay -1 until mxbo.dlo is rebuilt and MX Bikes is restarted)"
+                "(session_kind/state stay -1 until Holeshot-HUD.dlo is rebuilt and MX Bikes is restarted)"
             );
         }
         let _ = writeln!(

@@ -20,7 +20,7 @@ add_library(mxbo SHARED
 target_include_directories(mxbo PRIVATE src)
 
 set_target_properties(mxbo PROPERTIES
-    OUTPUT_NAME "mxbo"
+    OUTPUT_NAME "Holeshot-HUD"
     PREFIX ""
     SUFFIX ".dlo"
 )
@@ -39,9 +39,9 @@ endif()
 
 if(MX_BIKES_DIR)
     add_custom_command(TARGET mxbo POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${MX_BIKES_DIR}/plugins/mxbo_data/fonts"
-        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:mxbo> "${MX_BIKES_DIR}/plugins/mxbo.dlo"
-        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/assets" "${MX_BIKES_DIR}/plugins/mxbo_data"
-        COMMENT "Installing mxbo.dlo and mxbo_data into MX Bikes plugins"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${MX_BIKES_DIR}/plugins"
+        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:mxbo> "${MX_BIKES_DIR}/plugins/Holeshot-HUD.dlo"
+        COMMAND ${CMAKE_COMMAND} -E remove -f "${MX_BIKES_DIR}/plugins/mxbo.dlo"
+        COMMENT "Installing Holeshot-HUD.dlo into MX Bikes plugins"
     )
 endif()

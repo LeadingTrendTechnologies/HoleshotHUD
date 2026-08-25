@@ -86,15 +86,15 @@ function New-Shortcut([string]$path, [string]$target) {
     $s.Save()
 }
 
-$pluginSrc = Join-Path $Here "mxbo.dlo"
-if (-not (Test-Path $pluginSrc)) { $pluginSrc = Join-Path $Here "..\out\Release\mxbo.dlo" }
+$pluginSrc = Join-Path $Here "Holeshot-HUD.dlo"
+if (-not (Test-Path $pluginSrc)) { $pluginSrc = Join-Path $Here "..\out\Release\Holeshot-HUD.dlo" }
 $overlaySrc = Join-Path $Here "Holeshot-HUD.exe"
 if (-not (Test-Path $overlaySrc)) { $overlaySrc = Join-Path $Here "Holeshot HUD.exe" }
 if (-not (Test-Path $overlaySrc)) { $overlaySrc = Join-Path $Here "MXBO Overlay.exe" }
 if (-not (Test-Path $overlaySrc)) { $overlaySrc = Join-Path $Here "mxbo-overlay.exe" }
 if (-not (Test-Path $overlaySrc)) { $overlaySrc = Join-Path $Here "..\overlay\target\release\Holeshot-HUD.exe" }
 if (-not (Test-Path $overlaySrc)) { $overlaySrc = Join-Path $Here "..\overlay\target\release\mxbo-overlay.exe" }
-if (-not (Test-Path $pluginSrc)) { throw "mxbo.dlo is missing next to the installer." }
+if (-not (Test-Path $pluginSrc)) { throw "Holeshot-HUD.dlo is missing next to the installer." }
 if (-not (Test-Path $overlaySrc)) { throw "Holeshot-HUD.exe is missing next to the installer." }
 
 Write-Host "Installing $AppName..."
@@ -104,9 +104,10 @@ New-Item -ItemType Directory -Force -Path $plugins | Out-Null
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
 try {
-    Copy-Item -LiteralPath $pluginSrc -Destination (Join-Path $plugins "mxbo.dlo") -Force
+    Copy-Item -LiteralPath $pluginSrc -Destination (Join-Path $plugins "Holeshot-HUD.dlo") -Force
+    Remove-Item -LiteralPath (Join-Path $plugins "mxbo.dlo") -Force -ErrorAction SilentlyContinue
 } catch {
-    throw "Could not copy mxbo.dlo into MX Bikes. Fully quit the game and run Install again."
+    throw "Could not copy Holeshot-HUD.dlo into MX Bikes. Fully quit the game and run Install again."
 }
 Set-Content -LiteralPath (Join-Path $InstallDir "gamedir.txt") -Value $game -Encoding UTF8
 
@@ -124,7 +125,7 @@ New-Shortcut (Join-Path $start "$AppName.lnk") (Join-Path $InstallDir "Holeshot-
 Write-Host ""
 Write-Host "Installed."
 Write-Host "  Overlay:  $InstallDir"
-Write-Host "  Plugin:   $plugins\mxbo.dlo"
+Write-Host "  Plugin:   $plugins\Holeshot-HUD.dlo"
 Write-Host ""
 Write-Host "1. Set MX Bikes to borderless or windowed (not exclusive fullscreen)."
 Write-Host "2. Start MX Bikes (restart it if it was already open)."

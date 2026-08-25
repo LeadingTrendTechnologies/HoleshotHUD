@@ -8,7 +8,7 @@ if ($cargo -notmatch 'version\s*=\s*"([^"]+)"') { throw "Could not read version 
 $Version = $Matches[1]
 if ($env:MXBO_VERSION) { $Version = $env:MXBO_VERSION }
 
-$plugin = Join-Path $Root "out\Release\mxbo.dlo"
+$plugin = Join-Path $Root "out\Release\Holeshot-HUD.dlo"
 $overlay = Join-Path $Root "overlay\target\release\Holeshot-HUD.exe"
 if (-not (Test-Path $overlay)) { $overlay = Join-Path $Root "overlay\target\release\mxbo-overlay.exe" }
 if (-not (Test-Path $plugin) -or -not (Test-Path $overlay)) {
@@ -26,7 +26,7 @@ if (Test-Path $dist) { Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAct
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
 Copy-Item $overlay (Join-Path $stage "Holeshot-HUD.exe")
-Copy-Item $plugin (Join-Path $stage "mxbo.dlo")
+Copy-Item $plugin (Join-Path $stage "Holeshot-HUD.dlo")
 Copy-Item (Join-Path $Root "installer\install.ps1") (Join-Path $stage "Install.ps1")
 Copy-Item (Join-Path $Root "installer\install.bat") (Join-Path $stage "Install.bat")
 Copy-Item (Join-Path $Root "installer\install-plugin.ps1") (Join-Path $stage "Install-Plugin.ps1")

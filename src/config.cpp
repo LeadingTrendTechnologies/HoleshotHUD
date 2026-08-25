@@ -162,7 +162,7 @@ void PluginConfig::save(const std::string& path) const
     {
         return;
     }
-    out << "# mxbo HUD layout (normalized 0..1, origin top-left)\n";
+    out << "# Holeshot HUD layout (normalized 0..1, origin top-left)\n";
     out << "[Layout]\n";
     writeRect(out, "standings", standings);
     writeRect(out, "relative", relative);

@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 fn main() {
     let shm = shm::Shm::open().unwrap_or_else(|| {
-        eprintln!("MX Bikes is not publishing HUD data. Start the game on a track with mxbo.dlo loaded.");
+        eprintln!("MX Bikes is not publishing HUD data. Start the game on a track with Holeshot-HUD.dlo loaded.");
         std::process::exit(1);
     });
     let snap = shm.read().unwrap_or_else(|| {
