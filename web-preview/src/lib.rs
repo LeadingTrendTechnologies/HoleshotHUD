@@ -2,7 +2,7 @@ mod demo_track;
 mod edit;
 
 use mxbo_hud::config::{
-    BoardField, DashField, DotLabel, FontFamily, HudConfig, SnapAlign, Units, WidgetId,
+    BoardField, DashField, DotLabel, FontFamily, HudConfig, SnapAlign, TableText, Units, WidgetId,
 };
 use mxbo_hud::render::{draw, Fonts};
 use mxbo_hud::snapshot::{
@@ -429,7 +429,9 @@ fn int_val(cfg: &HudConfig, key: &str) -> Option<i32> {
         "standings_rows" => cfg.standings_rows,
         "relative_count" => cfg.relative_count,
         "st_bg" => cfg.st_bg,
+        "st_hl" => cfg.st_hl,
         "rel_bg" => cfg.rel_bg,
+        "rel_hl" => cfg.rel_hl,
         "map_bg" => cfg.map_bg,
         "mini_bg" => cfg.mini_bg,
         "mini_zoom" => cfg.mini_zoom,
@@ -457,7 +459,9 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "standings_rows" => cfg.standings_rows = value.clamp(3, 40),
         "relative_count" => cfg.relative_count = value.clamp(1, 8),
         "st_bg" => cfg.st_bg = value.clamp(0, 100),
+        "st_hl" => cfg.st_hl = value.clamp(0, 100),
         "rel_bg" => cfg.rel_bg = value.clamp(0, 100),
+        "rel_hl" => cfg.rel_hl = value.clamp(0, 100),
         "map_bg" => cfg.map_bg = value.clamp(0, 100),
         "mini_bg" => cfg.mini_bg = value.clamp(0, 100),
         "mini_zoom" => cfg.mini_zoom = value.clamp(0, 100),
@@ -501,6 +505,8 @@ fn field_val(cfg: &HudConfig, key: &str) -> Option<String> {
         "rel_foot2" => cfg.rel_foot[2].key().into(),
         "map_dot" => cfg.map_dot.key().into(),
         "mini_dot" => cfg.mini_dot.key().into(),
+        "st_text" => cfg.st_text.key().into(),
+        "rel_text" => cfg.rel_text.key().into(),
         _ => return None,
     })
 }
@@ -526,6 +532,8 @@ fn set_field(cfg: &mut HudConfig, key: &str, value: &str) {
         "rel_foot2" => cfg.rel_foot[2] = BoardField::parse(value),
         "map_dot" => cfg.map_dot = DotLabel::parse(value),
         "mini_dot" => cfg.mini_dot = DotLabel::parse(value),
+        "st_text" => cfg.st_text = TableText::parse(value),
+        "rel_text" => cfg.rel_text = TableText::parse(value),
         _ => {}
     }
 }

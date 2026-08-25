@@ -23,11 +23,11 @@ Status labels: `1` DNS, `3` OUT, `4` DSQ, else PIT if `pit != 0`.
 ## Behavior
 
 - Height grows with visible rows. If the field is larger than **Rows**, the window centers on you.
-- Your row is highlighted. OUT / DNS / DSQ rows dim.
+- Your row is highlighted. OUT / DNS / DSQ rows dim. **Row highlight** opacity is adjustable in settings (`st_hl`). **Text color** is White or Black (`st_text`); bike pills keep brand colors.
 - Best lap in the field is purple.
 - Bike column is a colored badge (`bike_color` from bike name + category). A skew bar after **Position** uses the same accent.
 - Header / footer are three `BoardField` slots each (session time, riders, etc.).
-- Name column flexes; other columns keep configured widths.
+- Name column uses its configured width (and only shrinks when the table is too narrow); other columns keep configured widths.
 - Rows slide when order changes (`ST_SLIDE`).
 
 Default columns on: Position, Number, Name, Gap, Fastest, Last lap.

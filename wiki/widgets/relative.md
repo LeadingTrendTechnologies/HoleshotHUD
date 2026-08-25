@@ -20,7 +20,7 @@ Classification is joined by race number for position, laps, bike, best/last, pen
 ## Behavior
 
 - Same chrome as Standings (header bar, track name, column headers, optional footer).
-- Your row is highlighted. Lapping colors on **other** rows: blue if they are a lap ahead and closing from behind, red if you are a lap ahead and closing on them (`lap_rel` / `lap_row_bg`). Off in warmup.
+- Your row is highlighted. Lapping colors on **other** rows: blue if they are a lap ahead and closing from behind, red if you are a lap ahead and closing on them (`lap_rel` / `lap_row_bg`). Off in warmup. **Row highlight** opacity (`rel_hl`) scales your row and the blue/red lapping tints. **Text color** is White or Black (`rel_text`); bike pills keep brand colors.
 - **Gap column is not classification gap.** It is `|wrapped_frac * track_length / local_speed|` in seconds (you show `0.0`). Speed floor is 4 so a stopped rider does not explode the number.
 - Rows slide when the nearby set changes (`REL_SLIDE`).
 - Duplicate race numbers are skipped. Empty names with `race_num <= 0` are skipped.

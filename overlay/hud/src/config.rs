@@ -142,6 +142,35 @@ impl Units {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TableText {
+    White,
+    Black,
+}
+
+impl TableText {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::White => "White",
+            Self::Black => "Black",
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::White => "white",
+            Self::Black => "black",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "black" | "dark" => Self::Black,
+            _ => Self::White,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SettingsKey {
     F6,
     F7,
@@ -637,7 +666,11 @@ pub struct HudConfig {
     pub radar_sides: bool,
     pub radar_rear: bool,
     pub st_bg: i32,
+    pub st_hl: i32,
+    pub st_text: TableText,
     pub rel_bg: i32,
+    pub rel_hl: i32,
+    pub rel_text: TableText,
     pub map_bg: i32,
     pub mini_bg: i32,
     pub mini_zoom: i32,
@@ -828,7 +861,11 @@ impl HudConfig {
             radar_sides: true,
             radar_rear: true,
             st_bg: 78,
+            st_hl: 50,
+            st_text: TableText::White,
             rel_bg: 78,
+            rel_hl: 50,
+            rel_text: TableText::White,
             map_bg: 0,
             mini_bg: 0,
             mini_zoom: 70,
@@ -1028,7 +1065,11 @@ impl HudConfig {
                 "radar_sides" => cfg.radar_sides = b,
                 "radar_rear" => cfg.radar_rear = b,
                 "st_bg" => cfg.st_bg = clamp_pct(val),
+                "st_hl" => cfg.st_hl = clamp_pct(val),
+                "st_text" => cfg.st_text = TableText::parse(val),
                 "rel_bg" => cfg.rel_bg = clamp_pct(val),
+                "rel_hl" => cfg.rel_hl = clamp_pct(val),
+                "rel_text" => cfg.rel_text = TableText::parse(val),
                 "map_bg" => cfg.map_bg = clamp_pct(val),
                 "mini_bg" => cfg.mini_bg = clamp_pct(val),
                 "mini_zoom" => cfg.mini_zoom = clamp_pct(val),
@@ -1138,7 +1179,7 @@ impl HudConfig {
              st_order={}\n\
              st_w_pos={}\nst_w_num={}\nst_w_name={}\nst_w_gap={}\nst_w_interval={}\nst_w_laps={}\nst_w_current={}\nst_w_best={}\nst_w_last={}\nst_w_status={}\n\
              st_w_bike={}\nst_w_penalty={}\nst_w_crashed={}\n\
-             st_bg={}\nst_font={}\nst_bold={}\n\
+             st_bg={}\nst_hl={}\nst_text={}\nst_font={}\nst_bold={}\n\
              st_head={}\nst_foot={}\n\
              \n[Relative]\n\
              rel_num={}\nrel_name={}\nrel_gap={}\nrel_laps={}\nrel_current={}\nrel_pos={}\nrel_bike={}\nrel_penalty={}\nrel_interval={}\nrel_crashed={}\n\
@@ -1146,7 +1187,7 @@ impl HudConfig {
              rel_order={}\n\
              rel_w_num={}\nrel_w_name={}\nrel_w_gap={}\nrel_w_laps={}\nrel_w_current={}\nrel_w_pos={}\nrel_w_bike={}\nrel_w_penalty={}\nrel_w_interval={}\nrel_w_crashed={}\n\
              rel_w_best={}\nrel_w_last={}\n\
-             rel_bg={}\nrel_font={}\nrel_bold={}\n\
+             rel_bg={}\nrel_hl={}\nrel_text={}\nrel_font={}\nrel_bold={}\n\
              rel_head={}\nrel_foot={}\n\
              \n[Map]\n\
              map_others={}\nmap_sf={}\nmap_name={}\nmap_numbers={}\nmap_arrows={}\nmap_crown={}\nmap_place={}\nmap_dot={}\n\
@@ -1249,6 +1290,8 @@ impl HudConfig {
             self.st_w_penalty,
             self.st_w_crashed,
             self.st_bg,
+            self.st_hl,
+            self.st_text.key(),
             self.st_font,
             b(self.st_bold),
             join_board(&self.st_head),
@@ -1279,6 +1322,8 @@ impl HudConfig {
             self.rel_w_best,
             self.rel_w_last,
             self.rel_bg,
+            self.rel_hl,
+            self.rel_text.key(),
             self.rel_font,
             b(self.rel_bold),
             join_board(&self.rel_head),

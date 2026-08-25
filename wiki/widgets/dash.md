@@ -107,6 +107,7 @@ One path for lap motos and timed extras, driven by `laps_left`. Lap motos count 
 - 0.1.8 — Hidden until **Show on overlay**.
 - 2026-08-19 — 4-lap motos ignore leftover `08:00`. Later gate boards after `00:10` stay a countdown instead of flashing frozen `08:00`.
 - 2026-08-19 — RPM/speed column width is reserved from the widest digits so gear and position do not move as RPM ticks.
+- 2026-08-25 — White flag banner matches checkered: stripes cover most of the band and wrap, fading to a white plaque behind the caption.
 - 2026-08-20 — 8:00 +1 timed motos show `08:00 +1` / `+1`, not `1 / 1`.
 - 2026-08-20 — 2-lap motos with a leftover start board show `1 / 2`, not `0 / +2`. `8:00 +2` extras are unchanged.
 - 2026-08-20 — SHM publishes `session_kind` / `session_state`. F9 dump lists them; clock logic still infers warmup vs race from laps/length.

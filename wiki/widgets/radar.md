@@ -23,7 +23,7 @@ Proximity blips beside and behind you. Settings subtitle: “Riders beside and b
 
 Blips heat by distance (closer = larger, more orange). Farther blips draw first so near ones sit on top. Crashed riders (and pit / DNS / out / DSQ) use the same `draw_state_mark` triangle as map/minimap — crash is the common one on radar. You get the mark on the white bike if you are down.
 
-Local position is predicted with `age`, same as map/minimap. Requires telemetry; otherwise only the empty panel + wedges draw.
+Local position is predicted with `age`, same as map/minimap. Requires telemetry; otherwise only the empty panel + your bike mark draw.
 
 ## Do not regress
 
@@ -31,6 +31,7 @@ Local position is predicted with `age`, same as map/minimap. Requires telemetry;
 - Do not show far-ahead traffic; the forward cap is 3 m on purpose.
 - Panel opacity default is 86, unlike map/minimap.
 - Nearby crashed riders keep the map crash triangle (`\u{f071}`), not a color-only blip.
+- Do not draw the old orange side/rear zone wedges again; the panel is blips + your bike only.
 
 ## Change log
 
@@ -38,3 +39,4 @@ Local position is predicted with `age`, same as map/minimap. Requires telemetry;
 - 0.1.8 — Hidden until **Show on overlay**.
 - 2026-08-18 — Wiki created. Stretch filter and meter caps documented.
 - 2026-08-19 — Radar blips (and you) show the map crash / state icon so a downed rider beside or behind you is obvious.
+- 2026-08-25 — Removed the cream/orange blind-spot wedges behind the bike mark.

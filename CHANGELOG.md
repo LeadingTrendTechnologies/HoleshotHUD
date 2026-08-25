@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.16
+
+Fresh installs start with every widget off, radar drops the blind-spot wedges, and the white flag matches the checkered look.
+
+### Overlay
+
+- The plugin no longer writes `show_*=1` into a new settings file. A blank install matches the overlay: all **Show on overlay** toggles start off until you turn them on
+- Radar no longer draws the cream side/rear zone wedges behind your bike mark — only the panel, your bike, and proximity blips
+- White flag banner uses diagonal stripes across the band (and the dash wrap), fading to a white plaque behind the icon and **WHITE FLAG** text — same layout idea as the checkered flag
+- Each widget settings tab puts **Font size**, background / panel opacity, and **Bold text** right under **Show on overlay**
+- With a widget off, its settings tab only shows **Show on overlay** until you turn it back on
+- Standings / Relative column width sliders now change how wide each column draws (Name no longer silently fills leftover space)
+- Standings and Relative have a **Row highlight** opacity slider (0–100%; 100% is a solid tint; default 50%)
+- Standings and Relative **Text color** can be White or Black (bike pills keep their own brand ink)
+- Bike pills use more padding and sit centered in the row
+- Announce-shot PNGs regenerated from the live HUD (`cargo run -p mxbo-hud --example dump_announce_shots --release`)
+
 ## 0.1.15
 
 Uninstall clears saved settings so a reinstall starts blank, and the plugin is branded Holeshot-HUD.

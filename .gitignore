@@ -16,4 +16,3 @@ target/
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
-announce-shots/*

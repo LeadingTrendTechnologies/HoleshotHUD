@@ -19,12 +19,12 @@ struct PluginConfig
     HudRect radar{0.438f, 0.755f, 0.124f, 0.220f};
     HudRect dash{0.41f, 0.82f, 0.18f, 0.16f};
 
-    bool showStandings = true;
-    bool showRelative = true;
-    bool showMap = true;
-    bool showMinimap = true;
-    bool showRadar = true;
-    bool showDash = true;
+    bool showStandings = false;
+    bool showRelative = false;
+    bool showMap = false;
+    bool showMinimap = false;
+    bool showRadar = false;
+    bool showDash = false;
     bool ingameHud = false;
 
     int standingsRows = 12;

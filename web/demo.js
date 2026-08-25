@@ -133,8 +133,17 @@ function fieldRow(key, label, options) {
   return `<div class="row stack"><label>${label}</label>${selectHtml(key, options)}</div>`;
 }
 
-function look(prefix) {
-  return `${sliderRow(`${prefix}_font`, "Font size", 70, 160, "%")}${toggleRow(`${prefix}_bold`, "Bold text")}`;
+function styleControls(prefix, opacityLabel = "Background") {
+  let html = `${sliderRow(`${prefix}_font`, "Font size", 70, 160, "%")}${sliderRow(`${prefix}_bg`, opacityLabel, 0, 100, "%")}`;
+  if (prefix === "st" || prefix === "rel") {
+    html += sliderRow(`${prefix}_hl`, "Row highlight", 0, 100, "%");
+    html += fieldRow(`${prefix}_text`, "Text color", [
+      ["white", "White"],
+      ["black", "Black"],
+    ]);
+  }
+  html += toggleRow(`${prefix}_bold`, "Bold text");
+  return html;
 }
 
 function snapGrid() {
@@ -148,6 +157,7 @@ function renderSettings() {
   const w = preview.active_widget();
   let html = "";
   if (w === "standings") {
+    html += styleControls("st");
     html += `<div class="section">Header</div>`;
     html += fieldRow("st_head0", "Left", BOARD);
     html += fieldRow("st_head1", "Middle", BOARD);
@@ -159,9 +169,8 @@ function renderSettings() {
     html += stepperRow("standings_rows", "Rows", 3, 40);
     html += `<div class="section">Columns</div>`;
     html += ST_COLS.map(([k, l]) => toggleRow(k, l)).join("");
-    html += sliderRow("st_bg", "Background", 0, 100, "%");
-    html += look("st");
   } else if (w === "relative") {
+    html += styleControls("rel");
     html += `<div class="section">Header</div>`;
     html += fieldRow("rel_head0", "Left", BOARD);
     html += fieldRow("rel_head1", "Middle", BOARD);
@@ -173,47 +182,39 @@ function renderSettings() {
     html += stepperRow("relative_count", "Nearby riders", 1, 8);
     html += `<div class="section">Columns</div>`;
     html += REL_COLS.map(([k, l]) => toggleRow(k, l)).join("");
-    html += sliderRow("rel_bg", "Background", 0, 100, "%");
-    html += look("rel");
   } else if (w === "map") {
+    html += styleControls("map");
     html += `<div class="section">On the map</div>`;
     html += MAP_TOGGLES.map(([k, l]) => toggleRow(k, l)).join("");
     html += fieldRow("map_dot", "Dot number", [["num", "Number"], ["pos", "Position"]]);
-    html += sliderRow("map_bg", "Background", 0, 100, "%");
-    html += look("map");
   } else if (w === "minimap") {
+    html += styleControls("mini");
     html += `<div class="section">On the minimap</div>`;
     html += MINI_TOGGLES.map(([k, l]) => toggleRow(k, l)).join("");
     html += fieldRow("mini_dot", "Dot number", [["num", "Number"], ["pos", "Position"]]);
     html += sliderRow("mini_zoom", "Zoom", 0, 100, "%");
-    html += sliderRow("mini_bg", "Background", 0, 100, "%");
-    html += look("mini");
   } else if (w === "radar") {
+    html += styleControls("radar", "Panel opacity");
     html += `<div class="section">Blind spots</div>`;
     html += toggleRow("radar_sides", "Riders beside you");
     html += toggleRow("radar_rear", "Riders behind you");
-    html += sliderRow("radar_bg", "Panel opacity", 0, 100, "%");
-    html += look("radar");
   } else if (w === "dash") {
+    html += styleControls("dash", "Panel opacity");
     html += toggleRow("dash_rev", "Rev indicator");
     html += `<div class="section">Footer</div>`;
     html += fieldRow("dash_left", "Left", DASH);
     html += fieldRow("dash_mid", "Middle", DASH);
     html += fieldRow("dash_right", "Right", DASH);
-    html += sliderRow("dash_bg", "Panel opacity", 0, 100, "%");
-    html += look("dash");
   } else if (w === "ticker") {
+    html += styleControls("ticker", "Panel opacity");
     html += toggleRow("ticker_title", "Track name");
     html += toggleRow("ticker_autoscroll", "Autoscroll");
     html += `<div class="section">Side info</div>`;
     html += fieldRow("ticker_left", "Left", BOARD);
     html += fieldRow("ticker_right", "Right", BOARD);
     html += stepperRow("ticker_count", "Riders shown", 3, 15);
-    html += sliderRow("ticker_bg", "Panel opacity", 0, 100, "%");
-    html += look("ticker");
   } else if (w === "sys") {
-    html += sliderRow("sys_bg", "Panel opacity", 0, 100, "%");
-    html += look("sys");
+    html += styleControls("sys", "Panel opacity");
   }
   html += snapGrid();
   settings.replaceChildren(el(html));

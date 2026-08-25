@@ -20,7 +20,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use crate::config::{
     update_config, with_config, BoardField, DashField, DotLabel, FontFamily, HudConfig, RelField,
-    SettingsKey, SnapAlign, StField, Units, WidgetId,
+    SettingsKey, SnapAlign, StField, TableText, Units, WidgetId,
 };
 use crate::render::{fill_rect, icon, measure, text, Fonts};
 
@@ -129,7 +129,15 @@ enum Hit {
     RadarSides,
     RadarRear,
     StBg,
+    StHl,
+    StTextOpen,
+    StTextWhite,
+    StTextBlack,
     RelBg,
+    RelHl,
+    RelTextOpen,
+    RelTextWhite,
+    RelTextBlack,
     MapBg,
     MiniBg,
     MiniZoom,
@@ -215,6 +223,8 @@ enum Drop {
     FontFamily,
     Units,
     SettingsKey,
+    StText,
+    RelText,
     DashFoot(u8),
     TickerFoot(u8),
     Info(InfoBar, u8),
@@ -552,7 +562,9 @@ fn is_slider(hit: Hit) -> bool {
     matches!(
         hit,
         Hit::StBg
+            | Hit::StHl
             | Hit::RelBg
+            | Hit::RelHl
             | Hit::MapBg
             | Hit::MiniBg
             | Hit::MiniZoom
@@ -605,7 +617,9 @@ fn apply_slide(hit: Hit, mx: f32, x: f32, w: f32, min: i32, max: i32) {
     let v = min + ((max - min) as f32 * t).round() as i32;
     update_config(|c| match hit {
         Hit::StBg => c.st_bg = v,
+        Hit::StHl => c.st_hl = v,
         Hit::RelBg => c.rel_bg = v,
+        Hit::RelHl => c.rel_hl = v,
         Hit::MapBg => c.map_bg = v,
         Hit::MiniBg => c.mini_bg = v,
         Hit::MiniZoom => c.mini_zoom = v,
@@ -779,6 +793,14 @@ fn click(p: (f32, f32)) {
         }
         Hit::UnitsOpen => {
             toggle_drop(Drop::Units);
+            return;
+        }
+        Hit::StTextOpen => {
+            toggle_drop(Drop::StText);
+            return;
+        }
+        Hit::RelTextOpen => {
+            toggle_drop(Drop::RelText);
             return;
         }
         Hit::SettingsKeyOpen => {
@@ -989,6 +1011,10 @@ fn click(p: (f32, f32)) {
         Hit::FontMontserrat => c.font_family = FontFamily::Montserrat,
         Hit::UnitsMetric => c.units = Units::Metric,
         Hit::UnitsImperial => c.units = Units::Imperial,
+        Hit::StTextWhite => c.st_text = TableText::White,
+        Hit::StTextBlack => c.st_text = TableText::Black,
+        Hit::RelTextWhite => c.rel_text = TableText::White,
+        Hit::RelTextBlack => c.rel_text = TableText::Black,
         Hit::SettingsKeyPick(key) => c.settings_key = key,
         Hit::DashFootPick(slot, field) => match slot {
             0 => c.dash_left = field,
@@ -1010,7 +1036,8 @@ fn click(p: (f32, f32)) {
         Hit::TickerInc => c.ticker_count = (c.ticker_count + 1).min(15),
         Hit::TabApp | Hit::TabFeedback | Hit::TabSt | Hit::TabRel | Hit::TabMap | Hit::TabMini | Hit::TabRadar | Hit::TabDash
         | Hit::TabTicker | Hit::TabSys | Hit::TabSector
-        | Hit::MapDotOpen | Hit::MiniDotOpen | Hit::FontOpen | Hit::UnitsOpen | Hit::SettingsKeyOpen
+        | Hit::MapDotOpen | Hit::MiniDotOpen | Hit::FontOpen | Hit::UnitsOpen | Hit::StTextOpen | Hit::RelTextOpen
+        | Hit::SettingsKeyOpen
         | Hit::DashFootOpen(_)
         | Hit::TickerFootOpen(_)
         | Hit::InfoOpen(_, _)
@@ -1020,7 +1047,7 @@ fn click(p: (f32, f32)) {
         | Hit::AutoUpdateOnLaunch | Hit::QuitApp | Hit::Uninstall
         | Hit::FbRate | Hit::FbBug | Hit::FbFeature | Hit::FbStar(_) | Hit::FbText | Hit::FbAttach | Hit::FbSend
         | Hit::StDrag(_) | Hit::RelDrag(_)
-        | Hit::StBg | Hit::RelBg | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg
+        | Hit::StBg | Hit::StHl | Hit::RelBg | Hit::RelHl | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg
         | Hit::StW(_) | Hit::RelW(_) | Hit::Font(_) => {}
     });
     if id == Hit::FeatureSector && !with_config(|c| c.sector_unlocked()) {
@@ -2082,6 +2109,28 @@ fn pane_standings(
     heading(px, fonts, x, y, "Standings", "Who is ahead and by how much");
     let mut y = y + 64.0;
     y = toggle_row(px, fonts, x, y, w, "Show on overlay", cfg.show_standings, Hit::StShow, hover, hits);
+    if !cfg.show_standings {
+        return y;
+    }
+    y = style_controls(px, fonts, x, y, w, WidgetId::Standings, cfg, "Background", cfg.st_bg, Hit::StBg, hover, hits);
+    y = slider_row(px, fonts, x, y, w, "Row highlight", cfg.st_hl, 0, 100, "%", Hit::StHl, hover, hits);
+    y = dropdown_row(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        "Text color",
+        cfg.st_text.label(),
+        open_drop == Some(Drop::StText),
+        Hit::StTextOpen,
+        &[
+            (Hit::StTextWhite, "White", cfg.st_text == TableText::White),
+            (Hit::StTextBlack, "Black", cfg.st_text == TableText::Black),
+        ],
+        hover,
+        hits,
+    );
     y = board_slots_section(px, fonts, x, y, w, "Header", InfoBar::StHead, cfg.st_head, open_drop, hover, hits);
     y = board_slots_section(px, fonts, x, y, w, "Footer", InfoBar::StFoot, cfg.st_foot, open_drop, hover, hits);
     y = stepper_row(px, fonts, x, y, w, "Rows", &cfg.standings_rows.to_string(), Hit::StDec, Hit::StInc, hover, hits);
@@ -2105,8 +2154,7 @@ fn pane_standings(
             hits,
         );
     }
-    y = slider_row(px, fonts, x, y, w, "Background", cfg.st_bg, 0, 100, "%", Hit::StBg, hover, hits);
-    look_section(px, fonts, x, y, w, WidgetId::Standings, cfg, hover, hits)
+    look_section(px, fonts, x, y, w, WidgetId::Standings, hover, hits)
 }
 
 fn pane_relative(
@@ -2124,6 +2172,28 @@ fn pane_relative(
     heading(px, fonts, x, y, "Relative", "Riders just ahead and behind you");
     let mut y = y + 64.0;
     y = toggle_row(px, fonts, x, y, w, "Show on overlay", cfg.show_relative, Hit::RelShow, hover, hits);
+    if !cfg.show_relative {
+        return y;
+    }
+    y = style_controls(px, fonts, x, y, w, WidgetId::Relative, cfg, "Background", cfg.rel_bg, Hit::RelBg, hover, hits);
+    y = slider_row(px, fonts, x, y, w, "Row highlight", cfg.rel_hl, 0, 100, "%", Hit::RelHl, hover, hits);
+    y = dropdown_row(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        "Text color",
+        cfg.rel_text.label(),
+        open_drop == Some(Drop::RelText),
+        Hit::RelTextOpen,
+        &[
+            (Hit::RelTextWhite, "White", cfg.rel_text == TableText::White),
+            (Hit::RelTextBlack, "Black", cfg.rel_text == TableText::Black),
+        ],
+        hover,
+        hits,
+    );
     y = board_slots_section(px, fonts, x, y, w, "Header", InfoBar::RelHead, cfg.rel_head, open_drop, hover, hits);
     y = board_slots_section(px, fonts, x, y, w, "Footer", InfoBar::RelFoot, cfg.rel_foot, open_drop, hover, hits);
     y = stepper_row(px, fonts, x, y, w, "Nearby riders", &cfg.relative_count.to_string(), Hit::RelDec, Hit::RelInc, hover, hits);
@@ -2147,8 +2217,7 @@ fn pane_relative(
             hits,
         );
     }
-    y = slider_row(px, fonts, x, y, w, "Background", cfg.rel_bg, 0, 100, "%", Hit::RelBg, hover, hits);
-    look_section(px, fonts, x, y, w, WidgetId::Relative, cfg, hover, hits)
+    look_section(px, fonts, x, y, w, WidgetId::Relative, hover, hits)
 }
 
 fn pane_map(
@@ -2165,6 +2234,10 @@ fn pane_map(
     heading(px, fonts, x, y, "Map", "Where you and others are on track");
     let mut y = y + 64.0;
     y = toggle_row(px, fonts, x, y, w, "Show on overlay", cfg.show_map, Hit::MapShow, hover, hits);
+    if !cfg.show_map {
+        return y;
+    }
+    y = style_controls(px, fonts, x, y, w, WidgetId::Map, cfg, "Background", cfg.map_bg, Hit::MapBg, hover, hits);
     y = section(px, fonts, x, y, "On the map");
     y = toggle_row(px, fonts, x, y, w, "Other riders", cfg.map_others, Hit::MapOthers, hover, hits);
     y = toggle_row(px, fonts, x, y, w, "Start / finish", cfg.map_sf, Hit::MapSf, hover, hits);
@@ -2189,8 +2262,7 @@ fn pane_map(
         hover,
         hits,
     );
-    y = slider_row(px, fonts, x, y, w, "Background", cfg.map_bg, 0, 100, "%", Hit::MapBg, hover, hits);
-    look_section(px, fonts, x, y, w, WidgetId::Map, cfg, hover, hits)
+    look_section(px, fonts, x, y, w, WidgetId::Map, hover, hits)
 }
 
 fn pane_minimap(
@@ -2207,6 +2279,10 @@ fn pane_minimap(
     heading(px, fonts, x, y, "Minimap", "Circular track with numbered riders");
     let mut y = y + 64.0;
     y = toggle_row(px, fonts, x, y, w, "Show on overlay", cfg.show_minimap, Hit::MiniShow, hover, hits);
+    if !cfg.show_minimap {
+        return y;
+    }
+    y = style_controls(px, fonts, x, y, w, WidgetId::Minimap, cfg, "Background", cfg.mini_bg, Hit::MiniBg, hover, hits);
     y = section(px, fonts, x, y, "On the minimap");
     y = toggle_row(px, fonts, x, y, w, "Other riders", cfg.mini_others, Hit::MiniOthers, hover, hits);
     y = toggle_row(px, fonts, x, y, w, "Start / finish", cfg.mini_sf, Hit::MiniSf, hover, hits);
@@ -2232,8 +2308,7 @@ fn pane_minimap(
         hits,
     );
     y = slider_row(px, fonts, x, y, w, "Zoom", cfg.mini_zoom, 0, 100, "%", Hit::MiniZoom, hover, hits);
-    y = slider_row(px, fonts, x, y, w, "Background", cfg.mini_bg, 0, 100, "%", Hit::MiniBg, hover, hits);
-    look_section(px, fonts, x, y, w, WidgetId::Minimap, cfg, hover, hits)
+    look_section(px, fonts, x, y, w, WidgetId::Minimap, hover, hits)
 }
 
 fn pane_radar(
@@ -2249,11 +2324,14 @@ fn pane_radar(
     heading(px, fonts, x, y, "Radar", "Riders beside and behind you");
     let mut y = y + 64.0;
     y = toggle_row(px, fonts, x, y, w, "Show on overlay", cfg.show_radar, Hit::RadarShow, hover, hits);
+    if !cfg.show_radar {
+        return y;
+    }
+    y = style_controls(px, fonts, x, y, w, WidgetId::Radar, cfg, "Panel opacity", cfg.radar_bg, Hit::RadarBg, hover, hits);
     y = section(px, fonts, x, y, "On the radar");
     y = toggle_row(px, fonts, x, y, w, "Side proximity", cfg.radar_sides, Hit::RadarSides, hover, hits);
     y = toggle_row(px, fonts, x, y, w, "Rear proximity", cfg.radar_rear, Hit::RadarRear, hover, hits);
-    y = slider_row(px, fonts, x, y, w, "Panel opacity", cfg.radar_bg, 0, 100, "%", Hit::RadarBg, hover, hits);
-    look_section(px, fonts, x, y, w, WidgetId::Radar, cfg, hover, hits)
+    look_section(px, fonts, x, y, w, WidgetId::Radar, hover, hits)
 }
 
 fn pane_dash(
@@ -2270,13 +2348,16 @@ fn pane_dash(
     heading(px, fonts, x, y, "Dash", "Gear, speed, and footer stats");
     let mut y = y + 64.0;
     y = toggle_row(px, fonts, x, y, w, "Show on overlay", cfg.show_dash, Hit::DashShow, hover, hits);
+    if !cfg.show_dash {
+        return y;
+    }
+    y = style_controls(px, fonts, x, y, w, WidgetId::Dash, cfg, "Panel opacity", cfg.dash_bg, Hit::DashBg, hover, hits);
     y = toggle_row(px, fonts, x, y, w, "Rev indicator", cfg.dash_rev, Hit::DashRev, hover, hits);
     y = section(px, fonts, x, y, "Footer");
     y = dash_field_row(px, fonts, x, y, w, "Left", cfg.dash_left, 0, open_drop, hover, hits);
     y = dash_field_row(px, fonts, x, y, w, "Middle", cfg.dash_mid, 1, open_drop, hover, hits);
     y = dash_field_row(px, fonts, x, y, w, "Right", cfg.dash_right, 2, open_drop, hover, hits);
-    y = slider_row(px, fonts, x, y, w, "Panel opacity", cfg.dash_bg, 0, 100, "%", Hit::DashBg, hover, hits);
-    look_section(px, fonts, x, y, w, WidgetId::Dash, cfg, hover, hits)
+    look_section(px, fonts, x, y, w, WidgetId::Dash, hover, hits)
 }
 
 fn pane_ticker(
@@ -2293,14 +2374,17 @@ fn pane_ticker(
     heading(px, fonts, x, y, "Horizontal Standings", "Your name is highlighted in the field");
     let mut y = y + 64.0;
     y = toggle_row(px, fonts, x, y, w, "Show on overlay", cfg.show_ticker, Hit::TickerShow, hover, hits);
+    if !cfg.show_ticker {
+        return y;
+    }
+    y = style_controls(px, fonts, x, y, w, WidgetId::Ticker, cfg, "Panel opacity", cfg.ticker_bg, Hit::TickerBg, hover, hits);
     y = toggle_row(px, fonts, x, y, w, "Track name", cfg.ticker_title, Hit::TickerTitle, hover, hits);
     y = toggle_row(px, fonts, x, y, w, "Autoscroll", cfg.ticker_autoscroll, Hit::TickerAutoscroll, hover, hits);
     y = section(px, fonts, x, y, "Side info");
     y = ticker_field_row(px, fonts, x, y, w, "Left", cfg.ticker_left, 0, open_drop, hover, hits);
     y = ticker_field_row(px, fonts, x, y, w, "Right", cfg.ticker_right, 1, open_drop, hover, hits);
     y = stepper_row(px, fonts, x, y, w, "Riders shown", &cfg.ticker_count.to_string(), Hit::TickerDec, Hit::TickerInc, hover, hits);
-    y = slider_row(px, fonts, x, y, w, "Panel opacity", cfg.ticker_bg, 0, 100, "%", Hit::TickerBg, hover, hits);
-    look_section(px, fonts, x, y, w, WidgetId::Ticker, cfg, hover, hits)
+    look_section(px, fonts, x, y, w, WidgetId::Ticker, hover, hits)
 }
 
 fn pane_sys(
@@ -2316,8 +2400,11 @@ fn pane_sys(
     heading(px, fonts, x, y, "Systems", "CPU, memory, FPS, network, and per-app load");
     let mut y = y + 64.0;
     y = toggle_row(px, fonts, x, y, w, "Show on overlay", cfg.show_sys, Hit::SysShow, hover, hits);
-    y = slider_row(px, fonts, x, y, w, "Panel opacity", cfg.sys_bg, 0, 100, "%", Hit::SysBg, hover, hits);
-    look_section(px, fonts, x, y, w, WidgetId::Sys, cfg, hover, hits)
+    if !cfg.show_sys {
+        return y;
+    }
+    y = style_controls(px, fonts, x, y, w, WidgetId::Sys, cfg, "Panel opacity", cfg.sys_bg, Hit::SysBg, hover, hits);
+    look_section(px, fonts, x, y, w, WidgetId::Sys, hover, hits)
 }
 
 fn pane_sector(
@@ -2333,8 +2420,11 @@ fn pane_sector(
     heading(px, fonts, x, y, "Sectors", "Split times and delta vs your best");
     let mut y = y + 64.0;
     y = toggle_row(px, fonts, x, y, w, "Show on overlay", cfg.show_sector, Hit::SectorShow, hover, hits);
-    y = slider_row(px, fonts, x, y, w, "Panel opacity", cfg.sector_bg, 0, 100, "%", Hit::SectorBg, hover, hits);
-    look_section(px, fonts, x, y, w, WidgetId::Sector, cfg, hover, hits)
+    if !cfg.show_sector {
+        return y;
+    }
+    y = style_controls(px, fonts, x, y, w, WidgetId::Sector, cfg, "Panel opacity", cfg.sector_bg, Hit::SectorBg, hover, hits);
+    look_section(px, fonts, x, y, w, WidgetId::Sector, hover, hits)
 }
 
 fn ticker_field_row(
@@ -2484,7 +2574,7 @@ fn row_card(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, hot: bool) {
     fill_round(px, x, y, w, h, 10.0, fill);
 }
 
-fn look_section(
+fn style_controls(
     px: &mut Pixmap,
     fonts: &Fonts,
     x: f32,
@@ -2492,6 +2582,9 @@ fn look_section(
     w: f32,
     id: WidgetId,
     cfg: &HudConfig,
+    bg_label: &str,
+    bg: i32,
+    bg_hit: Hit,
     hover: Option<Hit>,
     hits: &mut Vec<HitBox>,
 ) -> f32 {
@@ -2510,8 +2603,21 @@ fn look_section(
         hover,
         hits,
     );
-    y = toggle_row(px, fonts, x, y, w, "Bold text", cfg.bold(id), Hit::Bold(id), hover, hits);
-    y = section(px, fonts, x, y, "Position on screen");
+    y = slider_row(px, fonts, x, y, w, bg_label, bg, 0, 100, "%", bg_hit, hover, hits);
+    toggle_row(px, fonts, x, y, w, "Bold text", cfg.bold(id), Hit::Bold(id), hover, hits)
+}
+
+fn look_section(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    x: f32,
+    y: f32,
+    w: f32,
+    id: WidgetId,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+) -> f32 {
+    let mut y = section(px, fonts, x, y, "Position on screen");
     let snap_h = 224.0;
     row_card(px, x, y, w, snap_h, false);
     text(px, fonts, "Snap to the monitor this widget is on. Size stays the same.", 12.0, x + 16.0, y + 14.0, muted(), false);

@@ -4,7 +4,7 @@ use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Mutex;
 
-use crate::config::{BoardField, DashField, DotLabel, FontFamily, HudConfig, RelField, StField};
+use crate::config::{BoardField, DashField, DotLabel, FontFamily, HudConfig, RelField, StField, TableText};
 use crate::shm::{cstr, Snapshot};
 pub use crate::race_store::{ClockSample, clock_sample};
 // Re-export clock / field helpers for `render_tests` (`use super::*`).
@@ -615,10 +615,10 @@ fn col_slots<T: Copy>(
     let inner = (avail - pad * 2.0).max(0.0);
     let used: f32 = widths.iter().sum::<f32>() + gaps;
     let leftover = inner - used;
-    let flex = cols.iter().position(|&c| is_flex(c)).unwrap_or(cols.len() - 1);
-    if leftover > 0.5 {
-        widths[flex] += leftover;
-    } else if leftover < -0.5 {
+    // Honor configured widths when they fit. Only shrink on overflow so width
+    // sliders (especially Name) actually change how wide each column draws.
+    if leftover < -0.5 {
+        let flex = cols.iter().position(|&c| is_flex(c)).unwrap_or(cols.len() - 1);
         let mut remain = -leftover;
         let shrink = (widths[flex] - MIN_W).max(0.0).min(remain);
         widths[flex] -= shrink;
@@ -651,16 +651,20 @@ fn fill_focus_row(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, c: Color) {
     }
 }
 
-fn you_row_bg() -> Color {
-    Color::from_rgba8(196, 132, 36, 88)
+fn scale_a(opacity_pct: i32) -> u8 {
+    ((255u32 * opacity_pct.clamp(0, 100) as u32) / 100).min(255) as u8
 }
 
-fn lapping_row_bg() -> Color {
-    Color::from_rgba8(59, 130, 246, 96)
+fn you_row_bg(opacity_pct: i32) -> Color {
+    Color::from_rgba8(196, 132, 36, scale_a(opacity_pct))
 }
 
-fn lapped_row_bg() -> Color {
-    Color::from_rgba8(239, 68, 68, 96)
+fn lapping_row_bg(opacity_pct: i32) -> Color {
+    Color::from_rgba8(59, 130, 246, scale_a(opacity_pct))
+}
+
+fn lapped_row_bg(opacity_pct: i32) -> Color {
+    Color::from_rgba8(239, 68, 68, scale_a(opacity_pct))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -781,11 +785,11 @@ fn rider_dot_col(s: &Snapshot, race_num: i32) -> Color {
     }
 }
 
-fn lap_row_bg(rel: LapRel) -> Option<Color> {
+fn lap_row_bg(rel: LapRel, opacity_pct: i32) -> Option<Color> {
     match rel {
         LapRel::Same => None,
-        LapRel::LappingMe => Some(lapping_row_bg()),
-        LapRel::LappedByMe => Some(lapped_row_bg()),
+        LapRel::LappingMe => Some(lapping_row_bg(opacity_pct)),
+        LapRel::LappedByMe => Some(lapped_row_bg(opacity_pct)),
     }
 }
 
@@ -919,9 +923,28 @@ fn ink_on(c: Color) -> Color {
     }
 }
 
+fn table_ink(mode: TableText) -> (Color, Color, Color, Color) {
+    match mode {
+        TableText::White => (
+            text_col(),
+            Color::from_rgba8(210, 210, 216, 255),
+            Color::from_rgba8(110, 110, 116, 255),
+            Color::from_rgba8(160, 160, 168, 220),
+        ),
+        TableText::Black => (
+            Color::from_rgba8(16, 16, 18, 255),
+            Color::from_rgba8(48, 48, 54, 255),
+            Color::from_rgba8(90, 90, 98, 255),
+            Color::from_rgba8(64, 64, 72, 220),
+        ),
+    }
+}
+
 const BIKE_BAR_W: f32 = 5.0;
 const BIKE_BAR_SKEW: f32 = 3.0;
 const BIKE_BAR_PAD: f32 = 5.0;
+const BIKE_PILL_PAD_X: f32 = 10.0;
+const BIKE_PILL_PAD_Y: f32 = 4.0;
 
 fn bike_bar_end(pos_cx: f32, pos_cw: f32) -> f32 {
     pos_cx + pos_cw + 1.0 + BIKE_BAR_W + BIKE_BAR_SKEW
@@ -929,6 +952,37 @@ fn bike_bar_end(pos_cx: f32, pos_cw: f32) -> f32 {
 
 fn name_left_pad(cx: f32, bar_end: Option<f32>) -> f32 {
     bar_end.map(|end| (end + BIKE_BAR_PAD - cx).max(0.0)).unwrap_or(0.0)
+}
+
+fn draw_bike_pill(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    label: &str,
+    cx: f32,
+    cy: f32,
+    cw: f32,
+    row_h: f32,
+    accent_c: Color,
+) {
+    let font_sz = 9.0;
+    let max_inner = (cw - BIKE_PILL_PAD_X * 2.0).max(8.0);
+    let badge = ellipsize(fonts, label, font_sz, max_inner);
+    let tw = measure(fonts, &badge, font_sz);
+    let bw = (tw + BIKE_PILL_PAD_X * 2.0).min(cw);
+    let bh = font_sz + BIKE_PILL_PAD_Y * 2.0;
+    let bx = cx + ((cw - bw) * 0.5).max(0.0);
+    let by = cy + ((row_h - bh) * 0.5).max(0.0);
+    fill_round(px, bx, by, bw, bh, 4.0, accent_c);
+    text(
+        px,
+        fonts,
+        &badge,
+        font_sz,
+        bx + BIKE_PILL_PAD_X,
+        by + BIKE_PILL_PAD_Y - 1.0,
+        ink_on(accent_c),
+        false,
+    );
 }
 
 fn fill_skew(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, skew: f32, c: Color) {
@@ -1562,7 +1616,7 @@ fn draw_standings(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig,
     let cols = cfg.standings_cols();
     let pad = 8.0;
     let slots = col_slots(x, pad, w, &cols, |c| c.width(cfg) as f32, |c| matches!(c, StField::Name));
-    let hdr_c = Color::from_rgba8(160, 160, 168, 220);
+    let (ink, ink_dim, out_c, hdr_c) = table_ink(cfg.st_text);
     let bar_end = slots
         .iter()
         .find(|(c, _, _)| *c == StField::Pos)
@@ -1579,9 +1633,8 @@ fn draw_standings(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig,
             .min()
             .unwrap_or(0)
     };
-    let you_bg = you_row_bg();
+    let you_bg = you_row_bg(cfg.st_hl);
     let stripe_c = Color::from_rgba8(0, 0, 0, ((a as u16 * 70) / 255) as u8);
-    let out_c = Color::from_rgba8(110, 110, 116, 255);
 
     let mut cy = y + head_h;
     let track = {
@@ -1622,8 +1675,8 @@ fn draw_standings(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig,
             fill_focus_row(px, x, cy, w, row_h, you_bg);
         }
 
-        let name_c = if out { out_c } else { text_col() };
-        let dim = if out { out_c } else { Color::from_rgba8(210, 210, 216, 255) };
+        let name_c = if out { out_c } else { ink };
+        let dim = if out { out_c } else { ink_dim };
         let status = standing_status(row);
         for (kind, cx, cw) in &slots {
             if *kind == StField::Pos {
@@ -1675,10 +1728,7 @@ fn draw_standings(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig,
             };
             let pad = if *kind == StField::Name { name_left_pad(*cx, bar_end) } else { 0.0 };
             if *kind == StField::Bike && !val.is_empty() {
-                let badge = ellipsize(fonts, &val, 9.0, (*cw - 4.0).max(12.0));
-                let bw = (measure(fonts, &badge, 9.0) + 10.0).min(*cw);
-                fill_round(px, *cx, cy + 5.0, bw, 13.0, 3.0, accent_c);
-                text(px, fonts, &badge, 9.0, *cx + 5.0, cy + 6.0, ink_on(accent_c), false);
+                draw_bike_pill(px, fonts, &val, *cx, cy, *cw, row_h, accent_c);
             } else {
                 col_text(px, fonts, &val, 12.0, *cx + pad, (*cw - pad).max(8.0), cy + 4.0, color, right);
             }
@@ -2347,7 +2397,7 @@ fn draw_ticker_card(
     let is_focus = row.race_num == focus.race_num;
     let out = standing_status(row).is_some() && standing_status(row) != Some("PIT");
     if is_focus {
-        fill_round(px, x, y, w, h, 3.0, you_row_bg());
+        fill_round(px, x, y, w, h, 3.0, you_row_bg(100));
     }
     let pos_s = (h * 0.38).clamp(14.0, 20.0);
     let pos_y = y + (h - pos_s) * 0.5;
@@ -3186,6 +3236,63 @@ fn draw_checkered_banner(px: &mut Pixmap, fonts: &Fonts, band: &Path, ox: f32, t
     }
 }
 
+/// Sides and bottom of the dash wrap for white flag — diagonal stripes, same frame as checkered.
+fn draw_white_wrap(px: &mut Pixmap, d: &DashLay, border: f32, ox: f32, ow: f32) {
+    let Some(frame) = dash_wrap_frame_path(d, border) else {
+        return;
+    };
+    let bg = Color::from_rgba8(248, 248, 250, 255);
+    let stripe = Color::from_rgba8(210, 210, 214, 255);
+    fill_path_rule(px, &frame, bg, FillRule::EvenOdd, None);
+    let clip = Mask::new(px.width(), px.height()).map(|mut m| {
+        m.fill_path(&frame, FillRule::EvenOdd, true, Transform::identity());
+        m
+    });
+    draw_diag_stripes_masked(px, ox, d.y, border, d.h, stripe, clip.as_ref());
+    draw_diag_stripes_masked(px, d.x + d.w, d.y, border, d.h, stripe, clip.as_ref());
+    draw_diag_stripes_masked(px, ox, d.y + d.h, ow, border, stripe, clip.as_ref());
+}
+
+/// Top banner: stripes across most of the band, fading to a white plaque behind the caption.
+fn draw_white_banner(px: &mut Pixmap, fonts: &Fonts, band: &Path, ox: f32, top_y: f32, ow: f32, top_h: f32, grow: f32) {
+    let white = Color::from_rgba8(248, 248, 250, 255);
+    let stripe = Color::from_rgba8(210, 210, 214, 255);
+    let ink = Color::from_rgba8(16, 16, 18, 255);
+    let label = "WHITE FLAG";
+    fill_path(px, band, white);
+    let clip = Mask::new(px.width(), px.height()).map(|mut m| {
+        m.fill_path(band, FillRule::Winding, true, Transform::identity());
+        m
+    });
+    draw_diag_stripes_masked(px, ox, top_y, ow, top_h, stripe, clip.as_ref());
+    let pad = (top_h * 0.22).clamp(5.0, 8.0);
+    let white_w = flag_caption_group_w(fonts, top_h, grow.max(0.42), label) + pad * 2.0;
+    let fade = 0.05;
+    let t0 = ((ow - white_w) * 0.5 / ow).clamp(fade + 0.02, 0.46);
+    if let Some(shader) = LinearGradient::new(
+        SkPoint::from_xy(ox, top_y),
+        SkPoint::from_xy(ox + ow, top_y),
+        vec![
+            GradientStop::new(0.0, Color::from_rgba8(248, 248, 250, 0)),
+            GradientStop::new((t0 - fade).max(0.0), Color::from_rgba8(248, 248, 250, 0)),
+            GradientStop::new(t0, Color::from_rgba8(248, 248, 250, 255)),
+            GradientStop::new(1.0 - t0, Color::from_rgba8(248, 248, 250, 255)),
+            GradientStop::new((1.0 - t0 + fade).min(1.0), Color::from_rgba8(248, 248, 250, 0)),
+            GradientStop::new(1.0, Color::from_rgba8(248, 248, 250, 0)),
+        ],
+        SpreadMode::Pad,
+        Transform::identity(),
+    ) {
+        let mut paint = Paint::default();
+        paint.shader = shader;
+        paint.anti_alias = true;
+        px.fill_path(band, &paint, FillRule::Winding, Transform::identity(), clip.as_ref());
+    }
+    if grow > 0.42 {
+        draw_flag_caption(px, fonts, ox, top_y, ow, top_h, grow, label, ink);
+    }
+}
+
 fn draw_dash_wrap(px: &mut Pixmap, fonts: &Fonts, d: &DashLay) {
     if d.flag == DashFlag::None || d.flag_grow <= 0.02 {
         return;
@@ -3197,58 +3304,15 @@ fn draw_dash_wrap(px: &mut Pixmap, fonts: &Fonts, d: &DashLay) {
     let top_y = d.y - top_h;
     let top_cut = d.cut.min(top_h * 0.9);
 
-    if d.flag == DashFlag::White {
-        let bg = Color::from_rgba8(244, 244, 246, 255);
-        let stripe = Color::from_rgba8(210, 210, 214, 255);
-        if let Some(frame) = dash_wrap_frame_path(d, border) {
-            fill_path_rule(px, &frame, bg, FillRule::EvenOdd, None);
-        }
-        let Some(band) = dash_flag_top_path(ox, top_y, ow, top_h + 0.75, top_cut) else {
-            return;
-        };
-        fill_path(px, &band, bg);
-        let clip = Mask::new(px.width(), px.height()).map(|mut m| {
-            m.fill_path(&band, FillRule::Winding, true, Transform::identity());
-            m
-        });
-        let stripe_w = (ow * 0.16).min(28.0);
-        draw_diag_stripes_masked(px, ox, top_y, stripe_w, top_h, stripe, clip.as_ref());
-        draw_diag_stripes_masked(
-            px,
-            ox + ow - stripe_w,
-            top_y,
-            stripe_w,
-            top_h,
-            stripe,
-            clip.as_ref(),
-        );
-        if let Some(r) = rr(
-            ox + stripe_w,
-            top_y,
-            (ow - stripe_w * 2.0).max(0.0),
-            top_h,
-        ) {
-            fill_rect(px, r, bg);
-        }
-        if grow > 0.42 {
-            draw_flag_caption(
-                px,
-                fonts,
-                ox,
-                top_y,
-                ow,
-                top_h,
-                grow,
-                "WHITE FLAG",
-                Color::from_rgba8(16, 16, 18, 255),
-            );
-        }
-        return;
-    }
-
     let Some(band) = dash_flag_top_path(ox, top_y, ow, top_h + 0.75, top_cut) else {
         return;
     };
+    if d.flag == DashFlag::White {
+        draw_white_wrap(px, d, border, ox, ow);
+        draw_white_banner(px, fonts, &band, ox, top_y, ow, top_h, grow);
+        return;
+    }
+
     draw_checkered_wrap(px, d, border, ox, ow);
     draw_checkered_banner(px, fonts, &band, ox, top_y, ow, top_h, grow);
 }
@@ -3421,7 +3485,7 @@ fn draw_relative(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, 
     let cols = cfg.relative_cols();
     let pad = 8.0;
     let slots = col_slots(x, pad, w, &cols, |c| c.width(cfg) as f32, |c| matches!(c, RelField::Name));
-    let hdr_c = Color::from_rgba8(160, 160, 168, 220);
+    let (ink, ink_dim, out_c, hdr_c) = table_ink(cfg.rel_text);
     let bar_end = slots
         .iter()
         .find(|(c, _, _)| *c == RelField::Pos)
@@ -3440,9 +3504,8 @@ fn draw_relative(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, 
             .min()
             .unwrap_or(0)
     };
-    let you_bg = you_row_bg();
+    let you_bg = you_row_bg(cfg.rel_hl);
     let stripe_c = Color::from_rgba8(0, 0, 0, ((a as u16 * 70) / 255) as u8);
-    let out_c = Color::from_rgba8(110, 110, 116, 255);
 
     let mut cy = y + head_h;
     let track = {
@@ -3490,12 +3553,12 @@ fn draw_relative(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, 
             || st.is_some_and(|r| r.crashed != 0 || matches!(r.state, 1 | 3 | 4));
         if is_self {
             fill_focus_row(px, x, cy, w, row_h, you_bg);
-        } else if let Some(bg) = lap_row_bg(lap_rel(s, rider.race_num)) {
+        } else if let Some(bg) = lap_row_bg(lap_rel(s, rider.race_num), cfg.rel_hl) {
             fill_focus_row(px, x, cy, w, row_h, bg);
         }
 
-        let name_c = if out { out_c } else { text_col() };
-        let dim = if out { out_c } else { Color::from_rgba8(210, 210, 216, 255) };
+        let name_c = if out { out_c } else { ink };
+        let dim = if out { out_c } else { ink_dim };
         let pos = st.map(|r| r.position).unwrap_or(0);
         let best = st.map(|r| r.best_lap_ms).unwrap_or(0);
         let last_ms = if st.map(|r| r.last_lap_ms).unwrap_or(0) > 0 {
@@ -3569,10 +3632,7 @@ fn draw_relative(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, 
             };
             let pad = if *kind == RelField::Name { name_left_pad(*cx, bar_end) } else { 0.0 };
             if *kind == RelField::Bike && !val.is_empty() {
-                let badge = ellipsize(fonts, &val, 9.0, (*cw - 4.0).max(12.0));
-                let bw = (measure(fonts, &badge, 9.0) + 10.0).min(*cw);
-                fill_round(px, *cx, cy + 5.0, bw, 13.0, 3.0, accent_c);
-                text(px, fonts, &badge, 9.0, *cx + 5.0, cy + 6.0, ink_on(accent_c), false);
+                draw_bike_pill(px, fonts, &val, *cx, cy, *cw, row_h, accent_c);
             } else {
                 col_text(px, fonts, &val, 12.0, *cx + pad, (*cw - pad).max(8.0), cy + 4.0, color, right);
             }
@@ -4391,30 +4451,6 @@ fn radar_blip_color(heat: f32) -> Color {
     Color::from_rgba8(r, g, b, a)
 }
 
-fn draw_radar_wedge(px: &mut Pixmap, ox: f32, oy: f32, sx: f32, sy: f32, left: bool, a: u8) {
-    let sign = if left { -1.0 } else { 1.0 };
-    let pts = [
-        (0.7 * sign, -0.5),
-        (RADAR_LAT * sign, -1.2),
-        (RADAR_LAT * sign, -RADAR_FWD_REAR),
-        (0.35 * sign, -RADAR_FWD_REAR),
-    ];
-    let mut pb = PathBuilder::new();
-    let (x0, y0) = radar_to_screen(pts[0].1, pts[0].0, ox, oy, sx, sy);
-    pb.move_to(x0, y0);
-    for (lat, fwd) in pts.iter().skip(1) {
-        let (x, y) = radar_to_screen(*fwd, *lat, ox, oy, sx, sy);
-        pb.line_to(x, y);
-    }
-    pb.close();
-    if let Some(path) = pb.finish() {
-        let mut p = Paint::default();
-        p.set_color(Color::from_rgba8(255, 168, 64, a));
-        p.anti_alias = true;
-        px.fill_path(&path, &p, FillRule::Winding, Transform::identity(), None);
-    }
-}
-
 fn draw_radar(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32, age: f32) {
     let r = cfg.radar;
     let x = r.x * sw;
@@ -4434,14 +4470,6 @@ fn draw_radar(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw:
     let oy = y + pad + usable_h * radar_you_frac();
     let sx = ((w * 0.5 - pad) / RADAR_LAT).max(0.5);
     let sy = (usable_h / (RADAR_FWD_AHEAD + RADAR_FWD_REAR)).max(0.5);
-
-    let wedge_a = if a > 0 {
-        ((a as u16 * 48) / 255).max(18) as u8
-    } else {
-        28
-    };
-    draw_radar_wedge(px, ox, oy, sx, sy, true, wedge_a);
-    draw_radar_wedge(px, ox, oy, sx, sy, false, wedge_a);
 
     let bw = (size * 0.09).max(7.0);
     let bh = (size * 0.20).max(14.0);

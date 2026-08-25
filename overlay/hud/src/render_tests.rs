@@ -376,7 +376,7 @@ fn col_right(slots: &[(StField, f32, f32)]) -> f32 {
 }
 
 #[test]
-fn table_columns_fill_the_row_when_fields_change() {
+fn table_column_widths_follow_settings_when_they_fit() {
     let pad = 8.0;
     let avail = 400.0;
     let width = |c: StField| match c {
@@ -396,11 +396,26 @@ fn table_columns_fill_the_row_when_fields_change() {
         width,
         flex,
     );
-    assert!((col_right(&few) - (avail - pad)).abs() < 0.51);
-    assert!((col_right(&many) - (avail - pad)).abs() < 0.51);
     let name_few = few.iter().find(|(c, _, _)| *c == StField::Name).unwrap().2;
     let name_many = many.iter().find(|(c, _, _)| *c == StField::Name).unwrap().2;
-    assert!(name_few > name_many);
+    assert!((name_few - 80.0).abs() < 0.01);
+    assert!((name_many - 80.0).abs() < 0.01);
+    assert!((few[0].2 - 26.0).abs() < 0.01);
+    assert!((many.iter().find(|(c, _, _)| *c == StField::Gap).unwrap().2 - 58.0).abs() < 0.01);
+
+    let wide_name = |c: StField| match c {
+        StField::Name => 140.0,
+        _ => width(c),
+    };
+    let grown = col_slots(0.0, pad, avail, &[StField::Pos, StField::Name, StField::Gap], wide_name, flex);
+    let name_grown = grown.iter().find(|(c, _, _)| *c == StField::Name).unwrap().2;
+    assert!((name_grown - 140.0).abs() < 0.01);
+
+    let tight = col_slots(0.0, pad, 120.0, &[StField::Pos, StField::Name, StField::Gap], width, flex);
+    let name_tight = tight.iter().find(|(c, _, _)| *c == StField::Name).unwrap().2;
+    assert!(name_tight < 80.0);
+    assert!(name_tight >= 18.0);
+    assert!((col_right(&tight) - (120.0 - pad)).abs() < 0.51);
 }
 
 #[test]
