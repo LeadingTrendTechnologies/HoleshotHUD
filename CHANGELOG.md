@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.14
+
+No console window when you start the overlay.
+
+### Overlay
+
+- Launching from the desktop or Start menu no longer opens a black terminal. That was left on for F9 dump logging in 0.1.12 and rode through 0.1.13
+
 ## 0.1.13
 
 Live race order, an update banner when auto-update is off, flag run-in polish, and a refreshed web demo.
