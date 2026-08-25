@@ -11,7 +11,7 @@ Full-track outline in world XZ with rider dots. Settings subtitle: “Where you 
 
 ## Data
 
-`poly[]` + `poly_count`, rider XZ + yaw, local XZ + velocity (for interpolation), `sf_meters`, standings for position labels and lapping colors.
+`poly[]` + `poly_count`, rider XZ + yaw, local XZ + velocity (for interpolation), `sf_meters`, `RaceStore` for position labels and lapping colors.
 
 Local marker is predicted: `local + vel * age` so it stays smooth between SHM ticks.
 
@@ -29,11 +29,14 @@ Toggles: other riders, start/finish, track arrows, leader crown, nearest ahead/b
 
 - Do not flash the track blank when segments are sparse; the cache and polyline close path are what stopped that (0.1.0).
 - Lapping color is **not** “anyone a lap up is blue”. They must also be behind you and inside `catch_span_m`.
+- Dot **Position** labels, leader crown and the nearest ahead / behind rings use live `RaceStore` rank during a race (`standing_pos` / `leader_num` prefer `live_position` / `live_leader`). See [live race order](../live-order.md).
 - No blue/red lapping dots in warmup; `lap_rel` is `Same` until the race starts.
 - Map uses snapshot rect `s.map` (copied from config), not only `cfg.map` at draw time.
 
 ## Change log
 
+- 2026-08-25 — Crown, nearest ahead / behind rings and dot position labels move with an on-track pass: `standing_pos` / `leader_num` read the live order first. Passing for the lead moves the crown to your own dot on the same frame.
+- 2026-08-24 — Position labels and leader crown use live `RaceStore` rank during a race.
 - 0.1.0 — Minimap no longer flashes blank on sparse segments (same poly pipeline the map uses).
 - 0.1.4 — Other riders default to dark slate + white number. Blue = lap ahead and closing from behind. Red = you are a lap ahead and closing on them.
 - 0.1.8 — Hidden until **Show on overlay**.

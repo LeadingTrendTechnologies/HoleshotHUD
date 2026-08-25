@@ -25,10 +25,13 @@ Toggles match Map, plus **Zoom**. Default background 0.
 
 - Sparse centerline used to blank the widget; keep drawing with whatever poly exists (0.1.0).
 - Same lapping color rules as Map. Do not invent a second palette. Off in warmup, same as Map.
+- Position labels, leader crown and ahead / behind rings use live `RaceStore` rank during a race (same as Map). See [live race order](../live-order.md).
 - When live, keep north-up (along-track forward = up). Do not rotate the circle with bike roll/yaw as a radar.
 
 ## Change log
 
+- 2026-08-25 — Shares the Map's live-order marks: crown and ahead / behind rings follow a pass immediately.
+- 2026-08-24 — Position labels and leader crown use live `RaceStore` rank during a race.
 - 0.1.0 — No blank flash on sparse track segments.
 - 0.1.4 — Slate / blue / red rider dots (lapping + closing only).
 - 0.1.8 — Hidden until **Show on overlay**.

@@ -14,19 +14,21 @@ pub(crate) use crate::race_store::{
     focus_standing, format_countdown, format_gap, format_lap, format_session_clock,
     i_finished, note_laps_to_run,
     interval_text, interval_text_from_row, is_lap_race, is_warmup, lapped, laps_done, laps_left,
-    leader_finished, leader_num_laps, local_overtime_done, local_overtime_taken, moving,
+    leader_finished, leader_num_laps, live_leader, live_position, local_overtime_done,
+    local_overtime_taken, moving, norm_lap_pos as norm_track_pos,
     overtime_active, prestart, race_lap, race_laps_left_text, race_over_for_me,
     race_progress_text, reset_session_clock_track, rider_current_lap, session_banner,
     session_best_ms, session_len_ms, session_remain_ms, standing_of, ticker_delta_from_row,
     timed_clock_live, timed_race_flag, CHECKERED_LATCH, IN_GATE, LAP_GREEN, LAST_CUR_LAP,
     CLOSING_ON_LINE, LAP_MID_SEEN, LAST_SESSION_SIG, LAST_SF_METERS, LEADER_FIN_LOCAL_BASE,
     OVERTIME_LOCAL_BASE, POST_GATE, RaceFlag, RaceStore, SESSION_EXPIRED, SF_FRAC_CAND,
-    SF_FRAC_LEARNED, SF_LEARN_LAPS,
+    SF_FRAC_LEARNED, SF_LEARN_LAPS, LAPS_TO_RUN_AT, RUN_IN_FLAG, WHITE_WAVE_AT,
+    WHITE_WAVE_LAP,
 };
 use fontdue::Font;
 use tiny_skia::{
-    Color, FillRule, GradientStop, LineCap, LineJoin, LinearGradient, Paint, Path, PathBuilder,
-    Pixmap, PixmapPaint, Point as SkPoint, Rect, SpreadMode, Stroke, Transform,
+    Color, FillRule, GradientStop, LineCap, LineJoin, LinearGradient, Mask, Paint, Path,
+    PathBuilder, Pixmap, PixmapPaint, Point as SkPoint, Rect, SpreadMode, Stroke, Transform,
 };
 
 fn accent() -> Color { Color::from_rgba8(255, 148, 48, 255) }
@@ -507,6 +509,9 @@ fn draw_text(
     ];
     let mut pen = x;
     for ch in s.chars() {
+        if ch != ' ' && ch != '\t' && !font.has_glyph(ch) {
+            continue;
+        }
         let (metrics, bitmap) = font.rasterize(ch, size);
         let gx = pen + metrics.xmin as f32;
         let gy = y + size - metrics.ymin as f32 - metrics.height as f32;
@@ -529,7 +534,10 @@ fn measure_bold(fonts: &Fonts, s: &str, size: f32) -> f32 {
 }
 
 fn measure_font(font: &Font, s: &str, size: f32) -> f32 {
-    s.chars().map(|ch| font.metrics(ch, size).advance_width).sum()
+    s.chars()
+        .filter(|ch| *ch == ' ' || *ch == '\t' || font.has_glyph(*ch))
+        .map(|ch| font.metrics(ch, size).advance_width)
+        .sum()
 }
 
 fn blit(px: &mut Pixmap, bitmap: &[u8], gw: usize, gh: usize, x: f32, y: f32, rgba: [u8; 4]) {
@@ -1049,23 +1057,6 @@ fn sys_procs() -> [SysProc; SYS_PROC_N] {
 }
 
 
-fn norm_track_pos(s: &Snapshot, pos: f32) -> f32 {
-    if pos < 0.0 {
-        return pos;
-    }
-    let mut u = pos;
-    if u > 1.5 {
-        if s.track_length > 10.0 {
-            u = (u / s.track_length).rem_euclid(1.0);
-        } else {
-            u = u.rem_euclid(1.0);
-        }
-    } else {
-        u = u.rem_euclid(1.0);
-    }
-    u
-}
-
 fn focus_track_pos(s: &Snapshot) -> f32 {
     let focus = if s.focus_race_num > 0 {
         s.focus_race_num
@@ -1172,6 +1163,7 @@ fn note_line_progress(s: &Snapshot) {
     let prev_laps = SF_LEARN_LAPS.swap(laps, Ordering::Relaxed);
     if prev_laps >= 0 && laps > prev_laps {
         LAP_MID_SEEN.store(0, Ordering::Relaxed);
+        CLOSING_ON_LINE.store(0, Ordering::Relaxed);
         if moving(s) {
             // We are a frame or so past the line; back out that much travel.
             let overshoot = (s.local_speed / 60.0 / len).clamp(0.0, 0.02);
@@ -1184,8 +1176,13 @@ fn note_line_progress(s: &Snapshot) {
         LAP_MID_SEEN.store(1, Ordering::Relaxed);
     }
     let prev = LAST_SF_METERS.swap(remain.round() as i32, Ordering::Relaxed);
-    let closing = prev >= 0 && remain < prev as f32 - 0.5;
-    CLOSING_ON_LINE.store(closing as i32, Ordering::Relaxed);
+    // Sticky while the distance is still falling or flat — only clear when you
+    // clearly open the gap again (jitter used to flicker white open/closed).
+    if prev >= 0 && remain < prev as f32 - 0.5 {
+        CLOSING_ON_LINE.store(1, Ordering::Relaxed);
+    } else if prev >= 0 && remain > prev as f32 + 1.5 {
+        CLOSING_ON_LINE.store(0, Ordering::Relaxed);
+    }
 }
 
 /// You are closing on the line, not sitting in the window or heading away from it.
@@ -1193,18 +1190,97 @@ fn closing_on_line() -> bool {
     CLOSING_ON_LINE.load(Ordering::Relaxed) == 1
 }
 
-/// The run-in that starts your final lap. This is the only flag decision that depends on
-/// track geometry, so it is heavily guarded and simply does not fire when the data is bad.
-fn final_lap_approach(s: &Snapshot) -> bool {
+/// The run-in to the line, where a flagger would be standing. This is the only flag
+/// decision that depends on track geometry, so it is heavily guarded and simply does not
+/// fire when the data is bad.
+fn line_approach(s: &Snapshot) -> bool {
     if sf_uncalibrated(s) || !moving(s) || !approaching_line(s) {
         return false;
     }
     LAP_MID_SEEN.load(Ordering::Relaxed) == 1 && closing_on_line()
 }
 
+/// The last metres before the line, plus the stretch just after it. `approaching_line`
+/// stops at `FLAG_LINE_MIN_M`, so without this the banner is None for ~4 m (and a
+/// classification-lag beat past the line) — long enough for the hide animation to start.
+fn across_the_line(s: &Snapshot) -> bool {
+    if sf_uncalibrated(s) {
+        return false;
+    }
+    meters_to_sf(s).is_some_and(|m| m <= FLAG_LINE_MIN_M || m >= lap_meters(s) - FLAG_LINE_M)
+}
+
 fn reset_flag_state() -> DashFlag {
     CHECKERED_LATCH.store(0, Ordering::Relaxed);
+    WHITE_WAVE_LAP.store(-1, Ordering::Relaxed);
+    RUN_IN_FLAG.store(0, Ordering::Relaxed);
     DashFlag::None
+}
+
+fn flag_code(flag: DashFlag) -> i32 {
+    match flag {
+        DashFlag::None => 0,
+        DashFlag::White => 1,
+        DashFlag::Checkered => 2,
+    }
+}
+
+fn flag_from_code(code: i32) -> DashFlag {
+    match code {
+        1 => DashFlag::White,
+        2 => DashFlag::Checkered,
+        _ => DashFlag::None,
+    }
+}
+
+/// Keep the run-in flag out across the line. Your lap count only catches up a frame or
+/// two after you are past it, and until it does the lap rules describe the lap you have
+/// already finished. The last `FLAG_LINE_MIN_M` before the line is the same gap: the
+/// approach window has closed and the wrap-around hold has not opened yet.
+fn hold_across_line(s: &Snapshot, flag: DashFlag) -> DashFlag {
+    if line_approach(s) {
+        if flag != DashFlag::None {
+            RUN_IN_FLAG.store(flag_code(flag), Ordering::Relaxed);
+        }
+        return flag;
+    }
+    if !across_the_line(s) {
+        RUN_IN_FLAG.store(0, Ordering::Relaxed);
+        return flag;
+    }
+    let held = flag_from_code(RUN_IN_FLAG.load(Ordering::Relaxed));
+    if held == DashFlag::None {
+        return flag;
+    }
+    if flag == DashFlag::Checkered {
+        RUN_IN_FLAG.store(0, Ordering::Relaxed);
+        return flag;
+    }
+    held
+}
+
+/// How long the white stays up after it is waved.
+const WHITE_WAVE_MS: i32 = 5_000;
+
+fn now_ms() -> i32 {
+    (anim_now() * 1000.0) as i32
+}
+
+/// White from the first frame this lap that calls for it — the crossing onto your last
+/// lap, or the moment the leader's finish makes the lap you are on your last — and for
+/// `WHITE_WAVE_MS` after, so it is not held up all the way to the finish.
+fn white_wave(s: &Snapshot) -> DashFlag {
+    let lap = focus_num_laps(s);
+    let now = now_ms();
+    if WHITE_WAVE_LAP.swap(lap, Ordering::Relaxed) != lap {
+        WHITE_WAVE_AT.store(now, Ordering::Relaxed);
+        return DashFlag::White;
+    }
+    if now - WHITE_WAVE_AT.load(Ordering::Relaxed) <= WHITE_WAVE_MS {
+        DashFlag::White
+    } else {
+        DashFlag::None
+    }
 }
 
 fn latch_checkered() -> DashFlag {
@@ -1212,8 +1288,9 @@ fn latch_checkered() -> DashFlag {
     DashFlag::Checkered
 }
 
-/// One path for lap motos and timed extras. Checkered comes only from crossing the line
-/// with no laps to run; white covers the run-in to the final lap and the lap itself.
+/// One path for lap motos and timed extras. Both flags go up on the run-in to the line:
+/// white onto your final lap, checkered onto the finish. Only the crossing latches the
+/// checkered, and the white comes down a few seconds into the lap.
 fn dash_race_flag(s: &Snapshot) -> DashFlag {
     if s.on_track == 0 {
         return reset_flag_state();
@@ -1246,17 +1323,20 @@ fn dash_race_flag(s: &Snapshot) -> DashFlag {
     }
     let left = laps_left(s);
     note_laps_to_run(s, left);
-    match left {
+    let flag = match left {
         // You crossed the line with nothing left to run. Never gated on speed, so a
         // slow roll over the line still gets waved off. `finish_earned` keeps a single
         // glitched frame from waving you off mid-race.
         Some(0) if finish_earned(s) => latch_checkered(),
-        Some(0) | Some(1) => DashFlag::White,
-        Some(2) if final_lap_approach(s) => DashFlag::White,
+        // Coming to the line with nothing left to run: the checkered is already out.
+        Some(1) if line_approach(s) => DashFlag::Checkered,
+        Some(0) | Some(1) => white_wave(s),
+        Some(2) if line_approach(s) => DashFlag::White,
         // The leader is done, so whatever lap you are on is your last.
-        _ if leader_finished(s) => DashFlag::White,
+        _ if leader_finished(s) => white_wave(s),
         _ => DashFlag::None,
-    }
+    };
+    hold_across_line(s, flag)
 }
 
 
@@ -1433,17 +1513,24 @@ fn draw_standings(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig,
     let x = r.x * sw;
     let y = r.y * sh;
     let w = r.w * sw;
-    let rows = s.standing_count.max(0) as usize;
+    let race = RaceStore::get();
+    // Live order and live places, so a pass moves a row now instead of at the line.
+    let mut board = race.field.board();
+    if board.is_empty() {
+        let count = (s.standing_count.max(0) as usize).min(MAX_SAFE);
+        board.extend_from_slice(&s.standings[..count]);
+    }
+    let rows = board.len();
     let max_rows = s.standings_rows.max(3) as usize;
     let n = rows.min(MAX_SAFE);
     let focus = s.focus_race_num;
     let mut start = 0;
     if n > max_rows {
-        let fi = (0..n).find(|&i| s.standings[i].race_num == focus).unwrap_or(0);
+        let fi = (0..n).find(|&i| board[i].race_num == focus).unwrap_or(0);
         start = fi.saturating_sub(max_rows / 2).min(n.saturating_sub(max_rows));
     }
     let end = (start + max_rows).min(n);
-    let slice = if n == 0 { &s.standings[..0] } else { &s.standings[start..end] };
+    let slice = &board[start..end];
 
     let k = style_k();
     let head_h = 26.0 * k;
@@ -1482,13 +1569,11 @@ fn draw_standings(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig,
         .map(|(_, cx, cw)| bike_bar_end(*cx, *cw));
 
     let purple = Color::from_rgba8(196, 112, 255, 255);
-    let race = RaceStore::get();
     let best_ms = if race.field.session_best_ms > 0 {
         race.field.session_best_ms
     } else {
-        slice
+        board
             .iter()
-            .chain(s.standings.iter().take(n))
             .map(|row| row.best_lap_ms)
             .filter(|ms| *ms > 0)
             .min()
@@ -2012,7 +2097,14 @@ fn draw_ticker(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
         );
     }
 
-    let n = (s.standing_count.max(0) as usize).min(MAX_SAFE);
+    let race = RaceStore::get();
+    // Cards follow the live order, so a pass slides the field now, not at the line.
+    let mut board = race.field.board();
+    if board.is_empty() {
+        let count = (s.standing_count.max(0) as usize).min(MAX_SAFE);
+        board.extend_from_slice(&s.standings[..count]);
+    }
+    let n = board.len().min(MAX_SAFE);
     if n == 0 {
         text(
             px,
@@ -2028,14 +2120,14 @@ fn draw_ticker(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
     }
     let want = cfg.ticker_count.clamp(3, 15) as usize;
     let (vis, card_w) = hstand_layout(cards_w, k, want, n);
-    let race = RaceStore::get();
     let focus = s.focus_race_num;
     let fi = race
         .field
         .focus
-        .or_else(|| (0..n).find(|&i| s.standings[i].race_num == focus))
+        .filter(|i| *i < n)
+        .or_else(|| (0..n).find(|&i| board[i].race_num == focus))
         .unwrap_or(0);
-    let Some(focus_row) = s.standings.get(fi) else {
+    let Some(focus_row) = board.get(fi) else {
         return;
     };
     let best_ms = if race.field.session_best_ms > 0 {
@@ -2054,7 +2146,7 @@ fn draw_ticker(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
     let lw = cards_w.ceil().max(1.0) as u32;
     let lh = card_h.ceil().max(1.0) as u32;
     if let Some(mut layer) = Pixmap::new(lw, lh) {
-        for i in 0..n {
+        for (i, card) in board.iter().enumerate().take(n) {
             let x = if cfg.ticker_autoscroll && n > vis {
                 match hstand_loop_x(i as f32, scroll, n as f32, stride, cards_w, card_w) {
                     Some(x) => x,
@@ -2071,7 +2163,7 @@ fn draw_ticker(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
                 &mut layer,
                 fonts,
                 s,
-                &s.standings[i],
+                card,
                 focus_row,
                 best_ms,
                 x,
@@ -2360,21 +2452,34 @@ struct FlagAnim {
     kind: DashFlag,
     t0: f32,
     hiding: bool,
+    /// When `wanted` first went None; hide only after a short hold so one-frame
+    /// flicker on the run-in cannot slam the banner shut.
+    none_since: f32,
 }
 
 static FLAG_ANIM: Mutex<FlagAnim> = Mutex::new(FlagAnim {
     kind: DashFlag::None,
     t0: 0.0,
     hiding: false,
+    none_since: -1.0,
 });
 
 fn flag_anim_step(wanted: DashFlag) -> (DashFlag, f32) {
     const IN: f32 = 0.36;
     const OUT: f32 = 0.20;
+    const HIDE_HOLD: f32 = 0.14;
     let now = anim_now();
     let mut st = FLAG_ANIM.lock().unwrap_or_else(|e| e.into_inner());
     if wanted != DashFlag::None {
-        if st.kind != wanted || st.hiding {
+        st.none_since = -1.0;
+        if st.kind == wanted {
+            // Same flag coming back after a brief None: stay open. Replaying the grow
+            // is what made the checkered collapse as you crossed the line.
+            if st.hiding {
+                st.hiding = false;
+                st.t0 = now - IN;
+            }
+        } else {
             st.kind = wanted;
             st.t0 = now;
             st.hiding = false;
@@ -2382,6 +2487,13 @@ fn flag_anim_step(wanted: DashFlag) -> (DashFlag, f32) {
         let t = ease_out_cubic(((now - st.t0) / IN).clamp(0.0, 1.0));
         (st.kind, t)
     } else if st.kind != DashFlag::None {
+        if st.none_since < 0.0 {
+            st.none_since = now;
+        }
+        // Hold the open flag briefly so approach jitter cannot flap it.
+        if !st.hiding && now - st.none_since < HIDE_HOLD {
+            return (st.kind, 1.0);
+        }
         if !st.hiding {
             st.hiding = true;
             st.t0 = now;
@@ -2390,11 +2502,13 @@ fn flag_anim_step(wanted: DashFlag) -> (DashFlag, f32) {
         if t <= 0.02 {
             st.kind = DashFlag::None;
             st.hiding = false;
+            st.none_since = -1.0;
             (DashFlag::None, 0.0)
         } else {
             (st.kind, t)
         }
     } else {
+        st.none_since = -1.0;
         (DashFlag::None, 0.0)
     }
 }
@@ -2450,7 +2564,9 @@ fn max_digit_w(fonts: &Fonts, size: f32) -> f32 {
 
 fn dash_box(fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) -> (f32, f32, f32, f32) {
     let lay = dash_layout(fonts, s, cfg, sw, sh);
-    (lay.x, lay.y - lay.flag_h, lay.w, lay.h + lay.flag_h)
+    let border = dash_wrap_border(&lay);
+    let (ox, oy, ow, oh) = dash_wrap_outer(&lay, border);
+    (ox, oy, ow, oh)
 }
 
 fn dash_layout(fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) -> DashLay {
@@ -2495,13 +2611,12 @@ fn dash_layout(fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) -
     let speed_label = cfg.units.speed_label();
     let rpm_n = s.local_rpm.max(0);
     let rpm = format!("{rpm_n}");
-    let pos = s
-        .standings
-        .iter()
-        .take(s.standing_count.max(0) as usize)
-        .find(|st| st.race_num == s.focus_race_num)
-        .map(|st| st.position)
-        .filter(|p| *p > 0);
+    let focus_num = if s.focus_race_num > 0 {
+        s.focus_race_num
+    } else {
+        s.local_race_num
+    };
+    let pos = Some(standing_pos(s, focus_num)).filter(|p| *p > 0);
     let ptxt = pos.map(|p| format!("P{p}")).unwrap_or_else(|| "P--".into());
     let lap_txt = race_progress_text(s);
     let lapped = lapped(s);
@@ -2537,11 +2652,16 @@ fn dash_layout(fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) -
     let right_x = mid_x + mid_w + main_gap;
 
     if let Ok(mut vis) = DASH_VIS.lock() {
+        let border = if flag != DashFlag::None {
+            (6.0 * grow).clamp(0.0, 6.0)
+        } else {
+            0.0
+        };
         *vis = crate::shm::Rect {
-            x: x / sw,
+            x: (x - border) / sw,
             y: (y - flag_h) / sh,
-            w: w / sw,
-            h: (h + flag_h) / sh,
+            w: (w + border * 2.0) / sw,
+            h: (h + flag_h + border) / sh,
         };
     }
 
@@ -2603,10 +2723,113 @@ fn chamfer_path(x: f32, y: f32, w: f32, h: f32, cut: f32) -> Option<Path> {
 }
 
 fn fill_path(px: &mut Pixmap, path: &Path, color: Color) {
+    fill_path_rule(px, path, color, FillRule::Winding, None);
+}
+
+fn fill_path_rule(
+    px: &mut Pixmap,
+    path: &Path,
+    color: Color,
+    rule: FillRule,
+    mask: Option<&Mask>,
+) {
     let mut p = Paint::default();
     p.set_color(color);
     p.anti_alias = true;
-    px.fill_path(path, &p, FillRule::Winding, Transform::identity(), None);
+    px.fill_path(path, &p, rule, Transform::identity(), mask);
+}
+
+fn push_rect(pb: &mut PathBuilder, x: f32, y: f32, w: f32, h: f32) {
+    if w <= 0.0 || h <= 0.0 {
+        return;
+    }
+    pb.move_to(x, y);
+    pb.line_to(x + w, y);
+    pb.line_to(x + w, y + h);
+    pb.line_to(x, y + h);
+    pb.close();
+}
+
+fn push_chamfer(pb: &mut PathBuilder, x: f32, y: f32, w: f32, h: f32, cut: f32) {
+    push_chamfer_tb(pb, x, y, w, h, cut, cut);
+}
+
+/// Chamfered rect with independent top / bottom corner cuts (flag wrap vs dash body).
+fn push_chamfer_tb(pb: &mut PathBuilder, x: f32, y: f32, w: f32, h: f32, top_cut: f32, bot_cut: f32) {
+    if w <= 0.0 || h <= 0.0 {
+        return;
+    }
+    let top = top_cut.min(w * 0.45).min(h * 0.45).max(0.0);
+    let bot = bot_cut.min(w * 0.45).min(h * 0.45).max(0.0);
+    if top <= 0.5 && bot <= 0.5 {
+        push_rect(pb, x, y, w, h);
+        return;
+    }
+    pb.move_to(x + top, y);
+    pb.line_to(x + w - top, y);
+    pb.line_to(x + w, y + top);
+    pb.line_to(x + w, y + h - bot);
+    pb.line_to(x + w - bot, y + h);
+    pb.line_to(x + bot, y + h);
+    pb.line_to(x, y + h - bot);
+    pb.line_to(x, y + top);
+    pb.close();
+}
+
+/// Top banner: chamfered top corners (same language as the dash), square bottom flush on the body.
+fn dash_flag_top_path(x: f32, y: f32, w: f32, h: f32, cut: f32) -> Option<Path> {
+    if w <= 0.0 || h <= 0.0 {
+        return None;
+    }
+    let cut = cut.min(w * 0.45).min(h * 0.9).max(0.0);
+    let mut pb = PathBuilder::new();
+    if cut <= 0.5 {
+        push_rect(&mut pb, x, y, w, h);
+    } else {
+        pb.move_to(x + cut, y);
+        pb.line_to(x + w - cut, y);
+        pb.line_to(x + w, y + cut);
+        pb.line_to(x + w, y + h);
+        pb.line_to(x, y + h);
+        pb.line_to(x, y + cut);
+        pb.close();
+    }
+    pb.finish()
+}
+
+/// Flag wrap sits on the *outside* of the dash so the body cannot cover it.
+fn dash_wrap_border(d: &DashLay) -> f32 {
+    if d.flag == DashFlag::None || d.flag_grow <= 0.02 {
+        0.0
+    } else {
+        (6.0 * d.flag_grow).clamp(0.0, 6.0)
+    }
+}
+
+fn dash_wrap_outer(d: &DashLay, border: f32) -> (f32, f32, f32, f32) {
+    let top_h = d.flag_h.max(1.0);
+    (
+        d.x - border,
+        d.y - top_h,
+        d.w + border * 2.0,
+        top_h + d.h + border,
+    )
+}
+
+fn dash_wrap_frame_path(d: &DashLay, border: f32) -> Option<Path> {
+    if border <= 0.5 {
+        return None;
+    }
+    let (ox, oy, ow, oh) = dash_wrap_outer(d, border);
+    let top_h = d.flag_h.max(1.0);
+    // Match flag top corners; bottom follows the dash body chamfer (not a round blob).
+    let top_cut = d.cut.min(top_h * 0.9);
+    let bot_cut = d.cut;
+    let mut pb = PathBuilder::new();
+    push_chamfer_tb(&mut pb, ox, oy, ow, oh, top_cut, bot_cut);
+    // Hole matches the dash body exactly so top corners meet with no gap.
+    push_chamfer(&mut pb, d.x, d.y, d.w, d.h, d.cut);
+    pb.finish()
 }
 
 fn draw_rev_bar(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, rpm: i32, max_rpm: i32, shift_rpm: i32) {
@@ -2761,6 +2984,7 @@ fn dash_foot_item(s: &Snapshot, cfg: &HudConfig, field: DashField) -> Option<(ch
             .unwrap_or_else(|| "--".into()),
         DashField::Penalty => format_penalty(st.map(|r| r.penalty_ms).unwrap_or(0)),
         DashField::Session => race_progress_text(s),
+        DashField::LocalTime => local_clock(),
         DashField::Bike => st
             .map(|r| cstr(&r.bike))
             .filter(|v| !v.is_empty())
@@ -2773,21 +2997,18 @@ fn dash_foot_item(s: &Snapshot, cfg: &HudConfig, field: DashField) -> Option<(ch
     Some((field.icon(), text))
 }
 
-fn dash_flag_path(x: f32, y: f32, w: f32, h: f32) -> Option<Path> {
-    let r = (h * 0.35).clamp(5.0, 8.0);
-    let mut pb = PathBuilder::new();
-    pb.move_to(x + r, y);
-    pb.line_to(x + w - r, y);
-    pb.quad_to(x + w, y, x + w, y + r);
-    pb.line_to(x + w, y + h);
-    pb.line_to(x, y + h);
-    pb.line_to(x, y + r);
-    pb.quad_to(x, y, x + r, y);
-    pb.close();
-    pb.finish()
-}
-
-fn draw_diag_stripes(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, stripe: Color) {
+fn draw_diag_stripes_masked(
+    px: &mut Pixmap,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    stripe: Color,
+    mask: Option<&Mask>,
+) {
+    if w <= 0.0 || h <= 0.0 {
+        return;
+    }
     let step = (h.min(w) * 0.55).clamp(7.0, 12.0);
     let thick = step * 0.45;
     let mut t = -h;
@@ -2799,28 +3020,169 @@ fn draw_diag_stripes(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, stripe: Co
         pb.line_to(x + t + h, y);
         pb.close();
         if let Some(path) = pb.finish() {
-            fill_path(px, &path, stripe);
+            fill_path_rule(px, &path, stripe, FillRule::Winding, mask);
         }
         t += step;
     }
 }
 
-fn draw_checkered(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32) {
-    let cell = (w.min(h) * 0.55).clamp(5.0, 9.0);
-    let cols = ((w / cell).ceil() as i32).max(1);
-    let rows = ((h / cell).ceil() as i32).max(1);
-    let black = Color::from_rgba8(12, 12, 14, 255);
+fn fill_cell(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, c: Color, mask: Option<&Mask>) {
+    if w <= 0.5 || h <= 0.5 {
+        return;
+    }
+    let mut pb = PathBuilder::new();
+    push_rect(&mut pb, x, y, w, h);
+    if let Some(path) = pb.finish() {
+        fill_path_rule(px, &path, c, FillRule::Winding, mask);
+    }
+}
+
+fn flag_icon_w(fonts: &Fonts, size: f32) -> f32 {
+    fonts.icons.metrics('\u{f024}', size * style_k()).advance_width
+}
+
+/// Icon + label, centered. Returns the caption width so the checker fade can hug it.
+fn draw_flag_caption(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    ox: f32,
+    top_y: f32,
+    ow: f32,
+    top_h: f32,
+    grow: f32,
+    label: &str,
+    ink: Color,
+) -> f32 {
+    let sz = (top_h * 0.44).clamp(10.0, 13.0) * (0.75 + 0.25 * grow);
+    let icon_sz = (sz * 1.12).clamp(11.0, 16.0);
+    let gap = (icon_sz * 0.28).clamp(4.0, 7.0);
+    let iw = flag_icon_w(fonts, icon_sz);
+    let tw = measure_bold(fonts, label, sz);
+    let group = iw + gap + tw;
+    let x0 = ox + (ow - group) * 0.5;
+    let ty = top_y + (top_h - sz) * 0.42;
+    icon(
+        px,
+        fonts,
+        '\u{f024}',
+        icon_sz,
+        x0,
+        ty + (sz - icon_sz) * 0.5,
+        ink,
+        false,
+    );
+    text_bold(px, fonts, label, sz, x0 + iw + gap, ty, ink, false);
+    group
+}
+
+fn flag_caption_group_w(fonts: &Fonts, top_h: f32, grow: f32, label: &str) -> f32 {
+    let sz = (top_h * 0.44).clamp(10.0, 13.0) * (0.75 + 0.25 * grow);
+    let icon_sz = (sz * 1.12).clamp(11.0, 16.0);
+    let gap = (icon_sz * 0.28).clamp(4.0, 7.0);
+    flag_icon_w(fonts, icon_sz) + gap + measure_bold(fonts, label, sz)
+}
+
+fn draw_checkered_masked(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, mask: Option<&Mask>) {
+    draw_checkered_cells(
+        px,
+        x,
+        y,
+        w,
+        h,
+        Color::from_rgba8(176, 176, 182, 255),
+        Color::from_rgba8(236, 236, 240, 255),
+        if h < 12.0 { 2 } else { 3 },
+        mask,
+    );
+}
+
+fn draw_checkered_cells(
+    px: &mut Pixmap,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    dark: Color,
+    light: Color,
+    rows: i32,
+    mask: Option<&Mask>,
+) {
+    if w <= 0.0 || h <= 0.0 || rows < 1 {
+        return;
+    }
+    let cell_h = h / rows as f32;
+    let cols = ((w / cell_h).round() as i32).max(1);
+    let cell_w = w / cols as f32;
     for row in 0..rows {
         for col in 0..cols {
-            if (row + col) % 2 != 0 {
-                continue;
-            }
-            let cx = x + col as f32 * cell;
-            let cy = y + row as f32 * cell;
-            if let Some(r) = rr(cx, cy, cell.min(x + w - cx).max(0.5), cell.min(y + h - cy).max(0.5)) {
-                fill_rect(px, r, black);
-            }
+            let c = if (row + col) % 2 == 0 { dark } else { light };
+            fill_cell(
+                px,
+                x + col as f32 * cell_w,
+                y + row as f32 * cell_h,
+                cell_w + 0.4,
+                cell_h + 0.4,
+                c,
+                mask,
+            );
         }
+    }
+}
+
+/// Sides and bottom of the dash wrap. One square wide, clipped to the frame so it
+/// cannot paint into the body. The top banner covers the rest.
+fn draw_checkered_wrap(px: &mut Pixmap, d: &DashLay, border: f32, ox: f32, ow: f32) {
+    let Some(frame) = dash_wrap_frame_path(d, border) else {
+        return;
+    };
+    fill_path_rule(px, &frame, Color::from_rgba8(248, 248, 250, 255), FillRule::EvenOdd, None);
+    let clip = Mask::new(px.width(), px.height()).map(|mut m| {
+        m.fill_path(&frame, FillRule::EvenOdd, true, Transform::identity());
+        m
+    });
+    let dark = Color::from_rgba8(176, 176, 182, 255);
+    let light = Color::from_rgba8(236, 236, 240, 255);
+    let side_rows = ((d.h / border).round() as i32).max(1);
+    draw_checkered_cells(px, ox, d.y, border, d.h, dark, light, side_rows, clip.as_ref());
+    draw_checkered_cells(px, d.x + d.w, d.y, border, d.h, dark, light, side_rows, clip.as_ref());
+    draw_checkered_cells(px, ox, d.y + d.h, ow, border, dark, light, 1, clip.as_ref());
+}
+
+fn draw_checkered_banner(px: &mut Pixmap, fonts: &Fonts, band: &Path, ox: f32, top_y: f32, ow: f32, top_h: f32, grow: f32) {
+    let white = Color::from_rgba8(248, 248, 250, 255);
+    let ink = Color::from_rgba8(22, 22, 26, 255);
+    let label = "Checkered Flag";
+    fill_path(px, band, white);
+    let clip = Mask::new(px.width(), px.height()).map(|mut m| {
+        m.fill_path(band, FillRule::Winding, true, Transform::identity());
+        m
+    });
+    draw_checkered_masked(px, ox, top_y, ow, top_h, clip.as_ref());
+    let pad = (top_h * 0.22).clamp(5.0, 8.0);
+    let white_w = flag_caption_group_w(fonts, top_h, grow.max(0.42), label) + pad * 2.0;
+    let fade = 0.05;
+    let t0 = ((ow - white_w) * 0.5 / ow).clamp(fade + 0.02, 0.46);
+    if let Some(shader) = LinearGradient::new(
+        SkPoint::from_xy(ox, top_y),
+        SkPoint::from_xy(ox + ow, top_y),
+        vec![
+            GradientStop::new(0.0, Color::from_rgba8(248, 248, 250, 0)),
+            GradientStop::new((t0 - fade).max(0.0), Color::from_rgba8(248, 248, 250, 0)),
+            GradientStop::new(t0, Color::from_rgba8(248, 248, 250, 255)),
+            GradientStop::new(1.0 - t0, Color::from_rgba8(248, 248, 250, 255)),
+            GradientStop::new((1.0 - t0 + fade).min(1.0), Color::from_rgba8(248, 248, 250, 0)),
+            GradientStop::new(1.0, Color::from_rgba8(248, 248, 250, 0)),
+        ],
+        SpreadMode::Pad,
+        Transform::identity(),
+    ) {
+        let mut paint = Paint::default();
+        paint.shader = shader;
+        paint.anti_alias = true;
+        px.fill_path(band, &paint, FillRule::Winding, Transform::identity(), clip.as_ref());
+    }
+    if grow > 0.42 {
+        draw_flag_caption(px, fonts, ox, top_y, ow, top_h, grow, label, ink);
     }
 }
 
@@ -2828,68 +3190,71 @@ fn draw_dash_wrap(px: &mut Pixmap, fonts: &Fonts, d: &DashLay) {
     if d.flag == DashFlag::None || d.flag_grow <= 0.02 {
         return;
     }
-    let (label, fg, bg) = match d.flag {
-        DashFlag::White => (
-            "WHITE FLAG",
-            Color::from_rgba8(16, 16, 18, 255),
-            Color::from_rgba8(244, 244, 246, 255),
-        ),
-        DashFlag::Checkered => (
-            "CHECKERED FLAG",
-            Color::from_rgba8(248, 248, 250, 255),
-            Color::from_rgba8(236, 236, 238, 255),
-        ),
-        DashFlag::None => return,
-    };
     let grow = d.flag_grow;
+    let border = dash_wrap_border(d);
     let top_h = d.flag_h.max(2.0);
+    let (ox, _oy, ow, _) = dash_wrap_outer(d, border);
     let top_y = d.y - top_h;
-    let top_x = d.x;
-    let top_w = d.w;
+    let top_cut = d.cut.min(top_h * 0.9);
 
-    let Some(top) = dash_flag_path(top_x, top_y, top_w, top_h) else {
-        return;
-    };
-    fill_path(px, &top, bg);
-    if d.flag == DashFlag::Checkered {
-        draw_checkered(px, top_x, top_y, top_w, top_h);
-    } else {
-        let stripe_w = (top_w * 0.16).min(28.0);
-        draw_diag_stripes(px, top_x, top_y, stripe_w, top_h, Color::from_rgba8(210, 210, 214, 255));
-        draw_diag_stripes(
+    if d.flag == DashFlag::White {
+        let bg = Color::from_rgba8(244, 244, 246, 255);
+        let stripe = Color::from_rgba8(210, 210, 214, 255);
+        if let Some(frame) = dash_wrap_frame_path(d, border) {
+            fill_path_rule(px, &frame, bg, FillRule::EvenOdd, None);
+        }
+        let Some(band) = dash_flag_top_path(ox, top_y, ow, top_h + 0.75, top_cut) else {
+            return;
+        };
+        fill_path(px, &band, bg);
+        let clip = Mask::new(px.width(), px.height()).map(|mut m| {
+            m.fill_path(&band, FillRule::Winding, true, Transform::identity());
+            m
+        });
+        let stripe_w = (ow * 0.16).min(28.0);
+        draw_diag_stripes_masked(px, ox, top_y, stripe_w, top_h, stripe, clip.as_ref());
+        draw_diag_stripes_masked(
             px,
-            top_x + top_w - stripe_w,
+            ox + ow - stripe_w,
             top_y,
             stripe_w,
             top_h,
-            Color::from_rgba8(210, 210, 214, 255),
+            stripe,
+            clip.as_ref(),
         );
-        if let Some(r) = rr(top_x + stripe_w, top_y, (top_w - stripe_w * 2.0).max(0.0), top_h) {
+        if let Some(r) = rr(
+            ox + stripe_w,
+            top_y,
+            (ow - stripe_w * 2.0).max(0.0),
+            top_h,
+        ) {
             fill_rect(px, r, bg);
         }
-    }
-
-    if grow > 0.42 {
-        let sz = (top_h * 0.48).clamp(10.0, 13.0) * (0.75 + 0.25 * grow);
-        let tw = measure(fonts, label, sz);
-        if d.flag == DashFlag::Checkered {
-            fill_round(
+        if grow > 0.42 {
+            draw_flag_caption(
                 px,
-                top_x + (top_w - tw) * 0.5 - 8.0,
-                top_y + 3.0,
-                tw + 16.0,
-                (top_h - 6.0).max(8.0),
-                4.0,
-                Color::from_rgba8(8, 8, 10, 210),
+                fonts,
+                ox,
+                top_y,
+                ow,
+                top_h,
+                grow,
+                "WHITE FLAG",
+                Color::from_rgba8(16, 16, 18, 255),
             );
         }
-        text_bold(px, fonts, label, sz, top_x + top_w * 0.5, top_y + (top_h - sz) * 0.42, fg, true);
+        return;
     }
+
+    let Some(band) = dash_flag_top_path(ox, top_y, ow, top_h + 0.75, top_cut) else {
+        return;
+    };
+    draw_checkered_wrap(px, d, border, ox, ow);
+    draw_checkered_banner(px, fonts, &band, ox, top_y, ow, top_h, grow);
 }
 
 fn draw_dash(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) {
     let d = dash_layout(fonts, s, cfg, sw, sh);
-    draw_dash_wrap(px, fonts, &d);
     let a = bg_a(cfg.dash_bg);
     if let Some(path) = chamfer_path(d.x, d.y, d.w, d.h, d.cut) {
         if a > 0 {
@@ -2912,7 +3277,9 @@ fn draw_dash(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: 
             paint.anti_alias = true;
             px.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
         }
-        stroke_path(px, &path, Color::from_rgba8(220, 220, 224, ((a as u16 * 200) / 255).max(90) as u8), 1.4);
+        if d.flag == DashFlag::None || d.flag_grow <= 0.02 {
+            stroke_path(px, &path, Color::from_rgba8(220, 220, 224, ((a as u16 * 200) / 255).max(90) as u8), 1.4);
+        }
     }
 
     if cfg.dash_rev {
@@ -2962,6 +3329,9 @@ fn draw_dash(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: 
             fx += measure(fonts, label, d.fsz) + foot_gap;
         }
     }
+
+    // Last: wrap sits on the outer edge so the body cannot cover it.
+    draw_dash_wrap(px, fonts, &d);
 }
 
 fn draw_relative(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) {
@@ -3559,7 +3929,26 @@ fn rider_dot_num(s: &Snapshot, race_num: i32, mode: DotLabel) -> i32 {
     }
 }
 
+fn leader_num(s: &Snapshot) -> i32 {
+    // Live rank first: the crown has to move with an on-track pass for the lead, not
+    // wait for the game to republish its classification at the line.
+    let live = live_leader();
+    if live > 0 {
+        return live;
+    }
+    s.standings
+        .iter()
+        .take(s.standing_count.max(0) as usize)
+        .find(|st| st.position == 1)
+        .map(|st| st.race_num)
+        .unwrap_or(0)
+}
+
 fn standing_pos(s: &Snapshot, race_num: i32) -> i32 {
+    let live = live_position(race_num);
+    if live > 0 {
+        return live;
+    }
     s.standings
         .iter()
         .take(s.standing_count.max(0) as usize)
@@ -3731,15 +4120,6 @@ fn ink_bounds(fonts: &Fonts, s: &str, size: f32) -> Option<(f32, f32, f32, f32)>
         pen += m.advance_width;
     }
     any.then_some((min_x, min_y, max_x, max_y))
-}
-
-fn leader_num(s: &Snapshot) -> i32 {
-    s.standings
-        .iter()
-        .take(s.standing_count.max(0) as usize)
-        .find(|st| st.position == 1)
-        .map(|st| st.race_num)
-        .unwrap_or(0)
 }
 
 pub fn icon(px: &mut Pixmap, fonts: &Fonts, ch: char, size: f32, mut x: f32, y: f32, color: Color, center: bool) {

@@ -25,9 +25,11 @@ Settings subtitle: “Your name is highlighted in the field”.
 - Keep the code id `Ticker` in ini (`ticker_x`, `show_ticker`, …). The UI name is Horizontal Standings / H-Standings.
 - Do not add north/south resize; height is a fixed band.
 - Gap on a card is vs **you**, not vs the leader (except you / P1 edge cases via `format_signed_delta`).
+- Cards iterate `RaceField::board()` (live order), not `s.standings`. Scroll index and the focus card follow that order.
 
 ## Change log
 
+- 2026-08-25 — Cards follow the live race order, so a pass slides the field immediately instead of at the line. See [live race order](../live-order.md).
 - 2026-08-24 — Card gap-vs-you and session best come from shared `RaceStore`. No visual change.
 - 0.1.2 — Horizontal Standings bar added (leader left, you highlighted).
 - 0.1.8 — Hidden until **Show on overlay**.

@@ -14,6 +14,8 @@ Vertical classification board: place, number, name, and timing columns. Settings
 
 Classification array order **is race order**; `position = index + 1`. Names come from the entry list, joined onto standings rows.
 
+Rows are drawn from `RaceField::board()` — the game order with on-track passes applied, places renumbered from it. See [live race order](../live-order.md). The game only republishes its classification at the line, so iterating `s.standings` directly would hold a stale board for up to a lap.
+
 Primary SHM fields: race num, position, state, best / last lap, laps, gap ms / laps, pit, penalty, bike, category, crashed.
 
 Status labels: `1` DNS, `3` OUT, `4` DSQ, else PIT if `pit != 0`.
@@ -35,9 +37,11 @@ Default columns on: Position, Number, Name, Gap, Fastest, Last lap.
 - Gap to P1 uses `gap_ms` / `gap_laps`. Interval is gap to the rider one place ahead, not to the leader.
 - Last lap for you can fall back to `s.last_lap_ms` when the row has no last lap yet.
 - Empty field shows “Waiting for race data”, not a blank panel.
+- Rows and places come from the live order, not the raw `s.standings` array. The row window and slide animation follow it.
 
 ## Change log
 
+- 2026-08-25 — Board follows the live race order, so a pass moves the row when it happens instead of at the line. Gap is still the game's number; interval is a size so a just-passed pair cannot read negative.
 - 2026-08-24 — Interval / current lap / session best read from shared `RaceStore` after each frame tick. No visual change.
 - 0.1.0 — Configurable header fields (shared with Relative).
 - 0.1.4 — Lapping row tints live on Relative, not this table. Map/minimap got the slate / blue / red rider-dot rules that standings does not use for rows.

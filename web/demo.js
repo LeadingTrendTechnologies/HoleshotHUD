@@ -93,7 +93,7 @@ const canvas = document.getElementById("hud");
 const ctx = canvas.getContext("2d", { alpha: true });
 const settings = document.getElementById("settings");
 
-await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=dot-slate", import.meta.url) });
+await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=0.1.12", import.meta.url) });
 const preview = new Preview();
 
 function syncButtons() {
@@ -195,6 +195,7 @@ function renderSettings() {
     html += sliderRow("radar_bg", "Panel opacity", 0, 100, "%");
     html += look("radar");
   } else if (w === "dash") {
+    html += toggleRow("dash_rev", "Rev indicator");
     html += `<div class="section">Footer</div>`;
     html += fieldRow("dash_left", "Left", DASH);
     html += fieldRow("dash_mid", "Middle", DASH);

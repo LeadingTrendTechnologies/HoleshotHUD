@@ -173,6 +173,8 @@ enum Hit {
     InfoPick(InfoBar, u8, BoardField),
     UpdateCheck,
     UpdateInstall,
+    UpdateBanner,
+    UpdateBannerDismiss,
     StartWithWindows,
     MinimizeOnClose,
     CloseWithGame,
@@ -254,6 +256,11 @@ struct SettingsUi {
     nav_content_h: f32,
     nav_top: f32,
     nav_bottom: f32,
+    banner_dismissed: bool,
+    /// Pixel offset into the open dropdown's option list.
+    drop_scroll: f32,
+    /// Open menu hit target: x, y, w, view_h, content_h.
+    drop_menu: Option<(f32, f32, f32, f32, f32)>,
 }
 
 unsafe impl Send for SettingsUi {}
@@ -265,7 +272,7 @@ struct PendingDrop {
     mx: f32,
     my: f32,
     bw: f32,
-    mh: f32,
+    content_h: f32,
     open_hit: Hit,
     options: Vec<(Hit, &'static str, bool)>,
 }
@@ -275,6 +282,7 @@ thread_local! {
 }
 
 const SIDE_W: f32 = 204.0;
+const UPDATE_BANNER_H: f32 = 46.0;
 
 pub fn attach(host: HWND) {
     unsafe {
@@ -294,6 +302,9 @@ pub fn attach(host: HWND) {
         nav_content_h: 0.0,
         nav_top: 0.0,
         nav_bottom: 0.0,
+        banner_dismissed: false,
+        drop_scroll: 0.0,
+        drop_menu: None,
     });
 }
 
@@ -430,16 +441,31 @@ pub fn handle_message(msg: u32, wp: WPARAM, lp: LPARAM) -> bool {
                     x: (lp.0 as i32) as i16 as i32,
                     y: ((lp.0 as i32) >> 16) as i16 as i32,
                 };
-                let over_nav = unsafe { ScreenToClient(ui.host, &mut pt) }.as_bool()
-                    && (pt.x as f32) < SIDE_W
-                    && (pt.y as f32) >= ui.nav_top
-                    && (pt.y as f32) < ui.nav_bottom;
-                if over_nav {
-                    let max = (ui.nav_content_h - (ui.nav_bottom - ui.nav_top)).max(0.0);
-                    ui.nav_scroll = (ui.nav_scroll - delta * 0.4).clamp(0.0, max);
+                let in_client = unsafe { ScreenToClient(ui.host, &mut pt) }.as_bool();
+                let px = pt.x as f32;
+                let py = pt.y as f32;
+                let over_drop = in_client
+                    && ui.open_drop.is_some()
+                    && ui.drop_menu.is_some_and(|(mx, my, mw, mh, _)| {
+                        px >= mx && px <= mx + mw && py >= my && py <= my + mh
+                    });
+                if over_drop {
+                    if let Some((_, _, _, view_h, content_h)) = ui.drop_menu {
+                        let max = (content_h - view_h).max(0.0);
+                        ui.drop_scroll = (ui.drop_scroll - delta * 0.35).clamp(0.0, max);
+                    }
                 } else {
-                    let max = (ui.content_h - 520.0).max(0.0);
-                    ui.scroll = (ui.scroll - delta * 0.4).clamp(0.0, max);
+                    let over_nav = in_client
+                        && px < SIDE_W
+                        && py >= ui.nav_top
+                        && py < ui.nav_bottom;
+                    if over_nav {
+                        let max = (ui.nav_content_h - (ui.nav_bottom - ui.nav_top)).max(0.0);
+                        ui.nav_scroll = (ui.nav_scroll - delta * 0.4).clamp(0.0, max);
+                    } else {
+                        let max = (ui.content_h - 520.0).max(0.0);
+                        ui.scroll = (ui.scroll - delta * 0.4).clamp(0.0, max);
+                    }
                 }
             }
             true
@@ -781,6 +807,17 @@ fn click(p: (f32, f32)) {
             crate::update::install();
             return;
         }
+        Hit::UpdateBanner => {
+            close_drop();
+            return;
+        }
+        Hit::UpdateBannerDismiss => {
+            close_drop();
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.banner_dismissed = true;
+            }
+            return;
+        }
         Hit::StartWithWindows => {
             close_drop();
             let on = crate::config::with_config(|c| !c.start_with_windows);
@@ -813,7 +850,11 @@ fn click(p: (f32, f32)) {
         }
         Hit::AutoUpdateOnLaunch => {
             close_drop();
-            crate::config::update_config(|c| c.auto_update_on_launch = !c.auto_update_on_launch);
+            let on = crate::config::with_config(|c| !c.auto_update_on_launch);
+            crate::config::update_config(|c| c.auto_update_on_launch = on);
+            if !on {
+                crate::update::check();
+            }
             return;
         }
         Hit::QuitApp => {
@@ -973,7 +1014,8 @@ fn click(p: (f32, f32)) {
         | Hit::DashFootOpen(_)
         | Hit::TickerFootOpen(_)
         | Hit::InfoOpen(_, _)
-        | Hit::UpdateCheck | Hit::UpdateInstall | Hit::StartWithWindows | Hit::MinimizeOnClose
+        | Hit::UpdateCheck | Hit::UpdateInstall | Hit::UpdateBanner | Hit::UpdateBannerDismiss
+        | Hit::StartWithWindows | Hit::MinimizeOnClose
         | Hit::CloseWithGame | Hit::OpenWithGame
         | Hit::AutoUpdateOnLaunch | Hit::QuitApp | Hit::Uninstall
         | Hit::FbRate | Hit::FbBug | Hit::FbFeature | Hit::FbStar(_) | Hit::FbText | Hit::FbAttach | Hit::FbSend
@@ -994,6 +1036,8 @@ fn set_tab(tab: Tab) {
     if let Some(ui) = UI.lock().unwrap().as_mut() {
         ui.tab = tab;
         ui.open_drop = None;
+        ui.drop_scroll = 0.0;
+        ui.drop_menu = None;
         ui.drag = None;
         ui.slide = None;
         ui.scroll = 0.0;
@@ -1002,13 +1046,23 @@ fn set_tab(tab: Tab) {
 
 fn toggle_drop(drop: Drop) {
     if let Some(ui) = UI.lock().unwrap().as_mut() {
-        ui.open_drop = if ui.open_drop == Some(drop) { None } else { Some(drop) };
+        if ui.open_drop == Some(drop) {
+            ui.open_drop = None;
+            ui.drop_scroll = 0.0;
+            ui.drop_menu = None;
+        } else {
+            ui.open_drop = Some(drop);
+            ui.drop_scroll = 0.0;
+            ui.drop_menu = None;
+        }
     }
 }
 
 fn close_drop() {
     if let Some(ui) = UI.lock().unwrap().as_mut() {
         ui.open_drop = None;
+        ui.drop_scroll = 0.0;
+        ui.drop_menu = None;
     }
 }
 
@@ -1029,7 +1083,7 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
     }
 
     let cfg = with_config(|c| c.clone());
-    let (tab, hover, open_drop, drag, scroll, nav_scroll) = {
+    let (tab, hover, open_drop, drag, scroll, nav_scroll, banner_dismissed) = {
         let ui = UI.lock().unwrap();
         let ui = ui.as_ref();
         (
@@ -1039,6 +1093,7 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
             ui.and_then(|u| u.drag),
             ui.map(|u| u.scroll).unwrap_or(0.0),
             ui.map(|u| u.nav_scroll).unwrap_or(0.0),
+            ui.map(|u| u.banner_dismissed).unwrap_or(false),
         )
     };
     let tab = if tab == Tab::Sector && !cfg.sector_unlocked() {
@@ -1046,13 +1101,15 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
     } else {
         tab
     };
+    let banner = crate::update::manual_banner(cfg.auto_update_on_launch, banner_dismissed, &crate::update::state());
+    let banner_h = if banner.is_some() { UPDATE_BANNER_H } else { 0.0 };
     let mut hits = Vec::new();
     DROP_MENUS.with(|menus| menus.borrow_mut().clear());
 
     let quit_h = 36.0;
     let quit_y = h - 14.0 - quit_h;
     let clip_bottom = (quit_y - 56.0).max(80.0);
-    let clip_top = draw_nav_head(px, fonts, tab, hover, &mut hits);
+    let clip_top = draw_nav_head(px, fonts, tab, hover, &mut hits, banner_h);
     let mut widgets = vec![
         (Tab::Standings, Hit::TabSt, "Standings", cfg.show_standings),
         (Tab::Relative, Hit::TabRel, "Relative", cfg.show_relative),
@@ -1079,7 +1136,7 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
     if let Some(r) = Rect::from_xywh(0.0, 0.0, SIDE_W, clip_top) {
         fill_rect(px, r, side());
     }
-    draw_nav_head(px, fonts, tab, hover, &mut Vec::new());
+    draw_nav_head(px, fonts, tab, hover, &mut Vec::new(), banner_h);
     if let Some(r) = Rect::from_xywh(0.0, clip_bottom, SIDE_W, (h - clip_bottom).max(0.0)) {
         fill_rect(px, r, side());
     }
@@ -1097,7 +1154,7 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
 
     let x = SIDE_W + 28.0;
     let cw = (w - x - 28.0).max(200.0);
-    let py = 24.0 - scroll;
+    let py = 24.0 + banner_h - scroll;
     let bottom = match tab {
         Tab::App => pane_app(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
         Tab::Feedback => pane_feedback_tab(px, fonts, hover, &mut hits, x, py, cw),
@@ -1112,6 +1169,10 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
         Tab::Sector => pane_sector(px, fonts, &cfg, hover, &mut hits, x, py, cw),
     };
     paint_drop_menus(px, fonts, hover, &mut hits);
+
+    if let Some(kind) = banner {
+        draw_update_banner(px, fonts, w, kind, hover, &mut hits);
+    }
 
     if let Some(ui) = UI.lock().unwrap().as_mut() {
         ui.hits = hits;
@@ -1131,12 +1192,13 @@ fn draw_nav_head(
     tab: Tab,
     hover: Option<Hit>,
     hits: &mut Vec<HitBox>,
+    top: f32,
 ) -> f32 {
-    draw_brand(px, fonts);
-    if let Some(r) = Rect::from_xywh(18.0, 72.0, SIDE_W - 36.0, 1.0) {
+    draw_brand(px, fonts, top);
+    if let Some(r) = Rect::from_xywh(18.0, 72.0 + top, SIDE_W - 36.0, 1.0) {
         fill_rect(px, r, row_line());
     }
-    let mut ty = 84.0;
+    let mut ty = 84.0 + top;
     ty = nav_group(px, fonts, 12.0, ty, "General");
     nav_tab(px, fonts, 12.0, ty, SIDE_W - 24.0, 36.0, tab == Tab::App, true, "Settings", Hit::TabApp, hover, hits, None);
     ty += 40.0;
@@ -1151,10 +1213,10 @@ fn brand_logo() -> &'static Pixmap {
     LOGO.get_or_init(|| Pixmap::decode_png(include_bytes!("../icon-48.png")).expect("icon-48.png"))
 }
 
-fn draw_brand(px: &mut Pixmap, fonts: &Fonts) {
+fn draw_brand(px: &mut Pixmap, fonts: &Fonts, top: f32) {
     let logo = brand_logo();
     let x = 12.0;
-    let y = 14.0;
+    let y = 14.0 + top;
     let _ = px.draw_pixmap(
         x as i32,
         y as i32,
@@ -1166,6 +1228,74 @@ fn draw_brand(px: &mut Pixmap, fonts: &Fonts) {
     let tx = x + logo.width() as f32 + 10.0;
     text(px, fonts, "HOLESHOT", 13.0, tx, y + 8.0, text_col(), false);
     text_tracked(px, fonts, "HUD", 10.0, tx, y + 26.0, accent(), 2.6);
+}
+
+fn draw_update_banner(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    w: f32,
+    kind: crate::update::ManualBanner,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+) {
+    let h = UPDATE_BANNER_H;
+    if let Some(r) = Rect::from_xywh(0.0, 0.0, w, h) {
+        fill_rect(px, r, Color::from_rgba8(48, 36, 22, 255));
+    }
+    if let Some(r) = Rect::from_xywh(0.0, 0.0, 3.0, h) {
+        fill_rect(px, r, accent());
+    }
+    if let Some(r) = Rect::from_xywh(0.0, h, w, 1.0) {
+        fill_rect(px, r, Color::from_rgba8(255, 140, 36, 50));
+    }
+    hits.push(HitBox {
+        id: Hit::UpdateBanner,
+        x: 0.0,
+        y: 0.0,
+        w,
+        h,
+    });
+    let (line, show_update) = match &kind {
+        crate::update::ManualBanner::Available { version } => {
+            (format!("Version {version} is available."), true)
+        }
+        crate::update::ManualBanner::Installing => {
+            ("Downloading and installing… the app will restart.".to_string(), false)
+        }
+    };
+    let later_w = 108.0;
+    let later_x = w - 16.0 - later_w;
+    let btn_h = 28.0;
+    let by = (h - btn_h) * 0.5;
+    text(px, fonts, &line, 13.0, 16.0, 16.0, text_col(), false);
+    if show_update {
+        action_btn(
+            px,
+            fonts,
+            later_x - 8.0 - 92.0,
+            by,
+            92.0,
+            btn_h,
+            "Update",
+            Hit::UpdateInstall,
+            hover,
+            hits,
+            true,
+        );
+    }
+    action_btn(
+        px,
+        fonts,
+        later_x,
+        by,
+        later_w,
+        btn_h,
+        "Not now",
+        Hit::UpdateBannerDismiss,
+        hover,
+        hits,
+        false,
+    );
 }
 
 fn text_tracked(
@@ -1516,6 +1646,9 @@ fn pane_app(
     y = toggle_row(px, fonts, x, y, w, "Update automatically on launch", cfg.auto_update_on_launch, Hit::AutoUpdateOnLaunch, hover, hits);
     if cfg.auto_update_on_launch {
         text(px, fonts, "Checks GitHub before opening and installs if a newer version is out.", 11.0, x + 4.0, y + 2.0, dim(), false);
+        y += 22.0;
+    } else {
+        text(px, fonts, "When a newer version is out, a banner at the top can install it.", 11.0, x + 4.0, y + 2.0, dim(), false);
         y += 22.0;
     }
     let update = crate::update::state();
@@ -2695,13 +2828,13 @@ fn dropdown_row(
         let options = sorted_drop_options(options);
         let item_h = 28.0;
         let pad = 5.0;
-        let mh = pad * 2.0 + item_h * options.len() as f32;
+        let content_h = pad * 2.0 + item_h * options.len() as f32;
         DROP_MENUS.with(|menus| {
             menus.borrow_mut().push(PendingDrop {
                 mx: bx,
                 my: by + bh + 6.0,
                 bw,
-                mh,
+                content_h,
                 open_hit,
                 options,
             });
@@ -2724,19 +2857,54 @@ fn sorted_drop_options(options: &[(Hit, &'static str, bool)]) -> Vec<(Hit, &'sta
 
 fn paint_drop_menus(px: &mut Pixmap, fonts: &Fonts, hover: Option<Hit>, hits: &mut Vec<HitBox>) {
     let menus = DROP_MENUS.with(|menus| std::mem::take(&mut *menus.borrow_mut()));
+    let (mut drop_scroll, mut drop_menu) = {
+        let ui = UI.lock().unwrap();
+        let ui = ui.as_ref();
+        (
+            ui.map(|u| u.drop_scroll).unwrap_or(0.0),
+            None::<(f32, f32, f32, f32, f32)>,
+        )
+    };
+    let item_h = 28.0;
+    let pad = 5.0;
+    let max_visible = 9.0;
+    let win_h = px.height() as f32;
+
     for menu in menus {
         let mx = menu.mx;
         let my = menu.my;
         let bw = menu.bw;
-        let mh = menu.mh;
-        hits.push(HitBox { id: menu.open_hit, x: mx, y: my, w: bw, h: mh });
-        fill_round(px, mx - 1.0, my - 1.0, bw + 2.0, mh + 2.0, 10.0, Color::from_rgba8(0, 0, 0, 90));
-        outlined(px, mx, my, bw, mh, 9.0, Color::from_rgba8(24, 24, 28, 255));
-        let item_h = 28.0;
-        let pad = 5.0;
+        let content_h = menu.content_h;
+        let space_below = (win_h - my - 10.0).max(item_h + pad * 2.0);
+        let view_h = content_h
+            .min(pad * 2.0 + item_h * max_visible)
+            .min(space_below);
+        let max_scroll = (content_h - view_h).max(0.0);
+        drop_scroll = drop_scroll.clamp(0.0, max_scroll);
+        drop_menu = Some((mx, my, bw, view_h, content_h));
+
+        hits.push(HitBox { id: menu.open_hit, x: mx, y: my, w: bw, h: view_h });
+        fill_round(px, mx - 1.0, my - 1.0, bw + 2.0, view_h + 2.0, 10.0, Color::from_rgba8(0, 0, 0, 90));
+        outlined(px, mx, my, bw, view_h, 9.0, Color::from_rgba8(24, 24, 28, 255));
+
+        let view_top = my + pad;
+        let view_bot = my + view_h - pad;
         for (i, (hit, name, selected)) in menu.options.iter().enumerate() {
-            let iy = my + pad + i as f32 * item_h;
-            hits.push(HitBox { id: *hit, x: mx, y: iy, w: bw, h: item_h });
+            let iy = my + pad + i as f32 * item_h - drop_scroll;
+            if iy + item_h <= view_top || iy >= view_bot {
+                continue;
+            }
+            let hit_y = iy.max(my);
+            let hit_b = (iy + item_h).min(my + view_h);
+            if hit_b > hit_y {
+                hits.push(HitBox {
+                    id: *hit,
+                    x: mx,
+                    y: hit_y,
+                    w: bw,
+                    h: hit_b - hit_y,
+                });
+            }
             if hover == Some(*hit) {
                 fill_round(px, mx + 5.0, iy, bw - 10.0, item_h, 6.0, chip_hover());
             } else if *selected {
@@ -2745,6 +2913,49 @@ fn paint_drop_menus(px: &mut Pixmap, fonts: &Fonts, hover: Option<Hit>, hits: &m
             let col = if *selected { accent() } else { text_col() };
             text(px, fonts, name, 12.0, mx + 12.0, iy + 6.0, col, false);
         }
+
+        // Cover padding so partially scrolled rows don't spill into the chrome.
+        let menu_fill = Color::from_rgba8(24, 24, 28, 255);
+        if let Some(r) = Rect::from_xywh(mx + 2.0, my + 2.0, bw - 4.0, (pad - 1.0).max(1.0)) {
+            fill_rect(px, r, menu_fill);
+        }
+        if let Some(r) = Rect::from_xywh(
+            mx + 2.0,
+            my + view_h - pad,
+            bw - 4.0,
+            (pad - 1.0).max(1.0),
+        ) {
+            fill_rect(px, r, menu_fill);
+        }
+
+        if max_scroll > 0.5 {
+            let track_h = (view_h - 12.0).max(8.0);
+            let thumb_h = (view_h / content_h * track_h).clamp(12.0, track_h);
+            let thumb_y = my + 6.0 + (drop_scroll / max_scroll) * (track_h - thumb_h);
+            fill_round(
+                px,
+                mx + bw - 7.0,
+                my + 6.0,
+                3.0,
+                track_h,
+                1.5,
+                Color::from_rgba8(255, 255, 255, 18),
+            );
+            fill_round(
+                px,
+                mx + bw - 7.0,
+                thumb_y,
+                3.0,
+                thumb_h,
+                1.5,
+                Color::from_rgba8(255, 255, 255, 70),
+            );
+        }
+    }
+
+    if let Some(ui) = UI.lock().unwrap().as_mut() {
+        ui.drop_scroll = drop_scroll;
+        ui.drop_menu = drop_menu;
     }
 }
 

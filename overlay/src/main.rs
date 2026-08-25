@@ -140,6 +140,9 @@ fn main() {
     if loaded.auto_update_on_launch && crate::update::apply_on_launch() {
         return;
     }
+    if !loaded.auto_update_on_launch {
+        crate::update::check();
+    }
     let clock_log_path = {
         crate::record::init();
         crate::record::path()

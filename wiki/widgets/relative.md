@@ -15,7 +15,7 @@ Sorts `riders[].track_pos` wrapped around you (`wrap` so +0.5 / −0.5 is the fa
 
 **Nearby riders** (`relative_count`) is count *each side*, not total rows. Visible set is up to `2 * count + 1` (ahead + you + behind).
 
-Classification is joined by race number for position, laps, bike, best/last, penalty, interval, status.
+Classification is joined by race number for position, laps, bike, best/last, penalty, interval, status. The **Position** column is the live place (`RaceField` rows), so a pass shows there even though the row order is track order. See [live race order](../live-order.md).
 
 ## Behavior
 
@@ -36,6 +36,7 @@ Default columns on: Number, Name, Gap, Fastest, Last lap.
 
 ## Change log
 
+- 2026-08-25 — Position column is the live place, so passing the rider on the row above changes the number without waiting for the line. Row order is still track order.
 - 2026-08-24 — Classification join (position / laps / interval) reads shared `RaceStore`; still sorts by track_pos. No visual change.
 - Early overlay — Track-pos relative board with count-each-side.
 - 0.1.0 — Configurable header fields.

@@ -27,6 +27,26 @@ pub fn state() -> UpdateState {
     STATE.lock().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
+/// Banner on the settings window when auto-update is off and a newer build exists.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ManualBanner {
+    Available { version: String },
+    Installing,
+}
+
+pub fn manual_banner(auto_update: bool, dismissed: bool, state: &UpdateState) -> Option<ManualBanner> {
+    if auto_update || dismissed {
+        return None;
+    }
+    match state {
+        UpdateState::Available { version, .. } => Some(ManualBanner::Available {
+            version: version.clone(),
+        }),
+        UpdateState::Downloading => Some(ManualBanner::Installing),
+        _ => None,
+    }
+}
+
 pub fn should_quit() -> bool {
     QUIT.load(Ordering::SeqCst)
 }
@@ -280,4 +300,55 @@ fn parse_ver(s: &str) -> [u32; 3] {
         out[i] = digits.parse().unwrap_or(0);
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn available() -> UpdateState {
+        UpdateState::Available {
+            version: "9.9.9".into(),
+            url: "https://example.test/app.zip".into(),
+        }
+    }
+
+    #[test]
+    fn banner_when_auto_update_is_off_and_a_build_is_ready() {
+        assert_eq!(
+            manual_banner(false, false, &available()),
+            Some(ManualBanner::Available {
+                version: "9.9.9".into()
+            })
+        );
+    }
+
+    #[test]
+    fn no_banner_when_auto_update_is_on() {
+        assert_eq!(manual_banner(true, false, &available()), None);
+    }
+
+    #[test]
+    fn no_banner_after_dismiss() {
+        assert_eq!(manual_banner(false, true, &available()), None);
+    }
+
+    #[test]
+    fn no_banner_when_already_current() {
+        assert_eq!(manual_banner(false, false, &UpdateState::Current), None);
+        assert_eq!(manual_banner(false, false, &UpdateState::Idle), None);
+        assert_eq!(manual_banner(false, false, &UpdateState::Checking), None);
+        assert_eq!(
+            manual_banner(false, false, &UpdateState::Failed("offline".into())),
+            None
+        );
+    }
+
+    #[test]
+    fn banner_stays_up_while_installing() {
+        assert_eq!(
+            manual_banner(false, false, &UpdateState::Downloading),
+            Some(ManualBanner::Installing)
+        );
+    }
 }

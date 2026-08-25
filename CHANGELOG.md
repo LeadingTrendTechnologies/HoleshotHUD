@@ -7,14 +7,20 @@ Sectors widget (experimental), flag and lap logic that matches real motos, and s
 ### Settings
 
 - **Sector times (experimental)** unlocks the Sectors widget and tab in release builds
+- If **Update automatically on launch** is off, a banner at the top of settings appears when a newer GitHub release is out, with **Update** or **Not now** (hides it until the next launch)
 
 ### Overlay
 
+- Positions update the moment a pass happens instead of at the next start/finish line. MX Bikes only rescores the field when someone crosses the line, so standings, relative, dash `P#`, horizontal standings and the map/minimap all held the old order for up to a lap. The overlay now applies passes it can see on track: same lap, close together, and clearly in front (with a small margin so riders running side by side do not swap every frame). Practice and warmup are untouched, since that order is by lap time, and nothing moves on the gate
+- Map and minimap marks follow those live positions: the leader crown moves when the lead changes hands, the green "nearest ahead" and red "nearest behind" rings move to whoever is actually ahead or behind you now, and dot position labels match
 - **Sectors** widget (S1–S3 times and delta vs best)
+- Fixed a republished start board ending a timed race early. Mid-moto the game can drop a board value into the session clock for a moment (`04:43` → `00:05` → `04:42`), and the climb back out was read as the clock having run out: the dash switched to `0 / 2` extras with more than four minutes left, taking the lap counter and the flags with it. A clock that comes back where it left off is now the countdown resuming, while a real expiry still comes back at the session length. The board itself can still blink on the dash for a moment, because in a single frame it cannot be told from a clock that genuinely ran down that far
 - Fixed the white/checkered flags flickering on timed races with extra laps (`8:00 + 2`). If the clock ran out mid-lap, the lap you were on did not count and the flags treated it as though it did, so white appeared a lap early; and a momentary glitch in the session fields could flash the checkered mid-race
 - On a timed race with extras, the lap you are running when the leader starts the extras correctly counts for nothing, so `8:00 + 2` from a mid-lap expiry is one lap plus two extras
-- Checkered flag waits until you cross the line instead of appearing on the run-in, on both lap motos and timed extras
-- White flag now covers the run-in that starts your final lap and stays up for the whole lap, so it no longer disappears in the middle
+- Flags now appear as you come to the finish line, like a flagger waving them: white as you start your final lap, checkered as you come to the finish. Only actually crossing the line counts as finished, so slowing or crashing on the run-in takes the checkered back off
+- White flag no longer sits on the dash for the whole final lap. It is waved as you cross onto the lap and comes down about five seconds later
+- Flags no longer blink off and back on as you cross the line. The last few metres before the line were a hole in the approach window, which collapsed the banner and grew it again on the other side
+- Checkered flag wraps the dash on the sides and bottom; the top is a white plaque with faded checkers and a crossed-flags icon
 - Getting lapped is handled: when the leader takes the finish the race is over, so you see white and then the checkered on your next crossing
 - Dash shows a `~Lapped` tag next to the lap/clock text while you are a lap or more down, so it is obvious why your lap total shrank
 - Getting lapped now shortens the lap total to the race you actually run, so a 5-lap moto you finish a lap down reads `4 / 4` instead of `4 / 5`. Timed races shrink their extra laps the same way

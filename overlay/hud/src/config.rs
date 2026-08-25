@@ -1699,12 +1699,13 @@ pub enum DashField {
     Interval,
     Penalty,
     Session,
+    LocalTime,
     Bike,
     Class,
 }
 
 impl DashField {
-    pub const ALL: [Self; 20] = [
+    pub const ALL: [Self; 21] = [
         Self::None,
         Self::Speed,
         Self::Rpm,
@@ -1723,6 +1724,7 @@ impl DashField {
         Self::Interval,
         Self::Penalty,
         Self::Session,
+        Self::LocalTime,
         Self::Bike,
         Self::Class,
     ];
@@ -1747,6 +1749,7 @@ impl DashField {
             Self::Interval => "int",
             Self::Penalty => "pen",
             Self::Session => "sess",
+            Self::LocalTime => "local",
             Self::Bike => "bike",
             Self::Class => "class",
         }
@@ -1772,6 +1775,7 @@ impl DashField {
             Self::Interval => "Interval",
             Self::Penalty => "Penalty",
             Self::Session => "Session time",
+            Self::LocalTime => "Local time",
             Self::Bike => "Bike",
             Self::Class => "Class",
         }
@@ -1797,6 +1801,7 @@ impl DashField {
             "int" | "interval" => Self::Interval,
             "pen" | "penalty" => Self::Penalty,
             "sess" | "session" => Self::Session,
+            "local" | "localtime" => Self::LocalTime,
             "bike" => Self::Bike,
             "class" => Self::Class,
             _ => Self::None,
@@ -1812,7 +1817,7 @@ impl DashField {
             Self::Position => '\u{f091}',
             Self::Number => '\u{f292}',
             Self::LapCount | Self::LapsLeft => '\u{f1da}',
-            Self::Last | Self::Best | Self::Current | Self::Session => '\u{f2f2}',
+            Self::Last | Self::Best | Self::Current | Self::Session | Self::LocalTime => '\u{f2f2}',
             Self::Delta => '\u{f362}',
             Self::Air => '\u{f72e}',
             Self::Engine => '\u{f2c9}',

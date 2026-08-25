@@ -230,7 +230,64 @@ impl Default for Snapshot {
 
 pub fn cstr(buf: &[u8]) -> String {
     let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
-    String::from_utf8_lossy(&buf[..end]).into_owned()
+    let bytes = &buf[..end];
+    let raw = if let Ok(s) = std::str::from_utf8(bytes) {
+        s.to_string()
+    } else {
+        // MX Bikes names/bikes often arrive as Windows-1252, not UTF-8.
+        bytes.iter().map(|&b| cp1252_char(b)).collect()
+    };
+    clean_display(&raw)
+}
+
+fn cp1252_char(b: u8) -> char {
+    match b {
+        0x80 => '€',
+        0x82 => '‚',
+        0x83 => 'ƒ',
+        0x84 => '„',
+        0x85 => '…',
+        0x86 => '†',
+        0x87 => '‡',
+        0x88 => 'ˆ',
+        0x89 => '‰',
+        0x8A => 'Š',
+        0x8B => '‹',
+        0x8C => 'Œ',
+        0x8E => 'Ž',
+        0x91 => '‘',
+        0x92 => '’',
+        0x93 => '“',
+        0x94 => '”',
+        0x95 => '•',
+        0x96 => '–',
+        0x97 => '—',
+        0x98 => '˜',
+        0x99 => '™',
+        0x9A => 'š',
+        0x9B => '›',
+        0x9C => 'œ',
+        0x9E => 'ž',
+        0x9F => 'Ÿ',
+        _ => b as char,
+    }
+}
+
+/// Drop controls / replacement / trademark glyphs the HUD fonts usually lack.
+fn clean_display(s: &str) -> String {
+    s.chars()
+        .filter(|c| {
+            *c == ' '
+                || *c == '\t'
+                || (!c.is_control()
+                    && *c != '\u{FFFD}'
+                    && *c != '™'
+                    && *c != '®'
+                    && *c != '©')
+        })
+        .collect::<String>()
+        .trim()
+        .to_string()
 }
 
 pub fn write_name(dest: &mut [u8], src: &str) {
@@ -403,6 +460,15 @@ mod tests {
         assert_eq!(cstr(&buf), "Troy");
         write_name(&mut buf, "");
         assert_eq!(cstr(&buf), "");
+    }
+
+    #[test]
+    fn cstr_strips_windows1252_trademark() {
+        // "OEM YZ450F" + Windows-1252 ™ (0x99) — common on bike short names.
+        let mut buf = [0u8; NAME];
+        let raw = b"OEM YZ450F\x99";
+        buf[..raw.len()].copy_from_slice(raw);
+        assert_eq!(cstr(&buf), "OEM YZ450F");
     }
 
     #[test]

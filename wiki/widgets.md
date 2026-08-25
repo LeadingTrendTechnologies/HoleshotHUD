@@ -20,6 +20,7 @@ When you change a widget, append a dated entry to that widget’s **Change log**
 
 - Draw path: `overlay/hud/src/render.rs` (`draw()`). Settings: `overlay/src/settings.rs`. Layout/ini: `overlay/hud/src/config.rs`.
 - Shared race view: `overlay/hud/src/race_store.rs` — `RaceStore::tick` once per frame; widgets `get()` session clock + classification.
+- **Live race order**: the game only republishes its classification when someone crosses the line, so `race_store` re-derives places every tick — the game order with any pass we can see in `riders[].track_pos` applied on top (`live_order` / `passed`). `RaceField.rows` come back in that order with `standing.position` set to it, and `live_position` / `live_leader` serve map-style lookups. See [live race order](live-order.md).
 - All widgets start **hidden** on a fresh install (`show_* = false`). Turn on with **Show on overlay**.
 - **Sectors** is unlocked in debug `cargo run`. Release needs **Sector times (experimental)** on the Settings tab (Labs). The Sectors tab is omitted in release until that flag is on.
 - Every widget has font size, bold, opacity, and snap-to-monitor. Hold **Ctrl** and drag to move or resize.
