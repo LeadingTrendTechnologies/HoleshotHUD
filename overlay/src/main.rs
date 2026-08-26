@@ -58,6 +58,7 @@ pub(crate) fn quit_app() {
     if QUITTING.swap(true, Ordering::SeqCst) {
         return;
     }
+    crate::compat::restore_taskbars();
     crate::startup::kill_other_hud_processes();
     crate::tray::remove();
     crate::compat::stop_background_threads();

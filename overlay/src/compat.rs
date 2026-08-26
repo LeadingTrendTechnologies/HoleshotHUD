@@ -18,9 +18,9 @@ use windows::Win32::System::Threading::{
 use windows::Win32::UI::Shell::{ABM_WINDOWPOSCHANGED, APPBARDATA, SHAppBarMessage};
 use windows::Win32::UI::WindowsAndMessaging::{
     ClipCursor, FindWindowExW, FindWindowW, GetForegroundWindow, GetWindowLongPtrW, GetWindowRect,
-    GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetWindowLongPtrW, SetWindowPos, ShowWindow,
-    GWL_EXSTYLE, HWND_NOTOPMOST, HWND_TOPMOST, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE,
-    SWP_NOSIZE, SWP_SHOWWINDOW, SW_HIDE, SW_SHOWNOACTIVATE, SW_SHOWNORMAL, WS_EX_TRANSPARENT,
+    GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, SetWindowLongPtrW, SetWindowPos,
+    ShowWindow, GWL_EXSTYLE, HWND_NOTOPMOST, HWND_TOPMOST, SWP_FRAMECHANGED, SWP_NOACTIVATE,
+    SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE, WS_EX_TRANSPARENT,
 };
 
 const FLAG: &str = "DISABLEDXMAXIMIZEDWINDOWEDMODE";
@@ -28,6 +28,7 @@ const ZBID_IMMERSIVE_NOTIFICATION: u32 = 4;
 
 static UNCLIP: AtomicBool = AtomicBool::new(false);
 static BG_RUN: AtomicBool = AtomicBool::new(true);
+static TASKBARS_HIDDEN: AtomicBool = AtomicBool::new(false);
 
 fn spawn_unclip_thread() {
     thread::spawn(|| {
@@ -47,6 +48,11 @@ fn spawn_unclip_thread() {
 pub fn stop_background_threads() {
     BG_RUN.store(false, Ordering::Relaxed);
     UNCLIP.store(false, Ordering::Relaxed);
+}
+
+/// `quit_app` uses `process::exit`, which skips Drop — call this before that.
+pub fn restore_taskbars() {
+    show_taskbars();
 }
 
 type CreateWindowInBandFn = unsafe extern "system" fn(
@@ -235,6 +241,9 @@ impl FullscreenFix {
 
     pub fn keep_overlay_above(&mut self, overlay: HWND, game: Option<HWND>, settings: HWND) -> bool {
         unsafe {
+            // Dead HWNDs stay Some until the next process scan; treat them as gone so
+            // closing the game cannot keep the taskbar hidden behind Settings.
+            let game = game.filter(|g| IsWindow(*g).as_bool());
             // Settings steals foreground from the game; keep the HUD up so riders can
             // see widget tweaks live. Alt-tab away from both still hides it.
             let playing = game.is_some_and(|g| game_is_foreground(g))
@@ -289,6 +298,9 @@ impl FullscreenFix {
                     }
                     restore_desktop(overlay);
                     self.hide_after = None;
+                } else if TASKBARS_HIDDEN.load(Ordering::Relaxed) {
+                    // Win11 often ignores a single ShowWindow after SW_HIDE; keep trying.
+                    show_taskbars();
                 }
                 false
             }
@@ -331,11 +343,15 @@ fn game_is_foreground(game: HWND) -> bool {
 }
 
 fn hide_taskbars() {
+    TASKBARS_HIDDEN.store(true, Ordering::Relaxed);
     set_taskbars_visible(false);
 }
 
 fn show_taskbars() {
     set_taskbars_visible(true);
+    if primary_taskbar_visible() {
+        TASKBARS_HIDDEN.store(false, Ordering::Relaxed);
+    }
 }
 
 fn set_taskbars_visible(show: bool) {
@@ -347,6 +363,17 @@ fn set_taskbars_visible(show: bool) {
                 let _ = ShowWindow(hwnd, SW_HIDE);
             }
         });
+    }
+}
+
+fn primary_taskbar_visible() -> bool {
+    unsafe {
+        if let Ok(hwnd) = FindWindowW(w!("Shell_TrayWnd"), None) {
+            if !hwnd.is_invalid() {
+                return IsWindowVisible(hwnd).as_bool();
+            }
+        }
+        false
     }
 }
 
@@ -368,10 +395,23 @@ unsafe fn for_each_taskbar(mut f: impl FnMut(HWND)) {
 }
 
 unsafe fn restore_taskbar(hwnd: HWND) {
-    let _ = ShowWindow(hwnd, SW_SHOWNORMAL);
+    // SW_SHOWNORMAL often leaves Shell_TrayWnd hidden on Windows 11 after SW_HIDE.
+    let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+    if !IsWindowVisible(hwnd).as_bool() {
+        let _ = ShowWindow(hwnd, SW_SHOW);
+    }
     let _ = SetWindowPos(
         hwnd,
         HWND_TOPMOST,
+        0,
+        0,
+        0,
+        0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOACTIVATE,
+    );
+    let _ = SetWindowPos(
+        hwnd,
+        HWND_NOTOPMOST,
         0,
         0,
         0,

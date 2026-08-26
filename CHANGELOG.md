@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.18
+
+Closing MX Bikes brings the Windows taskbar back.
+
+### Overlay
+
+- Closing the game restores the taskbar (it stayed hidden after a fullscreen session)
+
 ## 0.1.17
 
 Settings is a working board with an orange Show plaque, you can install anywhere, and the HUD stays up while you tweak.
