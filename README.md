@@ -18,7 +18,7 @@ Open the inbox to filter ratings, bugs, and feature asks. **Done** deletes that 
 ## Download and install
 
 1. Download **[HoleshotHUD-Setup.exe](https://github.com/LeadingTrendTechnologies/HoleshotHUD/releases/latest/download/HoleshotHUD-Setup.exe)** (always the latest release).
-2. Run the Setup file. If SmartScreen appears, choose **More info → Run anyway**. Setup installs to `%LOCALAPPDATA%\Holeshot HUD` (no admin).
+2. Run the Setup file. If SmartScreen appears, choose **More info → Run anyway**. Default install is `%LOCALAPPDATA%\Holeshot HUD` (no admin); Setup lets you pick another folder.
 3. Setup finds Steam MX Bikes (registry + Steam library folders) and copies `Holeshot-HUD.dlo` into the game `plugins` folder. If the game is not found, pick the folder that contains `mxbikes.exe`.
 4. Set MX Bikes to **borderless** or **windowed**.
 5. Start the game, then start **Holeshot HUD** from the desktop shortcut.
@@ -28,7 +28,7 @@ The overlay copies the plugin again on launch if it is missing or outdated. The 
 
 Pull requests also build `HoleshotHUD-Setup.exe` as a workflow artifact for testing. That does not change the website download until you publish a `v*` tag.
 
-Uninstall from Windows Settings, or run `Uninstall.bat` in `%LOCALAPPDATA%\Holeshot HUD`.
+Uninstall from Windows Settings, or run `Uninstall.bat` in the install folder.
 
 ## Use
 
@@ -77,8 +77,8 @@ Dev builds optimize crates like tiny-skia (`opt-level = 3`) so the HUD stays smo
 Push a tag to publish a downloadable release:
 
 ```bat
-git tag v0.1.16
-git push origin v0.1.16
+git tag v0.1.17
+git push origin v0.1.17
 ```
 
 ## Data wiki

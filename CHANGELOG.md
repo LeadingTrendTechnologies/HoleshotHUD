@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.1.17
+
+Settings is a working board with an orange Show plaque, you can install anywhere, and the HUD stays up while you tweak.
+
+### Settings
+
+- Top mode bar is **Widgets** / **Settings** / **Feedback**; the widget rail groups **Boards**, **Track**, and **Cockpit**
+- Each widget pane opens on an orange name plaque with **Show on overlay** on the right — that is the only control until the widget is on
+- Header and Footer are three slots (Left, Middle, Right)
+- Columns keep drag, width, and show/hide; name columns can go wider
+- Snap shows a live preview of where the widget will land
+- Tab, arrows, Space, Enter, and Esc move through controls; Windows High Contrast is followed
+- App → Updates shows the install folder
+- If that folder looks protected (Program Files, not writable), auto-update and the update banner note that admin approval may be needed
+
+### Overlay
+
+- The HUD stays visible while Settings is in front so widget tweaks show live; alt-tab away from both still hides it
+- Per-monitor DPI so Settings is not blurry on scaled displays
+
+### Installer
+
+- Setup shows a destination folder page so you can install somewhere other than the default `%LOCALAPPDATA%\Holeshot HUD`
+- Uninstall follows that folder (and still clears AppData logs / the remembered game path)
+
 ## 0.1.16
 
 Fresh installs start with every widget off, radar drops the blind-spot wedges, and the white flag matches the checkered look.

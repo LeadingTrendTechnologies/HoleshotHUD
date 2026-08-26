@@ -3,7 +3,10 @@ param([switch]$Silent)
 $ErrorActionPreference = "Continue"
 
 $AppName = "Holeshot HUD"
-$InstallDir = Join-Path $env:LOCALAPPDATA $AppName
+# Script lives in the install folder (which the user may have chosen).
+$InstallDir = if ($PSScriptRoot) { $PSScriptRoot } else { Join-Path $env:LOCALAPPDATA $AppName }
+# Runtime data (gamedir, logs) always lives under Local AppData, even if the app is elsewhere.
+$DataDir = Join-Path $env:LOCALAPPDATA $AppName
 $LegacyDir = Join-Path $env:LOCALAPPDATA "MXBO Overlay"
 # Same path the overlay uses for layout / options (HudConfig::ini_path).
 $SettingsIni = Join-Path $env:USERPROFILE "Documents\PiBoSo\MX Bikes\Holeshot-HUD.ini"
@@ -44,7 +47,7 @@ function Remove-SavedSettings {
             Write-Host "Removed $ini"
         }
     }
-    foreach ($dir in @($InstallDir, $LegacyDir)) {
+    foreach ($dir in @($InstallDir, $DataDir, $LegacyDir) | Select-Object -Unique) {
         if (-not (Test-Path -LiteralPath $dir)) { continue }
         foreach ($name in @("Holeshot-HUD.ini", "mxbo.ini", "gamedir.txt")) {
             $p = Join-Path $dir $name
@@ -75,10 +78,12 @@ Get-Process -Name "Holeshot-HUD", "mxbo-overlay", "MXBO Overlay", "Holeshot HUD"
 Remove-Item -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'Holeshot HUD' -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'Holeshot HUD game' -Force -ErrorAction SilentlyContinue
 
-$saved = Join-Path $InstallDir "gamedir.txt"
-if (Test-Path $saved) {
-    $game = (Get-Content -LiteralPath $saved -Raw).Trim()
-    Remove-PluginFromGame $game
+foreach ($dir in @($InstallDir, $DataDir) | Select-Object -Unique) {
+    $saved = Join-Path $dir "gamedir.txt"
+    if (Test-Path $saved) {
+        $game = (Get-Content -LiteralPath $saved -Raw).Trim()
+        Remove-PluginFromGame $game
+    }
 }
 
 foreach ($lib in Get-SteamLibraries) {
@@ -102,7 +107,7 @@ if ($Silent) {
     exit 0
 }
 
-foreach ($dir in @($InstallDir, $LegacyDir)) {
+foreach ($dir in @($InstallDir, $DataDir, $LegacyDir) | Select-Object -Unique) {
     if (Test-Path $dir) {
         Start-Sleep -Milliseconds 400
         Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue

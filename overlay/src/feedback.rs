@@ -127,6 +127,10 @@ pub fn set_focus(on: bool) {
     }
 }
 
+pub fn is_focused() -> bool {
+    lock().focused
+}
+
 pub fn set_text_rect(x: f32, y: f32, w: f32, h: f32) {
     lock().text_rect = (x, y, w, h);
 }

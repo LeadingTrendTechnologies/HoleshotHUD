@@ -2,7 +2,7 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 
 use crate::util::hidden_powershell;
@@ -54,6 +54,61 @@ pub fn should_quit() -> bool {
 pub fn current_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
+
+/// Folder that contains the running overlay exe (the install location).
+pub fn install_dir() -> Option<PathBuf> {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+}
+
+pub fn install_dir_display() -> String {
+    install_dir()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|| "(unknown)".into())
+}
+
+/// True when replacing the exe may fail without elevation (e.g. Program Files).
+pub fn update_may_need_admin() -> bool {
+    static NEED_ADMIN: LazyLock<bool> = LazyLock::new(|| {
+        let Some(dir) = install_dir() else {
+            return false;
+        };
+        if looks_protected(&dir) {
+            return true;
+        }
+        !dir_is_writable(&dir)
+    });
+    *NEED_ADMIN
+}
+
+fn looks_protected(dir: &Path) -> bool {
+    let s = dir.to_string_lossy().to_ascii_lowercase();
+    let markers = [
+        "\\program files\\",
+        "\\program files (x86)\\",
+        "\\windows\\",
+        "/program files/",
+        "/program files (x86)/",
+        "/windows/",
+    ];
+    markers.iter().any(|m| s.contains(m))
+}
+
+fn dir_is_writable(dir: &Path) -> bool {
+    let probe = dir.join(".holeshot-write-test");
+    match fs::OpenOptions::new().write(true).create(true).truncate(true).open(&probe) {
+        Ok(_) => {
+            let _ = fs::remove_file(&probe);
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+pub const ADMIN_UPDATE_HINT: &str =
+    "This install folder may need admin approval to update.";
+
 
 /// Check GitHub and install a newer build before the UI opens.
 /// Returns true if this process should exit so the updater can relaunch.
@@ -355,5 +410,14 @@ mod tests {
             manual_banner(false, false, &UpdateState::Downloading),
             Some(ManualBanner::Installing)
         );
+    }
+
+    #[test]
+    fn protected_paths_need_admin() {
+        assert!(looks_protected(Path::new(r"C:\Program Files\Holeshot HUD")));
+        assert!(looks_protected(Path::new(r"C:\Program Files (x86)\Holeshot HUD")));
+        assert!(!looks_protected(Path::new(
+            r"C:\Users\troye\AppData\Local\Holeshot HUD"
+        )));
     }
 }

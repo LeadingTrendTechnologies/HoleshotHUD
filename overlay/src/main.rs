@@ -32,6 +32,7 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
 use windows::Win32::System::Threading::Sleep;
+use windows::Win32::UI::HiDpi::{SetProcessDpiAwareness, PROCESS_PER_MONITOR_DPI_AWARE};
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_F9};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateIconFromResourceEx, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
@@ -161,6 +162,7 @@ fn main() {
 }
 
 unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
+    let _ = SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
     let hinst = GetModuleHandleW(None).unwrap();
     let icon_bytes = include_bytes!("../icon.ico");
     let icon_big = load_app_icon(hinst, icon_bytes, 256);
@@ -185,8 +187,8 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
         80,
         80,
-        800,
-        700,
+        1000,
+        720,
         None,
         None,
         hinst,
@@ -296,7 +298,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
                 compat_done = true;
             }
         }
-        let overlay_on = zfix.keep_overlay_above(hwnd, game);
+        let overlay_on = zfix.keep_overlay_above(hwnd, game, host);
         if overlay_on {
             crate::settings::keep_above_overlay(host);
         }
@@ -395,12 +397,22 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
             .unwrap_or(999.0);
         let age = raw_age.clamp(0.0, 0.08);
         let live = raw_age < 2.5;
-        let hud = if live || layout_on { last_snap.as_ref() } else { None };
+        let settings_open = crate::settings::is_open();
         if live {
             if let Some(s) = last_snap.as_ref() {
                 crate::record::tick(s);
             }
         }
+        if settings_open {
+            if let Some(s) = last_snap.as_mut() {
+                s.on_track = 1;
+            }
+        }
+        let hud = if live || layout_on || (settings_open && last_snap.is_some()) {
+            last_snap.as_ref()
+        } else {
+            None
+        };
 
         let frame_start = Instant::now();
         sys.tick(last_snap.as_ref().map(|s| s.seq));

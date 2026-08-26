@@ -1,0 +1,41 @@
+{
+  "title": "Holeshot HUD — settings composition",
+  "question": "Same tabs, same controls, same copy. Pick the composition the 800×700 settings window should be built to. What should carry forward? What feels false to Broadcast Booth Glass?",
+  "steer": true,
+  "buildPath": { "value": "comp", "toggle": true },
+  "options": [
+    {
+      "id": "show-plaque",
+      "label": "Show Plaque",
+      "kicker": "FIRST-RUN",
+      "thesis": "The Show on overlay control is a full-width TV plaque — first-run cannot miss it; depth lives quietly underneath.",
+      "palette": ["#08080A", "#18191D", "#FF9430", "#E4E4E6", "#84848A"],
+      "materials": ["charcoal stack", "orange plaque", "Exo 2 ExtraBold Italic"],
+      "viewport": "Left widget rail; Standings pane opens on a tall Holeshot-orange Show on overlay plaque with a large toggle; remaining controls (font, highlight, columns, snap) stack below in quieter charcoal.",
+      "risk": "The plaque can steal so much height that mid-session column editing feels buried.",
+      "comp": ".impeccable/mocks/settings-show-plaque.png"
+    },
+    {
+      "id": "header-strip",
+      "label": "Header Strip",
+      "kicker": "MID-SESSION",
+      "thesis": "A persistent top strip holds the widget name and Show toggle — one glance, then the pane is all depth.",
+      "palette": ["#08080A", "#18191D", "#FF9430", "#E4E4E6", "#84848A"],
+      "materials": ["charcoal stack", "skewed title bar", "Exo 2 ExtraBold Italic"],
+      "viewport": "Holeshot mark + Standings + Show on overlay live in a window-wide header; left rail is compact names and on-dots; the body is the current controls at working density.",
+      "risk": "A header chrome band can read as generic app toolbar if the orange plaque energy is too thin.",
+      "comp": ".impeccable/mocks/settings-header-strip.png"
+    },
+    {
+      "id": "pit-board",
+      "label": "Pit Board",
+      "kicker": "DEPTH",
+      "thesis": "Settings as a classification board: tight rows, uppercase labels, orange only on the live switch and the selected rail.",
+      "palette": ["#0A0A0A", "#18191D", "#FF9430", "#E4E4E6", "#84848A"],
+      "materials": ["hairline rows", "bike-pill density", "tonal charcoal"],
+      "viewport": "Narrow rail like a P/# column; pane is a standings-like stack of control rows; Show on overlay is the first row — orange-filled when off, quiet when on.",
+      "risk": "Too close to the HUD table and too dense for a 700px settings window.",
+      "comp": ".impeccable/mocks/settings-pit-board.png"
+    }
+  ]
+}

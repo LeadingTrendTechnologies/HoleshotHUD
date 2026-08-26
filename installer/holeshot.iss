@@ -1,5 +1,5 @@
 #ifndef MyAppVersion
-#define MyAppVersion "0.1.16"
+#define MyAppVersion "0.1.17"
 #endif
 #ifndef SourceDir
 #define SourceDir "."
@@ -23,8 +23,10 @@ AppSupportURL={#MyAppURL}
 DefaultDirName={localappdata}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
-DisableDirPage=yes
+DisableDirPage=no
+UsePreviousAppDir=yes
 PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=dialog
 OutputDir={#OutputDir}
 OutputBaseFilename=HoleshotHUD-Setup
 Compression=lzma

@@ -7,6 +7,10 @@ use crate::shm::{Rect, Snapshot};
 
 pub static CONFIG: LazyLock<Mutex<HudConfig>> = LazyLock::new(|| Mutex::new(HudConfig::new()));
 
+pub const COL_W_MIN: i32 = 18;
+pub const COL_W_MAX: i32 = 160;
+pub const NAME_W_MAX: i32 = 400;
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum FontFamily {
     Segoe,
@@ -404,8 +408,15 @@ impl StField {
         self.add_width(c, w - self.width(c));
     }
 
+    pub fn width_max(self) -> i32 {
+        match self {
+            Self::Name => NAME_W_MAX,
+            _ => COL_W_MAX,
+        }
+    }
+
     pub fn add_width(self, c: &mut HudConfig, d: i32) {
-        let next = (self.width(c) + d).clamp(18, 160);
+        let next = (self.width(c) + d).clamp(COL_W_MIN, self.width_max());
         match self {
             Self::Pos => c.st_w_pos = next,
             Self::Num => c.st_w_num = next,
@@ -575,8 +586,15 @@ impl RelField {
         self.add_width(c, w - self.width(c));
     }
 
+    pub fn width_max(self) -> i32 {
+        match self {
+            Self::Name => NAME_W_MAX,
+            _ => COL_W_MAX,
+        }
+    }
+
     pub fn add_width(self, c: &mut HudConfig, d: i32) {
-        let next = (self.width(c) + d).clamp(18, 160);
+        let next = (self.width(c) + d).clamp(COL_W_MIN, self.width_max());
         match self {
             Self::Num => c.rel_w_num = next,
             Self::Name => c.rel_w_name = next,
@@ -1118,7 +1136,7 @@ impl HudConfig {
                 "rel_order" => cfg.rel_order = parse_rel_order(val),
                 "st_w_pos" => cfg.st_w_pos = clamp_w(val),
                 "st_w_num" => cfg.st_w_num = clamp_w(val),
-                "st_w_name" => cfg.st_w_name = clamp_w(val),
+                "st_w_name" => cfg.st_w_name = clamp_name_w(val),
                 "st_w_gap" => cfg.st_w_gap = clamp_w(val),
                 "st_w_interval" => cfg.st_w_interval = clamp_w(val),
                 "st_w_laps" => cfg.st_w_laps = clamp_w(val),
@@ -1130,7 +1148,7 @@ impl HudConfig {
                 "st_w_penalty" => cfg.st_w_penalty = clamp_w(val),
                 "st_w_crashed" => cfg.st_w_crashed = clamp_w(val),
                 "rel_w_num" => cfg.rel_w_num = clamp_w(val),
-                "rel_w_name" => cfg.rel_w_name = clamp_w(val),
+                "rel_w_name" => cfg.rel_w_name = clamp_name_w(val),
                 "rel_w_gap" => cfg.rel_w_gap = clamp_w(val),
                 "rel_w_laps" => cfg.rel_w_laps = clamp_w(val),
                 "rel_w_current" => cfg.rel_w_current = clamp_w(val),
@@ -1477,6 +1495,26 @@ impl HudConfig {
         }
     }
 
+    pub fn widget_rect(&self, id: WidgetId) -> Rect {
+        match id {
+            WidgetId::Standings => self.standings,
+            WidgetId::Relative => self.relative,
+            WidgetId::Map => self.map,
+            WidgetId::Minimap => self.minimap,
+            WidgetId::Radar => self.radar,
+            WidgetId::Dash => self.dash,
+            WidgetId::Ticker => self.ticker,
+            WidgetId::Sys => self.sys,
+            WidgetId::Sector => self.sector,
+        }
+    }
+
+    pub fn snapped_rect(&self, id: WidgetId, align: SnapAlign) -> Rect {
+        let mut r = self.widget_rect(id);
+        snap_rect(&mut r, align);
+        r
+    }
+
     pub fn snap(&mut self, id: WidgetId, align: SnapAlign) {
         let r = match id {
             WidgetId::Standings => &mut self.standings,
@@ -1515,7 +1553,11 @@ fn b(v: bool) -> i32 {
 }
 
 fn clamp_w(val: &str) -> i32 {
-    val.parse().unwrap_or(40).clamp(18, 160)
+    val.parse().unwrap_or(40).clamp(COL_W_MIN, COL_W_MAX)
+}
+
+fn clamp_name_w(val: &str) -> i32 {
+    val.parse().unwrap_or(80).clamp(COL_W_MIN, NAME_W_MAX)
 }
 
 fn clamp_pct(val: &str) -> i32 {

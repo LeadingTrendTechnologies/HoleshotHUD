@@ -1,0 +1,260 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-26T13:40:00Z",
+  "title": "Design System: Holeshot HUD",
+  "extensions": {
+    "colorMeta": {
+      "holeshot-orange": {
+        "role": "primary",
+        "displayName": "Holeshot Orange",
+        "canonical": "#FF9430",
+        "tonalRamp": ["#3D1600", "#6B2A05", "#9A4510", "#C96618", "#FF9430", "#FFB05C", "#FFD09A", "#FFEBD4"]
+      },
+      "you-row": {
+        "role": "primary",
+        "displayName": "You Row",
+        "canonical": "#C48424",
+        "tonalRamp": ["#2E1C05", "#5A3710", "#865318", "#C48424", "#D4A04A", "#E4C078", "#F0DCA8", "#F8EED4"]
+      },
+      "night-ink": {
+        "role": "neutral",
+        "displayName": "Night Ink",
+        "canonical": "#0A0A0A",
+        "tonalRamp": ["#0A0A0A", "#141416", "#1E1E22", "#2A2A2E", "#48484E", "#84848A", "#C4C4C8", "#E4E4E6"]
+      },
+      "charcoal": {
+        "role": "neutral",
+        "displayName": "Charcoal",
+        "canonical": "#18191D",
+        "tonalRamp": ["#08080A", "#121316", "#18191D", "#222329", "#2A2A2E", "#48484E", "#84848A", "#E4E4E6"]
+      },
+      "charcoal-side": {
+        "role": "neutral",
+        "displayName": "Charcoal Side",
+        "canonical": "#08080A",
+        "tonalRamp": ["#000000", "#08080A", "#121316", "#18191D", "#2A2A2E", "#48484E", "#84848A", "#E4E4E6"]
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "Panel",
+        "canonical": "#141416",
+        "tonalRamp": ["#0A0A0A", "#141416", "#1C1C20", "#2A2A2E", "#3A3A40", "#5A5A62", "#84848A", "#E4E4E6"]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#2A2A2E",
+        "tonalRamp": ["#141416", "#1C1C20", "#2A2A2E", "#3A3A40", "#4A4A52", "#6A6A72", "#A4A4AA", "#E4E4E6"]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Text",
+        "canonical": "#E4E4E6",
+        "tonalRamp": ["#2A2A2E", "#48484E", "#6A6A72", "#84848A", "#A8A8AE", "#C8C8CC", "#E4E4E6", "#F4F4F7"]
+      },
+      "text-dim": {
+        "role": "neutral",
+        "displayName": "Text Dim",
+        "canonical": "#84848A",
+        "tonalRamp": ["#2A2A2E", "#3A3A40", "#5A5A62", "#6C6C74", "#84848A", "#A4A4AA", "#C8C8CC", "#E4E4E6"]
+      },
+      "ink-on-accent": {
+        "role": "neutral",
+        "displayName": "Ink on Accent",
+        "canonical": "#0C0C0E",
+        "tonalRamp": ["#0C0C0E", "#1A1008", "#2A2218", "#484040", "#84848A", "#C4C4C8", "#E4E4E6", "#F8F8FA"]
+      },
+      "ink-on-light": {
+        "role": "neutral",
+        "displayName": "Ink on Light",
+        "canonical": "#101012",
+        "tonalRamp": ["#101012", "#18191D", "#2A2A2E", "#48484E", "#84848A", "#C4C4C8", "#E4E4E6", "#F8F8FA"]
+      },
+      "field-slate": {
+        "role": "neutral",
+        "displayName": "Field Slate",
+        "canonical": "#303440",
+        "tonalRamp": ["#14161C", "#22262E", "#303440", "#484E5A", "#6A7080", "#8A90A0", "#B4B8C0", "#E4E6EA"]
+      },
+      "track-line": {
+        "role": "neutral",
+        "displayName": "Track Line",
+        "canonical": "#ECECF0",
+        "tonalRamp": ["#2A2A2E", "#48484E", "#84848A", "#B4B4BA", "#D0D0D6", "#E4E4E8", "#ECECF0", "#F8F8FA"]
+      },
+      "lapping-blue": {
+        "role": "secondary",
+        "displayName": "Lapping Blue",
+        "canonical": "#3B82F6",
+        "tonalRamp": ["#0B1F4A", "#163A7A", "#1E56B0", "#3B82F6", "#5B9AFF", "#8BB8FF", "#C4DAFF", "#E8F0FF"]
+      },
+      "lapped-red": {
+        "role": "secondary",
+        "displayName": "Lapped Red",
+        "canonical": "#EF4444",
+        "tonalRamp": ["#3A0A0A", "#6B1414", "#A81F1F", "#EF4444", "#F87171", "#FCA5A5", "#FECACA", "#FEECEC"]
+      },
+      "ahead-green": {
+        "role": "tertiary",
+        "displayName": "Ahead Green",
+        "canonical": "#30DC58",
+        "tonalRamp": ["#052810", "#0A5A22", "#149438", "#30DC58", "#5CEC7A", "#90F4A8", "#C8FBD4", "#E8FEEC"]
+      },
+      "behind-red": {
+        "role": "tertiary",
+        "displayName": "Behind Red",
+        "canonical": "#FF4048",
+        "tonalRamp": ["#3A080C", "#6B1018", "#B01C28", "#FF4048", "#FF6E74", "#FFA0A4", "#FFD0D2", "#FFEEF0"]
+      },
+      "best-lap-violet": {
+        "role": "tertiary",
+        "displayName": "Best Lap Violet",
+        "canonical": "#C470FF",
+        "tonalRamp": ["#2A0840", "#4E1470", "#7A28B0", "#C470FF", "#D494FF", "#E2B8FF", "#F0DCFF", "#F8F0FF"]
+      },
+      "dash-place": {
+        "role": "primary",
+        "displayName": "Dash Place",
+        "canonical": "#E87817",
+        "tonalRamp": ["#3A1A04", "#6B3208", "#A04E10", "#E87817", "#F09440", "#F8B878", "#FCD8B0", "#FFF0E0"]
+      },
+      "flag-yellow": {
+        "role": "tertiary",
+        "displayName": "Flag Yellow",
+        "canonical": "#F4D624",
+        "tonalRamp": ["#3A3004", "#6B5810", "#A08C18", "#F4D624", "#F8E260", "#FCEC98", "#FCF6C8", "#FFFCE8"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Dash gear and large italic P# — the loudest number on screen." },
+      "headline": { "displayName": "Headline", "purpose": "Event title on the orange header bar." },
+      "title": { "displayName": "Title", "purpose": "Track-name plaques and board titles." },
+      "body": { "displayName": "Body", "purpose": "Standings and relative cells at 12px ExtraBold Italic." },
+      "label": { "displayName": "Label", "purpose": "Uppercase column headers (P, #, NAME, GAP)." }
+    },
+    "shadows": [
+      {
+        "name": "knob-disc",
+        "value": "0 1px 2px rgba(0,0,0,0.27)",
+        "purpose": "Faint dark disc under settings knobs and menus only. Not for HUD tables."
+      }
+    ],
+    "motion": [
+      {
+        "name": "toggle",
+        "value": "0.12s ease",
+        "purpose": "Toggle knob slide."
+      },
+      {
+        "name": "row-slide",
+        "value": "0.38s",
+        "purpose": "Standings/relative row order change; ticker index slide."
+      }
+    ],
+    "breakpoints": [
+      { "name": "web-stack", "value": "800px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one action — download on the web, filled orange in settings.",
+      "html": "<button class=\"ds-btn-primary\" type=\"button\">Download for Windows</button>",
+      "css": ".ds-btn-primary { background: #FF9430; color: #0C0C0E; font-family: 'Exo 2', 'Segoe UI', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 0.02em; text-decoration: none; padding: 10px 16px; border: 0; border-radius: 6px; cursor: pointer; } .ds-btn-primary:hover { filter: brightness(1.08); } .ds-btn-primary:focus-visible { outline: 2px solid #FF9430; outline-offset: 3px; } .ds-btn-primary:active { filter: brightness(0.95); }"
+    },
+    {
+      "name": "Widget Nav Button",
+      "kind": "nav",
+      "refersTo": "button-widget",
+      "description": "Web/settings widget list: charcoal plaque, orange when selected.",
+      "html": "<div class=\"ds-widget-nav\"><button class=\"ds-widget-btn ds-widget-btn-on\" type=\"button\">Standings</button><button class=\"ds-widget-btn\" type=\"button\">Relative</button></div>",
+      "css": ".ds-widget-nav { display: grid; gap: 8px; width: 220px; } .ds-widget-btn { display: block; width: 100%; text-align: left; padding: 10px 12px; border: 1px solid #2A2A2E; background: #141416; color: #E4E4E6; border-radius: 6px; font-family: 'Exo 2', 'Segoe UI', sans-serif; font-size: 13px; font-weight: 700; cursor: pointer; } .ds-widget-btn:hover { border-color: #84848A; } .ds-widget-btn:focus-visible { outline: 2px solid #FF9430; outline-offset: 2px; } .ds-widget-btn-on { border-color: #FF9430; color: #FF9430; }"
+    },
+    {
+      "name": "Toggle",
+      "kind": "input",
+      "refersTo": "toggle-on",
+      "description": "Show-on-overlay and settings switches. Orange means on.",
+      "html": "<label class=\"ds-toggle\"><input type=\"checkbox\" checked /><span class=\"ds-toggle-track\"></span></label>",
+      "css": ".ds-toggle { display: inline-flex; cursor: pointer; } .ds-toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; } .ds-toggle-track { width: 36px; height: 20px; border-radius: 10px; background: #2A2A2E; position: relative; display: block; } .ds-toggle-track::after { content: ''; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: left 0.12s ease; } .ds-toggle input:checked + .ds-toggle-track { background: #FF9430; } .ds-toggle input:checked + .ds-toggle-track::after { left: 19px; } .ds-toggle input:focus-visible + .ds-toggle-track { outline: 2px solid #FF9430; outline-offset: 2px; }"
+    },
+    {
+      "name": "Bike Pill",
+      "kind": "chip",
+      "refersTo": "bike-pill",
+      "description": "Manufacturer-colored badge. Ink flips for contrast; never follows table text color.",
+      "html": "<span class=\"ds-pill ds-pill-ktm\">KTM</span><span class=\"ds-pill ds-pill-yamaha\">YZ</span><span class=\"ds-pill ds-pill-honda\">CRF</span>",
+      "css": ".ds-pill { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 4px; font-family: 'Exo 2', 'Segoe UI', sans-serif; font-size: 10px; font-weight: 800; font-style: italic; letter-spacing: 0.04em; text-transform: uppercase; } .ds-pill-ktm { background: #FF6000; color: #101012; } .ds-pill-yamaha { background: #0052C4; color: #F8F8FA; } .ds-pill-honda { background: #DC1C24; color: #F8F8FA; }"
+    },
+    {
+      "name": "Skew Plaque",
+      "kind": "chip",
+      "refersTo": "skew-plaque",
+      "description": "Broadcast hardware bar for rider count and track name.",
+      "html": "<span class=\"ds-skew\">12 · BUCHANAN</span>",
+      "css": ".ds-skew { display: inline-flex; align-items: center; padding: 3px 12px; background: #FF9430; color: #0C0C0E; font-family: 'Exo 2', 'Segoe UI', sans-serif; font-size: 10px; font-weight: 800; font-style: italic; letter-spacing: 0.04em; text-transform: uppercase; transform: skewX(-12deg); } .ds-skew > * , .ds-skew { transform: skewX(-12deg); } .ds-skew { border: 0; }"
+    },
+    {
+      "name": "You Row",
+      "kind": "custom",
+      "refersTo": "table-row-you",
+      "description": "Local rider highlight in standings and relative.",
+      "html": "<div class=\"ds-board\"><div class=\"ds-row\"><span>2</span><span>9</span><span>Hunter Lawrence</span><span>2L</span></div><div class=\"ds-row ds-row-you\"><span>3</span><span>11</span><span>You</span><span>1L</span></div></div>",
+      "css": ".ds-board { background: rgba(10,10,10,0.78); color: #E4E4E6; font-family: 'Exo 2', 'Segoe UI', sans-serif; font-size: 12px; font-weight: 800; font-style: italic; border-radius: 6px; overflow: hidden; min-width: 280px; } .ds-row { display: grid; grid-template-columns: 28px 36px 1fr 40px; gap: 8px; padding: 6px 10px; } .ds-row-you { background: rgba(196,132,36,0.5); }"
+    },
+    {
+      "name": "HUD Panel",
+      "kind": "card",
+      "refersTo": "hud-panel",
+      "description": "Translucent Night Ink plaque the widgets sit in.",
+      "html": "<div class=\"ds-hud-panel\"><div class=\"ds-hud-head\">Standings</div><div class=\"ds-hud-body\">Waiting for race data</div></div>",
+      "css": ".ds-hud-panel { background: rgba(10,10,10,0.78); color: #E4E4E6; border-radius: 6px; font-family: 'Exo 2', 'Segoe UI', sans-serif; min-width: 240px; overflow: hidden; } .ds-hud-head { background: #FF9430; color: #0C0C0E; padding: 6px 10px; font-size: 10px; font-weight: 800; font-style: italic; letter-spacing: 0.04em; text-transform: uppercase; } .ds-hud-body { padding: 10px 12px; font-size: 12px; color: #84848A; }"
+    },
+    {
+      "name": "Settings Tab",
+      "kind": "nav",
+      "refersTo": "settings-tab-on",
+      "description": "Left-rail tab: orange wash plus pip when selected.",
+      "html": "<button class=\"ds-tab ds-tab-on\" type=\"button\">Standings</button>",
+      "css": ".ds-tab { display: flex; align-items: center; width: 180px; text-align: left; padding: 10px 12px; border: 0; background: rgba(255,255,255,0.04); color: #D2D2D8; border-radius: 8px; font-family: 'Exo 2', 'Segoe UI', sans-serif; font-size: 13px; font-weight: 700; cursor: pointer; } .ds-tab:hover { background: #2E2F36; } .ds-tab:focus-visible { outline: 2px solid #FF9430; outline-offset: 2px; } .ds-tab-on { background: rgba(255,140,36,0.11); color: #FF9430; box-shadow: inset 3px 0 0 #FF8C24; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Broadcast Booth Glass",
+    "overview": "Holeshot HUD is a TV race overlay sitting on the game: dark plaques, skewed hardware bars, and a hot orange that always means *you*. It is broadcast-hot — stronger bars, louder flags, denser tables — not a quiet utility panel and not a consumer app shell. The rider glances; the graphic has to punch.\n\nType is Exo 2 ExtraBold Italic at table scale. Corners stay modest. Chrome is opt-in: a fresh install draws nothing. The website is the same HUD on a charcoal stage, not a second identity. Settings is the same family in opaque charcoal.\n\nDo not drift toward generic sim-HUD blues, glassmorphism blobs, or light “esports dashboard” kits. Manufacturer bike colors stay on pills only.",
+    "keyCharacteristics": [
+      "Dark plaques over the game; orange is you / CTA only",
+      "Skewed TV bars and bike-brand pills as hardware, not cards",
+      "Exo 2 ExtraBold Italic as the HUD face (Teko / Goldman optional)",
+      "Tonal charcoal stacking for depth — almost no drop shadows",
+      "Race meaning uses blue / red / green / violet, never a second orange"
+    ],
+    "rules": [
+      { "name": "The You-Are-Orange Rule", "body": "Holeshot Orange is you, CTA, and accent. Other riders are Field Slate unless lapping/closing paints them blue or red.", "section": "colors" },
+      { "name": "The Meaning-Not-Brand Rule", "body": "Blue, red, green, and violet carry race state. They are never decorative theme colors.", "section": "colors" },
+      { "name": "The One-Face Rule", "body": "HUD and settings speak Exo 2 (or the rider’s Teko / Goldman). Segoe is web-shell only.", "section": "typography" },
+      { "name": "The Italic Default Rule", "body": "The bundled Exo 2 cut is italic extra-bold. Do not “correct” it to a roman UI font.", "section": "typography" },
+      { "name": "The Opt-In Chrome Rule", "body": "Nothing draws until Show on overlay is on. Empty race data shows “Waiting for race data”, not a blank plaque.", "section": "layout" },
+      { "name": "The Tonal Stack Rule", "body": "Surfaces are flat at rest. No ambient card shadows. A knob may sit on a small dark disc; a standings board may not.", "section": "elevation" },
+      { "name": "The TV Plaque Rule", "body": "Skewed bars and manufacturer pills are broadcast hardware. Do not replace them with cards, chips-in-a-row, or Material buttons.", "section": "shapes" }
+    ],
+    "dos": [
+      "Do keep Holeshot Orange for you, CTA, and accent only.",
+      "Do use Exo 2 ExtraBold Italic as the default HUD face.",
+      "Do ship bike pills in manufacturer colors with contrast-flipped ink.",
+      "Do start every widget hidden on a fresh install.",
+      "Do treat map fill as transparent unless the rider raises opacity."
+    ],
+    "donts": [
+      "Don't paint other riders orange.",
+      "Don't invent a second lapping palette for minimap or radar.",
+      "Don't bring back radar side/rear zone wedges.",
+      "Don't add drop shadows under HUD tables.",
+      "Don't let Segoe / web-shell type into overlay widgets.",
+      "Don't recode manufacturer pills to follow White/Black table text.",
+      "Don't draw overlay work into the in-game C++ HUD (ingame_hud)."
+    ]
+  }
+}

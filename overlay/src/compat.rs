@@ -18,9 +18,9 @@ use windows::Win32::System::Threading::{
 use windows::Win32::UI::Shell::{ABM_WINDOWPOSCHANGED, APPBARDATA, SHAppBarMessage};
 use windows::Win32::UI::WindowsAndMessaging::{
     ClipCursor, FindWindowExW, FindWindowW, GetForegroundWindow, GetWindowLongPtrW, GetWindowRect,
-    GetWindowThreadProcessId, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_EXSTYLE,
-    HWND_NOTOPMOST, HWND_TOPMOST, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-    SWP_SHOWWINDOW, SW_HIDE, SW_SHOWNOACTIVATE, SW_SHOWNORMAL, WS_EX_TRANSPARENT,
+    GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetWindowLongPtrW, SetWindowPos, ShowWindow,
+    GWL_EXSTYLE, HWND_NOTOPMOST, HWND_TOPMOST, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE,
+    SWP_NOSIZE, SWP_SHOWWINDOW, SW_HIDE, SW_SHOWNOACTIVATE, SW_SHOWNORMAL, WS_EX_TRANSPARENT,
 };
 
 const FLAG: &str = "DISABLEDXMAXIMIZEDWINDOWEDMODE";
@@ -233,9 +233,12 @@ impl FullscreenFix {
         }
     }
 
-    pub fn keep_overlay_above(&mut self, overlay: HWND, game: Option<HWND>) -> bool {
+    pub fn keep_overlay_above(&mut self, overlay: HWND, game: Option<HWND>, settings: HWND) -> bool {
         unsafe {
-            let playing = game.is_some_and(|g| game_is_foreground(g));
+            // Settings steals foreground from the game; keep the HUD up so riders can
+            // see widget tweaks live. Alt-tab away from both still hides it.
+            let playing = game.is_some_and(|g| game_is_foreground(g))
+                || (game.is_some() && window_is_foreground(settings));
             let now = Instant::now();
             if playing {
                 self.hide_after = None;
@@ -302,6 +305,15 @@ impl Drop for FullscreenFix {
 unsafe fn restore_desktop(overlay: HWND) {
     show_taskbars();
     let _ = ShowWindow(overlay, SW_HIDE);
+}
+
+fn window_is_foreground(hwnd: HWND) -> bool {
+    unsafe {
+        if hwnd.0.is_null() || IsIconic(hwnd).as_bool() || !IsWindowVisible(hwnd).as_bool() {
+            return false;
+        }
+        GetForegroundWindow() == hwnd
+    }
 }
 
 fn game_is_foreground(game: HWND) -> bool {
