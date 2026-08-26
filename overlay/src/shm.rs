@@ -1,11 +1,12 @@
 use std::mem;
 use std::ptr;
-use std::sync::atomic::{compiler_fence, AtomicU32, Ordering};
+use std::sync::atomic::{compiler_fence, AtomicI32, AtomicU32, Ordering};
 
 use windows::core::w;
 use windows::Win32::Foundation::HANDLE;
 use windows::Win32::System::Memory::{
-    MapViewOfFile, OpenFileMappingW, UnmapViewOfFile, FILE_MAP_READ, MEMORY_MAPPED_VIEW_ADDRESS,
+    MapViewOfFile, OpenFileMappingW, UnmapViewOfFile, FILE_MAP_ALL_ACCESS, FILE_MAP_READ,
+    MEMORY_MAPPED_VIEW_ADDRESS,
 };
 
 pub use mxbo_hud::snapshot::*;
@@ -83,6 +84,76 @@ impl Shm {
 }
 
 impl Drop for Shm {
+    fn drop(&mut self) {
+        unsafe {
+            if !self.view.Value.is_null() {
+                let _ = UnmapViewOfFile(self.view);
+            }
+        }
+    }
+}
+
+#[allow(dead_code)]
+const CMD_MAGIC: u32 = 0x4342_584D;
+
+#[repr(C)]
+#[allow(dead_code)]
+struct CmdView {
+    magic: u32,
+    spectating: i32,
+    spectate_race_num: i32,
+}
+
+/// Overlay → plugin camera request. Created by the plugin as `Local\MXBOHudCmdV1`.
+#[allow(dead_code)]
+pub struct Cmd {
+    _map: HANDLE,
+    view: MEMORY_MAPPED_VIEW_ADDRESS,
+}
+
+#[allow(dead_code)]
+impl Cmd {
+    pub fn open() -> Option<Self> {
+        unsafe {
+            let map = OpenFileMappingW(FILE_MAP_ALL_ACCESS.0, false, w!("Local\\MXBOHudCmdV1")).ok()?;
+            let view = MapViewOfFile(map, FILE_MAP_ALL_ACCESS, 0, 0, mem::size_of::<CmdView>());
+            if view.Value.is_null() {
+                return None;
+            }
+            let src = view.Value as *const CmdView;
+            if (*src).magic != CMD_MAGIC {
+                return None;
+            }
+            Some(Self { _map: map, view })
+        }
+    }
+
+    pub fn spectating(&self) -> bool {
+        unsafe {
+            let src = self.view.Value as *const CmdView;
+            if src.is_null() {
+                return false;
+            }
+            (*src).spectating != 0
+        }
+    }
+
+    pub fn request(&self, race_num: i32) {
+        if race_num <= 0 {
+            return;
+        }
+        unsafe {
+            let src = self.view.Value as *mut CmdView;
+            if src.is_null() {
+                return;
+            }
+            let slot = ptr::addr_of_mut!((*src).spectate_race_num) as *const AtomicI32;
+            (*slot).store(race_num, Ordering::SeqCst);
+        }
+    }
+}
+
+impl Drop for Cmd {
     fn drop(&mut self) {
         unsafe {
             if !self.view.Value.is_null() {

@@ -1,5 +1,6 @@
 #![windows_subsystem = "windows"]
 
+mod changelog;
 mod compat;
 mod config;
 mod feedback;
@@ -9,6 +10,7 @@ mod render;
 mod settings;
 mod plugin;
 mod shm;
+mod stance;
 mod startup;
 mod sys;
 mod tray;
@@ -33,13 +35,13 @@ use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
 use windows::Win32::System::Threading::Sleep;
 use windows::Win32::UI::HiDpi::{SetProcessDpiAwareness, PROCESS_PER_MONITOR_DPI_AWARE};
-use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_F9};
+use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_F9, VK_LBUTTON};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateIconFromResourceEx, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
     GetClassNameW, GetClientRect, GetSystemMetrics, GetWindowThreadProcessId, IsWindow, LoadCursorW,
     LoadImageW, LookupIconIdFromDirectoryEx, PeekMessageW, PostQuitMessage, RegisterClassExW,
     SendMessageW, SetCursor, SetWindowPos, ShowWindow, TranslateMessage, UpdateLayeredWindow,
-    HWND_TOPMOST, ICON_BIG, ICON_SMALL, IDC_ARROW, IMAGE_ICON, LR_DEFAULTCOLOR, MSG, PM_REMOVE,
+    HWND_TOPMOST, ICON_BIG, ICON_SMALL, IDC_ARROW, IDC_HAND, IMAGE_ICON, LR_DEFAULTCOLOR, MSG, PM_REMOVE,
     SM_CXSCREEN, SM_CYSCREEN, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_MINIMIZE, SW_SHOWMINNOACTIVE,
     SW_SHOWNOACTIVATE, ULW_ALPHA, WM_ACTIVATE, WM_CLOSE, WM_DESTROY, WM_QUIT, WM_SETCURSOR,
     WM_SETICON, WNDCLASSEXW, WS_CAPTION, WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
@@ -48,7 +50,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 use crate::render::Fonts;
-use crate::shm::{Shm, Snapshot, VERSION};
+use crate::shm::{Cmd, Shm, Snapshot, VERSION};
 
 static mut HOST: HWND = HWND(null_mut());
 static QUITTING: AtomicBool = AtomicBool::new(false);
@@ -202,10 +204,21 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
     apply_window_icons(host, icon_big, icon_small);
     crate::tray::add(host, icon_small);
     let start_minimized = std::env::args().any(|a| a == "--minimized" || a == "--wait-for-game");
-    if start_minimized {
+    let show_notes = {
+        let seen = crate::config::with_config(|c| c.whats_new_seen.clone());
+        crate::changelog::should_auto_open(
+            &seen,
+            crate::update::current_version(),
+            crate::changelog::just_updated(),
+        )
+    };
+    if start_minimized && !show_notes {
         let _ = ShowWindow(host, SW_SHOWMINNOACTIVE);
     } else {
         crate::settings::show(host);
+    }
+    if show_notes {
+        crate::settings::open_whats_new();
     }
 
     let mut game = find_game_hwnd();
@@ -226,14 +239,17 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
     let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
 
     let mut shm = Shm::open();
+    let mut cmd = Cmd::open();
     let mut last_snap = None;
     let mut freq = 0i64;
     QueryPerformanceFrequency(&mut freq).ok();
     let mut zfix = compat::FullscreenFix::new();
     let mut editor = crate::layout::Editor::default();
     let mut sys = crate::sys::Sampler::default();
+    let mut stance = crate::stance::Tracker::default();
     let mut f8_was = false;
     let mut f9_was = false;
+    let mut spectate_down = false;
     let mut next_game_scan = Instant::now();
     let mut placed = false;
     let mut saw_game = crate::startup::mx_bikes_pid().is_some();
@@ -332,10 +348,32 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         }
 
         let layout_on = overlay_on && crate::layout::Editor::ctrl_down();
-        zfix.set_layout_mode(hwnd, layout_on);
+        if cmd.is_none() {
+            cmd = Cmd::open();
+        }
+        let spectating = overlay_on && cmd.as_ref().is_some_and(|c| c.spectating());
+        let hover_rider = if spectating && !layout_on {
+            crate::layout::cursor_norm(x, y, w, h).and_then(|(nx, ny)| {
+                mxbo_hud::click_rider_at(nx * w as f32, ny * h as f32)
+            })
+        } else {
+            None
+        };
+        zfix.set_layout_mode(hwnd, layout_on || hover_rider.is_some());
         if layout_on {
             let cur = LoadCursorW(None, IDC_ARROW).unwrap_or_default();
             let _ = SetCursor(cur);
+        } else if hover_rider.is_some() {
+            let cur = LoadCursorW(None, IDC_HAND).unwrap_or_default();
+            let _ = SetCursor(cur);
+        }
+        let lmb = unsafe { GetAsyncKeyState(VK_LBUTTON.0 as i32) < 0 };
+        let spectate_click = lmb && !spectate_down;
+        spectate_down = lmb;
+        if spectate_click && !layout_on {
+            if let (Some(num), Some(c)) = (hover_rider, cmd.as_ref()) {
+                c.request(num);
+            }
         }
 
         let settings_vk = crate::config::with_config(|c| c.settings_key.vk());
@@ -404,12 +442,18 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
                 crate::record::tick(s);
             }
         }
-        if settings_open {
+        if last_snap.as_ref().is_some_and(|s| s.has_session_data()) {
             if let Some(s) = last_snap.as_mut() {
                 s.on_track = 1;
             }
         }
-        let hud = if live || layout_on || (settings_open && last_snap.is_some()) {
+        if let (Some(c), Some(s)) = (cmd.as_ref(), last_snap.as_mut()) {
+            if !c.spectating() && s.local_race_num > 0 {
+                s.focus_race_num = s.local_race_num;
+            }
+        }
+        let in_session = last_snap.as_ref().is_some_and(|s| s.has_session_data());
+        let hud = if overlay_on && (live || layout_on || (settings_open && in_session)) {
             last_snap.as_ref()
         } else {
             None
@@ -417,6 +461,13 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
 
         let frame_start = Instant::now();
         sys.tick(last_snap.as_ref().map(|s| s.seq));
+        if let Some(bind) = stance.tick(
+            cfg.stance_bind,
+            cfg.stance_mode,
+            crate::settings::listening_bind(),
+        ) {
+            crate::settings::apply_stance_bind(bind);
+        }
         render::draw(
             &mut pixmap,
             &fonts,
@@ -425,7 +476,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
             w as u32,
             h as u32,
             age,
-            restart_hint,
+            overlay_on && restart_hint,
             layout_on,
         );
         dib.blit_premul_bgra(pixmap.data());

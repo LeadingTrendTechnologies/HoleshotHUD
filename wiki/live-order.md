@@ -31,7 +31,7 @@ cannot stick — the previous order is only read for the hysteresis margin.
 
 ## When it is off
 
-`live_order_active`: needs `on_track`, a real `track_length`, two or more riders, not
+`live_order_active`: needs `on_track` (a run, or standings / positions / telemetry — so replay counts), a real `track_length`, two or more riders, not
 `is_warmup` (a practice field is ranked by lap time, not by track progress), and
 `IN_GATE == 0` (on the gate everyone sits on the same stretch).
 

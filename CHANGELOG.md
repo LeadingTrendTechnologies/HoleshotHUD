@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.1.19
+
+Follow a rider in replay, sit or stand on the overlay, and see what changed after an update.
+
+### Settings
+
+- After an update, a board lists what changed. Open it again from Settings → Updates.
+- Labs unlocks Sectors. Turn it on with Show on overlay.
+- Stance is sit/stand. It lives with Dash and Systems. Click Sit button and the row turns orange: press a pad, key, or mouse now. Sitting hides it unless Show sitting is on. Settings says it is not connected to the game — only the bind you set.
+- Dash can be just gear and speed. Turn on Simple dash; flags still wrap it.
+
+### Overlay
+
+- In replay, click a name or standings card to follow that rider.
+- While you ride, those clicks go to the game.
+- The HUD stays up in replay and hides in menus. Systems and Stance hide there too, and when MX Bikes is not running.
+- Leave replay and the HUD follows you again.
+- Simple dash is an orange gear plaque and speed. Flags still wrap it.
+
+### Website
+
+- Demo is a pit box: settings on the left, widget rail, live HUD on the right, Download for Windows on the top bar.
+- Dash settings include Simple dash. The live stage draws the compact gear-and-speed lockup.
+
+### Internals
+
+- Overlay writes spectate clicks on `Local\MXBOHudCmdV1`; the plugin consumes them in `SpectateVehicles`.
+- Stance mirrors the sit pad button (not rider animation from the plugin API).
+
 ## 0.1.18
 
 Closing MX Bikes brings the Windows taskbar back.

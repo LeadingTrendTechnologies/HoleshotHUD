@@ -128,6 +128,32 @@ bool ShmWriter::open()
     snap->version = MXBO_SHM_VERSION;
     snap->size = static_cast<uint32_t>(sizeof(MxboShmSnapshot));
     snap->seq = 0;
+
+    m_cmdMap = CreateFileMappingW(
+        INVALID_HANDLE_VALUE,
+        nullptr,
+        PAGE_READWRITE,
+        0,
+        static_cast<DWORD>(sizeof(MxboShmCmd)),
+        MXBO_CMD_NAME);
+    if (m_cmdMap)
+    {
+        m_cmdView = MapViewOfFile(m_cmdMap, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(MxboShmCmd));
+        if (m_cmdView)
+        {
+            auto* cmd = static_cast<MxboShmCmd*>(m_cmdView);
+            if (cmd->magic != MXBO_CMD_MAGIC)
+            {
+                std::memset(cmd, 0, sizeof(MxboShmCmd));
+                cmd->magic = MXBO_CMD_MAGIC;
+            }
+        }
+        else
+        {
+            CloseHandle(m_cmdMap);
+            m_cmdMap = nullptr;
+        }
+    }
     return true;
 }
 
@@ -143,6 +169,17 @@ void ShmWriter::close()
         CloseHandle(m_map);
         m_map = nullptr;
     }
+    if (m_cmdView)
+    {
+        UnmapViewOfFile(m_cmdView);
+        m_cmdView = nullptr;
+    }
+    if (m_cmdMap)
+    {
+        CloseHandle(m_cmdMap);
+        m_cmdMap = nullptr;
+    }
+    m_lastSpectateQpc = 0;
 }
 
 void ShmWriter::publish(const PluginState& state, const PluginConfig& config)
@@ -283,4 +320,52 @@ void ShmWriter::publish(const PluginState& state, const PluginConfig& config)
     dst->version = MXBO_SHM_VERSION;
     MemoryBarrier();
     dst->seq = odd + 1u;
+    decaySpectating();
+}
+
+void ShmWriter::noteSpectating()
+{
+    LARGE_INTEGER qpc{};
+    QueryPerformanceCounter(&qpc);
+    m_lastSpectateQpc = qpc.QuadPart;
+    if (m_cmdView)
+    {
+        static_cast<MxboShmCmd*>(m_cmdView)->spectating = 1;
+    }
+}
+
+int ShmWriter::takeSpectateRequest()
+{
+    if (!m_cmdView)
+    {
+        return 0;
+    }
+    auto* cmd = static_cast<MxboShmCmd*>(m_cmdView);
+    const LONG want = InterlockedExchange(reinterpret_cast<LONG*>(&cmd->spectateRaceNum), 0);
+    return static_cast<int>(want);
+}
+
+void ShmWriter::decaySpectating()
+{
+    if (!m_cmdView)
+    {
+        return;
+    }
+    auto* cmd = static_cast<MxboShmCmd*>(m_cmdView);
+    if (m_lastSpectateQpc == 0)
+    {
+        cmd->spectating = 0;
+        return;
+    }
+    LARGE_INTEGER now{};
+    LARGE_INTEGER freq{};
+    QueryPerformanceCounter(&now);
+    QueryPerformanceFrequency(&freq);
+    const double age = freq.QuadPart > 0
+        ? static_cast<double>(now.QuadPart - m_lastSpectateQpc) / static_cast<double>(freq.QuadPart)
+        : 1.0;
+    if (age > 0.25)
+    {
+        cmd->spectating = 0;
+    }
 }

@@ -2,7 +2,7 @@
 
 Host PC meters: CPU, memory, FPS, network, plus per-app CPU/mem. Settings subtitle: “CPU, memory, FPS, network, and per-app load”.
 
-Unlike the other widgets, this one **still draws when you are not on track**, and even when there is no SHM snapshot (so you can see load in the menu / lobby).
+Same as every other widget: it **hides** in the menu / lobby / garage and when MX Bikes is not running. Hold Ctrl to place the box anyway.
 
 ## Code
 
@@ -20,11 +20,12 @@ No column picker; only show, opacity, font, bold, snap.
 
 ## Do not regress
 
-- Keep drawing with `snap == None` and `on_track == 0`. Hiding it off-track makes the widget useless for diagnosing overlay cost.
+- Do not draw with `snap == None` or an empty session. Same hide rule as race widgets. Layout boxes (`settings_hint`) still force a draw.
 - Labels are fixed length-4 (`SYS_PROC_N`). Changing the set means `sys.rs` and the atomics together.
 
 ## Change log
 
+- 2026-08-26 — Hides without a session, same as the rest of the HUD. Menu / lobby no longer show CPU meters.
 - Overlay Systems widget added for overlay vs game vs ReShade load.
 - 0.1.8 — Hidden until **Show on overlay**.
 - 2026-08-18 — Wiki created. Off-track visibility and process list documented.

@@ -6,7 +6,7 @@ This is the most stateful widget. Clock and flag bugs almost always belong here,
 
 ## Code
 
-- Draw: `draw_dash`, `draw_dash_wrap`, `draw_rev_bar` in `overlay/hud/src/render.rs`
+- Draw: `draw_dash`, `draw_simple_dash`, `draw_dash_wrap`, `draw_rev_bar` in `overlay/hud/src/render.rs`
 - Clock: `session_remain_ms`, `session_banner`, `is_lap_race`, overtime helpers in `overlay/hud/src/race_store.rs` (`RaceStore::tick` / `get`)
 - Flags: `dash_race_flag`, `laps_left`, `leader_finished` / `race_over_for_me`
 - S/F geometry: `approaching_line`, `final_lap_approach`, `note_line_progress`, `sf_frac`
@@ -16,7 +16,7 @@ This is the most stateful widget. Clock and flag bugs almost always belong here,
 
 A `~Lapped` tag sits beside the lap/clock text whenever `lapped` is true — the focus rider's classification `gap_laps >= 1`, gated on being on track, out of warmup, and off the gate. It widens the right column, so the panel grows once when you get lapped rather than clipping. Amber (`dash_lapped_col`), a little smaller than the lap text and nudged onto its baseline.
 
-Fixed body: gear | RPM + speed | position + lap/clock text. The RPM/speed column is sized from the widest digits (`0`–`9`), not the live value, so gear and position do not shift as RPM changes. **P#** and `~Lapped` use live `RaceStore` rank/gaps during a race; session clock still uses game laps. `P#` reads `standing_pos`, so it counts an on-track pass straight away instead of at the line — see [live race order](../live-order.md). It also falls back to `local_race_num` when there is no focus rider. Footer is three slots (default Engine, Air, Best); options include **Local time** (`DashField::LocalTime`, same 12h clock as standings). Optional rev bar from `local_rpm` vs `max_rpm` / `shift_rpm`.
+Fixed body: gear | RPM + speed | position + lap/clock text. **Simple dash** (`dash_simple`) strips that to a compact lockup: orange skew **gear plaque** (ink-on-accent digit) plus large italic speed with a vertical `MPH`/`KPH` stack. No RPM, place, footer, or rev bar. White/checkered flags still wrap the plaque. The RPM/speed column is sized from the widest digits (`0`–`9`), not the live value, so gear and position do not shift as RPM changes. **P#** and `~Lapped` use live `RaceStore` rank/gaps during a race; session clock still uses game laps. `P#` reads `standing_pos`, so it counts an on-track pass straight away instead of at the line — see [live race order](../live-order.md). It also falls back to `local_race_num` when there is no focus rider. Footer is three slots (default Engine, Air, Best); options include **Local time** (`DashField::LocalTime`, same 12h clock as standings). Optional rev bar from `local_rpm` vs `max_rpm` / `shift_rpm`. Footer and rev stay in the ini while Simple dash is on.
 
 ## Session clock (hard-won)
 
@@ -78,8 +78,13 @@ One path for lap motos and timed extras, driven by `laps_left`. Lap motos count 
 - Do not keep warmup `SAW` / `ARMED` when `session_laps` first go from 0 to extras after a practice-like length (`0` / 10–20 / 30+ min). That forces early `+1` with no live `MM:SS` countdown on 5:00+1 / 8:00+1.
 - Do not call `session_remain_ms` more than once per frame from `RaceStore::tick` + dash; widgets read the tick banner.
 - Session clock / overtime / flags still use game classification laps, not live rank.
+- Do not drop flag wrap in Simple dash. White and checkered still sit on the compact plaque.
+- Do not paint Simple dash gear in lapped-red; the gear tile is Holeshot orange with dark ink.
+- Do not throw away footer / rev settings when Simple dash is on; they come back when it is off.
 
 ## Change log
+
+- 2026-08-26 — Simple dash is gear + speed only: orange skew gear plaque, vertical unit stack, flags still wrap. Footer and rev hide in settings but stay in the ini.
 
 - 2026-08-25 — Checkered wrap stays around the dash (sides and bottom), using the same soft grey squares as the top. Checkers fade in from both sides and hug the caption; Font Awesome `flag` sits with the label. White flag uses the same icon.
 - 2026-08-25 — The last `FLAG_LINE_MIN_M` before the line is part of the hold (`across_the_line`). That stretch used to be None, which started the hide animation and made the checkered collapse as you crossed. Same-kind resume in `flag_anim_step` does not replay the grow.

@@ -1,0 +1,41 @@
+{
+  "title": "Holeshot HUD — What's new",
+  "question": "After an in-app update, Settings shows this version's notes. Pick the composition. What should carry forward? What feels false to Broadcast Booth Glass?",
+  "steer": true,
+  "buildPath": { "value": "comp", "toggle": true },
+  "options": [
+    {
+      "id": "center-plaque",
+      "label": "Center Plaque",
+      "kicker": "INTERRUPT",
+      "thesis": "A centered charcoal board with an orange version plaque owns the window; Settings waits behind a dim scrim until they hit Got it.",
+      "palette": ["#08080A", "#18191D", "#141416", "#FF9430", "#E4E4E6", "#84848A"],
+      "materials": ["charcoal stack", "orange skew plaque", "Exo 2 ExtraBold Italic", "tonal scrim"],
+      "viewport": "Dimmed Settings chrome (Widgets / Settings / Feedback) fills the 1000×720 window. Center: a ~520px charcoal panel, 10px corners. Orange skew plaque is the heading — 0.1.17 — not an eyebrow. Headline under it, then OVERLAY / SETTINGS uppercase labels and bullets. Full-width orange Got it along the bottom edge of the panel.",
+      "risk": "A centered dialog can read as generic app chrome if the plaque is a rounded card instead of a TV skew bar.",
+      "comp": ".impeccable/mocks/whats-new-center.png"
+    },
+    {
+      "id": "lower-third",
+      "label": "Lower Third",
+      "kicker": "BROADCAST",
+      "thesis": "Notes arrive as a TV lower-third across the bottom of Settings — the pit wall still visible above, the board the only new hardware.",
+      "palette": ["#08080A", "#18191D", "#0A0A0A", "#FF9430", "#E4E4E6", "#84848A"],
+      "materials": ["skewed hardware bar", "broadcast lower-third", "Exo 2 ExtraBold Italic"],
+      "viewport": "Settings remains fully composed in the top 55%. A wide night-ink board spans the bottom: orange skew left end holds 0.1.17, headline runs the bar, bullets sit in one tight column, orange Got it is a plaque on the right end of the bar.",
+      "risk": "A thin bar will clip the bullets; if it grows too tall it stops being a lower-third and becomes a second window.",
+      "comp": ".impeccable/mocks/whats-new-third.png"
+    },
+    {
+      "id": "pane-board",
+      "label": "Pane Board",
+      "kicker": "IN PLACE",
+      "thesis": "The notes replace the Settings pane the way a widget tab does: same Show plaque chrome, Got it where Show on overlay sits.",
+      "palette": ["#08080A", "#18191D", "#FF9430", "#E4E4E6", "#84848A"],
+      "materials": ["show plaque strip", "classification rows", "charcoal pane"],
+      "viewport": "Top mode bar and left widget rail stay. The content pane opens on a full-width orange name plaque: 0.1.17 on the left, Got it on the right. Headline and changelog bullets stack below as standings-like rows with OVERLAY / SETTINGS group labels.",
+      "risk": "Without a scrim it can feel like another Settings tab instead of an update they must acknowledge.",
+      "comp": ".impeccable/mocks/whats-new-pane.png"
+    }
+  ]
+}

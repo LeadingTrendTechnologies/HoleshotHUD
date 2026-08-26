@@ -66,7 +66,7 @@ cmd.exe //c "taskkill /IM Holeshot-HUD.exe /F"
 
 ### Local debug
 
-`cargo run` (debug) unlocks the experimental **Sectors** tab. `build.bat` is release, so that tab stays hidden until **Sector times (experimental)** is on in Settings → Labs. Turn on **Show on overlay** either way.
+`cargo run` and `build.bat` keep **Sectors** hidden until **Experimental widgets** is on (Settings → Labs). **Stance** is a regular widget — turn it on with **Show on overlay**.
 
 ```bash
 cmd.exe //c "cargo run --manifest-path overlay\Cargo.toml --bin Holeshot-HUD"
@@ -77,8 +77,8 @@ Dev builds optimize crates like tiny-skia (`opt-level = 3`) so the HUD stays smo
 Push a tag to publish a downloadable release:
 
 ```bat
-git tag v0.1.18
-git push origin v0.1.18
+git tag v0.1.19
+git push origin v0.1.19
 ```
 
 ## Data wiki

@@ -240,7 +240,7 @@ if ($srcDlo -and (Test-Path -LiteralPath $srcDlo)) {{
   }}
 }}
 $env:HOLESHOT_SKIP_UPDATE = '1'
-Start-Process -FilePath $dstExe -ArgumentList '--skip-update'
+Start-Process -FilePath $dstExe -ArgumentList '--skip-update','--whats-new'
 "#,
         src_exe.display(),
         exe.display(),

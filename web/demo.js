@@ -36,6 +36,7 @@ const DASH = [
   ["int", "Interval"],
   ["pen", "Penalty"],
   ["sess", "Session time"],
+  ["local", "Local time"],
   ["bike", "Bike"],
   ["class", "Class"],
 ];
@@ -89,17 +90,44 @@ const MINI_TOGGLES = [
   ["mini_numbers", "Numbers in dots"],
 ];
 
+const NAMES = {
+  standings: "Standings",
+  relative: "Relative",
+  dash: "Dash",
+  ticker: "Horizontal Standings",
+  map: "Map",
+  minimap: "Minimap",
+  radar: "Radar",
+  sys: "Systems",
+};
+
 const canvas = document.getElementById("hud");
 const ctx = canvas.getContext("2d", { alpha: true });
 const settings = document.getElementById("settings");
+const widgetTitle = document.getElementById("widget-title");
+const stageStatus = document.getElementById("stage-status");
 
-await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=0.1.12", import.meta.url) });
-const preview = new Preview();
+stageStatus.hidden = false;
+
+let preview;
+try {
+  await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=0.1.19", import.meta.url) });
+  preview = new Preview();
+  stageStatus.hidden = true;
+} catch (err) {
+  stageStatus.textContent = "HUD failed to load — serve the web folder over http.";
+  stageStatus.hidden = false;
+  throw err;
+}
 
 function syncButtons() {
   const active = preview.active_widget();
+  widgetTitle.textContent = NAMES[active] || active;
   for (const btn of document.querySelectorAll("[data-widget]")) {
-    btn.classList.toggle("on", btn.dataset.widget === active);
+    const on = btn.dataset.widget === active;
+    btn.classList.toggle("on", on);
+    if (on) btn.setAttribute("aria-current", "true");
+    else btn.removeAttribute("aria-current");
   }
 }
 
@@ -126,7 +154,8 @@ function stepperRow(key, label, min, max) {
 
 function sliderRow(key, label, min, max, suffix) {
   const v = preview.get_int(key);
-  return `<div class="row stack"><label>${label} <span class="range-val" data-int-label="${key}">${v}${suffix}</span></label><input type="range" min="${min}" max="${max}" value="${v}" data-int="${key}" data-suffix="${suffix}"></div>`;
+  const fill = ((v - min) / (max - min)) * 100;
+  return `<div class="row stack"><label>${label} <span class="range-val" data-int-label="${key}">${v}${suffix}</span></label><input type="range" min="${min}" max="${max}" value="${v}" data-int="${key}" data-suffix="${suffix}" style="--fill: ${fill}%"></div>`;
 }
 
 function fieldRow(key, label, options) {
@@ -200,11 +229,14 @@ function renderSettings() {
     html += toggleRow("radar_rear", "Riders behind you");
   } else if (w === "dash") {
     html += styleControls("dash", "Panel opacity");
-    html += toggleRow("dash_rev", "Rev indicator");
-    html += `<div class="section">Footer</div>`;
-    html += fieldRow("dash_left", "Left", DASH);
-    html += fieldRow("dash_mid", "Middle", DASH);
-    html += fieldRow("dash_right", "Right", DASH);
+    html += toggleRow("dash_simple", "Simple dash");
+    if (!preview.get_bool("dash_simple")) {
+      html += toggleRow("dash_rev", "Rev indicator");
+      html += `<div class="section">Footer</div>`;
+      html += fieldRow("dash_left", "Left", DASH);
+      html += fieldRow("dash_mid", "Middle", DASH);
+      html += fieldRow("dash_right", "Right", DASH);
+    }
   } else if (w === "ticker") {
     html += styleControls("ticker", "Panel opacity");
     html += toggleRow("ticker_title", "Track name");
@@ -234,16 +266,32 @@ for (const btn of document.querySelectorAll("[data-widget]")) {
   });
 }
 
+settings.addEventListener("input", (e) => {
+  const t = e.target;
+  if (!t.dataset.int) return;
+  preview.set_int(t.dataset.int, Number(t.value));
+  const min = Number(t.min);
+  const max = Number(t.max);
+  t.style.setProperty("--fill", `${((Number(t.value) - min) / (max - min)) * 100}%`);
+  for (const label of settings.querySelectorAll(`[data-int-label="${t.dataset.int}"]`)) {
+    label.textContent = `${t.value}${t.dataset.suffix || ""}`;
+  }
+});
+
 settings.addEventListener("change", (e) => {
   const t = e.target;
   if (t.dataset.bool) preview.set_bool(t.dataset.bool, t.checked);
   if (t.dataset.field) preview.set_field(t.dataset.field, t.value);
   if (t.dataset.int) {
     preview.set_int(t.dataset.int, Number(t.value));
+    const min = Number(t.min);
+    const max = Number(t.max);
+    t.style.setProperty("--fill", `${((Number(t.value) - min) / (max - min)) * 100}%`);
     for (const label of settings.querySelectorAll(`[data-int-label="${t.dataset.int}"]`)) {
       label.textContent = `${t.value}${t.dataset.suffix || ""}`;
     }
   }
+  if (t.dataset.bool === "dash_simple") renderSettings();
 });
 
 settings.addEventListener("click", (e) => {
@@ -293,6 +341,17 @@ canvas.addEventListener("pointerleave", () => {
 
 syncButtons();
 renderSettings();
+
+const q = new URLSearchParams(location.search);
+if (q.get("widget") && NAMES[q.get("widget")]) {
+  preview.select_widget(q.get("widget"));
+  syncButtons();
+  renderSettings();
+}
+if (q.get("simple") === "1") {
+  preview.set_bool("dash_simple", true);
+  renderSettings();
+}
 
 let last = performance.now();
 function frame(now) {

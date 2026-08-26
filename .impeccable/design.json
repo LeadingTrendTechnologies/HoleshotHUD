@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-26T13:40:00Z",
+  "generatedAt": "2026-08-26T20:47:00Z",
   "title": "Design System: Holeshot HUD",
   "extensions": {
     "colorMeta": {
@@ -40,6 +40,12 @@
         "canonical": "#141416",
         "tonalRamp": ["#0A0A0A", "#141416", "#1C1C20", "#2A2A2E", "#3A3A40", "#5A5A62", "#84848A", "#E4E4E6"]
       },
+      "pane": {
+        "role": "neutral",
+        "displayName": "Pane",
+        "canonical": "#1C1F21",
+        "tonalRamp": ["#08080A", "#121416", "#1C1F21", "#282C2E", "#3A3E42", "#5A5E62", "#84848A", "#E4E4E6"]
+      },
       "hairline": {
         "role": "neutral",
         "displayName": "Hairline",
@@ -69,6 +75,30 @@
         "displayName": "Ink on Light",
         "canonical": "#101012",
         "tonalRamp": ["#101012", "#18191D", "#2A2A2E", "#48484E", "#84848A", "#C4C4C8", "#E4E4E6", "#F8F8FA"]
+      },
+      "knob": {
+        "role": "neutral",
+        "displayName": "Knob",
+        "canonical": "#FAFAFC",
+        "tonalRamp": ["#2A2A2E", "#48484E", "#84848A", "#C4C4C8", "#E4E4E6", "#F0F0F4", "#FAFAFC", "#FFFFFF"]
+      },
+      "tab-on": {
+        "role": "primary",
+        "displayName": "Tab On",
+        "canonical": "rgba(255, 148, 48, 0.11)",
+        "tonalRamp": ["#3D1600", "#6B2A05", "#9A4510", "#C96618", "#FF9430", "#FFB05C", "#FFD09A", "#FFEBD4"]
+      },
+      "stage-warm": {
+        "role": "neutral",
+        "displayName": "Stage Warm",
+        "canonical": "#171616",
+        "tonalRamp": ["#0A0A0C", "#121110", "#171616", "#2A2218", "#3A3428", "#5A5040", "#84848A", "#E4E4E6"]
+      },
+      "stage-deep": {
+        "role": "neutral",
+        "displayName": "Stage Deep",
+        "canonical": "#0A0A0C",
+        "tonalRamp": ["#050506", "#0A0A0C", "#121214", "#1C1C20", "#2A2A2E", "#48484E", "#84848A", "#E4E4E6"]
       },
       "field-slate": {
         "role": "neutral",
@@ -126,17 +156,22 @@
       }
     },
     "typographyMeta": {
-      "display": { "displayName": "Display", "purpose": "Dash gear and large italic P# — the loudest number on screen." },
-      "headline": { "displayName": "Headline", "purpose": "Event title on the orange header bar." },
-      "title": { "displayName": "Title", "purpose": "Track-name plaques and board titles." },
-      "body": { "displayName": "Body", "purpose": "Standings and relative cells at 12px ExtraBold Italic." },
+      "display": { "displayName": "Display", "purpose": "Dash gear, large italic P#, and the twin’s uppercase widget name." },
+      "headline": { "displayName": "Headline", "purpose": "Event title, Settings pane titles, What’s new version plaques, and the 26px web wordmark." },
+      "title": { "displayName": "Title", "purpose": "Twin SETTINGS labels, track-name plaques, and uppercase Center Plaque section labels." },
+      "body": { "displayName": "Body", "purpose": "Standings cells, settings field labels, and Download plaque type at 12px ExtraBold Italic." },
       "label": { "displayName": "Label", "purpose": "Uppercase column headers (P, #, NAME, GAP)." }
     },
     "shadows": [
       {
         "name": "knob-disc",
-        "value": "0 1px 2px rgba(0,0,0,0.27)",
-        "purpose": "Faint dark disc under settings knobs and menus only. Not for HUD tables."
+        "value": "0 2px 6px rgba(0,0,0,0.55)",
+        "purpose": "Faint dark disc under settings knobs, menus, and web slider thumbs only. Not for HUD tables, the twin, or the stage."
+      },
+      {
+        "name": "center-plaque-scrim",
+        "value": "rgba(8, 8, 10, 0.8)",
+        "purpose": "Charcoal Side fill over Settings while a Center Plaque is open. Tonal stacking, not a drop shadow."
       }
     ],
     "motion": [
@@ -144,6 +179,11 @@
         "name": "toggle",
         "value": "0.12s ease",
         "purpose": "Toggle knob slide."
+      },
+      {
+        "name": "rail",
+        "value": "0.18s ease",
+        "purpose": "Rail/tab background and type color."
       },
       {
         "name": "row-slide",
@@ -157,20 +197,28 @@
   },
   "components": [
     {
-      "name": "Primary Button",
+      "name": "Download Plaque",
       "kind": "button",
-      "refersTo": "button-primary",
-      "description": "The one action — download on the web, filled orange in settings.",
-      "html": "<button class=\"ds-btn-primary\" type=\"button\">Download for Windows</button>",
-      "css": ".ds-btn-primary { background: #FF9430; color: #0C0C0E; font-family: 'Exo 2', 'Segoe UI', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 0.02em; text-decoration: none; padding: 10px 16px; border: 0; border-radius: 6px; cursor: pointer; } .ds-btn-primary:hover { filter: brightness(1.08); } .ds-btn-primary:focus-visible { outline: 2px solid #FF9430; outline-offset: 3px; } .ds-btn-primary:active { filter: brightness(0.95); }"
+      "refersTo": "download-plaque",
+      "description": "Web CTA in the top bar — clip-path orange parallelogram with a Windows mark.",
+      "html": "<a class=\"ds-download\" href=\"#\"><svg class=\"ds-win\" viewBox=\"0 0 16 16\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M1 1h6.4v6.4H1zm7.6 0H15v6.4H8.6zM1 8.6h6.4V15H1zm7.6 0H15V15H8.6z\"/></svg>Download for Windows</a>",
+      "css": ".ds-download { display: inline-flex; align-items: center; gap: 8px; background: #FF9430; color: #0C0C0E; text-decoration: none; padding: 9px 20px 9px 22px; border-radius: 4px; font-family: 'Exo 2', 'Segoe UI', sans-serif; font-size: 12px; font-weight: 800; font-style: italic; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); } .ds-win { width: 12px; height: 12px; flex-shrink: 0; } .ds-download:hover { filter: brightness(1.08); } .ds-download:focus-visible { outline: 2px solid #FF9430; outline-offset: 2px; } .ds-download:active { filter: brightness(0.95); }"
     },
     {
-      "name": "Widget Nav Button",
+      "name": "Primary Fill",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one filled action in settings — Got it on the Center Plaque.",
+      "html": "<button class=\"ds-btn-primary\" type=\"button\">Got it</button>",
+      "css": ".ds-btn-primary { display: block; width: 100%; height: 40px; background: #FF9430; color: #0C0C0E; font-family: 'Exo 2', 'Segoe UI', sans-serif; font-weight: 800; font-style: italic; font-size: 13px; letter-spacing: 0.02em; border: 0; border-radius: 8px; cursor: pointer; } .ds-btn-primary:hover { filter: brightness(1.08); } .ds-btn-primary:focus-visible { outline: 2px solid #FF9430; outline-offset: 3px; } .ds-btn-primary:active { filter: brightness(0.95); }"
+    },
+    {
+      "name": "Rail Tab",
       "kind": "nav",
       "refersTo": "button-widget",
-      "description": "Web/settings widget list: charcoal plaque, orange when selected.",
-      "html": "<div class=\"ds-widget-nav\"><button class=\"ds-widget-btn ds-widget-btn-on\" type=\"button\">Standings</button><button class=\"ds-widget-btn\" type=\"button\">Relative</button></div>",
-      "css": ".ds-widget-nav { display: grid; gap: 8px; width: 220px; } .ds-widget-btn { display: block; width: 100%; text-align: left; padding: 10px 12px; border: 1px solid #2A2A2E; background: #141416; color: #E4E4E6; border-radius: 6px; font-family: 'Exo 2', 'Segoe UI', sans-serif; font-size: 13px; font-weight: 700; cursor: pointer; } .ds-widget-btn:hover { border-color: #84848A; } .ds-widget-btn:focus-visible { outline: 2px solid #FF9430; outline-offset: 2px; } .ds-widget-btn-on { border-color: #FF9430; color: #FF9430; }"
+      "description": "F8 and web twin widget list: 8px row, Tab On wash, 3px orange pip when selected.",
+      "html": "<div class=\"ds-rail\"><button class=\"ds-rail-btn ds-rail-btn-on\" type=\"button\">Standings</button><button class=\"ds-rail-btn\" type=\"button\">Relative</button></div>",
+      "css": ".ds-rail { display: flex; flex-direction: column; gap: 4px; width: 220px; } .ds-rail-btn { display: block; width: 100%; text-align: left; padding: 10px 12px 10px 16px; border: 0; background: transparent; color: #E4E4E6; border-radius: 8px; font-family: 'Exo 2', 'Segoe UI', sans-serif; font-size: 13px; font-weight: 800; font-style: italic; cursor: pointer; position: relative; transition: background 0.18s ease, color 0.18s ease; } .ds-rail-btn:hover { background: rgba(255,255,255,0.04); } .ds-rail-btn:focus-visible { outline: 2px solid #FF9430; outline-offset: 2px; } .ds-rail-btn-on { background: rgba(255, 148, 48, 0.11); color: #FF9430; } .ds-rail-btn-on::before { content: ''; position: absolute; left: 6px; top: 10px; bottom: 10px; width: 3px; border-radius: 4px; background: #FF9430; }"
     },
     {
       "name": "Toggle",
@@ -178,7 +226,7 @@
       "refersTo": "toggle-on",
       "description": "Show-on-overlay and settings switches. Orange means on.",
       "html": "<label class=\"ds-toggle\"><input type=\"checkbox\" checked /><span class=\"ds-toggle-track\"></span></label>",
-      "css": ".ds-toggle { display: inline-flex; cursor: pointer; } .ds-toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; } .ds-toggle-track { width: 36px; height: 20px; border-radius: 10px; background: #2A2A2E; position: relative; display: block; } .ds-toggle-track::after { content: ''; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: left 0.12s ease; } .ds-toggle input:checked + .ds-toggle-track { background: #FF9430; } .ds-toggle input:checked + .ds-toggle-track::after { left: 19px; } .ds-toggle input:focus-visible + .ds-toggle-track { outline: 2px solid #FF9430; outline-offset: 2px; }"
+      "css": ".ds-toggle { display: inline-flex; cursor: pointer; } .ds-toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; } .ds-toggle-track { width: 36px; height: 20px; border-radius: 10px; background: #2A2A2E; position: relative; display: block; } .ds-toggle-track::after { content: ''; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #FAFAFC; transition: left 0.12s ease; } .ds-toggle input:checked + .ds-toggle-track { background: #FF9430; } .ds-toggle input:checked + .ds-toggle-track::after { left: 19px; } .ds-toggle input:focus-visible + .ds-toggle-track { outline: 2px solid #FF9430; outline-offset: 2px; }"
     },
     {
       "name": "Bike Pill",
@@ -194,7 +242,15 @@
       "refersTo": "skew-plaque",
       "description": "Broadcast hardware bar for rider count and track name.",
       "html": "<span class=\"ds-skew\">12 · BUCHANAN</span>",
-      "css": ".ds-skew { display: inline-flex; align-items: center; padding: 3px 12px; background: #FF9430; color: #0C0C0E; font-family: 'Exo 2', 'Segoe UI', sans-serif; font-size: 10px; font-weight: 800; font-style: italic; letter-spacing: 0.04em; text-transform: uppercase; transform: skewX(-12deg); } .ds-skew > * , .ds-skew { transform: skewX(-12deg); } .ds-skew { border: 0; }"
+      "css": ".ds-skew { display: inline-flex; align-items: center; padding: 3px 12px; background: #FF9430; color: #0C0C0E; font-family: 'Exo 2', 'Segoe UI', sans-serif; font-size: 10px; font-weight: 800; font-style: italic; letter-spacing: 0.04em; text-transform: uppercase; clip-path: polygon(4px 0, 100% 0, calc(100% - 4px) 100%, 0 100%); }"
+    },
+    {
+      "name": "Heading Plaque",
+      "kind": "chip",
+      "refersTo": "heading-plaque",
+      "description": "Content-sized orange parallelogram for Settings pane titles and the What’s new version. The plaque is the heading.",
+      "html": "<span class=\"ds-heading-plaque\">0.1.18</span>",
+      "css": ".ds-heading-plaque { display: inline-flex; align-items: center; height: 40px; padding: 0 16px; background: #FF9430; color: #0C0C0E; font-family: 'Exo 2', 'Segoe UI', sans-serif; font-size: 18px; font-weight: 800; font-style: italic; letter-spacing: 0.02em; clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%); } .ds-heading-plaque:hover { filter: brightness(1.06); } .ds-heading-plaque:focus-visible { outline: 2px solid #FF9430; outline-offset: 3px; }"
     },
     {
       "name": "You Row",
@@ -213,48 +269,55 @@
       "css": ".ds-hud-panel { background: rgba(10,10,10,0.78); color: #E4E4E6; border-radius: 6px; font-family: 'Exo 2', 'Segoe UI', sans-serif; min-width: 240px; overflow: hidden; } .ds-hud-head { background: #FF9430; color: #0C0C0E; padding: 6px 10px; font-size: 10px; font-weight: 800; font-style: italic; letter-spacing: 0.04em; text-transform: uppercase; } .ds-hud-body { padding: 10px 12px; font-size: 12px; color: #84848A; }"
     },
     {
-      "name": "Settings Tab",
-      "kind": "nav",
-      "refersTo": "settings-tab-on",
-      "description": "Left-rail tab: orange wash plus pip when selected.",
-      "html": "<button class=\"ds-tab ds-tab-on\" type=\"button\">Standings</button>",
-      "css": ".ds-tab { display: flex; align-items: center; width: 180px; text-align: left; padding: 10px 12px; border: 0; background: rgba(255,255,255,0.04); color: #D2D2D8; border-radius: 8px; font-family: 'Exo 2', 'Segoe UI', sans-serif; font-size: 13px; font-weight: 700; cursor: pointer; } .ds-tab:hover { background: #2E2F36; } .ds-tab:focus-visible { outline: 2px solid #FF9430; outline-offset: 2px; } .ds-tab-on { background: rgba(255,140,36,0.11); color: #FF9430; box-shadow: inset 3px 0 0 #FF8C24; }"
+      "name": "Center Plaque",
+      "kind": "card",
+      "refersTo": "center-plaque",
+      "description": "What’s new after an in-app update: dimmed Settings, content-sized version heading, notes, full-width Got it.",
+      "html": "<div class=\"ds-center-host\"><div class=\"ds-center-plaque\"><span class=\"ds-center-ver\">0.1.18</span><p class=\"ds-center-head\">Closing MX Bikes brings the Windows taskbar back.</p><div class=\"ds-center-sec\">OVERLAY</div><div class=\"ds-center-li\"><span class=\"ds-center-dot\"></span>Closing the game restores the taskbar</div><button class=\"ds-center-gotit\" type=\"button\">Got it</button></div></div>",
+      "css": ".ds-center-host { background: rgba(8,8,10,0.8); padding: 32px; display: flex; justify-content: center; } .ds-center-plaque { width: 520px; max-width: 100%; background: #141416; color: #E4E4E6; border-radius: 10px; padding: 22px; font-family: 'Exo 2', 'Segoe UI', sans-serif; } .ds-center-ver { display: inline-flex; align-items: center; height: 40px; padding: 0 16px; margin-bottom: 16px; background: #FF9430; color: #0C0C0E; font-size: 18px; font-weight: 800; font-style: italic; clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%); } .ds-center-head { margin: 0 0 10px; font-size: 16px; font-weight: 800; font-style: italic; line-height: 1.375; color: #E4E4E6; } .ds-center-sec { font-size: 10px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #84848A; margin: 8px 0 8px; } .ds-center-li { display: flex; align-items: flex-start; gap: 10px; font-size: 12px; font-weight: 800; font-style: italic; line-height: 1.5; margin-bottom: 22px; } .ds-center-dot { width: 4.4px; height: 4.4px; margin-top: 6px; border-radius: 50%; background: #FF9430; flex: 0 0 auto; } .ds-center-gotit { display: block; width: 100%; height: 40px; border: 0; border-radius: 8px; background: #FF9430; color: #0C0C0E; font-family: inherit; font-size: 13px; font-weight: 800; font-style: italic; cursor: pointer; } .ds-center-gotit:hover { filter: brightness(1.08); } .ds-center-gotit:focus-visible { outline: 2px solid #FF9430; outline-offset: 3px; } .ds-center-gotit:active { filter: brightness(0.95); }"
     }
   ],
   "narrative": {
     "northStar": "Broadcast Booth Glass",
-    "overview": "Holeshot HUD is a TV race overlay sitting on the game: dark plaques, skewed hardware bars, and a hot orange that always means *you*. It is broadcast-hot — stronger bars, louder flags, denser tables — not a quiet utility panel and not a consumer app shell. The rider glances; the graphic has to punch.\n\nType is Exo 2 ExtraBold Italic at table scale. Corners stay modest. Chrome is opt-in: a fresh install draws nothing. The website is the same HUD on a charcoal stage, not a second identity. Settings is the same family in opaque charcoal.\n\nDo not drift toward generic sim-HUD blues, glassmorphism blobs, or light “esports dashboard” kits. Manufacturer bike colors stay on pills only.",
+    "overview": "Holeshot HUD is a TV race overlay sitting on the game: dark plaques, skewed hardware bars, and a hot orange that always means *you*. It is broadcast-hot — stronger bars, louder flags, denser tables — not a quiet utility panel and not a consumer app shell. The rider glances; the graphic has to punch.\n\nType is Exo 2 ExtraBold Italic at table scale. Corners stay modest. Chrome is opt-in: a fresh install draws nothing. Settings is the same family in opaque charcoal, including a Center Plaque that can stack on the dimmed host. The website is not a second identity and not a marketing landing: it is an F8 Twin pit-box — settings pane, F8 widget rail, live HUD stage, Download as one orange clip-path plaque in a thin top bar.\n\nDo not drift toward generic sim-HUD blues, glassmorphism blobs, or light “esports dashboard” kits. Manufacturer bike colors stay on pills only.",
     "keyCharacteristics": [
       "Dark plaques over the game; orange is you / CTA only",
       "Skewed TV bars and bike-brand pills as hardware, not cards",
-      "Exo 2 ExtraBold Italic as the HUD face (Teko / Goldman optional)",
-      "Tonal charcoal stacking for depth — almost no drop shadows",
-      "Race meaning uses blue / red / green / violet, never a second orange"
+      "Exo 2 ExtraBold Italic as the HUD, settings, and web face (Teko / Goldman optional in the overlay)",
+      "Tonal charcoal stacking for depth — no card shadows",
+      "Race meaning uses blue / red / green / violet, never a second orange",
+      "Web preview is F8 Twin: settings pane, 204px widget rail, then the live stage"
     ],
     "rules": [
       { "name": "The You-Are-Orange Rule", "body": "Holeshot Orange is you, CTA, and accent. Other riders are Field Slate unless lapping/closing paints them blue or red.", "section": "colors" },
       { "name": "The Meaning-Not-Brand Rule", "body": "Blue, red, green, and violet carry race state. They are never decorative theme colors.", "section": "colors" },
-      { "name": "The One-Face Rule", "body": "HUD and settings speak Exo 2 (or the rider’s Teko / Goldman). Segoe is web-shell only.", "section": "typography" },
-      { "name": "The Italic Default Rule", "body": "The bundled Exo 2 cut is italic extra-bold. Do not “correct” it to a roman UI font.", "section": "typography" },
+      { "name": "The One-Face Rule", "body": "HUD, settings, and the web demo speak Exo 2 ExtraBold Italic (or the rider’s Teko / Goldman in the overlay). Segoe is fallback only.", "section": "typography" },
+      { "name": "The Italic Default Rule", "body": "The bundled Exo 2 cut is italic extra-bold. Do not “correct” it to a roman UI font on the website or in settings.", "section": "typography" },
       { "name": "The Opt-In Chrome Rule", "body": "Nothing draws until Show on overlay is on. Empty race data shows “Waiting for race data”, not a blank plaque.", "section": "layout" },
+      { "name": "The Twin Monitor Rule", "body": "The web preview is a pit box: settings pane, F8 widget rail, and live HUD stage, left to right. Download lives in the top bar on every width.", "section": "layout" },
       { "name": "The Tonal Stack Rule", "body": "Surfaces are flat at rest. No ambient card shadows. A knob may sit on a small dark disc; a standings board may not.", "section": "elevation" },
-      { "name": "The TV Plaque Rule", "body": "Skewed bars and manufacturer pills are broadcast hardware. Do not replace them with cards, chips-in-a-row, or Material buttons.", "section": "shapes" }
+      { "name": "The TV Plaque Rule", "body": "Skewed bars and manufacturer pills are broadcast hardware. Do not replace them with cards, chips-in-a-row, or Material buttons.", "section": "shapes" },
+      { "name": "The Content-Sized Plaque Rule", "body": "Heading plaques size to the label. Do not stretch orange across the board. Download is the exception: it is a CTA plaque, not a heading.", "section": "shapes" }
     ],
     "dos": [
       "Do keep Holeshot Orange for you, CTA, and accent only.",
-      "Do use Exo 2 ExtraBold Italic as the default HUD face.",
+      "Do use Exo 2 ExtraBold Italic as the face for HUD, settings, and web chrome.",
       "Do ship bike pills in manufacturer colors with contrast-flipped ink.",
       "Do start every widget hidden on a fresh install.",
-      "Do treat map fill as transparent unless the rider raises opacity."
+      "Do treat map fill as transparent unless the rider raises opacity.",
+      "Do size Settings heading plaques to the label (text + 36px), left-aligned.",
+      "Do treat the website as an F8 Twin pit-box: settings, widget rail (204px), live stage, Download in the top bar."
     ],
     "donts": [
       "Don't paint other riders orange.",
       "Don't invent a second lapping palette for minimap or radar.",
       "Don't bring back radar side/rear zone wedges.",
-      "Don't add drop shadows under HUD tables.",
-      "Don't let Segoe / web-shell type into overlay widgets.",
+      "Don't add drop shadows under HUD tables, the twin, or the stage.",
+      "Don't let a roman / Segoe shell face into overlay widgets or web chrome.",
       "Don't recode manufacturer pills to follow White/Black table text.",
-      "Don't draw overlay work into the in-game C++ HUD (ingame_hud)."
+      "Don't draw overlay work into the in-game C++ HUD (ingame_hud).",
+      "Don't stretch heading plaques into full-width orange bars.",
+      "Don't wrap the live HUD in a boxed canvas inside a left-rail dashboard."
     ]
   }
 }

@@ -24,6 +24,7 @@ Status labels: `1` DNS, `3` OUT, `4` DSQ, else PIT if `pit != 0`.
 
 - Height grows with visible rows. If the field is larger than **Rows**, the window centers on you.
 - Your row is highlighted. OUT / DNS / DSQ rows dim. **Row highlight** opacity is adjustable in settings (`st_hl`). **Text color** is White or Black (`st_text`); bike pills keep brand colors.
+- In replay / spectate, clicking a rider's **name** moves the game camera to them (`SpectateVehicles`). The overlay only captures that click while hovering a name; riding is not affected.
 - Best lap in the field is purple.
 - Bike column is a colored badge (`bike_color` from bike name + category). A skew bar after **Position** uses the same accent.
 - Header / footer are three `BoardField` slots each (session time, riders, etc.).
@@ -38,8 +39,12 @@ Default columns on: Position, Number, Name, Gap, Fastest, Last lap.
 - Last lap for you can fall back to `s.last_lap_ms` when the row has no last lap yet.
 - Empty field shows “Waiting for race data”, not a blank panel.
 - Rows and places come from the live order, not the raw `s.standings` array. The row window and slide animation follow it.
+- Click-to-follow only runs while the plugin sees `SpectateVehicles` (replay / spectate). It must not steal the camera while you are riding.
+- Leaving replay must drop camera focus back to you. A stuck spectate target keeps their row highlighted and starves the dash of your telemetry.
 
 ## Change log
+
+- 2026-08-26 — Leaving replay drops spectate focus so your row / dash come back. `SpectateVehicles` only owns `focusRaceNum` while it is still being called.
 
 - 2026-08-25 — Board follows the live race order, so a pass moves the row when it happens instead of at the line. Gap is still the game's number; interval is a size so a just-passed pair cannot read negative.
 - 2026-08-24 — Interval / current lap / session best read from shared `RaceStore` after each frame tick. No visual change.

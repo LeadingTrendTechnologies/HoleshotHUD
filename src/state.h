@@ -117,7 +117,9 @@ public:
     bool hasStandings() const { return !m_standings.empty(); }
 
     int localRaceNum() const { return m_localRaceNum; }
-    int focusRaceNum() const { return m_focusRaceNum >= 0 ? m_focusRaceNum : m_localRaceNum; }
+    int focusRaceNum() const;
+    bool spectating() const;
+    void clearSpectateSelection();
     const std::string& localName() const { return m_localName; }
 
     bool hasTelemetry() const { return m_hasTelemetry; }
@@ -187,6 +189,7 @@ private:
     float m_sfMeters = 0.0f;
     int m_localRaceNum = -1;
     int m_focusRaceNum = -1;
+    double m_lastSpectate = 0.0;
 
     bool m_inRun = false;
     bool m_hasTelemetry = false;

@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{LazyLock, Mutex};
@@ -251,6 +252,243 @@ impl SettingsKey {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum StanceBind {
+    PadRb,
+    PadLb,
+    PadRt,
+    PadLt,
+    PadA,
+    PadB,
+    PadX,
+    PadY,
+    PadDpadUp,
+    PadDpadDown,
+    PadDpadLeft,
+    PadDpadRight,
+    MouseLeft,
+    MouseRight,
+    MouseMiddle,
+    MouseX1,
+    MouseX2,
+    Key(u16),
+}
+
+impl StanceBind {
+    pub const ALL: [Self; 12] = [
+        Self::PadRb,
+        Self::PadLb,
+        Self::PadRt,
+        Self::PadLt,
+        Self::PadA,
+        Self::PadB,
+        Self::PadX,
+        Self::PadY,
+        Self::PadDpadUp,
+        Self::PadDpadDown,
+        Self::PadDpadLeft,
+        Self::PadDpadRight,
+    ];
+
+    pub const MOUSE: [Self; 5] = [
+        Self::MouseLeft,
+        Self::MouseRight,
+        Self::MouseMiddle,
+        Self::MouseX1,
+        Self::MouseX2,
+    ];
+
+    pub fn label(self) -> Cow<'static, str> {
+        match self {
+            Self::PadRb => Cow::Borrowed("Right bumper"),
+            Self::PadLb => Cow::Borrowed("Left bumper"),
+            Self::PadRt => Cow::Borrowed("R2 / RT"),
+            Self::PadLt => Cow::Borrowed("L2 / LT"),
+            Self::PadA => Cow::Borrowed("A / Cross"),
+            Self::PadB => Cow::Borrowed("B / Circle"),
+            Self::PadX => Cow::Borrowed("X / Square"),
+            Self::PadY => Cow::Borrowed("Y / Triangle"),
+            Self::PadDpadUp => Cow::Borrowed("D-pad up"),
+            Self::PadDpadDown => Cow::Borrowed("D-pad down"),
+            Self::PadDpadLeft => Cow::Borrowed("D-pad left"),
+            Self::PadDpadRight => Cow::Borrowed("D-pad right"),
+            Self::MouseLeft => Cow::Borrowed("Mouse left"),
+            Self::MouseRight => Cow::Borrowed("Mouse right"),
+            Self::MouseMiddle => Cow::Borrowed("Mouse middle"),
+            Self::MouseX1 => Cow::Borrowed("Mouse 4"),
+            Self::MouseX2 => Cow::Borrowed("Mouse 5"),
+            Self::Key(vk) => Cow::Owned(vk_label(vk)),
+        }
+    }
+
+    pub fn key(self) -> String {
+        match self {
+            Self::PadRb => "rb".into(),
+            Self::PadLb => "lb".into(),
+            Self::PadRt => "rt".into(),
+            Self::PadLt => "lt".into(),
+            Self::PadA => "a".into(),
+            Self::PadB => "b".into(),
+            Self::PadX => "x".into(),
+            Self::PadY => "y".into(),
+            Self::PadDpadUp => "dup".into(),
+            Self::PadDpadDown => "ddown".into(),
+            Self::PadDpadLeft => "dleft".into(),
+            Self::PadDpadRight => "dright".into(),
+            Self::MouseLeft => "m1".into(),
+            Self::MouseRight => "m2".into(),
+            Self::MouseMiddle => "m3".into(),
+            Self::MouseX1 => "m4".into(),
+            Self::MouseX2 => "m5".into(),
+            Self::Key(vk) => format!("k{vk}"),
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        let s = s.trim().to_ascii_lowercase();
+        match s.as_str() {
+            "lb" | "l1" => Self::PadLb,
+            "rt" | "r2" => Self::PadRt,
+            "lt" | "l2" => Self::PadLt,
+            "a" | "cross" => Self::PadA,
+            "b" | "circle" => Self::PadB,
+            "x" | "square" => Self::PadX,
+            "y" | "triangle" => Self::PadY,
+            "dup" | "dpad_up" | "up" => Self::PadDpadUp,
+            "ddown" | "dpad_down" | "down" => Self::PadDpadDown,
+            "dleft" | "dpad_left" => Self::PadDpadLeft,
+            "dright" | "dpad_right" => Self::PadDpadRight,
+            "m1" | "mouse_left" | "lmb" => Self::MouseLeft,
+            "m2" | "mouse_right" | "rmb" => Self::MouseRight,
+            "m3" | "mouse_middle" | "mmb" => Self::MouseMiddle,
+            "m4" | "mouse_x1" => Self::MouseX1,
+            "m5" | "mouse_x2" => Self::MouseX2,
+            "space" => Self::Key(0x20),
+            "enter" | "return" => Self::Key(0x0D),
+            "tab" => Self::Key(0x09),
+            "lshift" => Self::Key(0xA0),
+            "rshift" => Self::Key(0xA1),
+            "lctrl" => Self::Key(0xA2),
+            "rctrl" => Self::Key(0xA3),
+            other => parse_key_bind(other).unwrap_or(Self::PadRb),
+        }
+    }
+}
+
+fn parse_key_bind(s: &str) -> Option<StanceBind> {
+    let n = s.strip_prefix("key").or_else(|| s.strip_prefix('k'))?;
+    let vk: u16 = n.parse().ok()?;
+    (vk >= 8 && vk != 0x1B).then_some(StanceBind::Key(vk))
+}
+
+fn vk_label(vk: u16) -> String {
+    match vk {
+        0x08 => "Backspace".into(),
+        0x09 => "Tab".into(),
+        0x0D => "Enter".into(),
+        0x13 => "Pause".into(),
+        0x14 => "Caps Lock".into(),
+        0x20 => "Space".into(),
+        0x21 => "Page Up".into(),
+        0x22 => "Page Down".into(),
+        0x23 => "End".into(),
+        0x24 => "Home".into(),
+        0x25 => "Left Arrow".into(),
+        0x26 => "Up Arrow".into(),
+        0x27 => "Right Arrow".into(),
+        0x28 => "Down Arrow".into(),
+        0x2D => "Insert".into(),
+        0x2E => "Delete".into(),
+        0x30..=0x39 => ((b'0' + (vk - 0x30) as u8) as char).to_string(),
+        0x41..=0x5A => ((b'A' + (vk - 0x41) as u8) as char).to_string(),
+        0x60..=0x69 => format!("Numpad {}", vk - 0x60),
+        0x6A => "Numpad *".into(),
+        0x6B => "Numpad +".into(),
+        0x6D => "Numpad -".into(),
+        0x6E => "Numpad .".into(),
+        0x6F => "Numpad /".into(),
+        0x70..=0x87 => format!("F{}", vk - 0x6F),
+        0x90 => "Num Lock".into(),
+        0x91 => "Scroll Lock".into(),
+        0xA0 => "Left Shift".into(),
+        0xA1 => "Right Shift".into(),
+        0xA2 => "Left Ctrl".into(),
+        0xA3 => "Right Ctrl".into(),
+        0xA4 => "Left Alt".into(),
+        0xA5 => "Right Alt".into(),
+        0xBA => ";".into(),
+        0xBB => "=".into(),
+        0xBC => ",".into(),
+        0xBD => "-".into(),
+        0xBE => ".".into(),
+        0xBF => "/".into(),
+        0xC0 => "`".into(),
+        0xDB => "[".into(),
+        0xDC => "\\".into(),
+        0xDD => "]".into(),
+        0xDE => "'".into(),
+        _ => format!("Key {vk}"),
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum StanceMode {
+    Toggle,
+    Hold,
+}
+
+impl StanceMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Toggle => "Toggle",
+            Self::Hold => "Hold to sit",
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Toggle => "toggle",
+            Self::Hold => "hold",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "hold" | "hold_sit" => Self::Hold,
+            _ => Self::Toggle,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum StanceStyle {
+    Text,
+    Icon,
+}
+
+impl StanceStyle {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Text => "Text",
+            Self::Icon => "Icon",
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Text => "text",
+            Self::Icon => "icon",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "icon" => Self::Icon,
+            _ => Self::Text,
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum WidgetId {
     Standings,
@@ -262,6 +500,7 @@ pub enum WidgetId {
     Ticker,
     Sys,
     Sector,
+    Stance,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -623,6 +862,7 @@ pub struct HudConfig {
     pub ticker: Rect,
     pub sys: Rect,
     pub sector: Rect,
+    pub stance: Rect,
     pub show_standings: bool,
     pub show_relative: bool,
     pub show_map: bool,
@@ -632,8 +872,9 @@ pub struct HudConfig {
     pub show_ticker: bool,
     pub show_sys: bool,
     pub show_sector: bool,
-    /// Off by default. Sector tab and overlay stay hidden until this is on.
-    pub feature_sector: bool,
+    pub show_stance: bool,
+    /// Off by default. Sectors stay hidden until this is on.
+    pub experimental: bool,
     /// Plugin-only: when true the in-game HUD draws. Overlay still saves this key.
     pub ingame_hud: bool,
     pub standings_rows: i32,
@@ -697,7 +938,10 @@ pub struct HudConfig {
     pub ticker_bg: i32,
     pub sys_bg: i32,
     pub sector_bg: i32,
+    pub stance_bg: i32,
     pub dash_rev: bool,
+    /// Gear + speed lockup; hides RPM, place, footer, and the rev bar.
+    pub dash_simple: bool,
     pub dash_left: DashField,
     pub dash_mid: DashField,
     pub dash_right: DashField,
@@ -716,6 +960,7 @@ pub struct HudConfig {
     pub ticker_font: i32,
     pub sys_font: i32,
     pub sector_font: i32,
+    pub stance_font: i32,
     pub st_bold: bool,
     pub rel_bold: bool,
     pub map_bold: bool,
@@ -725,6 +970,7 @@ pub struct HudConfig {
     pub ticker_bold: bool,
     pub sys_bold: bool,
     pub sector_bold: bool,
+    pub stance_bold: bool,
     pub font_family: FontFamily,
     pub units: Units,
     pub start_with_windows: bool,
@@ -732,7 +978,13 @@ pub struct HudConfig {
     pub close_with_game: bool,
     pub open_with_game: bool,
     pub auto_update_on_launch: bool,
+    /// Last version whose What's new modal was dismissed with Got it.
+    pub whats_new_seen: String,
     pub settings_key: SettingsKey,
+    pub stance_bind: StanceBind,
+    pub stance_mode: StanceMode,
+    pub stance_style: StanceStyle,
+    pub stance_show_sit: bool,
     pub st_order: Vec<StField>,
     pub rel_order: Vec<RelField>,
     pub st_w_pos: i32,
@@ -820,6 +1072,12 @@ impl HudConfig {
                 w: 0.18,
                 h: 0.15,
             },
+            stance: Rect {
+                x: 0.445,
+                y: 0.705,
+                w: 0.11,
+                h: 0.065,
+            },
             show_standings: false,
             show_relative: false,
             show_map: false,
@@ -829,7 +1087,8 @@ impl HudConfig {
             show_ticker: false,
             show_sys: false,
             show_sector: false,
-            feature_sector: false,
+            show_stance: false,
+            experimental: false,
             ingame_hud: false,
             standings_rows: 12,
             relative_count: 3,
@@ -892,7 +1151,9 @@ impl HudConfig {
             ticker_bg: 86,
             sys_bg: 82,
             sector_bg: 82,
+            stance_bg: 86,
             dash_rev: true,
+            dash_simple: false,
             dash_left: DashField::Engine,
             dash_mid: DashField::Air,
             dash_right: DashField::Best,
@@ -911,6 +1172,7 @@ impl HudConfig {
             ticker_font: 100,
             sys_font: 100,
             sector_font: 100,
+            stance_font: 100,
             st_bold: false,
             rel_bold: false,
             map_bold: false,
@@ -920,6 +1182,7 @@ impl HudConfig {
             ticker_bold: false,
             sys_bold: false,
             sector_bold: false,
+            stance_bold: false,
             font_family: FontFamily::Exo2,
             units: Units::Metric,
             start_with_windows: false,
@@ -927,7 +1190,12 @@ impl HudConfig {
             close_with_game: false,
             open_with_game: false,
             auto_update_on_launch: false,
+            whats_new_seen: String::new(),
             settings_key: SettingsKey::F8,
+            stance_bind: StanceBind::PadRb,
+            stance_mode: StanceMode::Toggle,
+            stance_style: StanceStyle::Text,
+            stance_show_sit: false,
             st_order: StField::ALL.to_vec(),
             rel_order: RelField::ALL.to_vec(),
             st_w_pos: 26,
@@ -1021,6 +1289,10 @@ impl HudConfig {
                 "sector_y" => cfg.sector.y = f,
                 "sector_w" => cfg.sector.w = f,
                 "sector_h" => cfg.sector.h = f,
+                "stance_x" => cfg.stance.x = f,
+                "stance_y" => cfg.stance.y = f,
+                "stance_w" => cfg.stance.w = f,
+                "stance_h" => cfg.stance.h = f,
                 "show_standings" => cfg.show_standings = b,
                 "show_relative" => cfg.show_relative = b,
                 "show_map" => cfg.show_map = b,
@@ -1030,7 +1302,8 @@ impl HudConfig {
                 "show_ticker" => cfg.show_ticker = b,
                 "show_sys" => cfg.show_sys = b,
                 "show_sector" => cfg.show_sector = b,
-                "feature_sector" => cfg.feature_sector = b,
+                "show_stance" => cfg.show_stance = b,
+                "experimental" | "feature_experimental" | "feature_sector" => cfg.experimental = b,
                 "ingame_hud" => cfg.ingame_hud = b,
                 "standings_rows" => cfg.standings_rows = val.parse().unwrap_or(12).max(3),
                 "relative_count" => cfg.relative_count = val.parse().unwrap_or(3).max(1),
@@ -1096,7 +1369,9 @@ impl HudConfig {
                 "ticker_bg" => cfg.ticker_bg = clamp_pct(val),
                 "sys_bg" => cfg.sys_bg = clamp_pct(val),
                 "sector_bg" => cfg.sector_bg = clamp_pct(val),
+                "stance_bg" => cfg.stance_bg = clamp_pct(val),
                 "dash_rev" => cfg.dash_rev = b,
+                "dash_simple" => cfg.dash_simple = b,
                 "dash_left" => cfg.dash_left = DashField::parse(val),
                 "dash_mid" => cfg.dash_mid = DashField::parse(val),
                 "dash_right" => cfg.dash_right = DashField::parse(val),
@@ -1115,6 +1390,7 @@ impl HudConfig {
                 "ticker_font" => cfg.ticker_font = clamp_font(val),
                 "sys_font" => cfg.sys_font = clamp_font(val),
                 "sector_font" => cfg.sector_font = clamp_font(val),
+                "stance_font" => cfg.stance_font = clamp_font(val),
                 "st_bold" => cfg.st_bold = b,
                 "rel_bold" => cfg.rel_bold = b,
                 "map_bold" => cfg.map_bold = b,
@@ -1124,6 +1400,7 @@ impl HudConfig {
                 "ticker_bold" => cfg.ticker_bold = b,
                 "sys_bold" => cfg.sys_bold = b,
                 "sector_bold" => cfg.sector_bold = b,
+                "stance_bold" => cfg.stance_bold = b,
                 "font_family" => cfg.font_family = FontFamily::parse(val),
                 "units" => cfg.units = Units::parse(val),
                 "start_with_windows" => cfg.start_with_windows = b,
@@ -1131,7 +1408,17 @@ impl HudConfig {
                 "close_with_game" => cfg.close_with_game = b,
                 "open_with_game" => cfg.open_with_game = b,
                 "auto_update_on_launch" => cfg.auto_update_on_launch = b,
+                "whats_new_seen" => cfg.whats_new_seen = val.trim().to_string(),
                 "settings_key" => cfg.settings_key = SettingsKey::parse(val),
+                "stance_bind" => cfg.stance_bind = StanceBind::parse(val),
+                "stance_mode" => cfg.stance_mode = StanceMode::parse(val),
+                "stance_style" => cfg.stance_style = StanceStyle::parse(val),
+                "stance_show_sit" => cfg.stance_show_sit = b,
+                "stance_icon" => {
+                    if b {
+                        cfg.stance_style = StanceStyle::Icon;
+                    }
+                }
                 "st_order" => cfg.st_order = parse_st_order(val),
                 "rel_order" => cfg.rel_order = parse_rel_order(val),
                 "st_w_pos" => cfg.st_w_pos = clamp_w(val),
@@ -1188,8 +1475,9 @@ impl HudConfig {
              ticker_x={}\nticker_y={}\nticker_w={}\nticker_h={}\n\
              sys_x={}\nsys_y={}\nsys_w={}\nsys_h={}\n\
              sector_x={}\nsector_y={}\nsector_w={}\nsector_h={}\n\
+             stance_x={}\nstance_y={}\nstance_w={}\nstance_h={}\n\
              \n[Widgets]\n\
-             show_standings={}\nshow_relative={}\nshow_map={}\nshow_minimap={}\nshow_radar={}\nshow_dash={}\nshow_ticker={}\nshow_sys={}\nshow_sector={}\n\
+             show_standings={}\nshow_relative={}\nshow_map={}\nshow_minimap={}\nshow_radar={}\nshow_dash={}\nshow_ticker={}\nshow_sys={}\nshow_sector={}\nshow_stance={}\n\
              ingame_hud={}\nstandings_rows={}\nrelative_count={}\nticker_count={}\n\
              \n[Standings]\n\
              st_pos={}\nst_num={}\nst_name={}\nst_gap={}\nst_interval={}\nst_laps={}\nst_current={}\nst_best={}\nst_last={}\nst_status={}\n\
@@ -1218,6 +1506,7 @@ impl HudConfig {
              radar_bg={}\nradar_font={}\nradar_bold={}\n\
              \n[Dash]\n\
              dash_rev={}\n\
+             dash_simple={}\n\
              dash_left={}\ndash_mid={}\ndash_right={}\n\
              dash_bg={}\ndash_font={}\ndash_bold={}\n\
              \n[Ticker]\n\
@@ -1229,8 +1518,11 @@ impl HudConfig {
              sys_bg={}\nsys_font={}\nsys_bold={}\n\
              \n[Sector]\n\
              sector_bg={}\nsector_font={}\nsector_bold={}\n\
+             \n[Stance]\n\
+             stance_bind={}\nstance_mode={}\nstance_style={}\nstance_show_sit={}\n\
+             stance_bg={}\nstance_font={}\nstance_bold={}\n\
              \n[App]\n\
-             font_family={}\nunits={}\nsettings_key={}\nstart_with_windows={}\nminimize_on_close={}\nclose_with_game={}\nopen_with_game={}\nauto_update_on_launch={}\nfeature_sector={}\n",
+             font_family={}\nunits={}\nsettings_key={}\nstart_with_windows={}\nminimize_on_close={}\nclose_with_game={}\nopen_with_game={}\nauto_update_on_launch={}\nwhats_new_seen={}\nexperimental={}\n",
             self.standings.x,
             self.standings.y,
             self.standings.w,
@@ -1267,6 +1559,10 @@ impl HudConfig {
             self.sector.y,
             self.sector.w,
             self.sector.h,
+            self.stance.x,
+            self.stance.y,
+            self.stance.w,
+            self.stance.h,
             b(self.show_standings),
             b(self.show_relative),
             b(self.show_map),
@@ -1276,6 +1572,7 @@ impl HudConfig {
             b(self.show_ticker),
             b(self.show_sys),
             b(self.show_sector),
+            b(self.show_stance),
             b(self.ingame_hud),
             self.standings_rows,
             self.relative_count,
@@ -1374,6 +1671,7 @@ impl HudConfig {
             self.radar_font,
             b(self.radar_bold),
             b(self.dash_rev),
+            b(self.dash_simple),
             self.dash_left.key(),
             self.dash_mid.key(),
             self.dash_right.key(),
@@ -1393,6 +1691,13 @@ impl HudConfig {
             self.sector_bg,
             self.sector_font,
             b(self.sector_bold),
+            self.stance_bind.key(),
+            self.stance_mode.key(),
+            self.stance_style.key(),
+            b(self.stance_show_sit),
+            self.stance_bg,
+            self.stance_font,
+            b(self.stance_bold),
             self.font_family.key(),
             self.units.key(),
             self.settings_key.key(),
@@ -1401,7 +1706,8 @@ impl HudConfig {
             b(self.close_with_game),
             b(self.open_with_game),
             b(self.auto_update_on_launch),
-            b(self.feature_sector),
+            self.whats_new_seen,
+            b(self.experimental),
         );
         let _ = fs::write(&path, body);
         self.loaded_mtime = fs::metadata(&path).and_then(|m| m.modified()).ok();
@@ -1449,6 +1755,7 @@ impl HudConfig {
             WidgetId::Ticker => self.ticker_font,
             WidgetId::Sys => self.sys_font,
             WidgetId::Sector => self.sector_font,
+            WidgetId::Stance => self.stance_font,
         }
     }
 
@@ -1464,6 +1771,7 @@ impl HudConfig {
             WidgetId::Ticker => self.ticker_font = v,
             WidgetId::Sys => self.sys_font = v,
             WidgetId::Sector => self.sector_font = v,
+            WidgetId::Stance => self.stance_font = v,
         }
     }
 
@@ -1478,6 +1786,7 @@ impl HudConfig {
             WidgetId::Ticker => self.ticker_bold,
             WidgetId::Sys => self.sys_bold,
             WidgetId::Sector => self.sector_bold,
+            WidgetId::Stance => self.stance_bold,
         }
     }
 
@@ -1492,6 +1801,7 @@ impl HudConfig {
             WidgetId::Ticker => self.ticker_bold = on,
             WidgetId::Sys => self.sys_bold = on,
             WidgetId::Sector => self.sector_bold = on,
+            WidgetId::Stance => self.stance_bold = on,
         }
     }
 
@@ -1506,6 +1816,7 @@ impl HudConfig {
             WidgetId::Ticker => self.ticker,
             WidgetId::Sys => self.sys,
             WidgetId::Sector => self.sector,
+            WidgetId::Stance => self.stance,
         }
     }
 
@@ -1526,6 +1837,7 @@ impl HudConfig {
             WidgetId::Ticker => &mut self.ticker,
             WidgetId::Sys => &mut self.sys,
             WidgetId::Sector => &mut self.sector,
+            WidgetId::Stance => &mut self.stance,
         };
         snap_rect(r, align);
     }
@@ -1538,13 +1850,21 @@ impl HudConfig {
         cols
     }
 
-    /// Debug `cargo run` unlocks Sectors. Release (`build.bat`) only honors `feature_sector`.
+    /// Settings → Labs → Experimental widgets. Sectors stay hidden until this is on.
+    pub fn experimental_unlocked(&self) -> bool {
+        self.experimental
+    }
+
     pub fn sector_unlocked(&self) -> bool {
-        cfg!(debug_assertions) || self.feature_sector
+        self.experimental_unlocked()
     }
 
     pub fn sector_visible(&self) -> bool {
-        self.sector_unlocked() && self.show_sector
+        self.experimental_unlocked() && self.show_sector
+    }
+
+    pub fn stance_visible(&self) -> bool {
+        self.show_stance
     }
 }
 
@@ -1994,6 +2314,24 @@ mod tests {
         }
         assert_eq!(SettingsKey::parse("ins"), SettingsKey::Insert);
         assert_eq!(SettingsKey::parse("nope"), SettingsKey::F8);
+        for bind in StanceBind::ALL {
+            assert_eq!(StanceBind::parse(&bind.key()), bind, "{}", bind.label());
+        }
+        for bind in StanceBind::MOUSE {
+            assert_eq!(StanceBind::parse(&bind.key()), bind, "{}", bind.label());
+        }
+        assert_eq!(StanceBind::parse("k32"), StanceBind::Key(0x20));
+        assert_eq!(StanceBind::parse("space"), StanceBind::Key(0x20));
+        assert_eq!(StanceBind::parse("lmb"), StanceBind::MouseLeft);
+        assert_eq!(StanceBind::parse("rb"), StanceBind::PadRb);
+        assert_eq!(StanceBind::parse("l1"), StanceBind::PadLb);
+        assert_eq!(StanceBind::parse("l2"), StanceBind::PadLt);
+        assert_eq!(StanceBind::parse("r2"), StanceBind::PadRt);
+        assert_eq!(StanceBind::parse("dpad_up"), StanceBind::PadDpadUp);
+        assert_eq!(StanceMode::parse("hold"), StanceMode::Hold);
+        assert_eq!(StanceMode::parse("toggle"), StanceMode::Toggle);
+        assert_eq!(StanceStyle::parse("icon"), StanceStyle::Icon);
+        assert_eq!(StanceStyle::parse("text"), StanceStyle::Text);
     }
 
     #[test]
@@ -2008,9 +2346,14 @@ mod tests {
         assert!(!cfg.show_ticker);
         assert!(!cfg.show_sys);
         assert!(!cfg.show_sector);
-        assert!(!cfg.feature_sector);
+        assert!(!cfg.show_stance);
+        assert_eq!(cfg.stance_style, StanceStyle::Text);
+        assert!(!cfg.stance_show_sit);
+        assert!(!cfg.experimental);
+        assert!(cfg.whats_new_seen.is_empty());
         assert!(cfg.ticker_title);
         assert_eq!(cfg.font_family, FontFamily::Exo2);
+        assert!(!cfg.dash_simple);
         assert_eq!(cfg.dash_left, DashField::Engine);
         assert_eq!(cfg.dash_mid, DashField::Air);
         assert_eq!(cfg.dash_right, DashField::Best);
@@ -2028,6 +2371,7 @@ mod tests {
             WidgetId::Ticker,
             WidgetId::Sys,
             WidgetId::Sector,
+            WidgetId::Stance,
         ] {
             assert!(cfg.font_pct(id) >= 70);
         }
@@ -2062,16 +2406,20 @@ mod tests {
     }
 
     #[test]
-    fn sector_needs_flag_or_debug_and_show() {
+    fn experimental_gates_sector_only() {
         let mut cfg = HudConfig::new();
-        assert!(!cfg.feature_sector);
-        assert!(!cfg.sector_visible());
+        assert!(!cfg.experimental);
+        assert!(!cfg.experimental_unlocked());
         cfg.show_sector = true;
-        assert_eq!(cfg.sector_unlocked(), cfg!(debug_assertions));
-        assert_eq!(cfg.sector_visible(), cfg!(debug_assertions));
-        cfg.feature_sector = true;
-        assert!(cfg.sector_visible());
-        cfg.show_sector = false;
+        cfg.show_stance = true;
         assert!(!cfg.sector_visible());
+        assert!(cfg.stance_visible());
+        cfg.experimental = true;
+        assert!(cfg.sector_visible());
+        assert!(cfg.stance_visible());
+        cfg.show_sector = false;
+        cfg.show_stance = false;
+        assert!(!cfg.sector_visible());
+        assert!(!cfg.stance_visible());
     }
 }

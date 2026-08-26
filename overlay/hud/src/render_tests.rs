@@ -1,5 +1,5 @@
 use super::*;
-use crate::config::{BoardField, DashField, FontFamily, HudConfig, RelField, StField};
+use crate::config::{BoardField, DashField, FontFamily, HudConfig, RelField, StField, StanceStyle};
 use crate::race_store::{effective_extra_laps, effective_race_laps, ClockMode};
 use crate::shm::{write_name, Point, Rider, Snapshot, Standing, MAGIC, VERSION};
 use std::sync::{Mutex, OnceLock};
@@ -257,6 +257,68 @@ fn dash_footer_fields_fill_from_live_snapshot() {
 }
 
 #[test]
+fn simple_dash_is_gear_and_speed_only() {
+    let _g = session_lock();
+    reset_session();
+    let s = live_snap();
+    let mut cfg = HudConfig::new();
+    cfg.dash_simple = true;
+    cfg.dash_rev = true;
+    cfg.units = crate::config::Units::Imperial;
+    let d = dash_layout(&fonts(), &s, &cfg, 1280.0, 720.0);
+    assert!(d.simple);
+    assert_eq!(d.gear, "3");
+    assert_eq!(d.speed, "40");
+    assert_eq!(d.speed_label, "MPH");
+    assert!(d.foot.is_empty());
+    assert_eq!(d.rev_h, 0.0);
+    assert_eq!(d.footer_h, 0.0);
+    assert!(d.w < 280.0, "simple dash should content-size, got {}", d.w);
+}
+
+#[test]
+fn simple_dash_renders() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.show_standings = 0;
+    s.show_relative = 0;
+    s.show_map = 0;
+    let mut cfg = HudConfig::new();
+    cfg.show_dash = true;
+    cfg.dash_simple = true;
+    cfg.dash_bg = 82;
+    cfg.units = crate::config::Units::Imperial;
+    cfg.dash.x = 0.08;
+    cfg.dash.y = 0.22;
+    cfg.dash.h = 0.52;
+    let (fw, fh) = (640u32, 280u32);
+    let mut hud = Pixmap::new(fw, fh).expect("pixmap");
+    draw(&mut hud, &fonts(), Some(&s), &cfg, fw, fh, 0.0, false, false);
+    let lay = dash_layout(&fonts(), &s, &cfg, fw as f32, fh as f32);
+    let pad = 28.0;
+    let cx = (lay.x - pad).max(0.0) as u32;
+    let cy = (lay.y - pad).max(0.0) as u32;
+    let cw = ((lay.w + pad * 2.0).min(fw as f32 - cx as f32)).max(1.0) as u32;
+    let ch = ((lay.h + pad * 2.0).min(fh as f32 - cy as f32)).max(1.0) as u32;
+    let mut px = Pixmap::new(cw, ch).expect("crop");
+    px.fill(Color::from_rgba8(16, 16, 18, 255));
+    px.draw_pixmap(
+        -(cx as i32),
+        -(cy as i32),
+        hud.as_ref(),
+        &tiny_skia::PixmapPaint::default(),
+        tiny_skia::Transform::identity(),
+        None,
+    );
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.impeccable/review");
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("dash-simple.png");
+    std::fs::write(&path, px.encode_png().expect("png")).expect("write dash-simple.png");
+    assert!(path.is_file());
+}
+
+#[test]
 fn standings_and_relative_board_fields() {
     let _g = session_lock();
     reset_session();
@@ -303,32 +365,38 @@ fn rider_current_lap_is_completed_plus_one() {
 
 #[test]
 fn lap_rel_colors_lapping_and_lapped_riders() {
+    let _g = session_lock();
+    reset_session();
     let mut s = live_snap();
-    assert_eq!(lap_rel(&s, 1), LapRel::Same);
+    let rel = |s: &Snapshot, n| {
+        let _ = RaceStore::tick(s);
+        lap_rel(s, n)
+    };
+    assert_eq!(rel(&s, 1), LapRel::Same);
 
     s.standings[0].num_laps = 6;
     s.riders[0].track_pos = 0.80;
     s.local_track_pos = 0.92;
     s.riders[1].track_pos = 0.92;
-    assert_eq!(lap_rel(&s, 1), LapRel::LappingMe);
+    assert_eq!(rel(&s, 1), LapRel::LappingMe);
 
     s.standings[0].num_laps = 6;
     s.riders[0].track_pos = 0.02;
     s.local_track_pos = 0.98;
     s.riders[1].track_pos = 0.98;
-    assert_eq!(lap_rel(&s, 1), LapRel::Same);
+    assert_eq!(rel(&s, 1), LapRel::Same);
 
     s.standings[0].num_laps = 4;
     s.riders[0].track_pos = 0.97;
     s.local_track_pos = 0.90;
     s.riders[1].track_pos = 0.90;
-    assert_eq!(lap_rel(&s, 1), LapRel::LappedByMe);
+    assert_eq!(rel(&s, 1), LapRel::LappedByMe);
 
     s.standings[0].num_laps = 6;
     s.riders[0].track_pos = 0.20;
     s.local_track_pos = 0.90;
     s.riders[1].track_pos = 0.90;
-    assert_eq!(lap_rel(&s, 1), LapRel::Same, "lap up but not closing from behind");
+    assert_eq!(rel(&s, 1), LapRel::Same, "lap up but not closing from behind");
 
     s.standings[0].num_laps = 5;
     s.standings[0].gap_laps = 0;
@@ -336,20 +404,20 @@ fn lap_rel_colors_lapping_and_lapped_riders() {
     s.riders[0].track_pos = 0.50;
     s.local_track_pos = 0.50;
     s.riders[1].track_pos = 0.50;
-    assert_eq!(lap_rel(&s, 1), LapRel::Same);
+    assert_eq!(rel(&s, 1), LapRel::Same);
 
     s.riders[0].track_pos = 0.82;
     s.local_track_pos = 0.90;
     s.riders[1].track_pos = 0.90;
-    assert_eq!(lap_rel(&s, 1), LapRel::LappingMe);
+    assert_eq!(rel(&s, 1), LapRel::LappingMe);
 
     s.standings[0].gap_laps = 2;
     s.standings[1].gap_laps = 1;
     s.riders[0].track_pos = 0.96;
     s.local_track_pos = 0.88;
     s.riders[1].track_pos = 0.88;
-    assert_eq!(lap_rel(&s, 1), LapRel::LappedByMe);
-    assert_eq!(lap_rel(&s, 12), LapRel::Same);
+    assert_eq!(rel(&s, 1), LapRel::LappedByMe);
+    assert_eq!(rel(&s, 12), LapRel::Same);
 }
 
 #[test]
@@ -2362,7 +2430,7 @@ fn each_widget_renders_without_panic() {
     draw_ok(&only, &cfg);
 
     cfg.show_sys = false;
-    cfg.feature_sector = true;
+    cfg.experimental = true;
     cfg.show_sector = true;
     let mut sector = only;
     sector.sector_count = 3;
@@ -2373,8 +2441,24 @@ fn each_widget_renders_without_panic() {
     sector.sector_delta = [130, 120, 0];
     sector.sector_delta_valid = 0b011;
     draw_ok(&sector, &cfg);
-    cfg.feature_sector = false;
+    cfg.experimental = false;
     draw_ok(&sector, &cfg);
+
+    cfg.show_sector = false;
+    cfg.experimental = false;
+    cfg.show_stance = true;
+    set_stance(false);
+    draw_ok(&only, &cfg);
+    set_stance(true);
+    draw_ok(&only, &cfg);
+    cfg.stance_style = StanceStyle::Icon;
+    set_stance(false);
+    draw_ok(&only, &cfg);
+    set_stance(true);
+    draw_ok(&only, &cfg);
+    cfg.stance_show_sit = true;
+    draw_ok(&only, &cfg);
+    set_stance(false);
 }
 
 #[test]
@@ -2741,4 +2825,102 @@ fn taking_the_lead_moves_the_crown() {
     pass_the_leader(&mut s, 6.0);
     let _ = RaceStore::tick(&s);
     assert_eq!(leader_num(&s), s.focus_race_num);
+}
+
+#[test]
+fn standings_name_is_clickable() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.show_relative = 0;
+    s.show_map = 0;
+    let mut cfg = HudConfig::new();
+    cfg.show_minimap = false;
+    cfg.show_radar = false;
+    cfg.show_dash = false;
+    cfg.show_ticker = false;
+    cfg.show_sys = false;
+    draw_ok(&s, &cfg);
+    let hits = click_rider_hits();
+    let nums: Vec<_> = hits.iter().map(|h| h.race_num).collect();
+    assert!(nums.contains(&1), "standings hits {nums:?}");
+    assert!(nums.contains(&12), "standings hits {nums:?}");
+    for h in &hits {
+        assert_eq!(
+            click_rider_at(h.x + h.w * 0.5, h.y + h.h * 0.5),
+            Some(h.race_num)
+        );
+    }
+    assert_eq!(click_rider_at(0.0, 0.0), None);
+}
+
+#[test]
+fn horizontal_standings_cards_are_clickable() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.show_standings = 0;
+    s.show_relative = 0;
+    s.show_map = 0;
+    let mut cfg = HudConfig::new();
+    cfg.show_minimap = false;
+    cfg.show_radar = false;
+    cfg.show_dash = false;
+    cfg.show_ticker = true;
+    cfg.show_sys = false;
+    draw_ok(&s, &cfg);
+    let hits = click_rider_hits();
+    let nums: Vec<_> = hits.iter().map(|h| h.race_num).collect();
+    assert!(nums.contains(&1), "ticker hits {nums:?}");
+    assert!(nums.contains(&12), "ticker hits {nums:?}");
+    for h in &hits {
+        assert_eq!(
+            click_rider_at(h.x + h.w * 0.5, h.y + h.h * 0.5),
+            Some(h.race_num)
+        );
+    }
+}
+
+#[test]
+fn replay_standings_draw_without_on_track() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.on_track = 0;
+    s.has_telemetry = 0;
+    s.show_relative = 0;
+    s.show_map = 0;
+    let mut cfg = HudConfig::new();
+    cfg.show_minimap = false;
+    cfg.show_radar = false;
+    cfg.show_dash = false;
+    cfg.show_ticker = false;
+    cfg.show_sys = false;
+    draw_ok(&s, &cfg);
+    let nums: Vec<_> = click_rider_hits().iter().map(|h| h.race_num).collect();
+    assert!(nums.contains(&1) && nums.contains(&12), "replay hits {nums:?}");
+}
+
+#[test]
+fn empty_session_hides_race_widgets() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.on_track = 0;
+    s.has_telemetry = 0;
+    s.standing_count = 0;
+    s.rider_count = 0;
+    s.show_relative = 0;
+    s.show_map = 0;
+    let mut cfg = HudConfig::new();
+    cfg.show_minimap = false;
+    cfg.show_radar = false;
+    cfg.show_dash = false;
+    cfg.show_ticker = false;
+    cfg.show_sys = true;
+    cfg.show_stance = true;
+    draw_ok(&s, &cfg);
+    assert!(click_rider_hits().is_empty());
+    let mut px = Pixmap::new(1280, 720).expect("pixmap");
+    draw(&mut px, &fonts(), None, &cfg, 1280, 720, 0.0, false, false);
 }

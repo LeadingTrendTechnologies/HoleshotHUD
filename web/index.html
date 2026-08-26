@@ -2,35 +2,34 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Holeshot HUD — live widget editor</title>
   <link rel="icon" href="favicon.ico" sizes="any" />
   <link rel="icon" href="logo.png" type="image/png" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=f8twin24" />
 </head>
 <body>
-  <header>
-    <div class="brand">
-      <img class="logo" src="logo.png" width="48" height="48" alt="Holeshot HUD" />
-      <div class="wordmark">
-        <span class="name">Holeshot</span>
-        <span class="hud">HUD</span>
-      </div>
-    </div>
-    <p>One widget at a time. Edit fields like in the app. Turn on Move and resize to show the border and drag handles.</p>
-    <a class="download" href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/releases/latest/download/HoleshotHUD-Setup.exe">Download for Windows</a>
+  <!--
+    THESIS: The preview is a pit box — live overlay and F8 settings as twin monitors — not a marketing landing and not a left-rail dashboard around a boxed canvas.
+    OWN-WORLD: Night-ink stage, charcoal settings stack, Holeshot orange plaques, Exo 2 ExtraBold Italic, 6–8px rounds, skewed Download bar, 3px rail pip, no card shadows.
+    STORY: Rider sees the HUD working, tunes the same fields as the app, downloads for Windows.
+    FIRST VIEWPORT: Thin top bar (mark + HOLESHOT HUD, Download plaque right). Desktop: settings pane, widget nav rail, live HUD stage. Narrow/short: HUD, widget chips, then settings.
+    FORM: F8 Twin, grounded list #6, seed a0b69fc7.
+    FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance.
+  -->
+  <header class="topbar">
+    <a class="brand" href="./">
+      <img class="logo" src="logo.png" width="40" height="40" alt="Holeshot HUD" />
+      <span class="wordmark">Holeshot <span class="hud">HUD</span></span>
+    </a>
+    <a class="download" href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/releases/latest/download/HoleshotHUD-Setup.exe" aria-label="Download for Windows">
+      <svg class="win-mark" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M1 1h6.4v6.4H1zm7.6 0H15v6.4H8.6zM1 8.6h6.4V15H1zm7.6 0H15V15H8.6z"/></svg>
+      <span class="dl-text">Download<span class="rest"> for Windows</span></span>
+    </a>
   </header>
-  <main>
-    <aside>
-      <h2>Widget</h2>
-      <button type="button" data-widget="standings" class="on">Standings</button>
-      <button type="button" data-widget="relative">Relative</button>
-      <button type="button" data-widget="dash">Dash</button>
-      <button type="button" data-widget="ticker">Horizontal Standings</button>
-      <button type="button" data-widget="map">Map</button>
-      <button type="button" data-widget="minimap">Minimap</button>
-      <button type="button" data-widget="radar">Radar</button>
-      <button type="button" data-widget="sys">Systems</button>
+  <main class="pit">
+    <aside class="twin" aria-label="Widget settings">
+      <h1 id="widget-title">Standings</h1>
       <div class="row layout-toggle">
         <label for="layout-edit">Move and resize</label>
         <input id="layout-edit" class="toggle" type="checkbox" data-bool="layout_edit" />
@@ -38,11 +37,37 @@
       <h2>Settings</h2>
       <div id="settings"></div>
     </aside>
-    <section class="stage">
+    <nav class="rail" aria-label="Widgets">
+      <div class="rail-block">
+        <p class="rail-group">Boards</p>
+        <div class="rail-items">
+          <button type="button" data-widget="standings" class="on" aria-current="true">Standings</button>
+          <button type="button" data-widget="relative">Relative</button>
+          <button type="button" data-widget="ticker">H-Standings</button>
+        </div>
+      </div>
+      <div class="rail-block">
+        <p class="rail-group">Track</p>
+        <div class="rail-items">
+          <button type="button" data-widget="map">Map</button>
+          <button type="button" data-widget="minimap">Minimap</button>
+          <button type="button" data-widget="radar">Radar</button>
+        </div>
+      </div>
+      <div class="rail-block">
+        <p class="rail-group">Cockpit</p>
+        <div class="rail-items">
+          <button type="button" data-widget="dash">Dash</button>
+          <button type="button" data-widget="sys">Systems</button>
+        </div>
+      </div>
+    </nav>
+    <section class="stage" aria-label="Live HUD">
       <canvas id="hud" width="1280" height="720"></canvas>
       <p class="hint">Demo data — not connected to MX Bikes</p>
+      <p class="stage-status" id="stage-status" hidden>Loading HUD…</p>
     </section>
   </main>
-  <script type="module" src="demo.js?v=0.1.12"></script>
+  <script type="module" src="demo.js?v=f8twin11"></script>
 </body>
 </html>

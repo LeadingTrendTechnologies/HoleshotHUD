@@ -95,7 +95,7 @@ fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg.show_ticker = name == "ticker";
     cfg.show_sys = name == "sys";
     cfg.show_sector = false;
-    cfg.feature_sector = false;
+    cfg.experimental = false;
 }
 
 fn size_show(cfg: &mut HudConfig, name: &str, w: f32, h: f32) {
@@ -122,6 +122,7 @@ fn size_show(cfg: &mut HudConfig, name: &str, w: f32, h: f32) {
             WidgetId::Ticker => &mut cfg.ticker,
             WidgetId::Sys => &mut cfg.sys,
             WidgetId::Sector => &mut cfg.sector,
+            WidgetId::Stance => &mut cfg.stance,
         };
         r.w = w;
         r.h = h;

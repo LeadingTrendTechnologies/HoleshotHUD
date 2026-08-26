@@ -35,7 +35,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use crate::config::{
     update_config, with_config, BoardField, DashField, DotLabel, FontFamily, HudConfig, RelField,
-    SettingsKey, SnapAlign, StField, TableText, Units, WidgetId, COL_W_MAX, COL_W_MIN,
+    SettingsKey, SnapAlign, StField, StanceBind, StanceMode, StanceStyle, TableText, Units, WidgetId, COL_W_MAX,
+    COL_W_MIN,
 };
 use crate::render::{fill_rect, icon, measure, text, Fonts};
 
@@ -156,6 +157,13 @@ fn tab_on() -> Color { pal().tab_on }
 fn text_col() -> Color { pal().text }
 fn muted() -> Color { pal().muted }
 fn dim() -> Color { pal().dim }
+fn caution() -> Color {
+    if high_contrast_on() {
+        text_col()
+    } else {
+        Color::from_rgba8(244, 214, 36, 255)
+    }
+}
 fn row_line() -> Color { pal().row_line }
 fn chip_hover() -> Color { pal().chip_hover }
 fn accent() -> Color { pal().accent }
@@ -225,11 +233,16 @@ enum Tab {
     Ticker,
     Sys,
     Sector,
+    Stance,
 }
 
 impl Tab {
     fn is_widget(self) -> bool {
         !matches!(self, Tab::App | Tab::Feedback)
+    }
+
+    fn is_labs(self) -> bool {
+        matches!(self, Tab::Sector)
     }
 }
 
@@ -247,6 +260,7 @@ enum Hit {
     TabTicker,
     TabSys,
     TabSector,
+    TabStance,
     StShow,
     RelShow,
     MapShow,
@@ -254,9 +268,12 @@ enum Hit {
     RadarShow,
     DashShow,
     DashRev,
+    DashSimple,
     TickerShow,
     SysShow,
     SectorShow,
+    StanceShow,
+    StanceShowSit,
     FeatureSector,
     TickerTitle,
     TickerAutoscroll,
@@ -323,6 +340,7 @@ enum Hit {
     TickerBg,
     SysBg,
     SectorBg,
+    StanceBg,
     StDec,
     StInc,
     RelDec,
@@ -350,6 +368,12 @@ enum Hit {
     UnitsImperial,
     SettingsKeyOpen,
     SettingsKeyPick(SettingsKey),
+    StanceBindOpen,
+    StanceModeOpen,
+    StanceModePick(StanceMode),
+    StanceStyleOpen,
+    StanceStylePick(StanceStyle),
+    StanceReset,
     DashFootOpen(u8),
     DashFootPick(u8, DashField),
     TickerFootOpen(u8),
@@ -360,6 +384,10 @@ enum Hit {
     UpdateInstall,
     UpdateBanner,
     UpdateBannerDismiss,
+    WhatsNewOpen,
+    WhatsNewDismiss,
+    WhatsNewScrim,
+    WhatsNewPanel,
     StartWithWindows,
     MinimizeOnClose,
     CloseWithGame,
@@ -400,6 +428,8 @@ enum Drop {
     FontFamily,
     Units,
     SettingsKey,
+    StanceMode,
+    StanceStyle,
     StText,
     RelText,
     DashFoot(u8),
@@ -449,10 +479,15 @@ struct SettingsUi {
     nav_top: f32,
     nav_bottom: f32,
     banner_dismissed: bool,
+    whats_new_open: bool,
+    whats_new_scroll: f32,
+    whats_new_scroll_max: f32,
     /// Pixel offset into the open dropdown's option list.
     drop_scroll: f32,
     /// Open menu hit target: x, y, w, view_h, content_h.
     drop_menu: Option<(f32, f32, f32, f32, f32)>,
+    /// Sit button is waiting for the next pad press.
+    bind_listen: bool,
 }
 
 unsafe impl Send for SettingsUi {}
@@ -500,14 +535,44 @@ pub fn attach(host: HWND) {
         nav_top: 0.0,
         nav_bottom: 0.0,
         banner_dismissed: false,
+        whats_new_open: false,
+        whats_new_scroll: 0.0,
+        whats_new_scroll_max: 0.0,
         drop_scroll: 0.0,
         drop_menu: None,
+        bind_listen: false,
     });
 }
 
 pub fn show(host: HWND) {
     unsafe {
         force_to_front(host);
+    }
+}
+
+/// Open the What's new modal for this build's changelog. No-op if there are no notes.
+pub fn open_whats_new() {
+    if crate::changelog::current_notes().is_none() {
+        return;
+    }
+    if let Some(ui) = UI.lock().unwrap().as_mut() {
+        ui.whats_new_open = true;
+        ui.whats_new_scroll = 0.0;
+        ui.focus = Some(Hit::WhatsNewDismiss);
+        ui.open_drop = None;
+        ui.drop_scroll = 0.0;
+        ui.drop_menu = None;
+        ui.bind_listen = false;
+    }
+}
+
+fn dismiss_whats_new() {
+    let ver = crate::update::current_version().to_string();
+    crate::config::update_config(|c| c.whats_new_seen = ver);
+    if let Some(ui) = UI.lock().unwrap().as_mut() {
+        ui.whats_new_open = false;
+        ui.whats_new_scroll = 0.0;
+        ui.focus = None;
     }
 }
 
@@ -521,6 +586,35 @@ pub fn is_open() -> bool {
         ui.host
     };
     unsafe { !IsIconic(host).as_bool() && IsWindowVisible(host).as_bool() }
+}
+
+/// Sit-button row is waiting for a pad press.
+pub fn listening_bind() -> bool {
+    let (host, listen) = {
+        let ui = UI.lock().unwrap();
+        let Some(ui) = ui.as_ref() else {
+            return false;
+        };
+        (ui.host, ui.bind_listen)
+    };
+    if !listen {
+        return false;
+    }
+    let visible = unsafe { !IsIconic(host).as_bool() && IsWindowVisible(host).as_bool() };
+    if !visible {
+        if let Some(ui) = UI.lock().unwrap().as_mut() {
+            ui.bind_listen = false;
+        }
+        return false;
+    }
+    true
+}
+
+pub fn apply_stance_bind(bind: StanceBind) {
+    update_config(|c| c.stance_bind = bind);
+    if let Some(ui) = UI.lock().unwrap().as_mut() {
+        ui.bind_listen = false;
+    }
 }
 
 /// Keep settings above the game overlay while the window is open.
@@ -663,6 +757,9 @@ pub fn handle_message(msg: u32, wp: WPARAM, lp: LPARAM) -> bool {
                         let max = (content_h - view_h).max(0.0);
                         ui.drop_scroll = (ui.drop_scroll - delta * 0.35).clamp(0.0, max);
                     }
+                } else if ui.whats_new_open {
+                    ui.whats_new_scroll =
+                        (ui.whats_new_scroll - delta * 0.4).clamp(0.0, ui.whats_new_scroll_max);
                 } else {
                     let over_nav = in_client
                         && ui.nav_bottom > ui.nav_top
@@ -791,6 +888,7 @@ fn is_slider(hit: Hit) -> bool {
             | Hit::TickerBg
             | Hit::SysBg
             | Hit::SectorBg
+            | Hit::StanceBg
             | Hit::StW(_)
             | Hit::RelW(_)
             | Hit::Font(_)
@@ -870,6 +968,7 @@ fn apply_slide(hit: Hit, mx: f32, x: f32, w: f32, min: i32, max: i32) {
         Hit::TickerBg => c.ticker_bg = v,
         Hit::SysBg => c.sys_bg = v,
         Hit::SectorBg => c.sector_bg = v,
+        Hit::StanceBg => c.stance_bg = v,
         Hit::StW(i) => {
             if let Some(f) = c.st_order.get(i as usize).copied() {
                 f.set_width(c, v);
@@ -984,7 +1083,7 @@ fn dispatch(id: Hit, p: (f32, f32)) {
     match id {
         Hit::TabWidgets => {
             let last = UI.lock().unwrap().as_ref().map(|u| u.last_widget).unwrap_or(Tab::Standings);
-            let last = if last == Tab::Sector && !with_config(|c| c.sector_unlocked()) {
+            let last = if last.is_labs() && !with_config(|c| c.experimental_unlocked()) {
                 Tab::Standings
             } else {
                 last
@@ -1036,6 +1135,10 @@ fn dispatch(id: Hit, p: (f32, f32)) {
             set_tab(Tab::Sector);
             return;
         }
+        Hit::TabStance => {
+            set_tab(Tab::Stance);
+            return;
+        }
         Hit::MapDotOpen => {
             toggle_drop(Drop::MapDot);
             return;
@@ -1062,6 +1165,39 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         }
         Hit::SettingsKeyOpen => {
             toggle_drop(Drop::SettingsKey);
+            return;
+        }
+        Hit::StanceBindOpen => {
+            let was = UI.lock().unwrap().as_ref().is_some_and(|u| u.bind_listen);
+            close_drop();
+            if !was {
+                let host = {
+                    let mut ui = UI.lock().unwrap();
+                    ui.as_mut().map(|u| {
+                        u.bind_listen = true;
+                        u.host
+                    })
+                };
+                if let Some(host) = host {
+                    announce(
+                        host,
+                        "Press a pad button, key, or mouse button now. Escape cancels.",
+                    );
+                }
+            }
+            return;
+        }
+        Hit::StanceModeOpen => {
+            toggle_drop(Drop::StanceMode);
+            return;
+        }
+        Hit::StanceStyleOpen => {
+            toggle_drop(Drop::StanceStyle);
+            return;
+        }
+        Hit::StanceReset => {
+            close_drop();
+            crate::stance::reset_standing();
             return;
         }
         Hit::DashFootOpen(slot) => {
@@ -1095,6 +1231,20 @@ fn dispatch(id: Hit, p: (f32, f32)) {
             if let Some(ui) = UI.lock().unwrap().as_mut() {
                 ui.banner_dismissed = true;
             }
+            return;
+        }
+        Hit::WhatsNewOpen => {
+            close_drop();
+            open_whats_new();
+            return;
+        }
+        Hit::WhatsNewDismiss => {
+            close_drop();
+            dismiss_whats_new();
+            return;
+        }
+        Hit::WhatsNewScrim | Hit::WhatsNewPanel => {
+            close_drop();
             return;
         }
         Hit::StartWithWindows => {
@@ -1199,12 +1349,15 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::RadarShow => c.show_radar = !c.show_radar,
         Hit::DashShow => c.show_dash = !c.show_dash,
         Hit::DashRev => c.dash_rev = !c.dash_rev,
+        Hit::DashSimple => c.dash_simple = !c.dash_simple,
         Hit::TickerShow => c.show_ticker = !c.show_ticker,
         Hit::SysShow => c.show_sys = !c.show_sys,
         Hit::SectorShow => c.show_sector = !c.show_sector,
+        Hit::StanceShow => c.show_stance = !c.show_stance,
+        Hit::StanceShowSit => c.stance_show_sit = !c.stance_show_sit,
         Hit::FeatureSector => {
-            c.feature_sector = !c.feature_sector;
-            if !c.feature_sector {
+            c.experimental = !c.experimental;
+            if !c.experimental {
                 c.show_sector = false;
             }
         },
@@ -1273,6 +1426,8 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::RelTextWhite => c.rel_text = TableText::White,
         Hit::RelTextBlack => c.rel_text = TableText::Black,
         Hit::SettingsKeyPick(key) => c.settings_key = key,
+        Hit::StanceModePick(mode) => c.stance_mode = mode,
+        Hit::StanceStylePick(style) => c.stance_style = style,
         Hit::DashFootPick(slot, field) => match slot {
             0 => c.dash_left = field,
             1 => c.dash_mid = field,
@@ -1292,24 +1447,28 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::TickerDec => c.ticker_count = (c.ticker_count - 1).max(3),
         Hit::TickerInc => c.ticker_count = (c.ticker_count + 1).min(15),
         Hit::TabWidgets | Hit::TabApp | Hit::TabFeedback | Hit::TabSt | Hit::TabRel | Hit::TabMap | Hit::TabMini | Hit::TabRadar | Hit::TabDash
-        | Hit::TabTicker | Hit::TabSys | Hit::TabSector
+        | Hit::TabTicker | Hit::TabSys | Hit::TabSector | Hit::TabStance
         | Hit::MapDotOpen | Hit::MiniDotOpen | Hit::FontOpen | Hit::UnitsOpen | Hit::StTextOpen | Hit::RelTextOpen
         | Hit::SettingsKeyOpen
+        | Hit::StanceBindOpen
+        | Hit::StanceModeOpen
+        | Hit::StanceStyleOpen
         | Hit::DashFootOpen(_)
         | Hit::TickerFootOpen(_)
         | Hit::InfoOpen(_, _)
         | Hit::UpdateCheck | Hit::UpdateInstall | Hit::UpdateBanner | Hit::UpdateBannerDismiss
+        | Hit::WhatsNewOpen | Hit::WhatsNewDismiss | Hit::WhatsNewScrim | Hit::WhatsNewPanel
         | Hit::StartWithWindows | Hit::MinimizeOnClose
         | Hit::CloseWithGame | Hit::OpenWithGame
         | Hit::AutoUpdateOnLaunch | Hit::QuitApp | Hit::Uninstall
         | Hit::FbRate | Hit::FbBug | Hit::FbFeature | Hit::FbStar(_) | Hit::FbText | Hit::FbAttach | Hit::FbSend
         | Hit::StDrag(_) | Hit::RelDrag(_)
-        | Hit::StBg | Hit::StHl | Hit::RelBg | Hit::RelHl | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg
-        | Hit::StW(_) | Hit::RelW(_) | Hit::Font(_) => {}
+        | Hit::StBg | Hit::StHl | Hit::RelBg | Hit::RelHl | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::StanceBg
+        | Hit::StW(_) | Hit::RelW(_) | Hit::Font(_) | Hit::StanceReset => {}
     });
-    if id == Hit::FeatureSector && !with_config(|c| c.sector_unlocked()) {
-        let on_sector = UI.lock().unwrap().as_ref().is_some_and(|u| u.tab == Tab::Sector);
-        if on_sector {
+    if id == Hit::FeatureSector && !with_config(|c| c.experimental_unlocked()) {
+        let on_labs = UI.lock().unwrap().as_ref().is_some_and(|u| u.tab.is_labs());
+        if on_labs {
             set_tab(Tab::App);
         }
     }
@@ -1337,6 +1496,8 @@ fn is_drop_pick(hit: Hit) -> bool {
             | Hit::UnitsMetric
             | Hit::UnitsImperial
             | Hit::SettingsKeyPick(_)
+            | Hit::StanceModePick(_)
+            | Hit::StanceStylePick(_)
             | Hit::DashFootPick(_, _)
             | Hit::TickerFootPick(_, _)
             | Hit::InfoPick(_, _, _)
@@ -1346,7 +1507,7 @@ fn is_drop_pick(hit: Hit) -> bool {
 fn is_focusable(hit: Hit) -> bool {
     !matches!(
         hit,
-        Hit::StDrag(_) | Hit::RelDrag(_) | Hit::UpdateBanner
+        Hit::StDrag(_) | Hit::RelDrag(_) | Hit::UpdateBanner | Hit::WhatsNewScrim | Hit::WhatsNewPanel
     )
 }
 
@@ -1379,13 +1540,14 @@ fn hit_label(hit: Hit) -> String {
         Hit::TabTicker => "Horizontal Standings".into(),
         Hit::TabSys => "Systems".into(),
         Hit::TabSector => "Sectors".into(),
+        Hit::TabStance => "Stance".into(),
         Hit::StShow | Hit::RelShow | Hit::MapShow | Hit::MiniShow | Hit::RadarShow | Hit::DashShow
-        | Hit::TickerShow | Hit::SysShow | Hit::SectorShow => "Show on overlay".into(),
+        | Hit::TickerShow | Hit::SysShow | Hit::SectorShow | Hit::StanceShow => "Show on overlay".into(),
         Hit::QuitApp => "Quit overlay".into(),
         Hit::Font(_) => "Font size".into(),
         Hit::Bold(_) => "Bold text".into(),
         Hit::StBg | Hit::RelBg | Hit::MapBg | Hit::MiniBg => "Background".into(),
-        Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg => "Panel opacity".into(),
+        Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::StanceBg => "Panel opacity".into(),
         Hit::StHl | Hit::RelHl => "Row highlight".into(),
         Hit::StDec | Hit::StInc => "Rows".into(),
         Hit::RelDec | Hit::RelInc => "Nearby riders".into(),
@@ -1395,11 +1557,27 @@ fn hit_label(hit: Hit) -> String {
         Hit::FontOpen => "Font".into(),
         Hit::UnitsOpen => "Units".into(),
         Hit::SettingsKeyOpen => "Settings key".into(),
+        Hit::FeatureSector => "Experimental widgets".into(),
+        Hit::StanceBindOpen => {
+            if UI.lock().unwrap().as_ref().is_some_and(|u| u.bind_listen) {
+                "Press a pad button, key, or mouse button now. Escape cancels.".into()
+            } else {
+                "Sit button".into()
+            }
+        }
+        Hit::StanceModeOpen => "Sit mode".into(),
+        Hit::StanceStyleOpen => "Look".into(),
+        Hit::StanceShowSit => "Show sitting".into(),
+        Hit::DashRev => "Rev indicator".into(),
+        Hit::DashSimple => "Simple dash".into(),
+        Hit::StanceReset => "Reset to standing".into(),
         Hit::FbText => "Feedback message".into(),
         Hit::FbSend => "Send feedback".into(),
         Hit::Uninstall => "Uninstall".into(),
         Hit::UpdateCheck => "Check for updates".into(),
         Hit::UpdateInstall => "Install update".into(),
+        Hit::WhatsNewOpen => "What's new".into(),
+        Hit::WhatsNewDismiss => "Got it".into(),
         _ => "Control".into(),
     }
 }
@@ -1421,7 +1599,12 @@ fn handle_key(vk: u16, shift: bool, _ctrl: bool) -> bool {
         return false;
     }
     if vk == VK_ESCAPE.0 {
-        let open = UI.lock().unwrap().as_ref().is_some_and(|u| u.open_drop.is_some());
+        let whats_new = UI.lock().unwrap().as_ref().is_some_and(|u| u.whats_new_open);
+        if whats_new {
+            dismiss_whats_new();
+            return true;
+        }
+        let open = UI.lock().unwrap().as_ref().is_some_and(|u| u.open_drop.is_some() || u.bind_listen);
         if open {
             close_drop();
             return true;
@@ -1430,6 +1613,9 @@ fn handle_key(vk: u16, shift: bool, _ctrl: bool) -> bool {
             crate::feedback::set_focus(false);
             return true;
         }
+        return true;
+    }
+    if UI.lock().unwrap().as_ref().is_some_and(|u| u.bind_listen) {
         return true;
     }
     if vk == VK_TAB.0 {
@@ -1580,6 +1766,7 @@ fn nudge_slider(hit: Hit, delta: i32) {
         Hit::TickerBg => c.ticker_bg,
         Hit::SysBg => c.sys_bg,
         Hit::SectorBg => c.sector_bg,
+        Hit::StanceBg => c.stance_bg,
         Hit::StW(i) => c.st_order.get(i as usize).map(|f| f.width(c)).unwrap_or(min),
         Hit::RelW(i) => c.rel_order.get(i as usize).map(|f| f.width(c)).unwrap_or(min),
         Hit::Font(id) => c.font_pct(id),
@@ -1599,6 +1786,7 @@ fn nudge_slider(hit: Hit, delta: i32) {
         Hit::TickerBg => c.ticker_bg = v,
         Hit::SysBg => c.sys_bg = v,
         Hit::SectorBg => c.sector_bg = v,
+        Hit::StanceBg => c.stance_bg = v,
         Hit::StW(i) => {
             if let Some(f) = c.st_order.get(i as usize).copied() {
                 f.set_width(c, v);
@@ -1627,11 +1815,13 @@ fn set_tab(tab: Tab) {
         ui.drag = None;
         ui.slide = None;
         ui.scroll = 0.0;
+        ui.bind_listen = false;
     }
 }
 
 fn toggle_drop(drop: Drop) {
     if let Some(ui) = UI.lock().unwrap().as_mut() {
+        ui.bind_listen = false;
         if ui.open_drop == Some(drop) {
             ui.open_drop = None;
             ui.drop_scroll = 0.0;
@@ -1649,6 +1839,7 @@ fn close_drop() {
         ui.open_drop = None;
         ui.drop_scroll = 0.0;
         ui.drop_menu = None;
+        ui.bind_listen = false;
     }
 }
 
@@ -1664,7 +1855,7 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
     px.fill(bg());
 
     let cfg = with_config(|c| c.clone());
-    let (tab, hover, focus, open_drop, drag, scroll, nav_scroll, banner_dismissed) = {
+    let (tab, hover, focus, open_drop, drag, scroll, nav_scroll, banner_dismissed, whats_new_open, whats_new_scroll, bind_listen) = {
         let ui = UI.lock().unwrap();
         let ui = ui.as_ref();
         (
@@ -1676,9 +1867,12 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
             ui.map(|u| u.scroll).unwrap_or(0.0),
             ui.map(|u| u.nav_scroll).unwrap_or(0.0),
             ui.map(|u| u.banner_dismissed).unwrap_or(false),
+            ui.map(|u| u.whats_new_open).unwrap_or(false),
+            ui.map(|u| u.whats_new_scroll).unwrap_or(0.0),
+            ui.map(|u| u.bind_listen).unwrap_or(false),
         )
     };
-    let tab = if tab == Tab::Sector && !cfg.sector_unlocked() {
+    let tab = if tab.is_labs() && !cfg.experimental_unlocked() {
         Tab::App
     } else {
         tab
@@ -1740,15 +1934,25 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
         Tab::Ticker => pane_ticker(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
         Tab::Sys => pane_sys(px, fonts, &cfg, hover, &mut hits, x, py, cw),
         Tab::Sector => pane_sector(px, fonts, &cfg, hover, &mut hits, x, py, cw),
+        Tab::Stance => pane_stance(px, fonts, &cfg, hover, open_drop, bind_listen, &mut hits, x, py, cw),
     };
     draw_top_bar(px, fonts, w, top_y, tab, cfg.settings_key.label(), hover, &mut hits);
 
     if let Some(kind) = banner {
         draw_update_banner(px, fonts, w, kind, hover, &mut hits);
     }
-    paint_drop_menus(px, fonts, hover, &mut hits);
-    paint_focus(px, &hits, focus);
-    paint_snap_tooltip(px, fonts, &cfg, hover, focus, &hits, w, h, clip_top);
+    let mut whats_new_scroll_max = 0.0;
+    if whats_new_open {
+        if let Some(notes) = crate::changelog::current_notes() {
+            hits.clear();
+            whats_new_scroll_max = draw_whats_new(px, fonts, w, h, &notes, hover, whats_new_scroll, &mut hits);
+            paint_focus(px, &hits, focus);
+        }
+    } else {
+        paint_drop_menus(px, fonts, hover, &mut hits);
+        paint_focus(px, &hits, focus);
+        paint_snap_tooltip(px, fonts, &cfg, hover, focus, &hits, w, h, clip_top);
+    }
 
     if let Some(ui) = UI.lock().unwrap().as_mut() {
         ui.hits = hits;
@@ -1756,6 +1960,8 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
         let max = (ui.content_h - h + 24.0).max(0.0);
         ui.scroll_max = max;
         ui.scroll = ui.scroll.clamp(0.0, max);
+        ui.whats_new_scroll_max = whats_new_scroll_max;
+        ui.whats_new_scroll = ui.whats_new_scroll.clamp(0.0, whats_new_scroll_max);
         if widgets {
             ui.nav_top = clip_top;
             ui.nav_bottom = clip_bottom;
@@ -1797,6 +2003,7 @@ fn widget_short_name(id: WidgetId) -> &'static str {
         WidgetId::Ticker => "H-Standings",
         WidgetId::Sys => "Systems",
         WidgetId::Sector => "Sectors",
+        WidgetId::Stance => "Stance",
     }
 }
 
@@ -1940,14 +2147,12 @@ fn paint_focus(px: &mut Pixmap, hits: &[HitBox], focus: Option<Hit>) {
 }
 
 fn widget_groups(cfg: &HudConfig) -> Vec<(&'static str, Vec<(Tab, Hit, &'static str, bool)>)> {
-    let mut cockpit = vec![
+    let cockpit = vec![
         (Tab::Dash, Hit::TabDash, "Dash", cfg.show_dash),
         (Tab::Sys, Hit::TabSys, "Systems", cfg.show_sys),
+        (Tab::Stance, Hit::TabStance, "Stance", cfg.show_stance),
     ];
-    if cfg.sector_unlocked() {
-        cockpit.push((Tab::Sector, Hit::TabSector, "Sectors", cfg.show_sector));
-    }
-    vec![
+    let mut groups = vec![
         (
             "Boards",
             vec![
@@ -1965,7 +2170,14 @@ fn widget_groups(cfg: &HudConfig) -> Vec<(&'static str, Vec<(Tab, Hit, &'static 
             ],
         ),
         ("Cockpit", cockpit),
-    ]
+    ];
+    if cfg.experimental_unlocked() {
+        groups.push((
+            "Labs",
+            vec![(Tab::Sector, Hit::TabSector, "Sectors", cfg.show_sector)],
+        ));
+    }
+    groups
 }
 
 fn widget_rail_height(cfg: &HudConfig) -> f32 {
@@ -2157,6 +2369,207 @@ fn draw_update_banner(
     );
 }
 
+// THESIS: After an in-app update, a centered TV plaque names the version and the change — not a generic changelog sheet.
+// OWN-WORLD: Charcoal board, orange skew version plaque, Exo 2 ExtraBold Italic, Got it as the only orange fill.
+// STORY: Rider sees what this build changed, hits Got it, returns to Settings.
+// FIRST VIEWPORT: Dimmed Settings; centered ~520px board; orange skew 0.1.x heading; headline; section bullets; full-width Got it.
+// FORM: Center Plaque; approved .impeccable/mocks/whats-new-center.png
+// FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+fn draw_whats_new(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    win_w: f32,
+    win_h: f32,
+    notes: &crate::changelog::Notes,
+    hover: Option<Hit>,
+    scroll: f32,
+    hits: &mut Vec<HitBox>,
+) -> f32 {
+    let scrim = Color::from_rgba8(8, 8, 10, 204);
+    if let Some(r) = Rect::from_xywh(0.0, 0.0, win_w, win_h) {
+        fill_rect(px, r, scrim);
+    }
+    hits.push(HitBox {
+        id: Hit::WhatsNewScrim,
+        x: 0.0,
+        y: 0.0,
+        w: win_w,
+        h: win_h,
+    });
+
+    let pad = 22.0;
+    let plaque_h = 40.0;
+    let skew = 6.0;
+    let btn_h = 40.0;
+    let footer_h = 16.0 + btn_h + 16.0;
+    let panel_w = 520.0_f32.min(win_w - 48.0).max(320.0);
+    let inner_w = (panel_w - pad * 2.0).max(200.0);
+    let head_size = 16.0;
+    let body_size = 12.0;
+    let line_h = 18.0;
+
+    let heads = wrap_fb(fonts, &notes.headline, inner_w, head_size);
+    let mut body_h = 0.0;
+    if !notes.headline.is_empty() {
+        body_h += heads.len() as f32 * 22.0 + 10.0;
+    }
+    let mut wrapped: Vec<Vec<Vec<String>>> = Vec::new();
+    for sec in &notes.sections {
+        if !sec.title.is_empty() {
+            body_h += 26.0;
+        }
+        let mut bullets = Vec::new();
+        for b in &sec.bullets {
+            let lines = wrap_fb(fonts, b, inner_w - 18.0, body_size);
+            body_h += lines.len() as f32 * line_h + 6.0;
+            bullets.push(lines);
+        }
+        wrapped.push(bullets);
+    }
+
+    let header_h = pad + plaque_h + 16.0;
+    let want = header_h + body_h + footer_h;
+    let panel_h = want.min(win_h - 48.0).max(header_h + footer_h + 24.0);
+    let panel_x = ((win_w - panel_w) * 0.5).max(16.0);
+    let panel_y = ((win_h - panel_h) * 0.5).max(16.0);
+    let board = if high_contrast_on() {
+        panel()
+    } else {
+        Color::from_rgba8(20, 20, 22, 255)
+    };
+    fill_round(px, panel_x, panel_y, panel_w, panel_h, 10.0, board);
+    hits.push(HitBox {
+        id: Hit::WhatsNewPanel,
+        x: panel_x,
+        y: panel_y,
+        w: panel_w,
+        h: panel_h,
+    });
+
+    let plaque_x = panel_x + pad;
+    let plaque_y = panel_y + pad;
+    let ver_sz = 18.0;
+    let ver_w = measure(fonts, &notes.version, ver_sz);
+    let plaque_w = (ver_w + 36.0).min(inner_w).max(72.0);
+    fill_skew(px, plaque_x, plaque_y, (plaque_w - skew).max(48.0), plaque_h, skew, accent());
+    text(
+        px,
+        fonts,
+        &notes.version,
+        ver_sz,
+        plaque_x + 16.0,
+        plaque_y + 10.0,
+        ink(),
+        false,
+    );
+
+    let body_top = plaque_y + plaque_h + 16.0;
+    let body_bot = panel_y + panel_h - footer_h;
+    let view_h = (body_bot - body_top).max(8.0);
+    let scroll_max = (body_h - view_h).max(0.0);
+    let scroll = scroll.clamp(0.0, scroll_max);
+
+    if view_h > 8.0 && inner_w > 8.0 {
+        if let Some(mut body) = Pixmap::new(inner_w.ceil() as u32, view_h.ceil() as u32) {
+            body.fill(board);
+            let mut y = -scroll;
+            if !notes.headline.is_empty() {
+                for line in &heads {
+                    if y + 22.0 > 0.0 && y < view_h {
+                        text(&mut body, fonts, line, head_size, 0.0, y, text_col(), false);
+                    }
+                    y += 22.0;
+                }
+                y += 10.0;
+            }
+            for (sec, bullets) in notes.sections.iter().zip(wrapped.iter()) {
+                if !sec.title.is_empty() {
+                    if y + 22.0 > 0.0 && y < view_h {
+                        text(
+                            &mut body,
+                            fonts,
+                            &sec.title.to_ascii_uppercase(),
+                            10.0,
+                            0.0,
+                            y + 4.0,
+                            dim(),
+                            false,
+                        );
+                    }
+                    y += 26.0;
+                }
+                for lines in bullets {
+                    let block_h = lines.len() as f32 * line_h;
+                    if y + block_h > 0.0 && y < view_h {
+                        fill_circle(&mut body, 4.0, y + 8.0, 2.2, accent());
+                        let mut ly = y;
+                        for line in lines {
+                            text(&mut body, fonts, line, body_size, 14.0, ly, text_col(), false);
+                            ly += line_h;
+                        }
+                    }
+                    y += block_h + 6.0;
+                }
+            }
+            px.draw_pixmap(
+                panel_x as i32 + pad as i32,
+                body_top as i32,
+                body.as_ref(),
+                &PixmapPaint::default(),
+                Transform::identity(),
+                None,
+            );
+        }
+    }
+
+    if scroll_max > 1.0 && view_h > 16.0 {
+        let track_x = panel_x + panel_w - 10.0;
+        let thumb_h = (view_h * view_h / body_h.max(view_h)).clamp(16.0, view_h);
+        let thumb_y = body_top
+            + if scroll_max > 0.0 {
+                scroll / scroll_max * (view_h - thumb_h)
+            } else {
+                0.0
+            };
+        fill_round(
+            px,
+            track_x,
+            body_top,
+            3.0,
+            view_h,
+            1.5,
+            Color::from_rgba8(255, 255, 255, 18),
+        );
+        fill_round(
+            px,
+            track_x,
+            thumb_y,
+            3.0,
+            thumb_h,
+            1.5,
+            Color::from_rgba8(255, 255, 255, 48),
+        );
+    }
+
+    let btn_w = panel_w - pad * 2.0;
+    let btn_x = panel_x + pad;
+    let btn_y = panel_y + panel_h - 16.0 - btn_h;
+    action_btn(
+        px,
+        fonts,
+        btn_x,
+        btn_y,
+        btn_w,
+        btn_h,
+        "Got it",
+        Hit::WhatsNewDismiss,
+        hover,
+        hits,
+        true,
+    );
+    scroll_max
+}
+
 fn nav_group(px: &mut Pixmap, fonts: &Fonts, x: f32, y: f32, label: &str) -> f32 {
     text(px, fonts, &label.to_ascii_uppercase(), 10.0, x + 14.0, y + 6.0, dim(), false);
     y + 24.0
@@ -2269,6 +2682,10 @@ fn nav_icon(px: &mut Pixmap, hit: Hit, cx: f32, cy: f32, c: Color) {
             fill_round(px, cx - 6.8, cy - 5.4, 13.6, 3.2, 1.0, c);
             fill_round(px, cx - 6.8, cy - 1.1, 13.6, 3.2, 1.0, c);
             fill_round(px, cx - 6.8, cy + 3.2, 13.6, 3.2, 1.0, c);
+        }
+        Hit::TabStance => {
+            fill_round(px, cx - 5.4, cy + 1.4, 4.4, 4.2, 1.0, c);
+            fill_round(px, cx + 1.0, cy - 5.2, 4.4, 10.8, 1.0, c);
         }
         Hit::QuitApp => {
             icon_stroke_circle(px, cx, cy, 6.2, c);
@@ -2497,13 +2914,8 @@ fn pane_app(
         y += 22.0;
     }
     y = section(px, fonts, x, y, "Labs");
-    y = toggle_row(px, fonts, x, y, w, "Sector times (experimental)", cfg.feature_sector, Hit::FeatureSector, hover, hits);
-    let labs = if cfg!(debug_assertions) {
-        "Debug builds always show the Sectors tab. This toggle is for release."
-    } else {
-        "Adds a Sectors tab. Off until you turn this on."
-    };
-    text(px, fonts, labs, 11.0, x + 4.0, y + 2.0, dim(), false);
+    y = toggle_row(px, fonts, x, y, w, "Experimental widgets", cfg.experimental, Hit::FeatureSector, hover, hits);
+    text(px, fonts, "Adds Sectors. Off until you turn this on.", 11.0, x + 4.0, y + 2.0, dim(), false);
     y += 22.0;
     y = section(px, fonts, x, y, "Updates");
     let need_admin = crate::update::update_may_need_admin();
@@ -2563,14 +2975,20 @@ fn pane_app(
         iy += 20.0;
     }
     let btn_w = 156.0;
+    let mut bx = x + 16.0;
     if show_check {
-        action_btn(px, fonts, x + 16.0, iy, btn_w, 32.0, "Check for updates", Hit::UpdateCheck, hover, hits, false);
+        action_btn(px, fonts, bx, iy, btn_w, 32.0, "Check for updates", Hit::UpdateCheck, hover, hits, false);
+        bx += btn_w + 10.0;
+    }
+    if crate::changelog::current_notes().is_some() {
+        action_btn(px, fonts, bx, iy, 120.0, 32.0, "What's new", Hit::WhatsNewOpen, hover, hits, false);
+        bx += 130.0;
     }
     if show_install {
         action_btn(
             px,
             fonts,
-            x + 16.0 + btn_w + 10.0,
+            bx,
             iy,
             168.0,
             32.0,
@@ -2858,29 +3276,49 @@ fn wrap_fb(fonts: &Fonts, s: &str, max_w: f32, size: f32) -> Vec<String> {
         lines.push(String::new());
         return lines;
     }
-    for (pi, para) in s.split('\n').enumerate() {
-        if pi > 0 && para.is_empty() {
-            lines.push(String::new());
-            continue;
-        }
+    for para in s.split('\n') {
         if para.is_empty() {
             lines.push(String::new());
             continue;
         }
         let mut line = String::new();
         let mut line_w = 0.0;
-        for ch in para.chars() {
-            let ch_w = measure(fonts, ch.encode_utf8(&mut [0; 4]), size);
-            if !line.is_empty() && line_w + ch_w > max_w {
-                lines.push(std::mem::take(&mut line));
-                line_w = 0.0;
-            }
-            line.push(ch);
-            line_w += ch_w;
+        for token in para.split_inclusive(' ') {
+            push_wrap_token(fonts, &mut lines, &mut line, &mut line_w, token, max_w, size);
         }
         lines.push(line);
     }
     lines
+}
+
+fn push_wrap_token(
+    fonts: &Fonts,
+    lines: &mut Vec<String>,
+    line: &mut String,
+    line_w: &mut f32,
+    token: &str,
+    max_w: f32,
+    size: f32,
+) {
+    let token_w = measure(fonts, token, size);
+    if !line.is_empty() && *line_w + token_w > max_w {
+        lines.push(std::mem::take(line));
+        *line_w = 0.0;
+    }
+    if token_w <= max_w {
+        line.push_str(token);
+        *line_w += token_w;
+        return;
+    }
+    for ch in token.chars() {
+        let ch_w = measure(fonts, ch.encode_utf8(&mut [0; 4]), size);
+        if !line.is_empty() && *line_w + ch_w > max_w {
+            lines.push(std::mem::take(line));
+            *line_w = 0.0;
+        }
+        line.push(ch);
+        *line_w += ch_w;
+    }
 }
 
 fn fill_star(px: &mut Pixmap, cx: f32, cy: f32, r: f32, c: Color) {
@@ -3311,22 +3749,25 @@ fn pane_dash(
         return y;
     }
     y = style_controls(px, fonts, x, y, w, WidgetId::Dash, cfg, "Panel opacity", cfg.dash_bg, Hit::DashBg, hover, hits);
-    y = toggle_row(px, fonts, x, y, w, "Rev indicator", cfg.dash_rev, Hit::DashRev, hover, hits);
-    y = slots_section(
-        px,
-        fonts,
-        x,
-        y,
-        w,
-        "Footer  ·  3 slots",
-        [
-            dash_slot(0, cfg.dash_left, open_drop),
-            dash_slot(1, cfg.dash_mid, open_drop),
-            dash_slot(2, cfg.dash_right, open_drop),
-        ],
-        hover,
-        hits,
-    );
+    y = toggle_row(px, fonts, x, y, w, "Simple dash", cfg.dash_simple, Hit::DashSimple, hover, hits);
+    if !cfg.dash_simple {
+        y = toggle_row(px, fonts, x, y, w, "Rev indicator", cfg.dash_rev, Hit::DashRev, hover, hits);
+        y = slots_section(
+            px,
+            fonts,
+            x,
+            y,
+            w,
+            "Footer  ·  3 slots",
+            [
+                dash_slot(0, cfg.dash_left, open_drop),
+                dash_slot(1, cfg.dash_mid, open_drop),
+                dash_slot(2, cfg.dash_right, open_drop),
+            ],
+            hover,
+            hits,
+        );
+    }
     look_section(px, fonts, x, y, w, WidgetId::Dash, hover, hits)
 }
 
@@ -3422,6 +3863,114 @@ fn pane_sector(
     }
     y = style_controls(px, fonts, x, y, w, WidgetId::Sector, cfg, "Panel opacity", cfg.sector_bg, Hit::SectorBg, hover, hits);
     look_section(px, fonts, x, y, w, WidgetId::Sector, hover, hits)
+}
+
+fn pane_stance(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    cfg: &HudConfig,
+    hover: Option<Hit>,
+    open_drop: Option<Drop>,
+    bind_listen: bool,
+    hits: &mut Vec<HitBox>,
+    x: f32,
+    y: f32,
+    w: f32,
+) -> f32 {
+    let mut y = heading(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        "Stance",
+        "Sit / stand from a bind you set",
+        Some((cfg.show_stance, Hit::StanceShow)),
+        hover,
+        hits,
+    );
+    y = note_lines(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        "Not connected to MX Bikes. Sit and stand only follow the pad, key, or mouse you bind here — not rider animation.",
+    );
+    if !cfg.show_stance {
+        return y;
+    }
+    let now = if crate::render::stance_sitting() {
+        "Now: SIT"
+    } else {
+        "Now: STAND"
+    };
+    text(px, fonts, now, 13.0, x + 4.0, y + 2.0, text_col(), false);
+    y += 22.0;
+    let bind_name = cfg.stance_bind.label();
+    y = bind_row(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        "Sit button",
+        bind_name.as_ref(),
+        bind_listen,
+        Hit::StanceBindOpen,
+        hover,
+        hits,
+    );
+    y = dropdown_row(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        "Sit mode",
+        cfg.stance_mode.label(),
+        open_drop == Some(Drop::StanceMode),
+        Hit::StanceModeOpen,
+        &[
+            (Hit::StanceModePick(StanceMode::Toggle), "Toggle", cfg.stance_mode == StanceMode::Toggle),
+            (Hit::StanceModePick(StanceMode::Hold), "Hold to sit", cfg.stance_mode == StanceMode::Hold),
+        ],
+        hover,
+        hits,
+    );
+    y = dropdown_row(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        "Look",
+        cfg.stance_style.label(),
+        open_drop == Some(Drop::StanceStyle),
+        Hit::StanceStyleOpen,
+        &[
+            (Hit::StanceStylePick(StanceStyle::Text), "Text", cfg.stance_style == StanceStyle::Text),
+            (Hit::StanceStylePick(StanceStyle::Icon), "Icon", cfg.stance_style == StanceStyle::Icon),
+        ],
+        hover,
+        hits,
+    );
+    y = toggle_row(px, fonts, x, y, w, "Show sitting", cfg.stance_show_sit, Hit::StanceShowSit, hover, hits);
+    text(
+        px,
+        fonts,
+        "Toggle counts presses. Crash or reset can desync — use Reset to standing.",
+        11.0,
+        x + 4.0,
+        y + 2.0,
+        dim(),
+        false,
+    );
+    y += 24.0;
+    action_btn(px, fonts, x, y, 168.0, 32.0, "Reset to standing", Hit::StanceReset, hover, hits, false);
+    y += 40.0;
+    y = style_controls(px, fonts, x, y, w, WidgetId::Stance, cfg, "Panel opacity", cfg.stance_bg, Hit::StanceBg, hover, hits);
+    look_section(px, fonts, x, y, w, WidgetId::Stance, hover, hits)
 }
 
 fn ticker_field_row(
@@ -3621,6 +4170,23 @@ fn heading(
     }
     text(px, fonts, sub, 13.0, x, y + h + 8.0, muted(), false);
     y + h + 8.0 + 46.0
+}
+
+fn note_lines(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    x: f32,
+    y: f32,
+    w: f32,
+    msg: &str,
+) -> f32 {
+    let lines = wrap_fb(fonts, msg, (w - 8.0).max(40.0), 12.0);
+    let mut y = y;
+    for line in &lines {
+        text(px, fonts, line, 12.0, x + 4.0, y + 2.0, caution(), false);
+        y += 18.0;
+    }
+    y + 10.0
 }
 
 fn ellipsize_heading(fonts: &Fonts, s: &str, size: f32, max_w: f32) -> String {
@@ -4011,6 +4577,46 @@ fn stepper_row(
     y + h + ROW_GAP
 }
 
+fn bind_row(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    x: f32,
+    y: f32,
+    w: f32,
+    label: &str,
+    value: &str,
+    listen: bool,
+    hit: Hit,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+) -> f32 {
+    if listen {
+        let h = 64.0;
+        hits.push(HitBox { id: hit, x, y, w, h });
+        fill_round(px, x, y, w, h, 10.0, accent());
+        let max_w = (w - 32.0).max(40.0);
+        let title = ellipsize_heading(fonts, "Press a button now", 16.0, max_w);
+        let sub = ellipsize_heading(fonts, "Pad, key, or mouse  ·  Esc cancels", 12.0, max_w);
+        text(px, fonts, &title, 16.0, x + 16.0, y + 12.0, ink(), false);
+        text(px, fonts, &sub, 12.0, x + 16.0, y + 36.0, ink(), false);
+        return y + h + ROW_GAP;
+    }
+    let h = ROW_H;
+    hits.push(HitBox { id: hit, x, y, w, h });
+    row_card(px, x, y, w, h, hover == Some(hit));
+    text(px, fonts, label, 13.0, x + 16.0, y + 16.0, text_col(), false);
+    let label_w = measure(fonts, label, 13.0);
+    let bw = (w - 30.0 - label_w - 16.0).clamp(108.0, 176.0);
+    let bh = 28.0;
+    let bx = x + w - bw - 14.0;
+    let by = y + 10.0;
+    hits.push(HitBox { id: hit, x: bx, y: by, w: bw, h: bh });
+    let hot = hover == Some(hit);
+    outlined(px, bx, by, bw, bh, 7.0, if hot { chip_hover() } else { bg() });
+    text(px, fonts, value, 12.0, bx + 10.0, by + 6.0, text_col(), false);
+    y + h + ROW_GAP
+}
+
 fn dropdown_row(
     px: &mut Pixmap,
     fonts: &Fonts,
@@ -4336,4 +4942,83 @@ unsafe fn dark_titlebar(hwnd: HWND) {
         &on as *const BOOL as *const core::ffi::c_void,
         std::mem::size_of::<BOOL>() as u32,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn dummy_ui(open: bool) -> SettingsUi {
+        SettingsUi {
+            host: HWND::default(),
+            tab: Tab::App,
+            last_widget: Tab::Standings,
+            hover: None,
+            focus: None,
+            hits: Vec::new(),
+            open_drop: None,
+            drag: None,
+            slide: None,
+            scroll: 0.0,
+            content_h: 0.0,
+            scroll_max: 0.0,
+            nav_scroll: 0.0,
+            nav_content_h: 0.0,
+            nav_top: 0.0,
+            nav_bottom: 0.0,
+            banner_dismissed: false,
+            whats_new_open: open,
+            whats_new_scroll: 0.0,
+            whats_new_scroll_max: 0.0,
+            drop_scroll: 0.0,
+            drop_menu: None,
+            bind_listen: false,
+        }
+    }
+
+    #[test]
+    fn whats_new_modal_paints_got_it() {
+        refresh_palette();
+        let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+        *UI.lock().unwrap() = Some(dummy_ui(true));
+        let mut px = Pixmap::new(1000, 720).expect("pixmap");
+        draw(&mut px, &fonts, 1000.0, 720.0);
+        let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
+        assert!(
+            hits.iter().any(|h| h.id == Hit::WhatsNewDismiss),
+            "Got it must be clickable"
+        );
+        assert!(hits.iter().any(|h| h.id == Hit::WhatsNewScrim));
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join(".impeccable")
+            .join("review");
+        let _ = fs::create_dir_all(&dir);
+        let png = px.encode_png().expect("png");
+        fs::write(dir.join("whats-new-desktop.png"), &png).expect("write review png");
+        fs::write(dir.join("desktop.png"), &png).expect("write desktop png");
+        fs::write(dir.join("hero-repro.png"), &png).expect("write hero repro");
+        *UI.lock().unwrap() = None;
+    }
+
+    #[test]
+    fn wrap_fb_does_not_split_words() {
+        let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+        let s = "Follow a rider in replay, sit or stand from Stance";
+        let widest = s
+            .split_whitespace()
+            .map(|w| measure(&fonts, w, 16.0))
+            .fold(0.0_f32, f32::max);
+        let max_w = widest + 8.0;
+        let lines = wrap_fb(&fonts, s, max_w, 16.0);
+        for word in s.split_whitespace() {
+            assert!(
+                lines.iter().any(|l| l.split_whitespace().any(|w| w == word)),
+                "word {word:?} split across {lines:?}"
+            );
+        }
+        assert!(lines.len() > 1, "expected wrapping, got {lines:?}");
+    }
 }

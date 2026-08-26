@@ -49,9 +49,10 @@ Per-widget behavior, pitfalls, and change history for agents: **[widgets.md](wid
 - [Map](widgets/map.md): tessellated centerline, rider XZ + yaw, crash, S/F meters, track name
 - [Minimap](widgets/minimap.md): circular zoomed track
 - [Radar](widgets/radar.md): side / rear proximity
-- [Dash](widgets/dash.md): gear, speed, session clock, flags
+- [Dash](widgets/dash.md): gear, speed, session clock, flags (optional simple gear+speed lockup)
 - [Sectors](widgets/sector.md): S1–S3 times (labs flag)
-- [Systems](widgets/systems.md): CPU / mem / FPS (also draws off-track)
+- [Systems](widgets/systems.md): CPU / mem / FPS
+- [Stance](widgets/stance.md): sit / stand from a local bind (not plugin telemetry)
 
 Local speed / yaw / crash / track pos are in SHM for the moving marker, not as their own widgets yet.
 
@@ -73,7 +74,7 @@ Local speed / yaw / crash / track pos are in SHM for the moving marker, not as t
 | `RunStart` / `RunStop` | — | Unused | Green flag / pause style events |
 | `DrawInit` | sprite/font names | Draw-only | We request **0** sprites/fonts |
 | `Draw` | — | Draw-only | Publishes SHM every frame; in-game HUD optional |
-| `SpectateVehicles` | `SPluginsSpectateVehicle_t[]` | Cached | We only store the selected race number |
+| `SpectateVehicles` | `SPluginsSpectateVehicle_t[]` | Overlay | Reads the current camera target; overlay name/card clicks can change it in replay/spectate |
 | `SpectateCameras` | camera list | Unused | Names only; not a video feed |
 
 ---
@@ -386,7 +387,7 @@ This is **not** full telemetry. Other players do not get temps, fuel, clutch, su
 | `m_iRaceNum` | int | Cached as `focusRaceNum` |
 | `m_szName` | char[100] | Unused (we already have names from entries) |
 
-Return `0` = do not change the game’s selection. We only **read** the current camera target.
+Return `0` = do not change the game’s selection. Return `1` and write the vehicle **index** into `_piSelect` to switch the camera (one-shot). While this callback is running we set `spectating=1` on `Local\MXBOHudCmdV1` and treat that race number as `focusRaceNum`. If `SpectateVehicles` stops (garage / riding), `spectating` drops after ~250 ms, focus falls back to `localRaceNum` (also cleared on `RunInit` / `RunDeinit`), and overlay clicks pass through to the game. Do not keep a replay camera target after the session ends — that highlights the wrong rider and feeds the dash their RPM.
 
 ### `SpectateCameras` — **Unused**
 
@@ -412,6 +413,8 @@ Already published (version **1**):
 - Session: length, laps, remaining clock, **kind** (`m_iSession`), **state** (`m_iSessionState`) — SHM version **9**
 - Layout: map / standings / relative rects + show flags + row counts
 
+Command mapping `Local\MXBOHudCmdV1` (`MxboShmCmd`): overlay writes `spectateRaceNum`; plugin writes `spectating` while `SpectateVehicles` is live. Not part of the snapshot seqlock.
+
 **Not published yet** (but available in the API or `PluginState`): penalty, bike names, laps/splits, holeshot, comms, RPM/gear/inputs/temps/fuel/suspension, per-rider `VehicleLive`, pitch/roll, spectate camera list.
 
 Bump `MXBO_SHM_VERSION` when you add fields; keep C and Rust `#[repr(C)]` layouts identical.
@@ -429,6 +432,7 @@ The plugin API does **not** include:
 - Live camera picture or FOV
 - Inputs from other players beyond throttle / front brake / lean
 - Setup XML contents (only setup **filename** on `RunInit`)
+- Rider sit / stand from the plugin API. Game HUD: Simulation → **Show Rider Stand**. Confirmed 2026-08-26: no extra telemetry bytes; parked rear shock length does not jump with sit/stand. Overlay **Stance** widget is a pad-button mirror (not telemetry) — see [stance.md](widgets/stance.md).
 
 ---
 

@@ -2,7 +2,7 @@
 
 Your last split times and delta vs personal best. Settings subtitle: “Split times and delta vs your best”.
 
-This widget is **behind a feature flag**. Debug `cargo run` unlocks the Sectors tab. Release (`build.bat`) keeps it hidden until **Sector times (experimental)** is on (Settings tab, Labs). `show_sector` alone is not enough in release.
+This widget is **behind the Labs flag**. Settings → Labs → **Experimental widgets**. `show_sector` alone is not enough.
 
 ## Code
 
@@ -10,7 +10,7 @@ This widget is **behind a feature flag**. Debug `cargo run` unlocks the Sectors 
 - Plugin: `RunSplit` / `RaceSplit` → `PluginState::recordSector` in `src/state.cpp`
 - SHM: `sectorCur` / `sectorLastLap` / `sectorBest` / `sectorDelta` / `sectorDeltaValid` (version 8)
 - Settings: `pane_sector` in `overlay/src/settings.rs`
-- Flag: `HudConfig::feature_sector` (`feature_sector=1` in Holeshot-HUD.ini)
+- Flag: `HudConfig::experimental` (`experimental=1` in Holeshot-HUD.ini; `feature_sector=1` still unlocks)
 
 MX Bikes reports two mid-lap splits (`m_aiSplit[2]`). S1 and S2 come from those callbacks. S3 is lap time minus S1 minus S2 when `RunLap` / `RaceLap` fires.
 
@@ -28,7 +28,7 @@ No column picker; only show, opacity, font, bold, snap.
 
 ## Do not regress
 
-- Keep the widget fully hidden in **release** when `feature_sector` is off, even if `show_sector` is on in the ini. Debug builds unlock the tab without that key.
+- Keep the widget fully hidden when **Experimental widgets** is off, even if `show_sector` is on in the ini.
 - Do not draw off-track unless settings layout boxes are up (same as other race widgets).
 - Do not treat a missing S3 as a live estimate; wait for the lap callback.
 - `RunLap` and `RaceLap` can both fire for you. Finish S3 once per `lapNum` so a following split is not folded into last-lap.
@@ -38,3 +38,4 @@ No column picker; only show, opacity, font, bold, snap.
 
 - 2026-08-20 — Experimental sector times widget. Flagged off in release. Plugin now publishes `RunSplit` / `RaceSplit`.
 - 2026-08-20 — Debug `cargo run` unlocks the Sectors tab; `build.bat` release still requires the Labs toggle.
+- 2026-08-26 — Stance left Labs. This toggle is Sectors only. Debug no longer auto-unlocks.

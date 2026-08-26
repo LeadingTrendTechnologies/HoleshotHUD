@@ -542,15 +542,34 @@ __declspec(dllexport) void RaceVehicleData(void* _pData, int _iDataSize)
 
 __declspec(dllexport) int SpectateVehicles(int _iNumVehicles, void* _pVehicleData, int _iCurSelection, int* _piSelect)
 {
+    int pick = -1;
     safeCall([&] {
+        g_shm.noteSpectating();
         auto* vehicles = static_cast<SPluginsSpectateVehicle_t*>(_pVehicleData);
         const int n = std::clamp(_iNumVehicles, 0, kMaxRaceEntries);
         if (n > 0 && vehicles && _iCurSelection >= 0 && _iCurSelection < n)
         {
             g_state.setSpectateSelection(vehicles[_iCurSelection].m_iRaceNum);
         }
-        (void)_piSelect;
+        const int want = g_shm.takeSpectateRequest();
+        if (want > 0 && n > 0 && vehicles)
+        {
+            for (int i = 0; i < n; ++i)
+            {
+                if (vehicles[i].m_iRaceNum == want)
+                {
+                    pick = i;
+                    g_state.setSpectateSelection(want);
+                    break;
+                }
+            }
+        }
     });
+    if (pick >= 0 && _piSelect)
+    {
+        *_piSelect = pick;
+        return 1;
+    }
     return 0;
 }
 

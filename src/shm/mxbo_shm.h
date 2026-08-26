@@ -11,6 +11,9 @@ extern "C" {
 /* Versioned name so a leftover smaller mapping cannot be remapped and overrun. */
 #define MXBO_SHM_NAME L"Local\\MXBOHudV9"
 #define MXBO_SHM_NAME_A "Local\\MXBOHudV9"
+#define MXBO_CMD_MAGIC 0x4342584Du /* 'MXBC' */
+#define MXBO_CMD_NAME L"Local\\MXBOHudCmdV1"
+#define MXBO_CMD_NAME_A "Local\\MXBOHudCmdV1"
 #define MXBO_MAX_POLY 1024
 #define MXBO_MAX_RIDERS 64
 #define MXBO_MAX_STANDINGS 40
@@ -129,6 +132,14 @@ typedef struct MxboShmSnapshot
     int32_t sessionKind;
     int32_t sessionState;
 } MxboShmSnapshot;
+
+/* Overlay → plugin. Separate mapping so the snapshot seqlock is not mixed with writes. */
+typedef struct MxboShmCmd
+{
+    uint32_t magic;
+    int32_t spectating;      /* plugin: 1 while SpectateVehicles is being called */
+    int32_t spectateRaceNum; /* overlay writes a race number; plugin consumes it */
+} MxboShmCmd;
 
 #ifdef __cplusplus
 }

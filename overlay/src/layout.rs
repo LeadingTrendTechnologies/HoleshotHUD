@@ -15,6 +15,7 @@ enum Target {
     Ticker,
     Sys,
     Sector,
+    Stance,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -50,6 +51,7 @@ pub struct Editor {
     ticker: Option<Rect>,
     sys: Option<Rect>,
     sector: Option<Rect>,
+    stance: Option<Rect>,
     drag: Option<Drag>,
     mouse_was_down: bool,
 }
@@ -89,6 +91,9 @@ impl Editor {
         }
         if let Some(s) = self.sector {
             cfg.sector = s;
+        }
+        if let Some(s) = self.stance {
+            cfg.stance = s;
         }
     }
 
@@ -146,6 +151,7 @@ impl Editor {
                 Target::Ticker => self.ticker = Some(r),
                 Target::Sys => self.sys = Some(r),
                 Target::Sector => self.sector = Some(r),
+                Target::Stance => self.stance = Some(r),
             }
             let _ = overlay;
         }
@@ -166,6 +172,7 @@ impl Editor {
         self.ticker = None;
         self.sys = None;
         self.sector = None;
+        self.stance = None;
     }
 
     fn save(&self, snap: Option<&Snapshot>) {
@@ -181,6 +188,7 @@ impl Editor {
         let ticker = self.ticker;
         let sys = self.sys;
         let sector = self.sector;
+        let stance = self.stance;
         crate::config::update_config(|cfg| {
             cfg.map = map;
             cfg.standings = standings;
@@ -203,11 +211,14 @@ impl Editor {
             if let Some(s) = sector {
                 cfg.sector = s;
             }
+            if let Some(s) = stance {
+                cfg.stance = s;
+            }
         });
     }
 }
 
-fn cursor_norm(ox: i32, oy: i32, ow: i32, oh: i32) -> Option<(f32, f32)> {
+pub(crate) fn cursor_norm(ox: i32, oy: i32, ow: i32, oh: i32) -> Option<(f32, f32)> {
     if ow <= 0 || oh <= 0 {
         return None;
     }
@@ -274,6 +285,7 @@ fn rect_of(s: &Snapshot, ed: &Editor, cfg: &HudConfig, t: Target) -> Rect {
         Target::Ticker => ed.ticker.unwrap_or(cfg.ticker),
         Target::Sys => ed.sys.unwrap_or(cfg.sys),
         Target::Sector => ed.sector.unwrap_or(cfg.sector),
+        Target::Stance => ed.stance.unwrap_or(cfg.stance),
     }
 }
 
@@ -288,15 +300,17 @@ fn shown(s: &Snapshot, cfg: &HudConfig, t: Target) -> bool {
         Target::Ticker => cfg.show_ticker,
         Target::Sys => cfg.show_sys,
         Target::Sector => cfg.sector_visible(),
+        Target::Stance => cfg.stance_visible(),
     }
 }
 
 fn hit(s: &Snapshot, ed: &Editor, cfg: &HudConfig, x: f32, y: f32, ow: i32, oh: i32) -> Option<(Target, Handle)> {
-    const ORDER: [Target; 9] = [
+    const ORDER: [Target; 10] = [
         Target::Dash,
         Target::Ticker,
         Target::Sys,
         Target::Sector,
+        Target::Stance,
         Target::Minimap,
         Target::Radar,
         Target::Map,
@@ -387,6 +401,7 @@ fn min_px(t: Target) -> (f32, f32) {
         Target::Ticker => (360.0, 44.0),
         Target::Sys => (160.0, 90.0),
         Target::Sector => (140.0, 72.0),
+        Target::Stance => (72.0, 36.0),
     }
 }
 

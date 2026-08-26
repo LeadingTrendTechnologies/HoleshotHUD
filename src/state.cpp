@@ -54,6 +54,7 @@ void PluginState::clearRace()
     m_standings.clear();
     m_trackPos.clear();
     m_focusRaceNum = -1;
+    m_lastSpectate = 0.0;
     m_localGear = 0;
     m_localRpm = 0;
     m_engineTemp = 0.0f;
@@ -124,6 +125,7 @@ void PluginState::setRaceEvent(const SPluginsRaceEvent_t& ev)
 void PluginState::beginRun()
 {
     m_inRun = true;
+    clearSpectateSelection();
     for (int i = 0; i < 3; ++i)
     {
         m_sectorCur[i] = 0;
@@ -139,11 +141,13 @@ void PluginState::endRun()
     m_telemetryStamp = 0.0;
     m_trackPosStamp = 0.0;
     m_trackPos.clear();
+    clearSpectateSelection();
 }
 
 bool PluginState::onTrack() const
 {
-    return m_inRun;
+    // Replay / spectate never call RunInit, but classification and positions still stream.
+    return m_inRun || m_hasTelemetry || !m_standings.empty() || !m_trackPos.empty();
 }
 
 namespace
@@ -744,6 +748,27 @@ void PluginState::setVehicleData(const SPluginsRaceVehicleData_t& data)
 void PluginState::setSpectateSelection(int raceNum)
 {
     m_focusRaceNum = raceNum;
+    m_lastSpectate = pluginNowSeconds();
+}
+
+void PluginState::clearSpectateSelection()
+{
+    m_focusRaceNum = -1;
+    m_lastSpectate = 0.0;
+}
+
+bool PluginState::spectating() const
+{
+    return m_lastSpectate > 0.0 && (pluginNowSeconds() - m_lastSpectate) < 1.0;
+}
+
+int PluginState::focusRaceNum() const
+{
+    if (m_focusRaceNum >= 0 && spectating())
+    {
+        return m_focusRaceNum;
+    }
+    return m_localRaceNum;
 }
 
 const VehicleLive* PluginState::findVehicle(int raceNum) const

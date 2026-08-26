@@ -293,7 +293,7 @@ fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg.show_sys = name == "sys";
     // Labs flag stays off in the release WASM demo (same as deployed overlay).
     cfg.show_sector = false;
-    cfg.feature_sector = false;
+    cfg.experimental = false;
 }
 
 fn widget_id(name: &str) -> Option<WidgetId> {
@@ -358,6 +358,7 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "radar_bold" => cfg.radar_bold,
         "dash_bold" => cfg.dash_bold,
         "dash_rev" => cfg.dash_rev,
+        "dash_simple" => cfg.dash_simple,
         "ticker_bold" => cfg.ticker_bold,
         "sys_bold" => cfg.sys_bold,
         "sector_bold" => cfg.sector_bold,
@@ -415,6 +416,7 @@ fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
         "radar_bold" => cfg.radar_bold = on,
         "dash_bold" => cfg.dash_bold = on,
         "dash_rev" => cfg.dash_rev = on,
+        "dash_simple" => cfg.dash_simple = on,
         "ticker_bold" => cfg.ticker_bold = on,
         "sys_bold" => cfg.sys_bold = on,
         "sector_bold" => cfg.sector_bold = on,

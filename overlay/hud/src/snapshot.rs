@@ -298,6 +298,14 @@ pub fn write_name(dest: &mut [u8], src: &str) {
 }
 
 impl Snapshot {
+    /// Race / replay payload is present. Menus with an empty snapshot are not.
+    pub fn has_session_data(&self) -> bool {
+        self.on_track != 0
+            || self.has_telemetry != 0
+            || self.standing_count > 0
+            || self.rider_count > 0
+    }
+
     /// Human dump of SHM scalars plus occupied riders / standings / poly samples.
     pub fn dump_text(&self) -> String {
         use std::fmt::Write;
@@ -473,12 +481,15 @@ mod tests {
 
     #[test]
     fn snapshot_default_layout_is_sane() {
-        let s = Snapshot::default();
+        let mut s = Snapshot::default();
         assert_eq!(s.magic, 0);
         assert!(s.map.w > 0.0);
         assert!(s.standings_rect.h > 0.0);
         assert_eq!(s.show_standings, 1);
         assert_eq!(s.on_track, 0);
+        assert!(!s.has_session_data());
+        s.standing_count = 2;
+        assert!(s.has_session_data());
     }
 
     #[test]
