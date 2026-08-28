@@ -85,6 +85,7 @@ One path for lap motos and timed extras, driven by `laps_left`. Lap motos count 
 
 ## Change log
 
+- 2026-08-28 — Website demo starts Dash at 16% width so **~Lapped** fits. Simple dash snaps to a compact 9%×8% lockup (overlay default stays 11.5%×10.8%).
 - 2026-08-27 — Default dash is 11.5%×10.8% (the size we settled on in-game). The plaque fills the widget rect so Ctrl-drag on the orange handles actually resizes it.
 - 2026-08-26 — Simple dash is gear + speed only: orange skew gear plaque, vertical unit stack, flags still wrap. Footer and rev hide in settings but stay in the ini.
 

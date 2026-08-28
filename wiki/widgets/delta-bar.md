@@ -54,6 +54,7 @@ A decent lap: ~20 s–15 min, coverage across most of 0..1. A dab does not throw
 
 ## Change log
 
+- 2026-08-28 — Website demo lists Delta Bar under **Experimental**. WASM turns the labs flag on only while that widget is selected.
 - 2026-08-28 — Track JSON stores `used` (unix seconds). Stamped on PB write and when you visit a track that already has a file (at most hourly). Old files without it still load. No empty files for tracks with no PB.
 - 2026-08-28 — BEST / LAST type is larger. A new PB replaces LAST with orange **NEW BEST** and the time for eight seconds.
 - 2026-08-28 — While **REC**, the foot says **complete two full laps** (night-ink pill when opacity is under 40%).

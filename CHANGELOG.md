@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+The browser demo can try Sectors and Delta Bar under Experimental.
+
+### Website
+
+- Widget rail has an **Experimental** group for Sectors and Delta Bar.
+- Sectors in the demo keep ticking through S2 and S3.
+- Dash starts a bit wider so **~Lapped** stays on the plaque. Simple dash uses a compact size.
+
 ## 0.1.20
 
 Delta Bar vs your best, live sector splits, and a board when we reply to feedback.

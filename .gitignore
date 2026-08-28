@@ -21,3 +21,5 @@ cmake_install.cmake
 *.actual.png
 announce-shots/whats-new.png
 announce-shots/whats-new.txt
+wiki/tests/*
+.impeccable/questions/*

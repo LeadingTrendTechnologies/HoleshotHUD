@@ -14,7 +14,7 @@ Experience · `web/index.html` (chrome in `web/style.css`, `web/demo.js`). Live 
 MX Bikes rider trying widgets in the browser, then downloading. First seconds: live HUD, widget rail, settings (desktop LTR: settings, rail, HUD), Download one click in the top bar.
 
 ## Direction
-F8 Twin pit-box. Left to right: settings pane, F8 widget rail (Boards / Track / Cockpit), live HUD stage. Thin top bar: mark, wordmark, Download plaque. One widget at a time.
+F8 Twin pit-box. Left to right: settings pane, F8 widget rail (Boards / Track / Cockpit / Experimental), live HUD stage. Thin top bar: mark, wordmark, Download plaque. One widget at a time.
 
 ## Memorable moment
 Switching a rail row swaps the live overlay and the field list instantly, like hitting a widget tab in F8.

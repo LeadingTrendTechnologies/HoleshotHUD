@@ -49,6 +49,8 @@ No column picker; show, **Live sector**, opacity, font, bold, snap. **Clear this
 
 ## Change log
 
+- 2026-08-28 — Demo lap clock follows track position so S2/S3 live time keeps ticking (clock was stuck at ~18s, so S2 elapsed went to 0).
+- 2026-08-28 — Website demo lists Sectors under **Experimental**. WASM turns the labs flag on only while that widget is selected.
 - 2026-08-28 — Shared track JSON stores `used` (unix seconds). Stamped on sector PB write and when you visit a track that already has a file (at most hourly). Old files without it still load.
 - 2026-08-28 — Split times at the bottom sit on night-ink pills so they read when the panel is thin.
 - 2026-08-27 — Settings **Live sector**. On is the location delta while you are in the sector. Off only shows a time after you leave that split.

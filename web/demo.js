@@ -101,6 +101,8 @@ const NAMES = {
   minimap: "Minimap",
   radar: "Radar",
   sys: "Systems",
+  sector: "Sectors",
+  delta: "Delta Bar",
 };
 
 const canvas = document.getElementById("hud");
@@ -113,7 +115,7 @@ stageStatus.hidden = false;
 
 let preview;
 try {
-  await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=0.1.20", import.meta.url) });
+  await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=0.1.20-exp6", import.meta.url) });
   preview = new Preview();
   stageStatus.hidden = true;
 } catch (err) {
@@ -250,6 +252,11 @@ function renderSettings() {
     html += stepperRow("ticker_count", "Riders shown", 3, 15);
   } else if (w === "sys") {
     html += styleControls("sys", "Panel opacity");
+  } else if (w === "sector") {
+    html += toggleRow("sector_live", "Live sector");
+    html += styleControls("sector", "Panel opacity");
+  } else if (w === "delta") {
+    html += styleControls("delta", "Panel opacity");
   }
   html += snapGrid();
   settings.replaceChildren(el(html));

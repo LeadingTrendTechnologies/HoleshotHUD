@@ -28,6 +28,12 @@ const RIDERS: &[(&str, &str, &str)] = &[
 
 const FOCUS: i32 = 11;
 
+const DEMO_S1_MS: i32 = 24_093;
+const DEMO_S2_MS: i32 = 25_760;
+const DEMO_S3_MS: i32 = 23_090;
+const DEMO_S1_END: f32 = 0.31;
+const DEMO_S2_END: f32 = 0.64;
+
 #[wasm_bindgen]
 pub struct Preview {
     fonts: Fonts,
@@ -77,6 +83,7 @@ impl Preview {
             self.placed.push(name.to_string());
         }
         self.cfg.apply_to_snapshot(&mut self.snap);
+        sync_delta_preview(&self.active, self.t);
         self.drag = None;
     }
 
@@ -110,6 +117,9 @@ impl Preview {
             return;
         }
         set_flag(&mut self.cfg, key, on);
+        if key == "dash_simple" {
+            size_demo_dash(&mut self.cfg);
+        }
         self.cfg.apply_to_snapshot(&mut self.snap);
     }
 
@@ -209,6 +219,7 @@ impl Preview {
         self.t += dt.max(0.0).min(0.08);
         animate(&mut self.snap, self.t, dt.max(0.0).min(0.08));
         self.cfg.apply_to_snapshot(&mut self.snap);
+        sync_delta_preview(&self.active, self.t);
     }
 
     pub fn frame(&mut self, width: u32, height: u32) -> Vec<u8> {
@@ -278,9 +289,23 @@ impl Preview {
 }
 
 fn center_widget(cfg: &mut HudConfig, name: &str) {
-    if let Some(id) = widget_id(name) {
+    if name == "dash" {
+        size_demo_dash(cfg);
+    } else if let Some(id) = widget_id(name) {
         cfg.snap(id, SnapAlign::Center);
     }
+}
+
+/// Full dash needs room for ~Lapped; simple dash is gear + speed only.
+fn size_demo_dash(cfg: &mut HudConfig) {
+    if cfg.dash_simple {
+        cfg.dash.w = 0.09;
+        cfg.dash.h = 0.08;
+    } else {
+        cfg.dash.w = 0.16;
+        cfg.dash.h = 0.108;
+    }
+    cfg.snap(WidgetId::Dash, SnapAlign::Center);
 }
 
 fn show_only(cfg: &mut HudConfig, name: &str) {
@@ -292,10 +317,10 @@ fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg.show_radar = name == "radar";
     cfg.show_ticker = name == "ticker";
     cfg.show_sys = name == "sys";
-    // Labs flag stays off in the release WASM demo (same as deployed overlay).
-    cfg.show_sector = false;
-    cfg.show_delta = false;
-    cfg.experimental = false;
+    cfg.show_sector = name == "sector";
+    cfg.show_delta = name == "delta";
+    // Overlay Labs stays off unless this demo is showing a labs widget.
+    cfg.experimental = name == "sector" || name == "delta";
 }
 
 fn widget_id(name: &str) -> Option<WidgetId> {
@@ -308,8 +333,28 @@ fn widget_id(name: &str) -> Option<WidgetId> {
         "dash" => WidgetId::Dash,
         "ticker" => WidgetId::Ticker,
         "sys" => WidgetId::Sys,
+        "sector" => WidgetId::Sector,
+        "delta" => WidgetId::Delta,
         _ => return None,
     })
+}
+
+fn sync_delta_preview(active: &str, t: f32) {
+    if active != "delta" {
+        mxbo_hud::delta::set_preview(None);
+        return;
+    }
+    let wobble = (t * 1.4).sin() * 220.0;
+    mxbo_hud::delta::set_preview(Some(mxbo_hud::delta::DeltaView {
+        ready: true,
+        recording: false,
+        has_delta: true,
+        delta_ms: -347 + wobble as i32,
+        ref_lap_ms: 72_140,
+        last_lap_ms: 72_480,
+        cover: 100,
+        new_best: false,
+    }));
 }
 
 fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
@@ -367,7 +412,9 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "dash_simple" => cfg.dash_simple,
         "ticker_bold" => cfg.ticker_bold,
         "sys_bold" => cfg.sys_bold,
+        "sector_live" => cfg.sector_live,
         "sector_bold" => cfg.sector_bold,
+        "delta_bold" => cfg.delta_bold,
         "ticker_title" => cfg.ticker_title,
         "ticker_autoscroll" => cfg.ticker_autoscroll,
         _ => return None,
@@ -429,7 +476,9 @@ fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
         "dash_simple" => cfg.dash_simple = on,
         "ticker_bold" => cfg.ticker_bold = on,
         "sys_bold" => cfg.sys_bold = on,
+        "sector_live" => cfg.sector_live = on,
         "sector_bold" => cfg.sector_bold = on,
+        "delta_bold" => cfg.delta_bold = on,
         "ticker_title" => cfg.ticker_title = on,
         "ticker_autoscroll" => cfg.ticker_autoscroll = on,
         _ => {}
@@ -463,6 +512,7 @@ fn int_val(cfg: &HudConfig, key: &str) -> Option<i32> {
         "sys_font" => cfg.sys_font,
         "sector_font" => cfg.sector_font,
         "delta_font" => cfg.delta_font,
+        "delta_bg" => cfg.delta_bg,
         _ => return None,
     })
 }
@@ -628,7 +678,7 @@ fn demo_snapshot() -> Snapshot {
     }
     s.track_length = length;
     s.sf_meters = sf;
-    mxbo_hud::sector::set_split_fracs([0.31, 0.64]);
+    mxbo_hud::sector::set_split_fracs([DEMO_S1_END, DEMO_S2_END]);
 
     s.rider_count = RIDERS.len() as i32;
     for (i, (name, _, _)) in RIDERS.iter().enumerate() {
@@ -781,7 +831,6 @@ fn animate(s: &mut Snapshot, t: f32, dt: f32) {
     s.local_rpm = (8200.0 + 3800.0 * (t * 2.4).sin()) as i32;
     s.local_gear = 2 + ((t * 0.35).sin() * 1.6 + 1.6) as i32;
     s.local_speed = 14.0 + 7.0 * (0.5 + 0.5 * (t * 1.1).sin());
-    s.current_lap_ms = 18_000 + ((t * 40.0) as i32 % 55_000);
 
     for i in 0..s.rider_count.max(0) as usize {
         let speed = 0.006 + (i as f32) * 0.00022 + 0.0012 * ((t * 0.35) + i as f32).sin();
@@ -801,27 +850,38 @@ fn animate(s: &mut Snapshot, t: f32, dt: f32) {
         }
     }
     apply_radar_pack(s, t);
-    let frac = s.local_track_pos.rem_euclid(1.0);
-    let lap_t = (frac * 3.0) as i32;
-    s.sector_last = (lap_t - 1).clamp(-1, 2);
-    s.sector_cur = match lap_t {
-        0 => [0, 0, 0],
-        1 => [24_093, 0, 0],
-        2 => [24_093, 25_760, 0],
-        _ => [0, 0, 0],
-    };
-    s.sector_last_lap = [24_093, 25_760, 23_090];
-    s.sector_delta = [-87, 120, -40];
-    s.sector_delta_valid = match lap_t {
-        0 => 0b111,
-        1 => 0b001,
-        2 => 0b011,
-        _ => 0b111,
-    };
-    if lap_t == 0 {
-        s.sector_last = 2;
-    }
+    animate_sectors(s);
     refresh_standings(s);
+}
+
+/// Lap clock follows track pos so S2/S3 live time is clock minus completed splits.
+fn animate_sectors(s: &mut Snapshot) {
+    mxbo_hud::sector::set_split_fracs([DEMO_S1_END, DEMO_S2_END]);
+    s.sector_count = 3;
+    s.sector_best = [24_180, 25_640, 22_910];
+    s.sector_last_lap = [DEMO_S1_MS, DEMO_S2_MS, DEMO_S3_MS];
+    s.sector_delta = [-87, 120, -40];
+    s.last_lap_ms = DEMO_S1_MS + DEMO_S2_MS + DEMO_S3_MS;
+    let frac = s.local_track_pos.rem_euclid(1.0);
+    if frac < DEMO_S1_END {
+        let p = (frac / DEMO_S1_END).clamp(0.0, 1.0);
+        s.current_lap_ms = (DEMO_S1_MS as f32 * p) as i32;
+        s.sector_cur = [0, 0, 0];
+        s.sector_delta_valid = 0;
+        s.sector_last = 2;
+    } else if frac < DEMO_S2_END {
+        let p = ((frac - DEMO_S1_END) / (DEMO_S2_END - DEMO_S1_END)).clamp(0.0, 1.0);
+        s.current_lap_ms = DEMO_S1_MS + (DEMO_S2_MS as f32 * p).max(1.0) as i32;
+        s.sector_cur = [DEMO_S1_MS, 0, 0];
+        s.sector_delta_valid = 0b001;
+        s.sector_last = 0;
+    } else {
+        let p = ((frac - DEMO_S2_END) / (1.0 - DEMO_S2_END)).clamp(0.0, 1.0);
+        s.current_lap_ms = DEMO_S1_MS + DEMO_S2_MS + (DEMO_S3_MS as f32 * p).max(1.0) as i32;
+        s.sector_cur = [DEMO_S1_MS, DEMO_S2_MS, 0];
+        s.sector_delta_valid = 0b011;
+        s.sector_last = 1;
+    }
 }
 
 fn refresh_standings(s: &mut Snapshot) {
