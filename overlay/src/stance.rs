@@ -481,6 +481,7 @@ mod tests {
     #[test]
     fn hold_follows_button() {
         assert_eq!(apply_edge(false, false, true, StanceMode::Hold), (true, true));
+        assert_eq!(apply_edge(true, true, true, StanceMode::Hold), (true, true));
         assert_eq!(apply_edge(true, true, false, StanceMode::Hold), (false, false));
     }
 
@@ -577,5 +578,40 @@ mod tests {
         assert!(!xinput_held(0, TRIGGER_DOWN, 0, StanceBind::PadLt));
         assert!(!xinput_held(0, 0, 0, StanceBind::Key(0x20)));
         assert!(!xinput_held(0, 0, 0, StanceBind::MouseLeft));
+    }
+
+    #[test]
+    fn dualsense_bt_square_is_not_l1() {
+        let mut bt = [0u8; 64];
+        bt[0] = 0x31;
+        bt[9] = 0x08 | (1 << 4);
+        let pad = ds_buttons(&bt).unwrap();
+        assert!(ds_held(pad, StanceBind::PadX));
+        assert!(!ds_held(pad, StanceBind::PadLb));
+        bt[9] = 0x08;
+        bt[10] = 1;
+        let pad = ds_buttons(&bt).unwrap();
+        assert!(ds_held(pad, StanceBind::PadLb));
+        assert!(!ds_held(pad, StanceBind::PadX));
+    }
+
+    #[test]
+    fn ds4_bt_square_and_l2() {
+        let mut bt = [0u8; 64];
+        bt[0] = 0x11;
+        bt[7] = 0x08 | (1 << 4);
+        let pad = ds4_buttons(&bt).unwrap();
+        assert!(ds_held(pad, StanceBind::PadX));
+        bt[7] = 0x08;
+        bt[10] = 40;
+        let pad = ds4_buttons(&bt).unwrap();
+        assert!(ds_held(pad, StanceBind::PadLt));
+        assert!(!ds_held(pad, StanceBind::PadRt));
+    }
+
+    #[test]
+    fn ds_buttons_rejects_empty() {
+        assert!(ds_buttons(&[]).is_none());
+        assert!(ds4_buttons(&[]).is_none());
     }
 }

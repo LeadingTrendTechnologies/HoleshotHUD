@@ -10,6 +10,9 @@
     },
     "api/inbox.js": {
       "maxDuration": 30
+    },
+    "api/tickets.js": {
+      "maxDuration": 30
     }
   },
   "headers": [

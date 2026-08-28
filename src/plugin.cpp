@@ -301,7 +301,7 @@ __declspec(dllexport) void RunLap(void* _pData, int _iDataSize)
             const int focus = g_state.focusRaceNum();
             if (focus < 0 || focus == g_state.localRaceNum())
             {
-                g_state.finishLapSectors(data.m_iLapNum, data.m_iLapTime);
+                g_state.finishLapSectors(data.m_iLapNum, data.m_iLapTime, 0, 0);
             }
         }
     });
@@ -471,7 +471,7 @@ __declspec(dllexport) void RaceSessionState(void* _pData, int _iDataSize)
 __declspec(dllexport) void RaceLap(void* _pData, int _iDataSize)
 {
     onCopied<SPluginsRaceLap_t>(_pData, _iDataSize, [](const SPluginsRaceLap_t& data) {
-        g_state.setRaceLap(data.m_iRaceNum, data.m_iLapNum, data.m_iLapTime);
+        g_state.setRaceLap(data.m_iRaceNum, data.m_iLapNum, data.m_iLapTime, data.m_aiSplit[0], data.m_aiSplit[1]);
     });
 }
 

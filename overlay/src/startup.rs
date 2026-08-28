@@ -174,7 +174,7 @@ fn waiter_powershell(exe: &std::path::Path) -> Option<String> {
              if ($ini -match '(?m)^open_with_game=0\\s*$') {{ exit 0 }}; \
              Start-Sleep -Milliseconds 400 \
            }}; \
-           Start-Process -FilePath '{exe_ps}' \
+           Start-Process -FilePath '{exe_ps}' -ArgumentList '--minimized' \
          }} finally {{ \
            [void]$m.ReleaseMutex(); $m.Dispose() \
          }}"

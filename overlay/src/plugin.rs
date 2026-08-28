@@ -28,6 +28,16 @@ pub fn retry_if_needed() {
     }
 }
 
+/// True when the plugin file could not be replaced (usually because MX Bikes still has it open).
+pub fn needs_restart() -> bool {
+    NEED_RETRY.load(Ordering::Relaxed)
+}
+
+pub fn game_exe() -> Option<String> {
+    let p = game_dir()?.join("mxbikes.exe");
+    p.is_file().then(|| p.to_string_lossy().into_owned())
+}
+
 pub fn remove() {
     if let Some(dir) = game_dir().map(|g| g.join("plugins")) {
         let _ = fs::remove_file(dir.join(PLUGIN_FILE));
@@ -37,6 +47,55 @@ pub fn remove() {
 
 pub fn dest_path() -> Option<PathBuf> {
     Some(game_dir()?.join("plugins").join(PLUGIN_FILE))
+}
+
+pub fn plugin_installed() -> bool {
+    dest_path().is_some_and(|p| p.is_file())
+}
+
+/// Folder picker. Saves the path and copies the plugin when the folder looks like MX Bikes.
+pub fn pick_game_folder(host: windows::Win32::Foundation::HWND) -> bool {
+    let Some(picked) = browse_folder(host) else {
+        return false;
+    };
+    if !looks_like_game(&picked) {
+        unsafe {
+            let _ = windows::Win32::UI::WindowsAndMessaging::MessageBoxW(
+                host,
+                w!("That folder does not look like MX Bikes (missing mxbikes.exe / plugins)."),
+                w!("Holeshot HUD"),
+                windows::Win32::UI::WindowsAndMessaging::MB_OK
+                    | windows::Win32::UI::WindowsAndMessaging::MB_ICONWARNING,
+            );
+        }
+        return false;
+    }
+    save_game_dir(&picked);
+    NEED_RETRY.store(true, Ordering::Relaxed);
+    sync();
+    true
+}
+
+fn browse_folder(host: windows::Win32::Foundation::HWND) -> Option<PathBuf> {
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoTaskMemFree, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
+    };
+    use windows::Win32::UI::Shell::{
+        FileOpenDialog, IFileOpenDialog, FOS_FORCEFILESYSTEM, FOS_PICKFOLDERS, SIGDN_FILESYSPATH,
+    };
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let dlg: IFileOpenDialog = CoCreateInstance(&FileOpenDialog, None, CLSCTX_ALL).ok()?;
+        dlg.SetOptions(FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM).ok()?;
+        dlg.SetTitle(w!("Select the MX Bikes folder (the one that contains mxbikes.exe)"))
+            .ok()?;
+        dlg.Show(host).ok()?;
+        let item = dlg.GetResult().ok()?;
+        let name = item.GetDisplayName(SIGDN_FILESYSPATH).ok()?;
+        let path = name.to_string().ok().filter(|s| !s.is_empty());
+        CoTaskMemFree(Some(name.0 as _));
+        path.map(PathBuf::from)
+    }
 }
 
 fn install_once() -> Result<bool, ()> {
@@ -104,7 +163,7 @@ fn plugin_dest() -> Option<PathBuf> {
     Some(game_dir()?.join("plugins").join(PLUGIN_FILE))
 }
 
-fn game_dir() -> Option<PathBuf> {
+pub fn game_dir() -> Option<PathBuf> {
     if let Ok(dir) = std::env::var("MXBIKES_DIR") {
         let p = PathBuf::from(dir);
         if looks_like_game(&p) {

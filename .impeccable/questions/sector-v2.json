@@ -1,0 +1,39 @@
+{
+  "title": "Sectors — cleaner TV lockups",
+  "question": "Three cleaner takes of the same widget. Same data. Gold you-row is gone. Pick one to build, or say what still feels off.",
+  "options": [
+    {
+      "id": "air",
+      "label": "Air",
+      "kicker": "CLEANEST READ",
+      "thesis": "Stacked rows, huge colored type, no badges — the delta is the graphic.",
+      "palette": ["#0A0A0A", "#C470FF", "#FF4048", "#FF9430", "#84848A"],
+      "materials": ["night-ink plaque", "ExtraBold Italic type", "3px orange pip"],
+      "viewport": "Three stacked rows: S# left, giant colored delta, dim time right. Orange pip on the last completed split only.",
+      "risk": "May feel too plain if you still want Holeshot skew hardware.",
+      "comp": ".impeccable/mocks/sector-v2-air.png"
+    },
+    {
+      "id": "strip",
+      "label": "Strip",
+      "thesis": "A wide TV bug: three columns, orange underline on the live sector.",
+      "palette": ["#0A0A0A", "#C470FF", "#FF4048", "#FF9430", "#84848A"],
+      "materials": ["night-ink strip", "hairline columns", "orange underline"],
+      "viewport": "One short plaque, S1 | S2 | S3. Delta display-scale, time caption under. Orange bar under S2.",
+      "risk": "Reads as a broadcast lower-third; some riders want a tall side board.",
+      "comp": ".impeccable/mocks/sector-v2-strip.png"
+    },
+    {
+      "id": "quiet-plaque",
+      "label": "Quiet plaques",
+      "thesis": "Keep the skew hardware, drop the gold wash, give the type air.",
+      "palette": ["#0A0A0A", "#C470FF", "#FF4048", "#FF9430", "#18191D"],
+      "materials": ["content-sized skew plaques", "hairline rows", "orange plaque edge"],
+      "viewport": "Stacked rows with violet / red / charcoal parallelograms. No gold band. Orange top edge on the live plaque.",
+      "risk": "Closest to now — may still feel like badges if you wanted type-only.",
+      "comp": ".impeccable/mocks/sector-v2-quiet-plaque.png"
+    }
+  ],
+  "steer": true,
+  "buildPath": { "value": "comp", "toggle": true }
+}

@@ -49,15 +49,17 @@ function Remove-SavedSettings {
     }
     foreach ($dir in @($InstallDir, $DataDir, $LegacyDir) | Select-Object -Unique) {
         if (-not (Test-Path -LiteralPath $dir)) { continue }
-        foreach ($name in @("Holeshot-HUD.ini", "mxbo.ini", "gamedir.txt")) {
+        foreach ($name in @("Holeshot-HUD.ini", "mxbo.ini", "gamedir.txt", "tickets.json")) {
             $p = Join-Path $dir $name
             if (Test-Path -LiteralPath $p) {
                 Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue
             }
         }
-        $logs = Join-Path $dir "logs"
-        if (Test-Path -LiteralPath $logs) {
-            Remove-Item -LiteralPath $logs -Recurse -Force -ErrorAction SilentlyContinue
+        foreach ($name in @("logs", "track-pbs")) {
+            $p = Join-Path $dir $name
+            if (Test-Path -LiteralPath $p) {
+                Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction SilentlyContinue
+            }
         }
     }
 }

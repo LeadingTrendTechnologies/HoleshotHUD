@@ -25,6 +25,7 @@ No column picker; only show, opacity, font, bold, snap.
 
 ## Change log
 
+- 2026-08-27 — A blank HUD with Systems off still follows the shared hide rule; the overlay plaque (not this widget) explains plugin-missing / widgets-off.
 - 2026-08-26 — Hides without a session, same as the rest of the HUD. Menu / lobby no longer show CPU meters.
 - Overlay Systems widget added for overlay vs game vs ReShade load.
 - 0.1.8 — Hidden until **Show on overlay**.

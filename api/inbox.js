@@ -1,4 +1,5 @@
 const PREFIX = "Holeshot HUD ·";
+const MAX_REPLY = 4000;
 
 function authorized(req) {
   const secret = process.env.FEEDBACK_INBOX_SECRET;
@@ -17,15 +18,93 @@ function ghHeaders(token) {
   };
 }
 
+function clipRaw(s, n) {
+  const t = String(s || "");
+  return t.length <= n ? t : `${t.slice(0, n)}…`;
+}
+
 function parseDesc(description) {
   const rest = String(description || "").replace(PREFIX, "").trim();
   const sep = rest.indexOf("·");
-  if (sep < 0) return { kind: "other", summary: rest };
-  return { kind: rest.slice(0, sep).trim(), summary: rest.slice(sep + 1).trim() };
+  if (sep < 0) {
+    return { kind: "other", summary: rest, replied: false, waiting: false, archived: false, since: "" };
+  }
+  let kind = rest.slice(0, sep).trim();
+  let summary = rest.slice(sep + 1).trim();
+  let archived = false;
+  if (kind === "archived") {
+    archived = true;
+    const sep2 = summary.indexOf("·");
+    if (sep2 >= 0) {
+      kind = summary.slice(0, sep2).trim();
+      summary = summary.slice(sep2 + 1).trim();
+    } else {
+      kind = "other";
+    }
+  }
+  let waiting = false;
+  let replied = false;
+  let since = "";
+  while (true) {
+    if (summary.startsWith("[waiting]")) {
+      waiting = true;
+      summary = summary.replace(/^\[waiting\]\s*/, "");
+      continue;
+    }
+    if (summary.startsWith("[replied]")) {
+      replied = true;
+      summary = summary.replace(/^\[replied\]\s*/, "");
+      continue;
+    }
+    const m = summary.match(/^\[since\s+([^\]]+)\]\s*/);
+    if (m) {
+      since = m[1].trim();
+      summary = summary.slice(m[0].length);
+      continue;
+    }
+    break;
+  }
+  return { kind, summary, replied, waiting, archived, since };
+}
+
+function encodeDesc({ kind, summary, replied, waiting, archived, since }) {
+  const parts = [];
+  if (archived) parts.push("archived");
+  parts.push(kind || "other");
+  let clean = String(summary || "")
+    .replace(/^\[waiting\]\s*/, "")
+    .replace(/^\[replied\]\s*/, "")
+    .replace(/^\[since\s+[^\]]+\]\s*/, "");
+  const tags = [];
+  if (waiting) tags.push("[waiting]");
+  else if (replied) tags.push("[replied]");
+  if (since) tags.push(`[since ${since}]`);
+  parts.push(`${tags.join(" ")}${tags.length ? " " : ""}${clean}`.trim());
+  return `${PREFIX} ${parts.join(" · ")}`;
 }
 
 function isOurs(gist) {
   return String(gist.description || "").startsWith(PREFIX);
+}
+
+function parseFeedback(text) {
+  try {
+    const data = JSON.parse(text);
+    if (data && typeof data === "object") return data;
+  } catch {
+    /* ignore */
+  }
+  return { message: String(text || "") };
+}
+
+function readBody(req) {
+  if (req.body == null) return {};
+  if (typeof req.body === "object") return req.body;
+  try {
+    return JSON.parse(req.body);
+  } catch {
+    return {};
+  }
 }
 
 async function listGists(token) {
@@ -42,11 +121,15 @@ async function listGists(token) {
     if (!Array.isArray(batch) || batch.length === 0) break;
     for (const gist of batch) {
       if (!isOurs(gist)) continue;
-      const { kind, summary } = parseDesc(gist.description);
+      const { kind, summary, replied, waiting, archived, since } = parseDesc(gist.description);
       items.push({
         id: gist.id,
         kind,
         summary,
+        replied,
+        waiting,
+        archived,
+        since,
         at: gist.created_at,
         url: gist.html_url,
         files: Object.keys(gist.files || {}),
@@ -70,23 +153,39 @@ async function readGist(token, id) {
     const text = String(file.content || "");
     files[name] = name.endsWith(".jsonl") && text.length > 80_000 ? `${text.slice(0, 80_000)}\n…` : text;
   }
+  const parsed = parseDesc(gist.description);
   return {
     id: gist.id,
     description: gist.description,
     at: gist.created_at,
     url: gist.html_url,
     files,
+    kind: parsed.kind,
+    summary: parsed.summary,
+    replied: parsed.replied,
+    waiting: parsed.waiting,
+    archived: parsed.archived,
+    since: parsed.since,
   };
 }
 
-async function deleteGist(token, id) {
-  const current = await readGist(token, id);
-  if (!current) return false;
+async function patchGist(token, id, { description, feedback }) {
+  const files = {};
+  if (feedback) {
+    files["feedback.json"] = { content: JSON.stringify(feedback, null, 2) };
+  }
+  const body = { files };
+  if (description) body.description = description;
   const gh = await fetch(`https://api.github.com/gists/${encodeURIComponent(id)}`, {
-    method: "DELETE",
+    method: "PATCH",
     headers: ghHeaders(token),
+    body: JSON.stringify(body),
   });
-  return gh.ok || gh.status === 204;
+  if (!gh.ok) {
+    const err = await gh.text();
+    throw new Error(err.slice(0, 400));
+  }
+  return gh.json();
 }
 
 function isInstaller(name) {
@@ -130,9 +229,89 @@ async function installerDownloads(token) {
   }
 }
 
+function clipThread(thread) {
+  const out = [];
+  for (const item of Array.isArray(thread) ? thread : []) {
+    const from = item && item.from === "dev" ? "dev" : item && item.from === "user" ? "user" : "";
+    const text = clipRaw(item && item.text, MAX_REPLY).trim();
+    if (!from || !text) continue;
+    out.push({ from, text, at: item.at || null });
+    if (out.length >= 40) break;
+  }
+  return out;
+}
+
+function ensureThread(feedback) {
+  let thread = clipThread(feedback.thread);
+  if (!thread.length && typeof feedback.reply === "string" && feedback.reply.trim()) {
+    thread = [
+      {
+        from: "dev",
+        text: clipRaw(feedback.reply, MAX_REPLY).trim(),
+        at: feedback.replied_at || null,
+      },
+    ];
+  }
+  feedback.thread = thread;
+  return thread;
+}
+
+async function applyInboxAction(token, data) {
+  const id = String(data.id || "").trim();
+  if (!/^[A-Za-z0-9]{8,64}$/.test(id)) {
+    return { status: 400, body: { error: "Missing ticket id." } };
+  }
+  const current = await readGist(token, id);
+  if (!current) {
+    return { status: 404, body: { error: "Not found." } };
+  }
+  const feedback = parseFeedback(current.files["feedback.json"] || "");
+  const parsed = parseDesc(current.description);
+  const kind = feedback.kind || parsed.kind || "other";
+  const summary = parsed.summary || clipRaw(feedback.message, 72) || kind;
+  const replyText = typeof data.reply === "string" ? clipRaw(data.reply, MAX_REPLY).trim() : "";
+  const archive = Boolean(data.archive);
+  if (!replyText && !archive) {
+    return { status: 400, body: { error: "Write a reply first." } };
+  }
+  const thread = ensureThread(feedback);
+  if (replyText) {
+    if (thread.length >= 40) {
+      return { status: 400, body: { error: "This thread is full." } };
+    }
+    const at = new Date().toISOString();
+    thread.push({ from: "dev", text: replyText, at });
+    feedback.thread = thread;
+    feedback.reply = replyText;
+    feedback.replied_at = at;
+  }
+  if (archive) {
+    feedback.archived = true;
+  }
+  const last = thread[thread.length - 1];
+  const waiting = last && last.from === "user";
+  const replied = thread.some((m) => m.from === "dev");
+  const archived = Boolean(feedback.archived) || parsed.archived;
+  await patchGist(token, id, {
+    description: encodeDesc({
+      kind,
+      summary,
+      replied,
+      waiting,
+      archived,
+      since: parsed.since || clip(feedback.first_version, 32),
+    }),
+    feedback,
+  });
+  return {
+    status: 200,
+    body: { ok: true, id, replied, waiting, archived, thread },
+  };
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Inbox-Secret");
   if (req.method === "OPTIONS") {
     res.status(204).end();
@@ -163,12 +342,12 @@ module.exports = async function handler(req, res) {
       res.status(200).json({ items, downloads });
       return;
     }
-    if (req.method === "DELETE" && id) {
-      const ok = await deleteGist(token, String(id));
-      res.status(ok ? 204 : 404).end();
+    if (req.method === "POST") {
+      const result = await applyInboxAction(token, readBody(req));
+      res.status(result.status).json(result.body);
       return;
     }
-    res.status(405).json({ error: "GET or DELETE only." });
+    res.status(405).json({ error: "GET or POST only." });
   } catch (err) {
     res.status(502).json({ error: "Could not load the inbox.", detail: String(err.message || err).slice(0, 400) });
   }

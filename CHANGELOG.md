@@ -1,5 +1,73 @@
 # Changelog
 
+## Unreleased
+
+## 0.1.20
+
+Delta Bar vs your best, live sector splits, and a board when we reply to feedback.
+
+### Delta Bar
+
+- Labs unlocks Delta Bar. Time vs your best at this point on the lap. After one decent lap — or a saved tape from last time — it is live. It is not the in-game ghost.
+- First lap shows **REC** while it fills if nothing is saved, with **complete two full laps** under the hairline. A faster lap updates the saved tape. A dab does not throw the lap away.
+- **BEST** and **LAST** under the hairline are larger. A new personal best swaps LAST for orange **NEW BEST** and the time for a few seconds.
+- Delta is a hairline: orange Δ, the signed time, a 2px center-zero line, BEST and LAST on the ends. No plaque. Turn up Panel opacity if you want a plate behind it.
+- When Panel opacity is under 40% (the Hair default is 0), BEST and LAST sit on small night-ink pills so they stay readable on the game.
+- The hairline lerps across empty tape bins and damps on a 0.4 s time constant, so it does not jump with track-pos noise.
+- Coming back to a track with a saved tape, the first flying lap no longer opens at a fake +16s. That was the out-lap clock compared at the line.
+- The out-lap is not recorded. The tape starts when you cross S/F (a new last-lap time), even if that line is not at track position 0.
+
+### Sectors
+
+- Sectors is a three-column strip: the sector you are in is the wide cell, with a live delta that freezes when you leave.
+- Live delta is vs your best **at this point in the sector** (same tape as Delta Bar), not elapsed vs the full split.
+- **Live sector** (on by default) ticks the current cell. Turn it off to only show a time after each split.
+- After a lap, last-lap times stay until the next lap clock runs.
+- Completing a lap fills S3 and keeps it the orange cell until you start the next lap.
+- Delta is vs. your best on this track (saved), not the in-game ghost. The plaque says **vs. your best**.
+- Faster splits were showing 0.000. The game fires two split events; the second one compared against the time just recorded.
+- Best S1/S2/S3 and the delta-bar tape are saved per track name under AppData. A faster frozen split or lap updates that file. **Clear this track** in Labs wipes it.
+- Split times at the bottom of each cell sit on night-ink pills, same as Delta Bar BEST / LAST.
+
+### Standings and Relative
+
+- Standings and Relative can turn off alternating row colors.
+- Standings and Relative keep striped rows unless you turn Alternating rows off.
+- Alternating rows still show when Background is 100%.
+- A new install starts Standings and Relative narrower so they match the default columns.
+- Standings and Relative plaques hug the columns — extra widget width is not empty glass.
+
+### Map and Minimap
+
+- Map and minimap treat the rider you are watching as you: orange dot on them, minimap follows. Leave spectate and they follow you again.
+- Map and minimap can show thin violet dotted **S1** / **S2** sector lines. Turn them with **Sector lines**. They appear after the overlay has seen those splits on this track.
+
+### Dash
+
+- Default dash matches the compact in-game size. Hold Ctrl and drag the orange handles to resize — the plaque fills that box.
+
+### Overlay
+
+- While you ride, those clicks go to the game — except the Holeshot HUD mark in the top-right, which opens settings (including while you hold Ctrl to place widgets).
+- The Holeshot HUD icon sits in the top-right while the overlay is on MX Bikes. If you can see it, the HUD is working. Click it to open settings. The settings key (F8 by default) opens settings, and presses again to close.
+- **Open when MX Bikes opens** starts the overlay in the tray. It does not pop the settings window.
+- If no widget is on, a plaque on the game says to press F8 and turn on Show on overlay (widgets still only draw on track).
+- If the plugin could not update because MX Bikes was already open, a plaque says to fully quit the game and start it again. A clean start after the overlay copied the plugin does not show that plaque.
+
+### Settings
+
+- App → Settings shows the MX Bikes folder and whether the plugin is in `plugins`, with Change folder.
+- When we reply to feedback you sent, a board pops up the next time you open settings. You can write back with Send.
+
+### Website
+
+- Standings and Relative settings include Alternating rows.
+
+### Internals
+
+- Track PB JSON stores `used` (unix seconds last ridden). Stamped on a faster lap/split and when you visit a track that already has a file (at most hourly). No empty files for tracks with no PB.
+- Feedback includes first-install version. New settings files stamp this build; existing installs are `unknown` so they are not treated as new.
+
 ## 0.1.19
 
 Follow a rider in replay, sit or stand on the overlay, and see what changed after an update.

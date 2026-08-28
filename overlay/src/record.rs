@@ -691,7 +691,11 @@ mod tests {
         let raw = "{\"v\":1}\n{\"t\":1.2,\"seq\":3,\"track\":\"Glen\",\"cur\":2,\"time\":8000}\n".into();
         let log = snapshot_log(raw, path, false).expect("samples");
         assert_eq!(log.track.as_deref(), Some("Glen"));
-        assert!(log.body.contains("\"cur\":2"));
+        assert_eq!(
+            log.body,
+            "{\"v\":1}\n{\"t\":1.2,\"seq\":3,\"track\":\"Glen\",\"cur\":2,\"time\":8000}\n"
+        );
+        assert!(!log.truncated);
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -705,6 +709,8 @@ mod tests {
         assert!(trim_body(&mut body));
         assert!(body.len() <= MAX_LOG);
         assert!(raw_has_race(&body));
+        assert!(!body.starts_with("{\"v\":1}"));
+        assert!(body.lines().last().unwrap().contains("\"cur\":1"));
     }
 
     #[test]
@@ -717,7 +723,36 @@ mod tests {
         let (clipped, truncated) = clip_send(body, false);
         assert!(truncated);
         assert!(clipped.len() <= MAX_SEND_LOG);
-        assert!(clipped.contains("\"cur\":2"));
+        assert!(clipped.ends_with("{\"t\":9.0,\"cur\":2,\"track\":\"Glen\"}\n"));
+        assert!(!clipped.contains("{\"v\":1}"));
         assert!(raw_has_race(&clipped));
+    }
+
+    #[test]
+    fn clip_send_passthrough_keeps_truncated_flag() {
+        let body = "{\"v\":1}\n{\"t\":1.0,\"cur\":1}\n".to_string();
+        let (clipped, truncated) = clip_send(body.clone(), true);
+        assert_eq!(clipped, body);
+        assert!(truncated);
+    }
+
+    #[test]
+    fn second_empty_after_race_ended_stays_continue() {
+        let mut g = SessionGate::default();
+        assert_eq!(g.update("Glen", 4, 0, 30_000, 2, 1), SessionEvent::Continue);
+        assert_eq!(g.update("", 0, 0, 0, 0, 0), SessionEvent::RaceEnded);
+        assert_eq!(g.update("", 0, 0, 0, 0, 0), SessionEvent::Continue);
+    }
+
+    #[test]
+    fn racing_thresholds_need_clock_or_lap() {
+        let mut g = SessionGate::default();
+        assert_eq!(g.update("Glen", 4, 0, 7_000, 0, 0), SessionEvent::Continue);
+        assert!(!g.saw_race);
+        assert_eq!(g.update("Glen", 4, 0, 8_001, 0, 0), SessionEvent::Continue);
+        assert!(g.saw_race);
+        let mut g = SessionGate::default();
+        assert_eq!(g.update("Glen", 4, 0, 3_001, 0, 1), SessionEvent::Continue);
+        assert!(g.saw_race);
     }
 }

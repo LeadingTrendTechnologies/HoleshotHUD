@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-26T20:47:00Z",
+  "generatedAt": "2026-08-27T16:51:00Z",
   "title": "Design System: Holeshot HUD",
   "extensions": {
     "colorMeta": {
@@ -159,8 +159,8 @@
       "display": { "displayName": "Display", "purpose": "Dash gear, large italic P#, and the twin’s uppercase widget name." },
       "headline": { "displayName": "Headline", "purpose": "Event title, Settings pane titles, What’s new version plaques, and the 26px web wordmark." },
       "title": { "displayName": "Title", "purpose": "Twin SETTINGS labels, track-name plaques, and uppercase Center Plaque section labels." },
-      "body": { "displayName": "Body", "purpose": "Standings cells, settings field labels, and Download plaque type at 12px ExtraBold Italic." },
-      "label": { "displayName": "Label", "purpose": "Uppercase column headers (P, #, NAME, GAP)." }
+      "body": { "displayName": "Body", "purpose": "Standings cells, settings field labels, Download plaque type, and the Sectors delta inside the skew plaque." },
+      "label": { "displayName": "Label", "purpose": "Uppercase column headers (P, #, NAME, GAP). Sectors S# labels and split times at this quieter size." }
     },
     "shadows": [
       {
@@ -240,7 +240,7 @@
       "name": "Skew Plaque",
       "kind": "chip",
       "refersTo": "skew-plaque",
-      "description": "Broadcast hardware bar for rider count and track name.",
+      "description": "Broadcast hardware bar for rider count and track name. Sectors reuses the parallelogram for split deltas in race-meaning colors.",
       "html": "<span class=\"ds-skew\">12 · BUCHANAN</span>",
       "css": ".ds-skew { display: inline-flex; align-items: center; padding: 3px 12px; background: #FF9430; color: #0C0C0E; font-family: 'Exo 2', 'Segoe UI', sans-serif; font-size: 10px; font-weight: 800; font-style: italic; letter-spacing: 0.04em; text-transform: uppercase; clip-path: polygon(4px 0, 100% 0, calc(100% - 4px) 100%, 0 100%); }"
     },
@@ -256,9 +256,17 @@
       "name": "You Row",
       "kind": "custom",
       "refersTo": "table-row-you",
-      "description": "Local rider highlight in standings and relative.",
+      "description": "Local rider highlight in standings and relative. Sectors uses the same gold at 72% on the last completed split.",
       "html": "<div class=\"ds-board\"><div class=\"ds-row\"><span>2</span><span>9</span><span>Hunter Lawrence</span><span>2L</span></div><div class=\"ds-row ds-row-you\"><span>3</span><span>11</span><span>You</span><span>1L</span></div></div>",
       "css": ".ds-board { background: rgba(10,10,10,0.78); color: #E4E4E6; font-family: 'Exo 2', 'Segoe UI', sans-serif; font-size: 12px; font-weight: 800; font-style: italic; border-radius: 6px; overflow: hidden; min-width: 280px; } .ds-row { display: grid; grid-template-columns: 28px 36px 1fr 40px; gap: 8px; padding: 6px 10px; } .ds-row-you { background: rgba(196,132,36,0.5); }"
+    },
+    {
+      "name": "Sectors Board",
+      "kind": "custom",
+      "refersTo": "sector-delta-pb",
+      "description": "Labs split board: three stacked rows, you-row on the last completed sector, delta in a content-sized meaning-colored skew plaque.",
+      "html": "<div class=\"ds-sectors\"><div class=\"ds-sec-row\"><span class=\"ds-sec-label\">S1</span><span class=\"ds-sec-delta ds-sec-pb\">-0.087</span><span class=\"ds-sec-time\">24.093</span></div><div class=\"ds-sec-row ds-sec-fresh\"><span class=\"ds-sec-label\">S2</span><span class=\"ds-sec-delta ds-sec-slower\">+0.120</span><span class=\"ds-sec-time\">25.760</span></div><div class=\"ds-sec-row\"><span class=\"ds-sec-label\">S3</span><span class=\"ds-sec-delta ds-sec-pending\">--</span><span class=\"ds-sec-time\">23.090</span></div></div>",
+      "css": ".ds-sectors { width: 280px; background: rgba(10,10,10,0.82); color: #E4E4E6; border-radius: 6px; overflow: hidden; font-family: 'Exo 2', 'Segoe UI', sans-serif; font-weight: 800; font-style: italic; padding: 8px 10px; } .ds-sec-row { display: grid; grid-template-columns: 36px 1fr 64px; align-items: center; height: 36px; padding: 0 4px; } .ds-sec-fresh { background: rgba(196,132,36,0.72); color: #E4E4E6; } .ds-sec-label { font-size: 11px; color: #84848A; } .ds-sec-fresh .ds-sec-label, .ds-sec-fresh .ds-sec-time { color: #E4E4E6; } .ds-sec-time { font-size: 11px; color: #84848A; text-align: right; } .ds-sec-delta { justify-self: center; min-width: 48px; padding: 4px 10px; font-size: 14px; text-align: center; clip-path: polygon(5px 0, 100% 0, calc(100% - 5px) 100%, 0 100%); } .ds-sec-pb { background: #C470FF; color: #0C0C0E; } .ds-sec-slower { background: #FF4048; color: #0C0C0E; } .ds-sec-ahead { background: #30DC58; color: #0C0C0E; } .ds-sec-pending { background: #18191D; color: #84848A; } .ds-sec-delta:hover { filter: brightness(1.06); } .ds-sec-delta:focus-visible { outline: 2px solid #FF9430; outline-offset: 2px; }"
     },
     {
       "name": "HUD Panel",
@@ -279,13 +287,14 @@
   ],
   "narrative": {
     "northStar": "Broadcast Booth Glass",
-    "overview": "Holeshot HUD is a TV race overlay sitting on the game: dark plaques, skewed hardware bars, and a hot orange that always means *you*. It is broadcast-hot — stronger bars, louder flags, denser tables — not a quiet utility panel and not a consumer app shell. The rider glances; the graphic has to punch.\n\nType is Exo 2 ExtraBold Italic at table scale. Corners stay modest. Chrome is opt-in: a fresh install draws nothing. Settings is the same family in opaque charcoal, including a Center Plaque that can stack on the dimmed host. The website is not a second identity and not a marketing landing: it is an F8 Twin pit-box — settings pane, F8 widget rail, live HUD stage, Download as one orange clip-path plaque in a thin top bar.\n\nDo not drift toward generic sim-HUD blues, glassmorphism blobs, or light “esports dashboard” kits. Manufacturer bike colors stay on pills only.",
+    "overview": "Holeshot HUD is a TV race overlay sitting on the game: dark plaques, skewed hardware bars, and a hot orange that always means *you*. It is broadcast-hot — stronger bars, louder flags, denser tables — not a quiet utility panel and not a consumer app shell. The rider glances; the graphic has to punch.\n\nType is Exo 2 ExtraBold Italic at table scale. Corners stay modest. Chrome is opt-in: a fresh install draws nothing. Settings is the same family in opaque charcoal, including a Center Plaque that can stack on the dimmed host. The website is not a second identity and not a marketing landing: it is an F8 Twin pit-box — settings pane, F8 widget rail, live HUD stage, Download as one orange clip-path plaque in a thin top bar. Sectors (labs) is the same family as Standings: a three-row split board, you-row on the last completed sector, delta in a content-sized meaning-colored skew plaque.\n\nDo not drift toward generic sim-HUD blues, glassmorphism blobs, or light “esports dashboard” kits. Manufacturer bike colors stay on pills only.",
     "keyCharacteristics": [
       "Dark plaques over the game; orange is you / CTA only",
       "Skewed TV bars and bike-brand pills as hardware, not cards",
       "Exo 2 ExtraBold Italic as the HUD, settings, and web face (Teko / Goldman optional in the overlay)",
       "Tonal charcoal stacking for depth — no card shadows",
       "Race meaning uses blue / red / green / violet, never a second orange",
+      "Sectors is a split standings board: delta in the skew plaque, time secondary",
       "Web preview is F8 Twin: settings pane, 204px widget rail, then the live stage"
     ],
     "rules": [
@@ -297,7 +306,8 @@
       { "name": "The Twin Monitor Rule", "body": "The web preview is a pit box: settings pane, F8 widget rail, and live HUD stage, left to right. Download lives in the top bar on every width.", "section": "layout" },
       { "name": "The Tonal Stack Rule", "body": "Surfaces are flat at rest. No ambient card shadows. A knob may sit on a small dark disc; a standings board may not.", "section": "elevation" },
       { "name": "The TV Plaque Rule", "body": "Skewed bars and manufacturer pills are broadcast hardware. Do not replace them with cards, chips-in-a-row, or Material buttons.", "section": "shapes" },
-      { "name": "The Content-Sized Plaque Rule", "body": "Heading plaques size to the label. Do not stretch orange across the board. Download is the exception: it is a CTA plaque, not a heading.", "section": "shapes" }
+      { "name": "The Content-Sized Plaque Rule", "body": "Heading plaques and Sectors delta plaques size to their text. Do not stretch a plaque into a full-width bar. Download is the exception: it is a CTA plaque, not a heading.", "section": "shapes" },
+      { "name": "The Delta-Is-The-Glance Rule", "body": "On Sectors, delta lives in the colored skew plaque. Split time stays dim on the right. Do not demote delta to a side column or an F1 three-cell tape.", "section": "shapes" }
     ],
     "dos": [
       "Do keep Holeshot Orange for you, CTA, and accent only.",
@@ -306,6 +316,8 @@
       "Do start every widget hidden on a fresh install.",
       "Do treat map fill as transparent unless the rider raises opacity.",
       "Do size Settings heading plaques to the label (text + 36px), left-aligned.",
+      "Do put Sectors delta in a content-sized violet / red / green / charcoal skew plaque; keep split time secondary.",
+      "Do tint the last completed Sectors row You Row (same grammar as standings).",
       "Do treat the website as an F8 Twin pit-box: settings, widget rail (204px), live stage, Download in the top bar."
     ],
     "donts": [
@@ -317,6 +329,8 @@
       "Don't recode manufacturer pills to follow White/Black table text.",
       "Don't draw overlay work into the in-game C++ HUD (ingame_hud).",
       "Don't stretch heading plaques into full-width orange bars.",
+      "Don't draw Sectors as an F1 three-cell timing tape or put delta in a side column.",
+      "Don't ship Sectors when Experimental widgets is off.",
       "Don't wrap the live HUD in a boxed canvas inside a left-rail dashboard."
     ]
   }

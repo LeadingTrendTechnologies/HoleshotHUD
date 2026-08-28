@@ -81,7 +81,7 @@ impl Default for Standing {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Rect {
     pub x: f32,
     pub y: f32,
@@ -187,13 +187,13 @@ impl Default for Snapshot {
             standings_rect: Rect {
                 x: 0.012,
                 y: 0.03,
-                w: 0.235,
+                w: 0.20,
                 h: 0.42,
             },
             relative: Rect {
                 x: 0.012,
                 y: 0.62,
-                w: 0.235,
+                w: 0.20,
                 h: 0.33,
             },
             show_map: 1,
@@ -480,11 +480,30 @@ mod tests {
     }
 
     #[test]
+    fn cstr_strips_registered_and_copyright() {
+        let mut buf = [0u8; NAME];
+        write_name(&mut buf, "YZ450F®");
+        assert_eq!(cstr(&buf), "YZ450F");
+        write_name(&mut buf, "Honda©");
+        assert_eq!(cstr(&buf), "Honda");
+    }
+
+    #[test]
     fn snapshot_default_layout_is_sane() {
         let mut s = Snapshot::default();
         assert_eq!(s.magic, 0);
-        assert!(s.map.w > 0.0);
-        assert!(s.standings_rect.h > 0.0);
+        assert_eq!(s.map.x, 0.775);
+        assert_eq!(s.map.y, 0.62);
+        assert_eq!(s.map.w, 0.21);
+        assert_eq!(s.map.h, 0.34);
+        assert_eq!(s.standings_rect.x, 0.012);
+        assert_eq!(s.standings_rect.y, 0.03);
+        assert_eq!(s.standings_rect.w, 0.20);
+        assert_eq!(s.standings_rect.h, 0.42);
+        assert_eq!(s.relative.x, 0.012);
+        assert_eq!(s.relative.y, 0.62);
+        assert_eq!(s.relative.w, 0.20);
+        assert_eq!(s.relative.h, 0.33);
         assert_eq!(s.show_standings, 1);
         assert_eq!(s.on_track, 0);
         assert!(!s.has_session_data());

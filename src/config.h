@@ -12,8 +12,8 @@ struct HudRect
 
 struct PluginConfig
 {
-    HudRect standings{0.012f, 0.030f, 0.30f, 0.46f};
-    HudRect relative{0.012f, 0.62f, 0.30f, 0.36f};
+    HudRect standings{0.012f, 0.030f, 0.20f, 0.46f};
+    HudRect relative{0.012f, 0.62f, 0.20f, 0.36f};
     HudRect map{0.775f, 0.62f, 0.210f, 0.340f};
     HudRect minimap{0.815f, 0.035f, 0.165f, 0.295f};
     HudRect radar{0.438f, 0.755f, 0.124f, 0.220f};

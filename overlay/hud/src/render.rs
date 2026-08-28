@@ -28,7 +28,7 @@ pub(crate) use crate::race_store::{
 use fontdue::Font;
 use tiny_skia::{
     Color, FillRule, FilterQuality, GradientStop, LineCap, LineJoin, LinearGradient, Mask, Paint, Path,
-    PathBuilder, Pixmap, PixmapPaint, Point as SkPoint, Rect, SpreadMode, Stroke, Transform,
+    PathBuilder, Pixmap, PixmapPaint, Point as SkPoint, Rect, SpreadMode, Stroke, StrokeDash, Transform,
 };
 
 fn accent() -> Color { Color::from_rgba8(255, 148, 48, 255) }
@@ -348,7 +348,7 @@ impl Fonts {
     }
 }
 
-pub fn draw(px: &mut Pixmap, fonts: &Fonts, snap: Option<&Snapshot>, cfg: &HudConfig, w: u32, h: u32, age: f32, restart_hint: bool, settings_hint: bool) {
+pub fn draw(px: &mut Pixmap, fonts: &Fonts, snap: Option<&Snapshot>, cfg: &HudConfig, w: u32, h: u32, age: f32, restart_hint: bool, plugin_hint: bool, settings_hint: bool) {
     clear_click_riders();
     px.fill(if settings_hint {
         Color::from_rgba8(0, 0, 0, 1)
@@ -356,22 +356,37 @@ pub fn draw(px: &mut Pixmap, fonts: &Fonts, snap: Option<&Snapshot>, cfg: &HudCo
         Color::TRANSPARENT
     });
     if restart_hint {
-        let cx = w as f32 * 0.5;
-        if let Some(r) = rr(cx - 280.0, 8.0, 560.0, 40.0) {
-            fill_rect(px, r, panel_col());
-        }
-        text(px, fonts, "Restart MX Bikes once so the HUD stays on top while you ride", 13.0, cx, 18.0, accent(), true);
+        top_banner(px, fonts, w, "Restart MX Bikes once so the HUD stays on top while you ride");
+    } else if plugin_hint && !settings_hint {
+        top_banner(
+            px,
+            fonts,
+            w,
+            "Fully quit MX Bikes and start it again so the plugin can load",
+        );
     }
     let Some(s) = snap else {
         return;
     };
     if !s.has_session_data() && !settings_hint {
+        if !cfg.any_overlay_widget() {
+            top_banner(
+                px,
+                fonts,
+                w,
+                "Press F8 — turn on Show on overlay. Widgets appear on track.",
+            );
+        }
         return;
+    }
+    if !cfg.any_overlay_widget() && !settings_hint {
+        top_banner(px, fonts, w, "Press F8 — turn on Show on overlay");
     }
 
     let sw = w as f32;
     let sh = h as f32;
     let _race = RaceStore::tick(s);
+    let delta = crate::delta::view();
     if s.show_standings != 0 {
         let _g = push_style(fonts, cfg.st_bold, cfg.st_font);
         draw_standings(px, fonts, s, cfg, sw, sh);
@@ -408,12 +423,16 @@ pub fn draw(px: &mut Pixmap, fonts: &Fonts, snap: Option<&Snapshot>, cfg: &HudCo
         let _g = push_style(fonts, cfg.sector_bold, cfg.sector_font);
         draw_sector(px, fonts, s, cfg, sw, sh);
     }
+    if cfg.delta_visible() {
+        let _g = push_style(fonts, cfg.delta_bold, cfg.delta_font);
+        draw_delta(px, fonts, cfg, sw, sh, delta);
+    }
     if cfg.stance_visible() {
         let _g = push_style(fonts, cfg.stance_bold, cfg.stance_font);
         draw_stance(px, fonts, cfg, sw, sh);
     }
     if settings_hint {
-        draw_layout(px, fonts, s, cfg, sw, sh);
+        draw_layout(px, s, cfg, sw, sh);
         text(
             px,
             fonts,
@@ -431,7 +450,73 @@ fn rr(x: f32, y: f32, w: f32, h: f32) -> Option<Rect> {
     Rect::from_xywh(x, y, w, h)
 }
 
-fn draw_layout(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) {
+fn top_banner(px: &mut Pixmap, fonts: &Fonts, w: u32, msg: &str) {
+    let cx = w as f32 * 0.5;
+    let bw = 680.0;
+    if let Some(r) = rr(cx - bw * 0.5, 8.0, bw, 40.0) {
+        fill_rect(px, r, panel_col());
+    }
+    text(px, fonts, msg, 13.0, cx, 18.0, accent(), true);
+}
+
+/// App mark in the top-right while the overlay is on MX Bikes. Click it to open settings.
+/// Returns the hit box in overlay pixels.
+pub fn draw_live_mark(px: &mut Pixmap, w: u32, _h: u32, hot: bool) -> (f32, f32, f32, f32) {
+    let icon = app_icon();
+    let size = 40.0;
+    let pad = 10.0;
+    let x = (w as f32 - pad - size).max(8.0);
+    let y = pad;
+    // icon-48 art uses a ~10px corner on 48px; keep that ratio so the orange border is not clipped.
+    let r = size * 10.0 / 48.0;
+    if hot {
+        if let Some(glow) = round_rect_path(x - 3.0, y - 3.0, size + 6.0, size + 6.0, r + 3.0) {
+            fill_path(px, &glow, Color::from_rgba8(255, 148, 48, 90));
+        }
+    }
+    let scale = size / icon.width().max(1) as f32;
+    let mut paint = PixmapPaint::default();
+    paint.quality = FilterQuality::Bicubic;
+    let clip = round_rect_path(x, y, size, size, r).and_then(|path| {
+        let mut m = Mask::new(px.width(), px.height())?;
+        m.fill_path(&path, FillRule::Winding, true, Transform::identity());
+        Some(m)
+    });
+    px.draw_pixmap(
+        0,
+        0,
+        icon.as_ref(),
+        &paint,
+        Transform::from_row(scale, 0.0, 0.0, scale, x, y),
+        clip.as_ref(),
+    );
+    (x, y, size, size)
+}
+
+fn app_icon() -> &'static Pixmap {
+    static ICON: OnceLock<Pixmap> = OnceLock::new();
+    ICON.get_or_init(|| Pixmap::decode_png(include_bytes!("../../icon-48.png")).expect("icon-48.png"))
+}
+
+/// Circular rounded rect (cubic approximation). Quadratic corners look pointed at this size.
+fn round_rect_path(x: f32, y: f32, w: f32, h: f32, r: f32) -> Option<Path> {
+    let r = r.min(w * 0.5).min(h * 0.5);
+    let k = 0.55228475 * r;
+    let mut pb = PathBuilder::new();
+    pb.move_to(x + r, y);
+    pb.line_to(x + w - r, y);
+    pb.cubic_to(x + w - r + k, y, x + w, y + r - k, x + w, y + r);
+    pb.line_to(x + w, y + h - r);
+    pb.cubic_to(x + w, y + h - r + k, x + w - r + k, y + h, x + w - r, y + h);
+    pb.line_to(x + r, y + h);
+    pb.cubic_to(x + r - k, y + h, x, y + h - r + k, x, y + h - r);
+    pb.line_to(x, y + r);
+    pb.cubic_to(x, y + r - k, x + r - k, y, x + r, y);
+    pb.close();
+    pb.finish()
+}
+
+fn draw_layout(px: &mut Pixmap, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) {
     if s.show_standings != 0 {
         layout_box(px, s.standings_rect.x * sw, s.standings_rect.y * sh, s.standings_rect.w * sw, s.standings_rect.h * sh, false);
     }
@@ -453,13 +538,21 @@ fn draw_layout(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
     if cfg.sector_visible() {
         layout_box(px, cfg.sector.x * sw, cfg.sector.y * sh, cfg.sector.w * sw, cfg.sector.h * sh, false);
     }
+    if cfg.delta_visible() {
+        layout_box(px, cfg.delta.x * sw, cfg.delta.y * sh, cfg.delta.w * sw, cfg.delta.h * sh, false);
+    }
     if cfg.stance_visible() {
         layout_box(px, cfg.stance.x * sw, cfg.stance.y * sh, cfg.stance.w * sw, cfg.stance.h * sh, false);
     }
     if cfg.show_dash {
-        let _g = push_style(fonts, cfg.dash_bold, cfg.dash_font);
-        let (dx, dy, dw, dh) = dash_box(fonts, s, cfg, sw, sh);
-        layout_box(px, dx, dy, dw, dh, false);
+        layout_box(
+            px,
+            cfg.dash.x * sw,
+            cfg.dash.y * sh,
+            cfg.dash.w * sw,
+            cfg.dash.h * sh,
+            false,
+        );
     }
     if cfg.show_minimap {
         let rw = cfg.minimap.w * sw;
@@ -684,6 +777,13 @@ fn col_slots<T: Copy>(
     out
 }
 
+fn hug_board_w<T>(origin: f32, pad: f32, max_w: f32, slots: &[(T, f32, f32)]) -> f32 {
+    let Some((_, x, cw)) = slots.last() else {
+        return max_w;
+    };
+    (x + cw - origin + pad).clamp(pad * 2.0 + 40.0, max_w)
+}
+
 fn fill_focus_row(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, c: Color) {
     if let Some(rrt) = rr(x, y, w, h) {
         fill_rect(px, rrt, c);
@@ -696,6 +796,22 @@ fn scale_a(opacity_pct: i32) -> u8 {
 
 fn you_row_bg(opacity_pct: i32) -> Color {
     Color::from_rgba8(196, 132, 36, scale_a(opacity_pct))
+}
+
+/// Extra black only reads while the game still shows through. Opaque night-ink
+/// cannot get darker, so the stripe lifts to a slightly lighter charcoal.
+fn stripe_row_bg(panel_a: u8) -> Color {
+    if panel_a == 0 {
+        return Color::from_rgba8(0, 0, 0, 0);
+    }
+    // Stay on the black wash through the default ~78% Background; crossfade
+    // to white from ~80% so 100% still zebras.
+    let lift = panel_a.saturating_sub(204) as u32;
+    let dark = 51u32.saturating_sub(lift);
+    let rgb = ((255u32 * lift) / 51) as u8;
+    let dark_a = (panel_a as u32 * 70 / 255) * dark / 51;
+    let light_a = (34u32 * lift * panel_a as u32) / (51 * 255);
+    Color::from_rgba8(rgb, rgb, rgb, (dark_a + light_a) as u8)
 }
 
 fn lapping_row_bg(opacity_pct: i32) -> Color {
@@ -1160,12 +1276,55 @@ fn sys_procs() -> [SysProc; SYS_PROC_N] {
 }
 
 
-fn focus_track_pos(s: &Snapshot) -> f32 {
-    let focus = if s.focus_race_num > 0 {
+fn camera_subject(s: &Snapshot) -> i32 {
+    if s.focus_race_num > 0 {
         s.focus_race_num
     } else {
         s.local_race_num
-    };
+    }
+}
+
+struct SubjectPose {
+    x: f32,
+    z: f32,
+    yaw: f32,
+    vel_x: f32,
+    vel_z: f32,
+    crashed: bool,
+    from_local: bool,
+}
+
+/// Where the orange "you" marker lives: live bike data while riding, the spectated
+/// rider's XZ while watching someone else. Overlay clears leftover telemetry while
+/// `SpectateVehicles` is live so spectate can follow the camera; once that stops,
+/// telemetry belongs to you again even if focus is still stale.
+fn subject_pose(s: &Snapshot, age: f32) -> Option<SubjectPose> {
+    if s.has_telemetry != 0 {
+        return Some(SubjectPose {
+            x: s.local_x + s.local_vel_x * age,
+            z: s.local_z + s.local_vel_z * age,
+            yaw: s.local_yaw,
+            vel_x: s.local_vel_x,
+            vel_z: s.local_vel_z,
+            crashed: s.local_crashed != 0,
+            from_local: true,
+        });
+    }
+    let subject = camera_subject(s);
+    let n = s.rider_count.max(0) as usize;
+    s.riders.iter().take(n).find(|r| r.race_num == subject).map(|r| SubjectPose {
+        x: r.x,
+        z: r.z,
+        yaw: r.yaw,
+        vel_x: 0.0,
+        vel_z: 0.0,
+        crashed: r.crashed != 0,
+        from_local: false,
+    })
+}
+
+fn focus_track_pos(s: &Snapshot) -> f32 {
+    let focus = camera_subject(s);
     let raw = s
         .riders
         .iter()
@@ -1615,7 +1774,7 @@ fn draw_standings(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig,
     let r = s.standings_rect;
     let x = r.x * sw;
     let y = r.y * sh;
-    let w = r.w * sw;
+    let max_w = r.w * sw;
     let race = RaceStore::get();
     // Live order and live places, so a pass moves a row now instead of at the line.
     let mut board = race.field.board();
@@ -1643,6 +1802,10 @@ fn draw_standings(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig,
     let foot_h = if BoardField::any(&cfg.st_foot) { 20.0 * k } else { 0.0 };
     let vis = slice.len().max(1);
     let h = (head_h + col_h + track_h + vis as f32 * row_h + foot_h + 8.0).min(r.h * sh);
+    let cols = cfg.standings_cols();
+    let pad = 8.0;
+    let slots = col_slots(x, pad, max_w, &cols, |c| c.width(cfg) as f32, |c| matches!(c, StField::Name));
+    let w = hug_board_w(x, pad, max_w, &slots);
     let a = bg_a(cfg.st_bg);
     if a > 0 {
         fill_round(px, x, y, w, h, 6.0, Color::from_rgba8(8, 8, 10, a));
@@ -1662,9 +1825,6 @@ fn draw_standings(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig,
         return;
     }
 
-    let cols = cfg.standings_cols();
-    let pad = 8.0;
-    let slots = col_slots(x, pad, w, &cols, |c| c.width(cfg) as f32, |c| matches!(c, StField::Name));
     let (ink, ink_dim, out_c, hdr_c) = table_ink(cfg.st_text);
     let bar_end = slots
         .iter()
@@ -1683,7 +1843,7 @@ fn draw_standings(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig,
             .unwrap_or(0)
     };
     let you_bg = you_row_bg(cfg.st_hl);
-    let stripe_c = Color::from_rgba8(0, 0, 0, ((a as u16 * 70) / 255) as u8);
+    let stripe_c = stripe_row_bg(a);
 
     let mut cy = y + head_h;
     let track = {
@@ -1709,7 +1869,7 @@ fn draw_standings(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig,
     let ids = row_ids(slice.iter().map(|row| row.race_num));
     let row_ys = ST_SLIDE.with(|a| a.borrow_mut().step(&ids, body_y, row_h, anim_now()));
     for vis_i in 0..slice.len() {
-        if vis_i % 2 == 1 && a > 0 {
+        if cfg.st_stripe && vis_i % 2 == 1 && a > 0 {
             fill_focus_row(px, x, body_y + vis_i as f32 * row_h, w, row_h, stripe_c);
         }
     }
@@ -1861,56 +2021,155 @@ fn ticker_title(s: &Snapshot) -> String {
     }
 }
 
+fn sector_col_fracs(fresh: i32) -> [f32; 3] {
+    if (0..=2).contains(&fresh) {
+        let mut f = [0.22, 0.22, 0.22];
+        f[fresh as usize] = 0.56;
+        f
+    } else {
+        [1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0]
+    }
+}
+
+fn sector_hero_index(s: &Snapshot) -> i32 {
+    crate::sector::hero_index(s)
+}
+
 fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) {
+    // THESIS: the sector you are in owns the board — live delta vs your best at this point, freeze when you leave.
+    // OWN-WORLD: night-ink 6px plaque, hairline columns, ExtraBold Italic deltas, orange skew S# plaque on the current cell.
+    // STORY: rider glances at this stretch, reads up/down vs their best, keeps eyes on the track.
+    // FIRST VIEWPORT: three columns; current ~56% wide with huge live delta and orange S#. Flanks stay quiet. Pending is "--".
+    // FORM: sector-comp-fresh, user-locked; PB is Ahead Green instead of Best Lap Violet. No glow.
+    // FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
     let r = cfg.sector;
     let x = r.x * sw;
     let y = r.y * sh;
     let w = r.w * sw;
     let h = r.h * sh;
-    if w < 48.0 || h < 36.0 {
+    if w < 88.0 || h < 44.0 {
         return;
     }
     let a = bg_a(cfg.sector_bg);
-    fill_round(px, x, y, w, h, 7.0, Color::from_rgba8(10, 10, 12, a));
-    let pad = (w * 0.07).clamp(6.0, 12.0);
     let n = 3usize;
-    let row_h = ((h - pad * 2.0) / n as f32).max(12.0);
-    let fs = (row_h * 0.48).clamp(9.0, 16.0);
-    let label_w = measure(fonts, "S3", fs) + 8.0;
-    let delta_w = measure(fonts, "+00.000", fs) + 4.0;
-    let time_x = x + pad + label_w;
-    let time_w = (w - pad * 2.0 - label_w - delta_w).max(28.0);
-    let delta_x = time_x + time_w;
-    let purple = Color::from_rgba8(196, 112, 255, 255);
+    let pad_x = (w * 0.03).clamp(6.0, 12.0);
+    let pad_y = (h * 0.08).clamp(5.0, 10.0);
+    if a > 0 {
+        fill_round(px, x, y, w, h, 6.0, Color::from_rgba8(10, 10, 10, a));
+        let rad = 6.0f32.min(w * 0.5).min(h * 0.5);
+        let mut pb = PathBuilder::new();
+        pb.move_to(x + rad, y);
+        pb.line_to(x + w - rad, y);
+        pb.quad_to(x + w, y, x + w, y + rad);
+        pb.line_to(x + w, y + h - rad);
+        pb.quad_to(x + w, y + h, x + w - rad, y + h);
+        pb.line_to(x + rad, y + h);
+        pb.quad_to(x, y + h, x, y + h - rad);
+        pb.line_to(x, y + rad);
+        pb.quad_to(x, y, x + rad, y);
+        pb.close();
+        if let Some(path) = pb.finish() {
+            let edge = ((a as u16 * 70) / 255).max(36) as u8;
+            stroke_path(px, &path, Color::from_rgba8(220, 220, 224, edge), 1.0);
+        }
+    }
+    let inner_w = (w - pad_x * 2.0).max(60.0);
+    let cap_fs = (h * 0.16).clamp(13.0, 20.0);
+    let cap_y = y + (pad_y * 0.25).max(2.0);
+    text(
+        px,
+        fonts,
+        "vs. your best",
+        cap_fs,
+        x + w * 0.5,
+        cap_y,
+        text_dim(),
+        true,
+    );
+    let body_y = cap_y + cap_fs + 4.0;
+    let fracs = sector_col_fracs(sector_hero_index(s));
+    let mut col_x = [0.0; 3];
+    let mut col_w = [0.0; 3];
+    let mut acc = x + pad_x;
     for i in 0..n {
-        let row = sector_row(s, i);
-        let ry = y + pad + i as f32 * row_h;
-        if row.fresh {
-            if let Some(rrt) = rr(x + 3.0, ry, w - 6.0, row_h) {
-                fill_rect(px, rrt, Color::from_rgba8(255, 148, 48, 28));
+        col_x[i] = acc;
+        col_w[i] = inner_w * fracs[i];
+        acc += col_w[i];
+    }
+    for i in 1..n {
+        if let Some(line) = rr(col_x[i], body_y, 1.0, (y + h - pad_y - body_y).max(8.0)) {
+            fill_rect(px, line, Color::from_rgba8(42, 42, 46, a.max(90)));
+        }
+    }
+    let ink = Color::from_rgba8(12, 12, 14, 255);
+    for i in 0..n {
+        let row = sector_row(s, i, cfg.sector_live);
+        let cx = col_x[i];
+        let cw = col_w[i];
+        let hero = row.fresh;
+        if hero {
+            if let Some(wash) = rr(cx + 1.0, body_y, (cw - 2.0).max(4.0), (y + h - pad_y - body_y).max(8.0)) {
+                fill_rect(px, wash, Color::from_rgba8(255, 148, 48, 28));
             }
         }
-        let time_c = if row.pending {
-            text_dim()
-        } else if row.new_best {
-            purple
-        } else if row.slower {
-            behind_col()
-        } else {
-            text_col()
-        };
         let delta_c = if row.pending || !row.has_delta {
             text_dim()
-        } else if row.new_best {
-            purple
         } else if row.slower {
             behind_col()
         } else {
             ahead_col()
         };
-        text(px, fonts, row.label, fs, x + pad, ry + (row_h - fs) * 0.28, text_dim(), false);
-        col_text(px, fonts, &row.time, fs, time_x, time_w, ry + (row_h - fs) * 0.28, time_c, true);
-        col_text(px, fonts, &row.delta, fs, delta_x, delta_w, ry + (row_h - fs) * 0.28, delta_c, true);
+        let time_c = if hero { text_col() } else { text_dim() };
+        let label_fs = if hero {
+            (h * 0.13).clamp(10.0, 14.0)
+        } else {
+            (h * 0.12).clamp(9.0, 12.0)
+        };
+        let delta_fs = if hero {
+            (h * 0.38).max(18.0)
+        } else {
+            (h * 0.22).max(12.0)
+        };
+        let time_fs = if hero {
+            (h * 0.14).clamp(10.0, 15.0)
+        } else {
+            (h * 0.12).clamp(9.0, 12.0)
+        };
+        let mid = cx + cw * 0.5;
+        let label_y = body_y;
+        if hero {
+            let plaque_h = (label_fs + 8.0).min(h * 0.28);
+            let plaque_w = (measure(fonts, row.label, label_fs) + 16.0).min(cw - 12.0);
+            let skew = (plaque_h * 0.18).clamp(3.0, 6.0);
+            let px0 = cx + 8.0;
+            fill_skew(px, px0, label_y, plaque_w, plaque_h, skew, accent());
+            text(
+                px,
+                fonts,
+                row.label,
+                label_fs,
+                px0 + plaque_w * 0.5 + skew * 0.5,
+                label_y + (plaque_h - label_fs) * 0.42,
+                ink,
+                true,
+            );
+        } else {
+            text(px, fonts, row.label, label_fs, mid, label_y, text_dim(), true);
+        }
+        let delta_y = y + (h - delta_fs) * 0.42;
+        text(px, fonts, &row.delta, delta_fs, mid, delta_y, delta_c, true);
+        let time_y = y + h - pad_y - time_fs - 2.0;
+        let tw = measure(fonts, &row.time, time_fs);
+        let chip_x = 7.0;
+        let chip_y = 3.0;
+        fill_night_pill(
+            px,
+            mid - tw * 0.5 - chip_x,
+            time_y - chip_y,
+            tw + chip_x * 2.0,
+            time_fs + chip_y * 2.0,
+        );
+        text(px, fonts, &row.time, time_fs, mid, time_y, time_c, true);
     }
 }
 
@@ -1920,36 +2179,220 @@ struct SectorRowView {
     delta: String,
     pending: bool,
     has_delta: bool,
-    new_best: bool,
     slower: bool,
     fresh: bool,
 }
 
-fn sector_row(s: &Snapshot, i: usize) -> SectorRowView {
-    const LABELS: [&str; 3] = ["S1", "S2", "S3"];
-    let label = LABELS.get(i).copied().unwrap_or("S?");
-    let cur = s.sector_cur.get(i).copied().unwrap_or(0);
-    let last = s.sector_last_lap.get(i).copied().unwrap_or(0);
-    let best = s.sector_best.get(i).copied().unwrap_or(0);
-    let delta = s.sector_delta.get(i).copied().unwrap_or(0);
-    let has_delta = (s.sector_delta_valid & (1 << i)) != 0;
-    let pending = cur <= 0;
-    let time_ms = if cur > 0 { cur } else { last };
-    let new_best = !pending && ((has_delta && delta < 0) || (best > 0 && cur == best && delta <= 0));
+fn sector_row(s: &Snapshot, i: usize, live: bool) -> SectorRowView {
+    let src = crate::sector::row(s, i, live);
+    let showing = src.time_ms > 0;
     SectorRowView {
-        label,
-        time: format_lap(time_ms),
-        delta: if pending || !has_delta {
+        label: src.label,
+        time: if showing {
+            format_lap(src.time_ms)
+        } else {
+            "--".into()
+        },
+        delta: if !showing || !src.has_delta {
             "--".into()
         } else {
-            format_delta_ms(delta)
+            format_delta_ms(src.delta_ms)
         },
-        pending,
-        has_delta: has_delta && !pending,
-        new_best,
-        slower: !pending && has_delta && delta > 0,
-        fresh: s.sector_last == i as i32,
+        pending: src.pending,
+        has_delta: src.has_delta,
+        slower: src.slower,
+        fresh: src.fresh,
     }
+}
+
+/// Orange Δ mark. Bundled Exo 2 has no Delta glyph, so this is drawn.
+fn fill_delta_mark(px: &mut Pixmap, x: f32, y: f32, h: f32, color: Color) -> f32 {
+    let w = h * 0.92;
+    let skew = h * 0.22;
+    let mut pb = PathBuilder::new();
+    pb.move_to(x + skew * 0.12, y + h);
+    pb.line_to(x + w + skew * 0.88, y + h);
+    pb.line_to(x + w * 0.5 + skew * 0.5, y);
+    pb.close();
+    if let Some(path) = pb.finish() {
+        fill_path(px, &path, color);
+    }
+    w + skew * 0.5
+}
+
+fn draw_delta(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    cfg: &HudConfig,
+    sw: f32,
+    sh: f32,
+    view: crate::delta::DeltaView,
+) {
+    // THESIS: one glance — am I up or down vs my best at this spot on the lap.
+    // OWN-WORLD: Hair — orange Δ letter, ExtraBold Italic delta, 2px center-zero line. No plaque.
+    // STORY: after one decent lap the line is live; it is not the in-game ghost.
+    // FIRST VIEWPORT: Δ -0.840 over a hairline that fills left of a center tick; BEST and LAST cap the ends.
+    // FORM: Hair · approved .impeccable/mocks/delta-hair.png
+    let r = cfg.delta;
+    let x = r.x * sw;
+    let y = r.y * sh;
+    let w = r.w * sw;
+    let h = r.h * sh;
+    if w < 160.0 || h < 44.0 {
+        return;
+    }
+    let a = bg_a(cfg.delta_bg);
+    if a > 0 {
+        fill_round(px, x, y, w, h, 6.0, Color::from_rgba8(10, 10, 10, a));
+    }
+    let pad_x = (w * 0.04).clamp(8.0, 16.0);
+    let num_fs = (h * 0.40).clamp(18.0, 44.0);
+    let mark_fs = (num_fs * 0.36).clamp(11.0, 18.0);
+    let times_fs = (h * 0.18).clamp(13.0, 20.0);
+    let cap_fs = (h * 0.155).clamp(12.0, 17.0);
+    let line_gap = (h * 0.09).clamp(6.0, 12.0);
+    let foot_gap = (h * 0.08).clamp(6.0, 10.0);
+    let line_h = 2.0;
+    let stack_h = num_fs + line_gap + line_h + foot_gap + times_fs;
+    let gy = y + (h - stack_h) * 0.5;
+    let label = if view.ready && view.has_delta {
+        format_delta_ms(view.delta_ms)
+    } else if view.ready {
+        "—".into()
+    } else if view.recording {
+        "REC".into()
+    } else {
+        "SET LAP".into()
+    };
+    let col = if !view.ready || !view.has_delta {
+        text_dim()
+    } else if view.delta_ms > 0 {
+        behind_col()
+    } else if view.delta_ms < 0 {
+        ahead_col()
+    } else {
+        text_col()
+    };
+    let gap = (num_fs * 0.18).clamp(6.0, 10.0);
+    let mark_h = mark_fs;
+    let mark_w = mark_h * 0.92 + mark_h * 0.22 * 0.5;
+    let num_w = measure(fonts, &label, num_fs);
+    let cluster = mark_w + gap + num_w;
+    let left = x + (w - cluster) * 0.5;
+    let mark_y = gy + (num_fs - mark_h) * 0.78;
+    fill_delta_mark(px, left, mark_y, mark_h, accent());
+    text(px, fonts, &label, num_fs, left + mark_w + gap, gy, col, false);
+
+    let line_x = x + pad_x;
+    let line_w = (w - pad_x * 2.0).max(48.0);
+    let line_y = gy + num_fs + line_gap;
+    let mid = line_x + line_w * 0.5;
+    if let Some(track) = rr(line_x, line_y, line_w, line_h) {
+        fill_rect(px, track, Color::from_rgba8(58, 58, 64, 220));
+    }
+    if view.ready && view.has_delta {
+        let t = (view.delta_ms as f32 / crate::delta::BAR_RANGE_MS as f32).clamp(-1.0, 1.0);
+        let fill_w = (line_w * 0.5 * t.abs()).max(if t.abs() > 0.02 { 3.0 } else { 0.0 });
+        if fill_w > 0.5 {
+            let fill_col = if view.delta_ms > 0 {
+                Color::from_rgba8(255, 64, 72, 255)
+            } else {
+                Color::from_rgba8(48, 220, 88, 255)
+            };
+            let fx = if t < 0.0 { mid - fill_w } else { mid };
+            if let Some(fill) = rr(fx, line_y - 1.0, fill_w, 4.0) {
+                fill_rect(px, fill, fill_col);
+            }
+        }
+    } else if view.recording && view.cover > 0 {
+        let fill_w = (line_w * (view.cover as f32 / 100.0)).max(3.0);
+        if let Some(fill) = rr(line_x, line_y - 1.0, fill_w, 4.0) {
+            fill_rect(px, fill, Color::from_rgba8(255, 148, 48, 200));
+        }
+    }
+    if let Some(tick) = rr(mid - 0.5, line_y - 4.0, 1.0, 10.0) {
+        fill_rect(px, tick, Color::from_rgba8(200, 200, 204, 230));
+    }
+
+    let times_y = line_y + line_h + foot_gap;
+    let cap_y = times_y + (times_fs - cap_fs) * 0.45;
+    let pills = cfg.delta_bg < 40;
+    if view.recording {
+        let hint = "complete two full laps";
+        let hw = measure(fonts, hint, times_fs);
+        let hx = mid - hw * 0.5;
+        if pills {
+            fill_night_pill(
+                px,
+                hx - 7.0,
+                times_y - 3.0,
+                hw + 14.0,
+                times_fs + 6.0,
+            );
+        }
+        text(px, fonts, hint, times_fs, mid, times_y, text_dim(), true);
+    } else {
+        if view.ref_lap_ms > 0 {
+            let best = format_lap(view.ref_lap_ms);
+            draw_delta_lap_chip(
+                px, fonts, "BEST", &best, line_x, cap_y, times_y, cap_fs, times_fs, pills,
+                text_dim(), text_col(),
+            );
+        }
+        if view.new_best {
+            let pb = format_lap(if view.last_lap_ms > 0 {
+                view.last_lap_ms
+            } else {
+                view.ref_lap_ms
+            });
+            let cap = "NEW BEST";
+            let cap_w = measure(fonts, cap, cap_fs) + 6.0;
+            let chip_w = cap_w + measure(fonts, &pb, times_fs);
+            let lx = line_x + line_w - chip_w;
+            draw_delta_lap_chip(
+                px, fonts, cap, &pb, lx, cap_y, times_y, cap_fs, times_fs, pills,
+                accent(), accent(),
+            );
+        } else if view.last_lap_ms > 0 {
+            let last = format_lap(view.last_lap_ms);
+            let cap_w = measure(fonts, "LAST", cap_fs) + 6.0;
+            let last_w = cap_w + measure(fonts, &last, times_fs);
+            let lx = line_x + line_w - last_w;
+            draw_delta_lap_chip(
+                px, fonts, "LAST", &last, lx, cap_y, times_y, cap_fs, times_fs, pills,
+                text_dim(), text_col(),
+            );
+        }
+    }
+}
+
+/// Night-ink stadium behind BEST / LAST when the panel is too thin to read on the game.
+fn draw_delta_lap_chip(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    cap: &str,
+    time: &str,
+    x: f32,
+    cap_y: f32,
+    time_y: f32,
+    cap_fs: f32,
+    times_fs: f32,
+    pill: bool,
+    cap_col: Color,
+    time_col: Color,
+) {
+    let cap_w = measure(fonts, cap, cap_fs) + 6.0;
+    let tw = cap_w + measure(fonts, time, times_fs);
+    if pill {
+        let pad_x = 8.0;
+        let pad_y = 3.0;
+        let top = cap_y.min(time_y);
+        let bot = (time_y + times_fs).max(cap_y + cap_fs);
+        let ph = (bot - top) + pad_y * 2.0;
+        fill_night_pill(px, x - pad_x, top - pad_y, tw + pad_x * 2.0, ph);
+    }
+    text(px, fonts, cap, cap_fs, x, cap_y, cap_col, false);
+    text(px, fonts, time, times_fs, x + cap_w, time_y, time_col, false);
 }
 
 fn fmt_sys_mem(mb: f32) -> String {
@@ -2619,17 +3062,6 @@ fn dash_pos_col() -> Color { Color::from_rgba8(232, 120, 23, 255) }
 /// Amber for the lapped tag: reads as a warning without competing with the orange position.
 fn dash_lapped_col() -> Color { Color::from_rgba8(226, 186, 74, 255) }
 
-static DASH_VIS: Mutex<crate::shm::Rect> = Mutex::new(crate::shm::Rect {
-    x: 0.41,
-    y: 0.82,
-    w: 0.18,
-    h: 0.16,
-});
-
-pub fn dash_visual() -> crate::shm::Rect {
-    *DASH_VIS.lock().unwrap_or_else(|e| e.into_inner())
-}
-
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum DashFlag {
     None,
@@ -2752,13 +3184,6 @@ fn max_digit_w(fonts: &Fonts, size: f32) -> f32 {
     ('0'..='9').map(|d| measure(fonts, d.encode_utf8(&mut [0; 4]), size)).fold(0.0, f32::max)
 }
 
-fn dash_box(fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) -> (f32, f32, f32, f32) {
-    let lay = dash_layout(fonts, s, cfg, sw, sh);
-    let border = dash_wrap_border(&lay);
-    let (ox, oy, ow, oh) = dash_wrap_outer(&lay, border);
-    (ox, oy, ow, oh)
-}
-
 fn dash_layout(fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) -> DashLay {
     let x0 = cfg.dash.x * sw;
     let y = cfg.dash.y * sh;
@@ -2767,33 +3192,6 @@ fn dash_layout(fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) -
     if cfg.dash_simple {
         return dash_layout_simple(fonts, s, cfg, sw, sh, x0, y, flag, grow);
     }
-    let h = (cfg.dash.h * sh).max(80.0);
-    let flag_full = if flag != DashFlag::None {
-        (h * 0.22).clamp(20.0, 28.0)
-    } else {
-        0.0
-    };
-    let flag_h = flag_full * grow;
-    let pad = (h * 0.12).clamp(14.0, 20.0);
-    let foot_pad = (h * 0.035).clamp(3.0, 6.0);
-    let footer_h = (h * 0.20).clamp(16.0, 22.0);
-    let mid_gap = (h * 0.04).clamp(4.0, 8.0);
-    let (rev_h, rev_y, main_y) = if cfg.dash_rev {
-        let rev_h = (h * 0.12).clamp(11.0, 15.0);
-        let rev_y = y + (pad * 0.28).max(4.0);
-        let main_y = (rev_y + rev_h + 14.0).max(y + pad);
-        (rev_h, rev_y, main_y)
-    } else {
-        (0.0, y, y + pad)
-    };
-    let main_h = (y + h - foot_pad - footer_h - mid_gap - main_y).max(36.0);
-    let label = (h * 0.095).clamp(8.5, 11.0);
-    let gear_n = (main_h * 0.58).clamp(20.0, 36.0);
-    let val = (main_h * 0.26).clamp(13.0, 18.0);
-    let pos_n = (main_h * 0.44).clamp(18.0, 30.0);
-    let lap_sz = (val * 0.88).max(10.5);
-    let icon_s = (footer_h * 0.68).clamp(9.0, 12.0);
-    let fsz = (footer_h * 0.52).clamp(8.5, 11.0);
 
     let gear = if s.local_gear <= 0 {
         "N".into()
@@ -2813,50 +3211,70 @@ fn dash_layout(fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) -
     let ptxt = pos.map(|p| format!("P{p}")).unwrap_or_else(|| "P--".into());
     let lap_txt = race_progress_text(s);
     let lapped = lapped(s);
-    let tag_sz = (lap_sz * 0.82).max(9.0);
+    let foot: Vec<(char, String)> = [cfg.dash_left, cfg.dash_mid, cfg.dash_right]
+        .into_iter()
+        .filter_map(|field| dash_foot_item(s, cfg, field))
+        .collect();
+
+    const NAT_H: f32 = 147.0;
+    const NAT_W: f32 = 280.0;
+    let slot_w = (cfg.dash.w * sw).max(1.0);
+    let slot_h = (cfg.dash.h * sh).max(1.0);
+    let k = (slot_h / NAT_H).min(slot_w / NAT_W).clamp(0.35, 2.4);
+    let pad = 15.0 * k;
+    let foot_pad = 5.0 * k;
+    let has_foot = !foot.is_empty();
+    let footer_h = if has_foot { 23.0 * k } else { 0.0 };
+    let mid_gap = if has_foot { 5.0 * k } else { 0.0 };
+    let (rev_h, rev_lead, rev_to_main) = if cfg.dash_rev {
+        (16.0 * k, 5.0 * k, 9.0 * k)
+    } else {
+        (0.0, pad, 0.0)
+    };
+    let h = slot_h;
+    let w = slot_w;
+    let x = x0;
+    let chrome = rev_lead + rev_h + rev_to_main + mid_gap + footer_h + foot_pad;
+    let main_h = (h - chrome).max(28.0 * k);
+    let flag_full = if flag != DashFlag::None {
+        (h * 0.22).clamp(20.0 * k, 28.0 * k)
+    } else {
+        0.0
+    };
+    let flag_h = flag_full * grow;
+    let rev_y = y + rev_lead;
+    let main_y = if cfg.dash_rev {
+        rev_y + rev_h + rev_to_main
+    } else {
+        y + pad
+    };
+    let label = 14.0 * k;
+    let gear_n = (main_h * 0.58).clamp(24.0 * k, 48.0 * k);
+    let val = (main_h * 0.26).clamp(15.0 * k, 22.0 * k);
+    let pos_n = (main_h * 0.44).clamp(22.0 * k, 38.0 * k);
+    let lap_sz = (val * 0.88).max(13.0 * k);
+    let icon_s = if has_foot { 15.0 * k } else { 0.0 };
+    let fsz = if has_foot { 14.0 * k } else { 0.0 };
+    let tag_sz = (lap_sz * 0.82).max(12.0 * k);
     let lap_row_w = measure(fonts, &lap_txt, lap_sz)
         + if lapped {
             LAPPED_GAP + measure(fonts, LAPPED_TAG, tag_sz)
         } else {
             0.0
         };
-    let foot: Vec<(char, String)> = [cfg.dash_left, cfg.dash_mid, cfg.dash_right]
-        .into_iter()
-        .filter_map(|field| dash_foot_item(s, cfg, field))
-        .collect();
 
-    let gear_w = (main_h * 0.82).clamp(44.0, 56.0);
+    let gear_w = (main_h * 0.82).clamp(52.0 * k, 70.0 * k);
     let digit = max_digit_w(fonts, val);
-    let mid_w = (measure(fonts, "RPM", label) + 8.0 + digit * 5.0)
-        .max(measure(fonts, speed_label, label) + 8.0 + digit * 3.0);
+    let mid_w = (measure(fonts, "RPM", label) + 8.0 * k + digit * 5.0)
+        .max(measure(fonts, speed_label, label) + 8.0 * k + digit * 3.0);
     let right_w = measure(fonts, &ptxt, pos_n).max(lap_row_w);
-    let mut foot_w = 0.0;
-    for (ch, t) in &foot {
-        foot_w += fonts.icons.metrics(*ch, icon_s).advance_width + 5.0 + measure(fonts, t, fsz);
-    }
-    let min_gap = 12.0;
-    let inner_min = (gear_w + mid_w + right_w + min_gap * 2.0).max(foot_w + min_gap * 2.0);
-    let w = (cfg.dash.w * sw).max(pad * 2.0 + inner_min);
-    let x = x0;
-    let inner = (w - pad * 2.0).max(inner_min);
-    let main_gap = ((inner - gear_w - mid_w - right_w) / 4.0).max(min_gap);
-    let gear_x = x + pad + main_gap;
-    let mid_x = gear_x + gear_w + main_gap;
-    let right_x = mid_x + mid_w + main_gap;
-
-    if let Ok(mut vis) = DASH_VIS.lock() {
-        let border = if flag != DashFlag::None {
-            (6.0 * grow).clamp(0.0, 6.0)
-        } else {
-            0.0
-        };
-        *vis = crate::shm::Rect {
-            x: (x - border) / sw,
-            y: (y - flag_h) / sh,
-            w: (w + border * 2.0) / sw,
-            h: (h + flag_h + border) / sh,
-        };
-    }
+    let base_gap = 18.0 * k;
+    let extra = (w - pad * 2.0 - gear_w - mid_w - right_w).max(0.0);
+    let col_gap = (extra / 2.0).max(base_gap * 0.4);
+    let col_origin = x + pad + ((w - pad * 2.0 - gear_w - mid_w - right_w - col_gap * 2.0) * 0.5).max(0.0);
+    let gear_x = col_origin;
+    let mid_x = gear_x + gear_w + col_gap;
+    let right_x = mid_x + mid_w + col_gap;
 
     DashLay {
         x,
@@ -2887,7 +3305,7 @@ fn dash_layout(fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) -
         lap_sz,
         icon_s,
         fsz,
-        cut: (h * 0.14).clamp(7.0, 12.0),
+        cut: (h * 0.14).clamp(8.0, 14.0),
         simple: false,
         gear,
         rpm,
@@ -2912,21 +3330,28 @@ fn dash_layout_simple(
     flag: DashFlag,
     grow: f32,
 ) -> DashLay {
-    let h = (cfg.dash.h * sh).max(56.0);
+    const NAT_H: f32 = 92.0;
+    const NAT_W: f32 = 220.0;
+    let k = ((cfg.dash.h * sh) / NAT_H)
+        .min((cfg.dash.w * sw) / NAT_W)
+        .clamp(0.35, 2.4);
+    let pad = 10.0 * k;
+    let main_h = (cfg.dash.h * sh - pad * 2.0).max(28.0 * k);
+    let h = cfg.dash.h * sh;
+    let w = cfg.dash.w * sw;
+    let x = x0;
     let flag_full = if flag != DashFlag::None {
-        (h * 0.22).clamp(20.0, 28.0)
+        (h * 0.22).clamp(20.0 * k, 28.0 * k)
     } else {
         0.0
     };
     let flag_h = flag_full * grow;
-    let pad = (h * 0.10).clamp(6.0, 10.0);
-    let cut = (h * 0.14).clamp(7.0, 12.0);
-    let skew = (cut * 1.1).max(6.0);
+    let cut = (h * 0.14).clamp(8.0 * k, 14.0 * k);
+    let skew = (cut * 1.1).max(6.0 * k);
     let main_y = y + pad;
-    let main_h = (h - pad * 2.0).max(36.0);
-    let gear_n = (main_h * 0.78).clamp(22.0, 52.0);
-    let val = (main_h * 0.62).clamp(18.0, 40.0);
-    let unit_sz = (val * 0.22).clamp(7.0, 11.0);
+    let gear_n = (main_h * 0.78).clamp(32.0 * k, 56.0 * k);
+    let val = (main_h * 0.62).clamp(28.0 * k, 46.0 * k);
+    let unit_sz = (val * 0.22).clamp(8.0 * k, 13.0 * k);
 
     let gear = if s.local_gear <= 0 {
         "N".into()
@@ -2937,34 +3362,12 @@ fn dash_layout_simple(
     let speed_label = cfg.units.speed_label();
 
     let gear_digit = measure(fonts, &gear, gear_n).max(max_digit_w(fonts, gear_n));
-    let gear_w = (gear_digit + 18.0 + skew).clamp(48.0, 84.0);
+    let gear_w = (gear_digit + 18.0 * k + skew).clamp(56.0 * k, 110.0 * k);
     let speed_w = measure(fonts, &speed, val).max(max_digit_w(fonts, val) * 2.0);
-    let unit_w = speed_label
-        .chars()
-        .map(|ch| measure(fonts, ch.encode_utf8(&mut [0; 4]), unit_sz))
-        .fold(0.0, f32::max)
-        .max(unit_sz * 0.7);
-    let gap = (h * 0.10).clamp(10.0, 16.0);
-    let unit_gap = 8.0;
-    let inner = gear_w + gap + speed_w + unit_gap + unit_w;
-    let w = pad * 2.0 + inner;
-    let x = x0;
+    let gap = (h * 0.10).clamp(12.0 * k, 20.0 * k);
+    let unit_gap = 8.0 * k;
     let gear_x = x + pad;
     let mid_x = gear_x + gear_w + gap;
-
-    if let Ok(mut vis) = DASH_VIS.lock() {
-        let border = if flag != DashFlag::None {
-            (6.0 * grow).clamp(0.0, 6.0)
-        } else {
-            0.0
-        };
-        *vis = crate::shm::Rect {
-            x: (x - border) / sw,
-            y: (y - flag_h) / sh,
-            w: (w + border * 2.0) / sw,
-            h: (h + flag_h + border) / sh,
-        };
-    }
 
     DashLay {
         x,
@@ -3735,7 +4138,7 @@ fn draw_relative(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, 
     let r = s.relative;
     let x = r.x * sw;
     let y = r.y * sh;
-    let w = r.w * sw;
+    let max_w = r.w * sw;
     let n = s.rider_count.max(0) as usize;
     let focus = if s.focus_race_num > 0 { s.focus_race_num } else { s.local_race_num };
     let mut focus_pos = s.local_track_pos;
@@ -3765,6 +4168,10 @@ fn draw_relative(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, 
     let row_h = 22.0 * k;
     let foot_h = if BoardField::any(&cfg.rel_foot) { 20.0 * k } else { 0.0 };
     let h = (head_h + col_h + track_h + vis as f32 * row_h + foot_h + 8.0).min(r.h * sh);
+    let cols = cfg.relative_cols();
+    let pad = 8.0;
+    let slots = col_slots(x, pad, max_w, &cols, |c| c.width(cfg) as f32, |c| matches!(c, RelField::Name));
+    let w = hug_board_w(x, pad, max_w, &slots);
     let a = bg_a(cfg.rel_bg);
     if a > 0 {
         fill_round(px, x, y, w, h, 6.0, Color::from_rgba8(8, 8, 10, a));
@@ -3815,9 +4222,6 @@ fn draw_relative(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, 
         show.push(self_idx - k);
     }
 
-    let cols = cfg.relative_cols();
-    let pad = 8.0;
-    let slots = col_slots(x, pad, w, &cols, |c| c.width(cfg) as f32, |c| matches!(c, RelField::Name));
     let (ink, ink_dim, out_c, hdr_c) = table_ink(cfg.rel_text);
     let bar_end = slots
         .iter()
@@ -3838,7 +4242,7 @@ fn draw_relative(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, 
             .unwrap_or(0)
     };
     let you_bg = you_row_bg(cfg.rel_hl);
-    let stripe_c = Color::from_rgba8(0, 0, 0, ((a as u16 * 70) / 255) as u8);
+    let stripe_c = stripe_row_bg(a);
 
     let mut cy = y + head_h;
     let track = {
@@ -3868,7 +4272,7 @@ fn draw_relative(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, 
     let ids = row_ids(show.iter().map(|oi| s.riders[order[*oi].0].race_num));
     let row_ys = REL_SLIDE.with(|a| a.borrow_mut().step(&ids, body_y, row_h, anim_now()));
     for (vis_i, _) in show.iter().enumerate() {
-        if vis_i % 2 == 1 && a > 0 {
+        if cfg.rel_stripe && vis_i % 2 == 1 && a > 0 {
             fill_focus_row(px, x, body_y + vis_i as f32 * row_h, w, row_h, stripe_c);
         }
     }
@@ -4074,16 +4478,19 @@ fn draw_map(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f
         }
     });
 
-    let pred_x = s.local_x + s.local_vel_x * age;
-    let pred_z = s.local_z + s.local_vel_z * age;
-    let focus = s.focus_race_num;
+    if cfg.map_sectors {
+        draw_sector_lines(px, fonts, s, n, to_px, track_px, None);
+    }
+
+    let subject = camera_subject(s);
+    let you = subject_pose(s, age);
     let leader = leader_num(s);
     let other_r = (if cfg.map_numbers { 6.8 } else { 4.6 }) * style_k();
 
     if cfg.map_others {
         for i in 0..s.rider_count.max(0) as usize {
             let rider = &s.riders[i];
-            if s.has_telemetry != 0 && rider.race_num == focus {
+            if you.is_some() && rider.race_num == subject {
                 continue;
             }
             let (hx, hy) = to_px(rider.x, rider.z);
@@ -4102,13 +4509,12 @@ fn draw_map(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f
             let (fwx, fwz) = yaw_forward(rider.yaw);
             let (sdx, sdy) = screen_dir(&to_px, rider.x, rider.z, fwx, fwz);
             draw_dot_chevron(px, hx, hy, other_r, sdx, sdy, fill, false);
-            draw_rider_overhead(px, fonts, s, rider.race_num, hx, hy, other_r, focus, leader, cfg.map_crown, cfg.map_place);
+            draw_rider_overhead(px, fonts, s, rider.race_num, hx, hy, other_r, subject, leader, cfg.map_crown, cfg.map_place);
             draw_state_mark(px, fonts, hx, hy, other_r, rider_mark(s, rider.race_num, rider.crashed != 0));
         }
     }
-    if s.has_telemetry != 0 {
-        let (hx, hy) = to_px(pred_x, pred_z);
-        let local_num = if focus > 0 { focus } else { s.local_race_num };
+    if let Some(pose) = you {
+        let (hx, hy) = to_px(pose.x, pose.z);
         let local_r = 8.5 * style_k();
         draw_rider_dot(
             px,
@@ -4117,17 +4523,21 @@ fn draw_map(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f
             hy,
             local_r,
             you_col(),
-            rider_dot_num(s, local_num, cfg.map_dot),
+            rider_dot_num(s, subject, cfg.map_dot),
             cfg.map_numbers,
             true,
         );
-        let (fwx, fwz) = local_forward(s);
-        let (sdx, sdy) = screen_dir(&to_px, pred_x, pred_z, fwx, fwz);
+        let (fwx, fwz) = if pose.from_local {
+            local_forward(s)
+        } else {
+            yaw_forward(pose.yaw)
+        };
+        let (sdx, sdy) = screen_dir(&to_px, pose.x, pose.z, fwx, fwz);
         draw_dot_chevron(px, hx, hy, local_r, sdx, sdy, you_col(), true);
-        if cfg.map_crown && leader > 0 && focus == leader {
+        if cfg.map_crown && leader > 0 && subject == leader {
             crown_over_dot(px, fonts, hx, hy, local_r);
         }
-        draw_state_mark(px, fonts, hx, hy, local_r, rider_mark(s, focus, s.local_crashed != 0));
+        draw_state_mark(px, fonts, hx, hy, local_r, rider_mark(s, subject, pose.crashed));
     }
 }
 
@@ -4177,15 +4587,19 @@ fn draw_minimap(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, s
         );
     }
 
-    let pred_x = s.local_x + s.local_vel_x * age;
-    let pred_z = s.local_z + s.local_vel_z * age;
-    let (fx, fz, rx, rz, scale, origin_x, origin_z, north_up) = if s.has_telemetry != 0 {
-        let (fx, fz) = track_forward(s, n, pred_x, pred_z).unwrap_or_else(|| {
-            let (f, z, _, _) = radar_axes(s);
-            (f, z)
+    let subject = camera_subject(s);
+    let you = subject_pose(s, age);
+    let (fx, fz, rx, rz, scale, origin_x, origin_z, north_up) = if let Some(pose) = you.as_ref() {
+        let (fx, fz) = track_forward(s, n, pose.x, pose.z).unwrap_or_else(|| {
+            if pose.from_local {
+                let (f, z, _, _) = radar_axes(s);
+                (f, z)
+            } else {
+                yaw_forward(pose.yaw)
+            }
         });
         let radius_m = mini_view_radius(cfg.mini_zoom);
-        (fx, fz, fz, -fx, (sdim * 0.46) / radius_m, pred_x, pred_z, true)
+        (fx, fz, fz, -fx, (sdim * 0.46) / radius_m, pose.x, pose.z, true)
     } else {
         let mut min_x = s.poly[0].x;
         let mut max_x = min_x;
@@ -4241,11 +4655,13 @@ fn draw_minimap(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, s
     if n >= 2 && s.sf_meters >= 0.0 && cfg.mini_sf {
         draw_sf(mini, s, n, to_px, track_px);
     }
+    if cfg.mini_sectors {
+        draw_sector_lines(mini, fonts, s, n, to_px, track_px, Some((mc, mc, sdim * 0.46)));
+    }
     if cfg.mini_arrows {
         draw_track_arrows(mini, s, n, to_px, track_px, Some((mc, sdim)), north_up);
     }
 
-    let focus = s.focus_race_num;
     let leader = leader_num(s);
     let other_r = (sdim * 0.028).clamp(7.0, 11.0) * style_k();
     let local_r = other_r * 1.22;
@@ -4253,7 +4669,7 @@ fn draw_minimap(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, s
     if cfg.mini_others {
         for i in 0..s.rider_count.max(0) as usize {
             let rider = &s.riders[i];
-            if s.has_telemetry != 0 && rider.race_num == focus {
+            if you.is_some() && rider.race_num == subject {
                 continue;
             }
             let (hx, hy) = to_px(rider.x, rider.z);
@@ -4275,20 +4691,22 @@ fn draw_minimap(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, s
             let (fwx, fwz) = yaw_forward(rider.yaw);
             let (sdx, sdy) = screen_dir(&to_px, rider.x, rider.z, fwx, fwz);
             draw_dot_chevron(mini, hx, hy, other_r, sdx, sdy, fill, false);
-            draw_rider_overhead(mini, fonts, s, rider.race_num, hx, hy, other_r, focus, leader, cfg.mini_crown, cfg.mini_place);
+            draw_rider_overhead(mini, fonts, s, rider.race_num, hx, hy, other_r, subject, leader, cfg.mini_crown, cfg.mini_place);
             draw_state_mark(mini, fonts, hx, hy, other_r, rider_mark(s, rider.race_num, rider.crashed != 0));
         }
     }
 
-    if s.has_telemetry != 0 {
-        let (hx, hy) = to_px(pred_x, pred_z);
-        let vx = s.local_vel_x;
-        let vz = s.local_vel_z;
-        for i in (1..5).rev() {
-            let t = i as f32 * 0.07;
-            let (tx, ty) = to_px(pred_x - vx * t, pred_z - vz * t);
-            let a = 40u8.saturating_mul(5 - i as u8);
-            fill_circle(mini, tx, ty, local_r * (0.55 + i as f32 * 0.04), Color::from_rgba8(255, 148, 48, a));
+    if let Some(pose) = you {
+        let (hx, hy) = to_px(pose.x, pose.z);
+        if pose.from_local {
+            let vx = pose.vel_x;
+            let vz = pose.vel_z;
+            for i in (1..5).rev() {
+                let t = i as f32 * 0.07;
+                let (tx, ty) = to_px(pose.x - vx * t, pose.z - vz * t);
+                let a = 40u8.saturating_mul(5 - i as u8);
+                fill_circle(mini, tx, ty, local_r * (0.55 + i as f32 * 0.04), Color::from_rgba8(255, 148, 48, a));
+            }
         }
         numbered_dot(
             mini,
@@ -4297,18 +4715,21 @@ fn draw_minimap(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, s
             hy,
             local_r,
             you_col(),
-            rider_dot_num(s, if focus > 0 { focus } else { s.local_race_num }, cfg.mini_dot),
+            rider_dot_num(s, subject, cfg.mini_dot),
             cfg.mini_numbers,
             true,
         );
-        let (fwx, fwz) = local_forward(s);
-        let (sdx, sdy) = screen_dir(&to_px, pred_x, pred_z, fwx, fwz);
+        let (fwx, fwz) = if pose.from_local {
+            local_forward(s)
+        } else {
+            yaw_forward(pose.yaw)
+        };
+        let (sdx, sdy) = screen_dir(&to_px, pose.x, pose.z, fwx, fwz);
         draw_dot_chevron(mini, hx, hy, local_r, sdx, sdy, you_col(), true);
-        let local_num = if focus > 0 { focus } else { s.local_race_num };
-        if cfg.mini_crown && leader > 0 && local_num == leader {
+        if cfg.mini_crown && leader > 0 && subject == leader {
             crown_over_dot(mini, fonts, hx, hy, local_r);
         }
-        draw_state_mark(mini, fonts, hx, hy, local_r, rider_mark(s, local_num, s.local_crashed != 0));
+        draw_state_mark(mini, fonts, hx, hy, local_r, rider_mark(s, subject, pose.crashed));
     }
 
     blit_circle(px, mini, left, top);
@@ -4723,6 +5144,10 @@ fn fill_circle(px: &mut Pixmap, x: f32, y: f32, r: f32, color: Color) {
     }
 }
 
+fn fill_night_pill(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32) {
+    fill_round(px, x, y, w, h, h * 0.5, Color::from_rgba8(10, 10, 10, 220));
+}
+
 fn fill_round(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, r: f32, c: Color) {
     let r = r.min(w * 0.5).min(h * 0.5);
     let mut pb = PathBuilder::new();
@@ -5078,7 +5503,16 @@ fn draw_track_chevron(px: &mut Pixmap, x: f32, y: f32, dx: f32, dy: f32, track_p
     px.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
 }
 
-fn draw_sf(px: &mut Pixmap, s: &Snapshot, n: usize, to_px: impl Fn(f32, f32) -> (f32, f32), track_px: f32) {
+struct PolyHit {
+    wx: f32,
+    wz: f32,
+    ax: f32,
+    az: f32,
+    bx: f32,
+    bz: f32,
+}
+
+fn poly_length(s: &Snapshot, n: usize) -> (f32, Vec<f32>) {
     let mut dist = 0.0f32;
     let mut d = vec![0.0; n];
     for i in 1..n {
@@ -5087,12 +5521,23 @@ fn draw_sf(px: &mut Pixmap, s: &Snapshot, n: usize, to_px: impl Fn(f32, f32) -> 
         dist += (dx * dx + dz * dz).sqrt();
         d[i] = dist;
     }
-    if dist < 1.0 {
-        return;
+    (dist, d)
+}
+
+fn along_poly(s: &Snapshot, n: usize, meters: f32) -> Option<PolyHit> {
+    if n < 2 {
+        return None;
     }
-    let mut target = s.sf_meters;
+    let (dist, d) = poly_length(s, n);
+    if dist < 1.0 {
+        return None;
+    }
+    let mut target = meters;
     if target > dist {
         target %= dist;
+    }
+    if target < 0.0 {
+        target = 0.0;
     }
     for i in 1..n {
         if d[i] < target {
@@ -5100,26 +5545,151 @@ fn draw_sf(px: &mut Pixmap, s: &Snapshot, n: usize, to_px: impl Fn(f32, f32) -> 
         }
         let span = d[i] - d[i - 1];
         let u = if span > 0.001 { (target - d[i - 1]) / span } else { 0.0 };
-        let wx = s.poly[i - 1].x + (s.poly[i].x - s.poly[i - 1].x) * u;
-        let wz = s.poly[i - 1].z + (s.poly[i].z - s.poly[i - 1].z) * u;
-        let (x0, y0) = to_px(s.poly[i - 1].x, s.poly[i - 1].z);
-        let (x1, y1) = to_px(s.poly[i].x, s.poly[i].z);
-        let (hx, hy) = to_px(wx, wz);
+        let ax = s.poly[i - 1].x;
+        let az = s.poly[i - 1].z;
+        let bx = s.poly[i].x;
+        let bz = s.poly[i].z;
+        return Some(PolyHit {
+            wx: ax + (bx - ax) * u,
+            wz: az + (bz - az) * u,
+            ax,
+            az,
+            bx,
+            bz,
+        });
+    }
+    None
+}
+
+fn poly_at_frac(s: &Snapshot, n: usize, frac: f32) -> Option<PolyHit> {
+    let (dist, _) = poly_length(s, n);
+    if dist < 1.0 {
+        return None;
+    }
+    let lap = if s.track_length > 1.0 { s.track_length } else { dist };
+    along_poly(s, n, frac.rem_euclid(1.0) * lap)
+}
+
+fn poly_centroid(s: &Snapshot, n: usize) -> (f32, f32) {
+    let mut cx = 0.0;
+    let mut cz = 0.0;
+    let n = n.max(1);
+    for p in s.poly.iter().take(n) {
+        cx += p.x;
+        cz += p.z;
+    }
+    let inv = 1.0 / n as f32;
+    (cx * inv, cz * inv)
+}
+
+fn draw_sf(px: &mut Pixmap, s: &Snapshot, n: usize, to_px: impl Fn(f32, f32) -> (f32, f32), track_px: f32) {
+    let Some(hit) = along_poly(s, n, s.sf_meters) else {
+        return;
+    };
+    let (x0, y0) = to_px(hit.ax, hit.az);
+    let (x1, y1) = to_px(hit.bx, hit.bz);
+    let (hx, hy) = to_px(hit.wx, hit.wz);
+    let tx = x1 - x0;
+    let ty = y1 - y0;
+    let len = (tx * tx + ty * ty).sqrt().max(1.0e-4);
+    let pxn = -ty / len;
+    let pyn = tx / len;
+    let half = (track_px * 1.15).max(7.0);
+    let mut pb = PathBuilder::new();
+    pb.move_to(hx - pxn * half, hy - pyn * half);
+    pb.line_to(hx + pxn * half, hy + pyn * half);
+    if let Some(path) = pb.finish() {
+        stroke_path(px, &path, Color::from_rgba8(8, 8, 10, 220), (track_px * 0.55).clamp(5.0, 9.0));
+        stroke_path(px, &path, accent(), (track_px * 0.38).clamp(3.5, 6.5));
+    }
+}
+
+fn draw_sector_lines(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    s: &Snapshot,
+    n: usize,
+    to_px: impl Fn(f32, f32) -> (f32, f32),
+    track_px: f32,
+    clip: Option<(f32, f32, f32)>,
+) {
+    if n < 2 {
+        return;
+    }
+    let ends = crate::sector::split_fracs();
+    let (ccx, ccy) = {
+        let (wx, wz) = poly_centroid(s, n);
+        to_px(wx, wz)
+    };
+    let half = track_px * 0.5;
+    let dash = (half * 0.4).clamp(1.6, 3.5);
+    let thick = (track_px * 0.14).clamp(1.1, 2.0);
+    let violet = Color::from_rgba8(196, 112, 255, 255);
+    let sz = (track_px * 0.95).clamp(10.0, 15.0);
+    let pw = px.width() as f32;
+    let ph = px.height() as f32;
+    for (i, &frac) in ends.iter().enumerate() {
+        if !(0.04..0.96).contains(&frac) {
+            continue;
+        }
+        let Some(hit) = poly_at_frac(s, n, frac) else {
+            continue;
+        };
+        let (hx, hy) = to_px(hit.wx, hit.wz);
+        if let Some((cx, cy, r)) = clip {
+            let dx = hx - cx;
+            let dy = hy - cy;
+            if dx * dx + dy * dy > r * r {
+                continue;
+            }
+        }
+        let (x0, y0) = to_px(hit.ax, hit.az);
+        let (x1, y1) = to_px(hit.bx, hit.bz);
         let tx = x1 - x0;
         let ty = y1 - y0;
         let len = (tx * tx + ty * ty).sqrt().max(1.0e-4);
         let pxn = -ty / len;
         let pyn = tx / len;
-        let half = (track_px * 1.15).max(7.0);
         let mut pb = PathBuilder::new();
         pb.move_to(hx - pxn * half, hy - pyn * half);
         pb.line_to(hx + pxn * half, hy + pyn * half);
         if let Some(path) = pb.finish() {
-            stroke_path(px, &path, Color::from_rgba8(8, 8, 10, 220), (track_px * 0.55).clamp(5.0, 9.0));
-            stroke_path(px, &path, accent(), (track_px * 0.38).clamp(3.5, 6.5));
+            stroke_dashed(px, &path, Color::from_rgba8(8, 8, 10, 200), thick + 1.0, dash, dash);
+            stroke_dashed(px, &path, violet, thick, dash, dash);
         }
-        break;
+        let mut side = if (hx - ccx) * pxn + (hy - ccy) * pyn >= 0.0 { 1.0 } else { -1.0 };
+        let pad = half + sz * 0.7;
+        let mut lx = hx + pxn * side * pad;
+        let mut ly = hy + pyn * side * pad;
+        if lx < sz || ly < sz || lx > pw - sz || ly > ph - sz {
+            side = -side;
+            lx = hx + pxn * side * pad;
+            ly = hy + pyn * side * pad;
+        }
+        let label = if i == 0 { "S1" } else { "S2" };
+        let ink = Color::from_rgba8(8, 8, 10, 230);
+        for (ox, oy) in [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0)] {
+            text(px, fonts, label, sz, lx + ox, ly + oy - sz * 0.5, ink, true);
+        }
+        text_bold(px, fonts, label, sz, lx, ly - sz * 0.5, violet, true);
     }
+}
+
+fn stroke_dashed(px: &mut Pixmap, path: &Path, color: Color, width: f32, dash: f32, gap: f32) {
+    let Some(dash) = StrokeDash::new(vec![dash, gap], 0.0) else {
+        return;
+    };
+    let mut paint = Paint::default();
+    paint.set_color(color);
+    paint.anti_alias = true;
+    let stroke = Stroke {
+        width,
+        line_cap: LineCap::Butt,
+        line_join: LineJoin::Miter,
+        dash: Some(dash),
+        ..Stroke::default()
+    };
+    px.stroke_path(path, &paint, &stroke, Transform::identity(), None);
 }
 
 fn stroke_path(px: &mut Pixmap, path: &Path, color: Color, width: f32) {

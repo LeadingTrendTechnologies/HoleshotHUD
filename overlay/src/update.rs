@@ -419,5 +419,35 @@ mod tests {
         assert!(!looks_protected(Path::new(
             r"C:\Users\troye\AppData\Local\Holeshot HUD"
         )));
+        assert!(looks_protected(Path::new(r"C:\Windows\System32\foo")));
+        assert!(looks_protected(Path::new("/program files/Holeshot HUD")));
+    }
+
+    #[test]
+    fn no_banner_when_auto_update_is_on_during_download() {
+        assert_eq!(manual_banner(true, false, &UpdateState::Downloading), None);
+    }
+
+    #[test]
+    fn version_newer_compares_semver_and_v_prefix() {
+        assert!(version_newer("1.2.0", "1.1.9"));
+        assert!(!version_newer("1.2.0", "1.2.0"));
+        assert!(!version_newer("1.1.9", "1.2.0"));
+        assert_eq!(parse_ver("v1.2.3-beta"), [1, 2, 3]);
+        assert_eq!(parse_ver("0.1.19"), [0, 1, 19]);
+    }
+
+    #[test]
+    fn json_download_url_prefers_windows_x64_zip() {
+        let body = r#"{
+            "assets": [
+                {"browser_download_url":"https://example.test/app.tar.gz"},
+                {"browser_download_url":"https://example.test/Holeshot-windows-x64.zip"}
+            ]
+        }"#;
+        assert_eq!(
+            json_download_url(body).as_deref(),
+            Some("https://example.test/Holeshot-windows-x64.zip")
+        );
     }
 }

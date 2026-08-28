@@ -1,0 +1,39 @@
+{
+  "title": "Delta — three lockups",
+  "question": "Same data as now: Δ, live signed time, center-zero bar, BEST, LAST. Green is faster. Pick one to build, or say what still feels off.",
+  "options": [
+    {
+      "id": "lockup",
+      "label": "Lockup",
+      "kicker": "CLEANEST READ",
+      "thesis": "The signed time is the graphic. Bar and lap times stay quiet underneath.",
+      "palette": ["#0A0A0A", "#30DC58", "#FF9430", "#84848A", "#E4E4E6"],
+      "materials": ["night-ink plaque", "orange Δ skew", "hairline bar"],
+      "viewport": "One short plaque: Δ left, huge -0.840, thin center-zero bar, BEST and LAST as captions.",
+      "risk": "The bar may feel too thin if you still want analog magnitude at a glance.",
+      "comp": ".impeccable/mocks/delta-lockup.png"
+    },
+    {
+      "id": "needle",
+      "label": "Needle",
+      "thesis": "A sliding caret on the scale. The number rides with it, like a telemetry needle.",
+      "palette": ["#0A0A0A", "#30DC58", "#FF9430", "#18181C", "#E4E4E6"],
+      "materials": ["center-zero track", "skew caret", "number over the mark"],
+      "viewport": "Δ hardware left. -0.840 sits over a green caret left of center. BEST and LAST cap the scale.",
+      "risk": "At small deltas the caret sits near zero and can look like the old pip.",
+      "comp": ".impeccable/mocks/delta-needle.png"
+    },
+    {
+      "id": "strip",
+      "label": "Strip",
+      "thesis": "Same three-column TV bug as Sectors: BEST and LAST as flanks, live delta as the hero.",
+      "palette": ["#0A0A0A", "#30DC58", "#FF9430", "#2A2A2E", "#84848A"],
+      "materials": ["hairline columns", "orange underline", "hero center cell"],
+      "viewport": "BEST | live Δ and bar with orange underline | LAST. Center column is ~56%.",
+      "risk": "Reads as a sibling of Sectors; some riders want a single tight strip, not a board.",
+      "comp": ".impeccable/mocks/delta-strip.png"
+    }
+  ],
+  "steer": true,
+  "buildPath": { "value": "comp", "toggle": true }
+}

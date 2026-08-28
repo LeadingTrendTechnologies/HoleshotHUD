@@ -20,7 +20,7 @@ Classification is joined by race number for position, laps, bike, best/last, pen
 ## Behavior
 
 - Same chrome as Standings (header bar, track name, column headers, optional footer).
-- Your row is highlighted. Lapping colors on **other** rows: blue if they are a lap ahead and closing from behind, red if you are a lap ahead and closing on them (`lap_rel` / `lap_row_bg`). Off in warmup. **Row highlight** opacity (`rel_hl`) scales your row and the blue/red lapping tints. **Text color** is White or Black (`rel_text`); bike pills keep brand colors.
+- Your row is highlighted. Lapping colors on **other** rows: blue if they are a lap ahead and closing from behind, red if you are a lap ahead and closing on them (`lap_rel` / `lap_row_bg`). Off in warmup. **Row highlight** opacity (`rel_hl`) scales your row and the blue/red lapping tints. **Text color** is White or Black (`rel_text`); bike pills keep brand colors. **Alternating rows** (`rel_stripe`, default on) paints every other row near-black. Same opaque-panel lift as Standings.
 - **Gap column is not classification gap.** It is `|wrapped_frac * track_length / local_speed|` in seconds (you show `0.0`). Speed floor is 4 so a stopped rider does not explode the number.
 - Rows slide when the nearby set changes (`REL_SLIDE`).
 - Duplicate race numbers are skipped. Empty names with `race_num <= 0` are skipped.
@@ -33,8 +33,16 @@ Default columns on: Number, Name, Gap, Fastest, Last lap.
 - Keep the wrap (`d > 0.5` subtract 1, `d < -0.5` add 1) or the “nearest” set jumps across S/F.
 - Empty / no telemetry shows “Waiting for positions”.
 - No blue/red lapping row tints in warmup.
+- Missing `rel_stripe` in the ini keeps alternating rows on.
+- Alternating rows must still read at **Background** 100% (lift, not extra black on night-ink).
 
 ## Change log
+
+- 2026-08-27 — Plaque width hugs the columns so leftover widget space is not empty glass. Fresh-install board is 20% of the screen as a max (was 30%). Existing layouts in the ini are unchanged.
+
+- 2026-08-27 — **Alternating rows** toggle (`rel_stripe`, default on) turns the near-black zebra stripes off. Opaque **Background** lifts the stripe so 100% still zebras.
+
+- 2026-08-27 — **Alternating rows** toggle (`rel_stripe`, default on) turns the near-black zebra stripes off. Opaque **Background** lifts the stripe so 100% still zebras.
 
 - 2026-08-25 — Position column is the live place, so passing the rider on the row above changes the number without waiting for the line. Row order is still track order.
 - 2026-08-24 — Classification join (position / laps / interval) reads shared `RaceStore`; still sorts by track_pos. No visual change.

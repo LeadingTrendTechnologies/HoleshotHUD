@@ -260,6 +260,7 @@ impl Preview {
             0.0,
             false,
             false,
+            false,
         );
         if self.layout_edit {
             if let Some(t) = edit::parse_target(&self.active) {
@@ -293,6 +294,7 @@ fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg.show_sys = name == "sys";
     // Labs flag stays off in the release WASM demo (same as deployed overlay).
     cfg.show_sector = false;
+    cfg.show_delta = false;
     cfg.experimental = false;
 }
 
@@ -339,12 +341,14 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "rel_last" => cfg.rel_last,
         "map_others" => cfg.map_others,
         "map_sf" => cfg.map_sf,
+        "map_sectors" => cfg.map_sectors,
         "map_arrows" => cfg.map_arrows,
         "map_crown" => cfg.map_crown,
         "map_place" => cfg.map_place,
         "map_numbers" => cfg.map_numbers,
         "mini_others" => cfg.mini_others,
         "mini_sf" => cfg.mini_sf,
+        "mini_sectors" => cfg.mini_sectors,
         "mini_arrows" => cfg.mini_arrows,
         "mini_crown" => cfg.mini_crown,
         "mini_place" => cfg.mini_place,
@@ -352,7 +356,9 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "radar_sides" => cfg.radar_sides,
         "radar_rear" => cfg.radar_rear,
         "st_bold" => cfg.st_bold,
+        "st_stripe" => cfg.st_stripe,
         "rel_bold" => cfg.rel_bold,
+        "rel_stripe" => cfg.rel_stripe,
         "map_bold" => cfg.map_bold,
         "mini_bold" => cfg.mini_bold,
         "radar_bold" => cfg.radar_bold,
@@ -397,12 +403,14 @@ fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
         "rel_last" => cfg.rel_last = on,
         "map_others" => cfg.map_others = on,
         "map_sf" => cfg.map_sf = on,
+        "map_sectors" => cfg.map_sectors = on,
         "map_arrows" => cfg.map_arrows = on,
         "map_crown" => cfg.map_crown = on,
         "map_place" => cfg.map_place = on,
         "map_numbers" => cfg.map_numbers = on,
         "mini_others" => cfg.mini_others = on,
         "mini_sf" => cfg.mini_sf = on,
+        "mini_sectors" => cfg.mini_sectors = on,
         "mini_arrows" => cfg.mini_arrows = on,
         "mini_crown" => cfg.mini_crown = on,
         "mini_place" => cfg.mini_place = on,
@@ -410,7 +418,9 @@ fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
         "radar_sides" => cfg.radar_sides = on,
         "radar_rear" => cfg.radar_rear = on,
         "st_bold" => cfg.st_bold = on,
+        "st_stripe" => cfg.st_stripe = on,
         "rel_bold" => cfg.rel_bold = on,
+        "rel_stripe" => cfg.rel_stripe = on,
         "map_bold" => cfg.map_bold = on,
         "mini_bold" => cfg.mini_bold = on,
         "radar_bold" => cfg.radar_bold = on,
@@ -452,6 +462,7 @@ fn int_val(cfg: &HudConfig, key: &str) -> Option<i32> {
         "ticker_font" => cfg.ticker_font,
         "sys_font" => cfg.sys_font,
         "sector_font" => cfg.sector_font,
+        "delta_font" => cfg.delta_font,
         _ => return None,
     })
 }
@@ -472,6 +483,7 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "ticker_bg" => cfg.ticker_bg = value.clamp(0, 100),
         "sys_bg" => cfg.sys_bg = value.clamp(0, 100),
         "sector_bg" => cfg.sector_bg = value.clamp(0, 100),
+        "delta_bg" => cfg.delta_bg = value.clamp(0, 100),
         "ticker_count" => cfg.ticker_count = value.clamp(3, 15),
         "st_font" => cfg.set_font_pct(WidgetId::Standings, value),
         "rel_font" => cfg.set_font_pct(WidgetId::Relative, value),
@@ -482,6 +494,7 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "ticker_font" => cfg.set_font_pct(WidgetId::Ticker, value),
         "sys_font" => cfg.set_font_pct(WidgetId::Sys, value),
         "sector_font" => cfg.set_font_pct(WidgetId::Sector, value),
+        "delta_font" => cfg.set_font_pct(WidgetId::Delta, value),
         _ => {}
     }
 }
@@ -601,10 +614,10 @@ fn demo_snapshot() -> Snapshot {
     s.local_gear = 3;
     s.sector_count = 3;
     s.sector_last = 0;
-    s.sector_cur = [24_180, 0, 0];
+    s.sector_cur = [24_093, 0, 0];
     s.sector_last_lap = [24_310, 25_820, 23_090];
-    s.sector_best = [24_050, 25_640, 22_910];
-    s.sector_delta = [130, 0, 0];
+    s.sector_best = [24_180, 25_640, 22_910];
+    s.sector_delta = [-87, 0, 0];
     s.sector_delta_valid = 0b001;
     s.local_speed = 18.0;
     let (poly, length, sf, name) = captured_track();
@@ -615,6 +628,7 @@ fn demo_snapshot() -> Snapshot {
     }
     s.track_length = length;
     s.sf_meters = sf;
+    mxbo_hud::sector::set_split_fracs([0.31, 0.64]);
 
     s.rider_count = RIDERS.len() as i32;
     for (i, (name, _, _)) in RIDERS.iter().enumerate() {
@@ -787,20 +801,26 @@ fn animate(s: &mut Snapshot, t: f32, dt: f32) {
         }
     }
     apply_radar_pack(s, t);
-    let lap_t = (s.local_track_pos.rem_euclid(1.0) * 3.0) as i32;
+    let frac = s.local_track_pos.rem_euclid(1.0);
+    let lap_t = (frac * 3.0) as i32;
     s.sector_last = (lap_t - 1).clamp(-1, 2);
     s.sector_cur = match lap_t {
         0 => [0, 0, 0],
-        1 => [24_180, 0, 0],
-        2 => [24_180, 25_760, 0],
+        1 => [24_093, 0, 0],
+        2 => [24_093, 25_760, 0],
         _ => [0, 0, 0],
     };
-    s.sector_delta = [130, 120, 0];
+    s.sector_last_lap = [24_093, 25_760, 23_090];
+    s.sector_delta = [-87, 120, -40];
     s.sector_delta_valid = match lap_t {
+        0 => 0b111,
         1 => 0b001,
         2 => 0b011,
-        _ => 0,
+        _ => 0b111,
     };
+    if lap_t == 0 {
+        s.sector_last = 2;
+    }
     refresh_standings(s);
 }
 

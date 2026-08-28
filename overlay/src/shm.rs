@@ -3,7 +3,7 @@ use std::ptr;
 use std::sync::atomic::{compiler_fence, AtomicI32, AtomicU32, Ordering};
 
 use windows::core::w;
-use windows::Win32::Foundation::HANDLE;
+use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::System::Memory::{
     MapViewOfFile, OpenFileMappingW, UnmapViewOfFile, FILE_MAP_ALL_ACCESS, FILE_MAP_READ,
     MEMORY_MAPPED_VIEW_ADDRESS,
@@ -88,6 +88,11 @@ impl Drop for Shm {
         unsafe {
             if !self.view.Value.is_null() {
                 let _ = UnmapViewOfFile(self.view);
+                self.view.Value = ptr::null_mut();
+            }
+            if !self._map.is_invalid() {
+                let _ = CloseHandle(self._map);
+                self._map = HANDLE::default();
             }
         }
     }
@@ -158,6 +163,11 @@ impl Drop for Cmd {
         unsafe {
             if !self.view.Value.is_null() {
                 let _ = UnmapViewOfFile(self.view);
+                self.view.Value = ptr::null_mut();
+            }
+            if !self._map.is_invalid() {
+                let _ = CloseHandle(self._map);
+                self._map = HANDLE::default();
             }
         }
     }

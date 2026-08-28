@@ -8,12 +8,12 @@ A browser demo of the same HUD widgets lives in [`web/`](web/). Build it with `b
 
 **Vercel:** import this GitHub repo (root directory = repo root). `vercel.json` publishes `web/`. After you change the HUD, run `build-web.bat` and commit the updated `web/pkg` files before you deploy.
 
-In-app feedback (F8 → App) posts to `/api/feedback` and stores **private gists**, not GitHub issues. Add these Vercel env vars:
+In-app feedback (F8 → Feedback) posts to `/api/feedback` and stores **private gists**, not GitHub issues. Add these Vercel env vars:
 
 - `FEEDBACK_GITHUB_TOKEN` — classic PAT with the **gist** scope
 - `FEEDBACK_INBOX_SECRET` — password for [the inbox](https://holeshot-hud.vercel.app/inbox.html)
 
-Open the inbox to filter ratings, bugs, and feature asks. **Done** deletes that gist.
+Open the inbox to filter ratings, bugs, and feature asks. Each card shows **first** version (or that they were using the app before that was tracked). **Done** archives that gist (it stays so the overlay can still show your reply). Open Details and **Send** a follow-up — it pops up in their settings. They can type an answer and send it back. Waiting means they wrote back to you.
 
 ## Download and install
 
@@ -66,7 +66,7 @@ cmd.exe //c "taskkill /IM Holeshot-HUD.exe /F"
 
 ### Local debug
 
-`cargo run` and `build.bat` keep **Sectors** hidden until **Experimental widgets** is on (Settings → Labs). **Stance** is a regular widget — turn it on with **Show on overlay**.
+`cargo run` and `build.bat` keep **Sectors** and **Delta Bar** hidden until **Experimental widgets** is on (Settings → Labs). **Stance** is a regular widget — turn it on with **Show on overlay**.
 
 ```bash
 cmd.exe //c "cargo run --manifest-path overlay\Cargo.toml --bin Holeshot-HUD"
@@ -77,8 +77,8 @@ Dev builds optimize crates like tiny-skia (`opt-level = 3`) so the HUD stays smo
 Push a tag to publish a downloadable release:
 
 ```bat
-git tag v0.1.19
-git push origin v0.1.19
+git tag v0.1.20
+git push origin v0.1.20
 ```
 
 ## Data wiki

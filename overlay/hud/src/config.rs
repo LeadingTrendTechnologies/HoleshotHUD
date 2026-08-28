@@ -500,6 +500,7 @@ pub enum WidgetId {
     Ticker,
     Sys,
     Sector,
+    Delta,
     Stance,
 }
 
@@ -862,6 +863,7 @@ pub struct HudConfig {
     pub ticker: Rect,
     pub sys: Rect,
     pub sector: Rect,
+    pub delta: Rect,
     pub stance: Rect,
     pub show_standings: bool,
     pub show_relative: bool,
@@ -872,8 +874,11 @@ pub struct HudConfig {
     pub show_ticker: bool,
     pub show_sys: bool,
     pub show_sector: bool,
+    /// Tick the current sector live. Off: times only after the split.
+    pub sector_live: bool,
+    pub show_delta: bool,
     pub show_stance: bool,
-    /// Off by default. Sectors stay hidden until this is on.
+    /// Off by default. Labs widgets stay hidden until this is on.
     pub experimental: bool,
     /// Plugin-only: when true the in-game HUD draws. Overlay still saves this key.
     pub ingame_hud: bool,
@@ -909,6 +914,7 @@ pub struct HudConfig {
     pub rel_last: bool,
     pub map_others: bool,
     pub map_sf: bool,
+    pub map_sectors: bool,
     pub map_name: bool,
     pub map_numbers: bool,
     pub map_arrows: bool,
@@ -917,6 +923,7 @@ pub struct HudConfig {
     pub map_dot: DotLabel,
     pub mini_others: bool,
     pub mini_sf: bool,
+    pub mini_sectors: bool,
     pub mini_numbers: bool,
     pub mini_arrows: bool,
     pub mini_crown: bool,
@@ -927,9 +934,11 @@ pub struct HudConfig {
     pub st_bg: i32,
     pub st_hl: i32,
     pub st_text: TableText,
+    pub st_stripe: bool,
     pub rel_bg: i32,
     pub rel_hl: i32,
     pub rel_text: TableText,
+    pub rel_stripe: bool,
     pub map_bg: i32,
     pub mini_bg: i32,
     pub mini_zoom: i32,
@@ -938,6 +947,7 @@ pub struct HudConfig {
     pub ticker_bg: i32,
     pub sys_bg: i32,
     pub sector_bg: i32,
+    pub delta_bg: i32,
     pub stance_bg: i32,
     pub dash_rev: bool,
     /// Gear + speed lockup; hides RPM, place, footer, and the rev bar.
@@ -960,6 +970,7 @@ pub struct HudConfig {
     pub ticker_font: i32,
     pub sys_font: i32,
     pub sector_font: i32,
+    pub delta_font: i32,
     pub stance_font: i32,
     pub st_bold: bool,
     pub rel_bold: bool,
@@ -970,6 +981,7 @@ pub struct HudConfig {
     pub ticker_bold: bool,
     pub sys_bold: bool,
     pub sector_bold: bool,
+    pub delta_bold: bool,
     pub stance_bold: bool,
     pub font_family: FontFamily,
     pub units: Units,
@@ -980,6 +992,9 @@ pub struct HudConfig {
     pub auto_update_on_launch: bool,
     /// Last version whose What's new modal was dismissed with Got it.
     pub whats_new_seen: String,
+    /// Overlay version on the first launch that wrote this settings file.
+    /// `"unknown"` if they already had settings before this field existed.
+    pub first_install_version: String,
     pub settings_key: SettingsKey,
     pub stance_bind: StanceBind,
     pub stance_mode: StanceMode,
@@ -1021,13 +1036,13 @@ impl HudConfig {
             standings: Rect {
                 x: 0.012,
                 y: 0.03,
-                w: 0.30,
+                w: 0.20,
                 h: 0.46,
             },
             relative: Rect {
                 x: 0.012,
                 y: 0.62,
-                w: 0.30,
+                w: 0.20,
                 h: 0.36,
             },
             map: Rect {
@@ -1049,10 +1064,10 @@ impl HudConfig {
                 h: 0.22,
             },
             dash: Rect {
-                x: 0.41,
-                y: 0.82,
-                w: 0.18,
-                h: 0.16,
+                x: 0.442,
+                y: 0.872,
+                w: 0.115,
+                h: 0.108,
             },
             ticker: Rect {
                 x: 0.06,
@@ -1067,10 +1082,16 @@ impl HudConfig {
                 h: 0.30,
             },
             sector: Rect {
-                x: 0.805,
-                y: 0.50,
-                w: 0.18,
-                h: 0.15,
+                x: 0.66,
+                y: 0.78,
+                w: 0.32,
+                h: 0.14,
+            },
+            delta: Rect {
+                x: 0.36,
+                y: 0.76,
+                w: 0.28,
+                h: 0.09,
             },
             stance: Rect {
                 x: 0.445,
@@ -1087,6 +1108,8 @@ impl HudConfig {
             show_ticker: false,
             show_sys: false,
             show_sector: false,
+            sector_live: true,
+            show_delta: false,
             show_stance: false,
             experimental: false,
             ingame_hud: false,
@@ -1122,6 +1145,7 @@ impl HudConfig {
             rel_last: true,
             map_others: true,
             map_sf: true,
+            map_sectors: true,
             map_name: true,
             map_numbers: true,
             map_arrows: true,
@@ -1130,6 +1154,7 @@ impl HudConfig {
             map_dot: DotLabel::Position,
             mini_others: true,
             mini_sf: true,
+            mini_sectors: true,
             mini_numbers: true,
             mini_arrows: true,
             mini_crown: true,
@@ -1140,9 +1165,11 @@ impl HudConfig {
             st_bg: 78,
             st_hl: 50,
             st_text: TableText::White,
+            st_stripe: true,
             rel_bg: 78,
             rel_hl: 50,
             rel_text: TableText::White,
+            rel_stripe: true,
             map_bg: 0,
             mini_bg: 0,
             mini_zoom: 70,
@@ -1151,6 +1178,7 @@ impl HudConfig {
             ticker_bg: 86,
             sys_bg: 82,
             sector_bg: 82,
+            delta_bg: 0,
             stance_bg: 86,
             dash_rev: true,
             dash_simple: false,
@@ -1172,6 +1200,7 @@ impl HudConfig {
             ticker_font: 100,
             sys_font: 100,
             sector_font: 100,
+            delta_font: 100,
             stance_font: 100,
             st_bold: false,
             rel_bold: false,
@@ -1182,6 +1211,7 @@ impl HudConfig {
             ticker_bold: false,
             sys_bold: false,
             sector_bold: false,
+            delta_bold: false,
             stance_bold: false,
             font_family: FontFamily::Exo2,
             units: Units::Metric,
@@ -1191,6 +1221,7 @@ impl HudConfig {
             open_with_game: false,
             auto_update_on_launch: false,
             whats_new_seen: String::new(),
+            first_install_version: String::new(),
             settings_key: SettingsKey::F8,
             stance_bind: StanceBind::PadRb,
             stance_mode: StanceMode::Toggle,
@@ -1234,12 +1265,14 @@ impl HudConfig {
         let text = fs::read_to_string(&path)
             .or_else(|_| fs::read_to_string(&legacy));
         let Ok(text) = text else {
+            cfg.first_install_version = env!("CARGO_PKG_VERSION").to_string();
             cfg.save();
             return cfg;
         };
         let meta_path = if path.is_file() { &path } else { &legacy };
         cfg.loaded_mtime = fs::metadata(meta_path).and_then(|m| m.modified()).ok();
         let mut saw_last_cols = false;
+        let mut saw_first_install = false;
         for raw in text.lines() {
             let line = raw.trim();
             if line.is_empty() || line.starts_with('#') || line.starts_with(';') || line.starts_with('[') {
@@ -1289,6 +1322,10 @@ impl HudConfig {
                 "sector_y" => cfg.sector.y = f,
                 "sector_w" => cfg.sector.w = f,
                 "sector_h" => cfg.sector.h = f,
+                "delta_x" => cfg.delta.x = f,
+                "delta_y" => cfg.delta.y = f,
+                "delta_w" => cfg.delta.w = f,
+                "delta_h" => cfg.delta.h = f,
                 "stance_x" => cfg.stance.x = f,
                 "stance_y" => cfg.stance.y = f,
                 "stance_w" => cfg.stance.w = f,
@@ -1302,6 +1339,8 @@ impl HudConfig {
                 "show_ticker" => cfg.show_ticker = b,
                 "show_sys" => cfg.show_sys = b,
                 "show_sector" => cfg.show_sector = b,
+                "sector_live" => cfg.sector_live = b,
+                "show_delta" => cfg.show_delta = b,
                 "show_stance" => cfg.show_stance = b,
                 "experimental" | "feature_experimental" | "feature_sector" => cfg.experimental = b,
                 "ingame_hud" => cfg.ingame_hud = b,
@@ -1340,6 +1379,7 @@ impl HudConfig {
                 "rel_last" => cfg.rel_last = b,
                 "map_others" => cfg.map_others = b,
                 "map_sf" => cfg.map_sf = b,
+                "map_sectors" => cfg.map_sectors = b,
                 "map_name" => cfg.map_name = b,
                 "map_numbers" => cfg.map_numbers = b,
                 "map_arrows" => cfg.map_arrows = b,
@@ -1348,6 +1388,7 @@ impl HudConfig {
                 "map_dot" => cfg.map_dot = DotLabel::parse(val),
                 "mini_others" => cfg.mini_others = b,
                 "mini_sf" => cfg.mini_sf = b,
+                "mini_sectors" => cfg.mini_sectors = b,
                 "mini_numbers" => cfg.mini_numbers = b,
                 "mini_arrows" => cfg.mini_arrows = b,
                 "mini_crown" => cfg.mini_crown = b,
@@ -1358,9 +1399,11 @@ impl HudConfig {
                 "st_bg" => cfg.st_bg = clamp_pct(val),
                 "st_hl" => cfg.st_hl = clamp_pct(val),
                 "st_text" => cfg.st_text = TableText::parse(val),
+                "st_stripe" => cfg.st_stripe = b,
                 "rel_bg" => cfg.rel_bg = clamp_pct(val),
                 "rel_hl" => cfg.rel_hl = clamp_pct(val),
                 "rel_text" => cfg.rel_text = TableText::parse(val),
+                "rel_stripe" => cfg.rel_stripe = b,
                 "map_bg" => cfg.map_bg = clamp_pct(val),
                 "mini_bg" => cfg.mini_bg = clamp_pct(val),
                 "mini_zoom" => cfg.mini_zoom = clamp_pct(val),
@@ -1369,6 +1412,7 @@ impl HudConfig {
                 "ticker_bg" => cfg.ticker_bg = clamp_pct(val),
                 "sys_bg" => cfg.sys_bg = clamp_pct(val),
                 "sector_bg" => cfg.sector_bg = clamp_pct(val),
+                "delta_bg" => cfg.delta_bg = clamp_pct(val),
                 "stance_bg" => cfg.stance_bg = clamp_pct(val),
                 "dash_rev" => cfg.dash_rev = b,
                 "dash_simple" => cfg.dash_simple = b,
@@ -1390,6 +1434,7 @@ impl HudConfig {
                 "ticker_font" => cfg.ticker_font = clamp_font(val),
                 "sys_font" => cfg.sys_font = clamp_font(val),
                 "sector_font" => cfg.sector_font = clamp_font(val),
+                "delta_font" => cfg.delta_font = clamp_font(val),
                 "stance_font" => cfg.stance_font = clamp_font(val),
                 "st_bold" => cfg.st_bold = b,
                 "rel_bold" => cfg.rel_bold = b,
@@ -1400,6 +1445,7 @@ impl HudConfig {
                 "ticker_bold" => cfg.ticker_bold = b,
                 "sys_bold" => cfg.sys_bold = b,
                 "sector_bold" => cfg.sector_bold = b,
+                "delta_bold" => cfg.delta_bold = b,
                 "stance_bold" => cfg.stance_bold = b,
                 "font_family" => cfg.font_family = FontFamily::parse(val),
                 "units" => cfg.units = Units::parse(val),
@@ -1409,6 +1455,10 @@ impl HudConfig {
                 "open_with_game" => cfg.open_with_game = b,
                 "auto_update_on_launch" => cfg.auto_update_on_launch = b,
                 "whats_new_seen" => cfg.whats_new_seen = val.trim().to_string(),
+                "first_install_version" => {
+                    cfg.first_install_version = val.trim().to_string();
+                    saw_first_install = true;
+                },
                 "settings_key" => cfg.settings_key = SettingsKey::parse(val),
                 "stance_bind" => cfg.stance_bind = StanceBind::parse(val),
                 "stance_mode" => cfg.stance_mode = StanceMode::parse(val),
@@ -1455,6 +1505,12 @@ impl HudConfig {
             cfg.rel_best = true;
             cfg.rel_last = true;
         }
+        migrate_default_dash(&mut cfg.dash);
+        migrate_default_sector(&mut cfg.sector);
+        if !saw_first_install || cfg.first_install_version.is_empty() {
+            cfg.first_install_version = "unknown".into();
+            cfg.save();
+        }
         cfg
     }
 
@@ -1475,9 +1531,10 @@ impl HudConfig {
              ticker_x={}\nticker_y={}\nticker_w={}\nticker_h={}\n\
              sys_x={}\nsys_y={}\nsys_w={}\nsys_h={}\n\
              sector_x={}\nsector_y={}\nsector_w={}\nsector_h={}\n\
+             delta_x={}\ndelta_y={}\ndelta_w={}\ndelta_h={}\n\
              stance_x={}\nstance_y={}\nstance_w={}\nstance_h={}\n\
              \n[Widgets]\n\
-             show_standings={}\nshow_relative={}\nshow_map={}\nshow_minimap={}\nshow_radar={}\nshow_dash={}\nshow_ticker={}\nshow_sys={}\nshow_sector={}\nshow_stance={}\n\
+             show_standings={}\nshow_relative={}\nshow_map={}\nshow_minimap={}\nshow_radar={}\nshow_dash={}\nshow_ticker={}\nshow_sys={}\nshow_sector={}\nshow_delta={}\nshow_stance={}\n\
              ingame_hud={}\nstandings_rows={}\nrelative_count={}\nticker_count={}\n\
              \n[Standings]\n\
              st_pos={}\nst_num={}\nst_name={}\nst_gap={}\nst_interval={}\nst_laps={}\nst_current={}\nst_best={}\nst_last={}\nst_status={}\n\
@@ -1485,7 +1542,7 @@ impl HudConfig {
              st_order={}\n\
              st_w_pos={}\nst_w_num={}\nst_w_name={}\nst_w_gap={}\nst_w_interval={}\nst_w_laps={}\nst_w_current={}\nst_w_best={}\nst_w_last={}\nst_w_status={}\n\
              st_w_bike={}\nst_w_penalty={}\nst_w_crashed={}\n\
-             st_bg={}\nst_hl={}\nst_text={}\nst_font={}\nst_bold={}\n\
+             st_bg={}\nst_hl={}\nst_text={}\nst_stripe={}\nst_font={}\nst_bold={}\n\
              st_head={}\nst_foot={}\n\
              \n[Relative]\n\
              rel_num={}\nrel_name={}\nrel_gap={}\nrel_laps={}\nrel_current={}\nrel_pos={}\nrel_bike={}\nrel_penalty={}\nrel_interval={}\nrel_crashed={}\n\
@@ -1493,13 +1550,13 @@ impl HudConfig {
              rel_order={}\n\
              rel_w_num={}\nrel_w_name={}\nrel_w_gap={}\nrel_w_laps={}\nrel_w_current={}\nrel_w_pos={}\nrel_w_bike={}\nrel_w_penalty={}\nrel_w_interval={}\nrel_w_crashed={}\n\
              rel_w_best={}\nrel_w_last={}\n\
-             rel_bg={}\nrel_hl={}\nrel_text={}\nrel_font={}\nrel_bold={}\n\
+             rel_bg={}\nrel_hl={}\nrel_text={}\nrel_stripe={}\nrel_font={}\nrel_bold={}\n\
              rel_head={}\nrel_foot={}\n\
              \n[Map]\n\
-             map_others={}\nmap_sf={}\nmap_name={}\nmap_numbers={}\nmap_arrows={}\nmap_crown={}\nmap_place={}\nmap_dot={}\n\
+             map_others={}\nmap_sf={}\nmap_sectors={}\nmap_name={}\nmap_numbers={}\nmap_arrows={}\nmap_crown={}\nmap_place={}\nmap_dot={}\n\
              map_bg={}\nmap_font={}\nmap_bold={}\n\
              \n[Minimap]\n\
-             mini_others={}\nmini_sf={}\nmini_numbers={}\nmini_arrows={}\nmini_crown={}\nmini_place={}\nmini_dot={}\n\
+             mini_others={}\nmini_sf={}\nmini_sectors={}\nmini_numbers={}\nmini_arrows={}\nmini_crown={}\nmini_place={}\nmini_dot={}\n\
              mini_bg={}\nmini_zoom={}\nmini_font={}\nmini_bold={}\n\
              \n[Radar]\n\
              radar_sides={}\nradar_rear={}\n\
@@ -1517,12 +1574,14 @@ impl HudConfig {
              \n[Sys]\n\
              sys_bg={}\nsys_font={}\nsys_bold={}\n\
              \n[Sector]\n\
-             sector_bg={}\nsector_font={}\nsector_bold={}\n\
+             sector_live={}\nsector_bg={}\nsector_font={}\nsector_bold={}\n\
+             \n[Delta]\n\
+             delta_bg={}\ndelta_font={}\ndelta_bold={}\n\
              \n[Stance]\n\
              stance_bind={}\nstance_mode={}\nstance_style={}\nstance_show_sit={}\n\
              stance_bg={}\nstance_font={}\nstance_bold={}\n\
              \n[App]\n\
-             font_family={}\nunits={}\nsettings_key={}\nstart_with_windows={}\nminimize_on_close={}\nclose_with_game={}\nopen_with_game={}\nauto_update_on_launch={}\nwhats_new_seen={}\nexperimental={}\n",
+             font_family={}\nunits={}\nsettings_key={}\nstart_with_windows={}\nminimize_on_close={}\nclose_with_game={}\nopen_with_game={}\nauto_update_on_launch={}\nwhats_new_seen={}\nfirst_install_version={}\nexperimental={}\n",
             self.standings.x,
             self.standings.y,
             self.standings.w,
@@ -1559,6 +1618,10 @@ impl HudConfig {
             self.sector.y,
             self.sector.w,
             self.sector.h,
+            self.delta.x,
+            self.delta.y,
+            self.delta.w,
+            self.delta.h,
             self.stance.x,
             self.stance.y,
             self.stance.w,
@@ -1572,6 +1635,7 @@ impl HudConfig {
             b(self.show_ticker),
             b(self.show_sys),
             b(self.show_sector),
+            b(self.show_delta),
             b(self.show_stance),
             b(self.ingame_hud),
             self.standings_rows,
@@ -1607,6 +1671,7 @@ impl HudConfig {
             self.st_bg,
             self.st_hl,
             self.st_text.key(),
+            b(self.st_stripe),
             self.st_font,
             b(self.st_bold),
             join_board(&self.st_head),
@@ -1639,12 +1704,14 @@ impl HudConfig {
             self.rel_bg,
             self.rel_hl,
             self.rel_text.key(),
+            b(self.rel_stripe),
             self.rel_font,
             b(self.rel_bold),
             join_board(&self.rel_head),
             join_board(&self.rel_foot),
             b(self.map_others),
             b(self.map_sf),
+            b(self.map_sectors),
             b(self.map_name),
             b(self.map_numbers),
             b(self.map_arrows),
@@ -1656,6 +1723,7 @@ impl HudConfig {
             b(self.map_bold),
             b(self.mini_others),
             b(self.mini_sf),
+            b(self.mini_sectors),
             b(self.mini_numbers),
             b(self.mini_arrows),
             b(self.mini_crown),
@@ -1688,9 +1756,13 @@ impl HudConfig {
             self.sys_bg,
             self.sys_font,
             b(self.sys_bold),
+            b(self.sector_live),
             self.sector_bg,
             self.sector_font,
             b(self.sector_bold),
+            self.delta_bg,
+            self.delta_font,
+            b(self.delta_bold),
             self.stance_bind.key(),
             self.stance_mode.key(),
             self.stance_style.key(),
@@ -1707,6 +1779,7 @@ impl HudConfig {
             b(self.open_with_game),
             b(self.auto_update_on_launch),
             self.whats_new_seen,
+            self.first_install_version,
             b(self.experimental),
         );
         let _ = fs::write(&path, body);
@@ -1755,6 +1828,7 @@ impl HudConfig {
             WidgetId::Ticker => self.ticker_font,
             WidgetId::Sys => self.sys_font,
             WidgetId::Sector => self.sector_font,
+            WidgetId::Delta => self.delta_font,
             WidgetId::Stance => self.stance_font,
         }
     }
@@ -1771,6 +1845,7 @@ impl HudConfig {
             WidgetId::Ticker => self.ticker_font = v,
             WidgetId::Sys => self.sys_font = v,
             WidgetId::Sector => self.sector_font = v,
+            WidgetId::Delta => self.delta_font = v,
             WidgetId::Stance => self.stance_font = v,
         }
     }
@@ -1786,6 +1861,7 @@ impl HudConfig {
             WidgetId::Ticker => self.ticker_bold,
             WidgetId::Sys => self.sys_bold,
             WidgetId::Sector => self.sector_bold,
+            WidgetId::Delta => self.delta_bold,
             WidgetId::Stance => self.stance_bold,
         }
     }
@@ -1801,6 +1877,7 @@ impl HudConfig {
             WidgetId::Ticker => self.ticker_bold = on,
             WidgetId::Sys => self.sys_bold = on,
             WidgetId::Sector => self.sector_bold = on,
+            WidgetId::Delta => self.delta_bold = on,
             WidgetId::Stance => self.stance_bold = on,
         }
     }
@@ -1816,6 +1893,7 @@ impl HudConfig {
             WidgetId::Ticker => self.ticker,
             WidgetId::Sys => self.sys,
             WidgetId::Sector => self.sector,
+            WidgetId::Delta => self.delta,
             WidgetId::Stance => self.stance,
         }
     }
@@ -1837,6 +1915,7 @@ impl HudConfig {
             WidgetId::Ticker => &mut self.ticker,
             WidgetId::Sys => &mut self.sys,
             WidgetId::Sector => &mut self.sector,
+            WidgetId::Delta => &mut self.delta,
             WidgetId::Stance => &mut self.stance,
         };
         snap_rect(r, align);
@@ -1850,7 +1929,7 @@ impl HudConfig {
         cols
     }
 
-    /// Settings → Labs → Experimental widgets. Sectors stay hidden until this is on.
+    /// Settings → Labs → Experimental widgets. Labs widgets stay hidden until this is on.
     pub fn experimental_unlocked(&self) -> bool {
         self.experimental
     }
@@ -1863,8 +1942,26 @@ impl HudConfig {
         self.experimental_unlocked() && self.show_sector
     }
 
+    pub fn delta_visible(&self) -> bool {
+        self.experimental_unlocked() && self.show_delta
+    }
+
     pub fn stance_visible(&self) -> bool {
         self.show_stance
+    }
+
+    pub fn any_overlay_widget(&self) -> bool {
+        self.show_standings
+            || self.show_relative
+            || self.show_map
+            || self.show_minimap
+            || self.show_radar
+            || self.show_dash
+            || self.show_ticker
+            || self.show_sys
+            || self.sector_visible()
+            || self.delta_visible()
+            || self.stance_visible()
     }
 }
 
@@ -2252,7 +2349,70 @@ fn move_to<T>(items: &mut Vec<T>, from: usize, to: usize) {
     items.insert(to, item);
 }
 
+/// Untouched older factory placements pick up the compact in-game size (11.5%×10.8%).
+fn migrate_default_dash(r: &mut Rect) {
+    let untouched = |x: f32, y: f32, w: f32, h: f32| {
+        (r.x - x).abs() < 0.001
+            && (r.y - y).abs() < 0.001
+            && (r.w - w).abs() < 0.001
+            && (r.h - h).abs() < 0.001
+    };
+    let factory = Rect {
+        x: 0.442,
+        y: 0.872,
+        w: 0.115,
+        h: 0.108,
+    };
+    if untouched(0.41, 0.82, 0.18, 0.16)
+        || untouched(0.43, 0.86, 0.14, 0.12)
+        || untouched(0.43, 0.90, 0.14, 0.08)
+        || untouched(0.43, 0.87, 0.14, 0.11)
+        || untouched(0.43, 0.84, 0.14, 0.14)
+        || untouched(0.41, 0.84, 0.18, 0.14)
+    {
+        *r = factory;
+        return;
+    }
+    // Slot was narrower than the plaque, so orange handles sat on the visual
+    // edge and missed the saved rect. Keep placement; use the visual width.
+    if r.w < 0.09 && (r.h - 0.108).abs() < 0.01 {
+        r.w = 0.115;
+    }
+}
+
+fn migrate_default_sector(r: &mut Rect) {
+    let factory = Rect {
+        x: 0.66,
+        y: 0.78,
+        w: 0.32,
+        h: 0.14,
+    };
+    let untouched = |x: f32, y: f32, w: f32, h: f32| {
+        (r.x - x).abs() < 0.001
+            && (r.y - y).abs() < 0.001
+            && (r.w - w).abs() < 0.001
+            && (r.h - h).abs() < 0.001
+    };
+    if untouched(0.66, 0.84, 0.32, 0.085) {
+        *r = factory;
+        return;
+    }
+    if r.w >= 0.28 && (r.h - 0.085).abs() < 0.002 {
+        let cy = r.y + r.h * 0.5;
+        r.h = 0.14;
+        r.y = (cy - r.h * 0.5).clamp(0.0, 1.0 - r.h);
+    }
+}
+
 pub fn ini_path() -> PathBuf {
+    #[cfg(test)]
+    {
+        if let Ok(p) = std::env::var("MXBO_TEST_INI") {
+            if !p.is_empty() {
+                return PathBuf::from(p);
+            }
+        }
+    }
     let home = std::env::var("USERPROFILE").unwrap_or_else(|_| "C:\\Users\\Public".into());
     PathBuf::from(home)
         .join("Documents")
@@ -2346,13 +2506,28 @@ mod tests {
         assert!(!cfg.show_ticker);
         assert!(!cfg.show_sys);
         assert!(!cfg.show_sector);
+        assert!(cfg.sector_live);
+        assert!(!cfg.show_delta);
         assert!(!cfg.show_stance);
+        assert!(!cfg.any_overlay_widget());
         assert_eq!(cfg.stance_style, StanceStyle::Text);
         assert!(!cfg.stance_show_sit);
         assert!(!cfg.experimental);
         assert!(cfg.whats_new_seen.is_empty());
+        assert!(cfg.first_install_version.is_empty());
         assert!(cfg.ticker_title);
         assert_eq!(cfg.font_family, FontFamily::Exo2);
+        assert!(cfg.st_stripe);
+        assert!(cfg.rel_stripe);
+        assert_eq!(cfg.standings, crate::shm::Rect {
+            x: 0.012,
+            y: 0.03,
+            w: 0.20,
+            h: 0.46,
+        });
+        assert_eq!(cfg.relative.w, 0.20);
+        assert_eq!(cfg.dash.w, 0.115);
+        assert_eq!(cfg.dash.h, 0.108);
         assert!(!cfg.dash_simple);
         assert_eq!(cfg.dash_left, DashField::Engine);
         assert_eq!(cfg.dash_mid, DashField::Air);
@@ -2371,10 +2546,88 @@ mod tests {
             WidgetId::Ticker,
             WidgetId::Sys,
             WidgetId::Sector,
+            WidgetId::Delta,
             WidgetId::Stance,
         ] {
-            assert!(cfg.font_pct(id) >= 70);
+            assert_eq!(cfg.font_pct(id), 100);
         }
+    }
+
+    #[test]
+    fn old_default_dash_rect_migrates() {
+        let mut r = crate::shm::Rect {
+            x: 0.41,
+            y: 0.82,
+            w: 0.18,
+            h: 0.16,
+        };
+        super::migrate_default_dash(&mut r);
+        assert!((r.w - 0.115).abs() < 0.001);
+        assert!((r.h - 0.108).abs() < 0.001);
+        let mut mid = crate::shm::Rect {
+            x: 0.43,
+            y: 0.86,
+            w: 0.14,
+            h: 0.12,
+        };
+        super::migrate_default_dash(&mut mid);
+        assert!((mid.h - 0.108).abs() < 0.001);
+        let mut tiny = crate::shm::Rect {
+            x: 0.43,
+            y: 0.90,
+            w: 0.14,
+            h: 0.08,
+        };
+        super::migrate_default_dash(&mut tiny);
+        assert!((tiny.h - 0.108).abs() < 0.001);
+        let mut slot = crate::shm::Rect {
+            x: 0.4536885,
+            y: 0.6840987,
+            w: 0.073346466,
+            h: 0.10811812,
+        };
+        super::migrate_default_dash(&mut slot);
+        assert!((slot.w - 0.115).abs() < 0.001);
+        assert!((slot.y - 0.6840987).abs() < 0.0001);
+        let mut custom = crate::shm::Rect {
+            x: 0.50,
+            y: 0.82,
+            w: 0.18,
+            h: 0.16,
+        };
+        super::migrate_default_dash(&mut custom);
+        assert!((custom.x - 0.50).abs() < 0.001);
+        assert!((custom.w - 0.18).abs() < 0.001);
+    }
+
+    #[test]
+    fn migrate_default_sector_restores_tall_strip() {
+        let mut factory = crate::shm::Rect {
+            x: 0.66,
+            y: 0.84,
+            w: 0.32,
+            h: 0.085,
+        };
+        super::migrate_default_sector(&mut factory);
+        assert!((factory.h - 0.14).abs() < 0.001);
+        assert!((factory.y - 0.78).abs() < 0.001);
+        let mut wide = crate::shm::Rect {
+            x: 0.60,
+            y: 0.8275,
+            w: 0.32,
+            h: 0.085,
+        };
+        super::migrate_default_sector(&mut wide);
+        assert!((wide.h - 0.14).abs() < 0.001);
+        assert!((wide.w - 0.32).abs() < 0.001);
+        let mut custom = crate::shm::Rect {
+            x: 0.50,
+            y: 0.70,
+            w: 0.20,
+            h: 0.16,
+        };
+        super::migrate_default_sector(&mut custom);
+        assert!((custom.h - 0.16).abs() < 0.001);
     }
 
     #[test]
@@ -2383,6 +2636,7 @@ mod tests {
         assert_eq!(Units::Metric.format_speed(10.0), "36");
         assert_eq!(Units::Metric.format_temp(21.0), "21°C");
         assert_eq!(Units::Imperial.format_temp(0.0), "--°F");
+        assert_eq!(Units::Imperial.format_temp(21.0), "70°F");
         assert_eq!(Units::Metric.speed_label(), "KPH");
         assert_eq!(Units::Imperial.speed_label(), "MPH");
     }
@@ -2406,20 +2660,48 @@ mod tests {
     }
 
     #[test]
-    fn experimental_gates_sector_only() {
+    fn experimental_gates_labs_widgets() {
         let mut cfg = HudConfig::new();
         assert!(!cfg.experimental);
         assert!(!cfg.experimental_unlocked());
         cfg.show_sector = true;
+        cfg.show_delta = true;
         cfg.show_stance = true;
         assert!(!cfg.sector_visible());
+        assert!(!cfg.delta_visible());
         assert!(cfg.stance_visible());
         cfg.experimental = true;
         assert!(cfg.sector_visible());
+        assert!(cfg.delta_visible());
         assert!(cfg.stance_visible());
         cfg.show_sector = false;
+        cfg.show_delta = false;
         cfg.show_stance = false;
         assert!(!cfg.sector_visible());
+        assert!(!cfg.delta_visible());
         assert!(!cfg.stance_visible());
+    }
+
+    #[test]
+    fn ini_round_trip_enables_delta_and_sector() {
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("mxbo-ini-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("Holeshot-HUD.ini");
+        std::fs::write(
+            &path,
+            "show_delta=1\nshow_sector=1\nexperimental=1\nfirst_install_version=0.1.0\nst_last=1\nrel_last=1\n",
+        )
+        .unwrap();
+        std::env::set_var("MXBO_TEST_INI", &path);
+        let cfg = HudConfig::load_file();
+        std::env::remove_var("MXBO_TEST_INI");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(cfg.show_delta);
+        assert!(cfg.show_sector);
+        assert!(cfg.experimental);
+        assert!(cfg.delta_visible());
+        assert!(cfg.sector_visible());
     }
 }

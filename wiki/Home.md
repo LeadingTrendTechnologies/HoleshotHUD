@@ -51,6 +51,7 @@ Per-widget behavior, pitfalls, and change history for agents: **[widgets.md](wid
 - [Radar](widgets/radar.md): side / rear proximity
 - [Dash](widgets/dash.md): gear, speed, session clock, flags (optional simple gear+speed lockup)
 - [Sectors](widgets/sector.md): S1–S3 times (labs flag)
+- [Delta Bar](widgets/delta-bar.md): time vs your best at this track position (labs flag; recorded lap, not the ghost)
 - [Systems](widgets/systems.md): CPU / mem / FPS
 - [Stance](widgets/stance.md): sit / stand from a local bind (not plugin telemetry)
 

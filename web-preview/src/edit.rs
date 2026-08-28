@@ -189,7 +189,7 @@ pub fn resize(orig: Rect, handle: Handle, nx: f32, ny: f32, grab_x: f32, grab_y:
         Target::Map => (90.0, 90.0),
         Target::Minimap => (72.0, 72.0),
         Target::Radar => (72.0, 72.0),
-        Target::Dash => (220.0, 100.0),
+        Target::Dash => (96.0, 48.0),
         Target::Ticker => (360.0, 44.0),
         Target::Sys => (160.0, 90.0),
     };

@@ -91,7 +91,8 @@ pub fn exe_path_for_pid(pid: u32) -> Option<String> {
     }
 }
 
-/// Returns true if the flag was missing and we just wrote it (game must restart).
+/// Returns true if the flag was missing and we just wrote it.
+/// The running game must restart for that to take effect; a later launch already has it.
 pub fn ensure_disable_fullscreen_optimizations(exe_path: &str) -> bool {
     let mut name: Vec<u16> = exe_path.encode_utf16().collect();
     name.push(0);

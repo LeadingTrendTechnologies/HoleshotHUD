@@ -75,6 +75,7 @@ const REL_COLS = [
 const MAP_TOGGLES = [
   ["map_others", "Other riders"],
   ["map_sf", "Start / finish"],
+  ["map_sectors", "Sector lines"],
   ["map_arrows", "Track arrows"],
   ["map_crown", "Leader crown"],
   ["map_place", "Nearest ahead / behind"],
@@ -84,6 +85,7 @@ const MAP_TOGGLES = [
 const MINI_TOGGLES = [
   ["mini_others", "Other riders"],
   ["mini_sf", "Start / finish"],
+  ["mini_sectors", "Sector lines"],
   ["mini_arrows", "Track arrows"],
   ["mini_crown", "Leader crown"],
   ["mini_place", "Nearest ahead / behind"],
@@ -111,7 +113,7 @@ stageStatus.hidden = false;
 
 let preview;
 try {
-  await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=0.1.19", import.meta.url) });
+  await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=0.1.20", import.meta.url) });
   preview = new Preview();
   stageStatus.hidden = true;
 } catch (err) {
@@ -170,6 +172,7 @@ function styleControls(prefix, opacityLabel = "Background") {
       ["white", "White"],
       ["black", "Black"],
     ]);
+    html += toggleRow(`${prefix}_stripe`, "Alternating rows");
   }
   html += toggleRow(`${prefix}_bold`, "Bold text");
   return html;

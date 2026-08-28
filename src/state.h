@@ -90,9 +90,9 @@ public:
     bool onTrack() const;
     void setLocalLap(int lapNum, int lapMs);
     void setLocalSplit(int split, int timeMs, int bestDiff);
-    void setRaceLap(int raceNum, int lapNum, int lapMs);
+    void setRaceLap(int raceNum, int lapNum, int lapMs, int split0, int split1);
     void setRaceSplit(int raceNum, int split, int timeMs);
-    void finishLapSectors(int lapNum, int lapMs);
+    void finishLapSectors(int lapNum, int lapMs, int split0, int split1);
     void addEntry(const SPluginsRaceAddEntry_t& e);
     void removeEntry(int raceNum);
     void setClassification(const SPluginsRaceClassification_t& header,

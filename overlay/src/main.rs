@@ -125,6 +125,37 @@ fn f9_dump_text(shm: Option<&Shm>, snap: Option<&Snapshot>) -> String {
     o
 }
 
+fn dump_whats_new_path() -> Option<std::path::PathBuf> {
+    let mut args = std::env::args();
+    while let Some(a) = args.next() {
+        if a == "--dump-whats-new" {
+            return Some(
+                args.next()
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| std::path::PathBuf::from("announce-shots/whats-new.png")),
+            );
+        }
+    }
+    None
+}
+
+fn dump_whats_new_and_exit(path: &std::path::Path) -> ! {
+    match crate::settings::dump_whats_new(path) {
+        Ok(notes) => {
+            let text = crate::changelog::format_notes(&notes);
+            let txt = path.with_extension("txt");
+            let _ = std::fs::write(&txt, &text);
+            eprintln!("{text}");
+            eprintln!("Wrote {} and {}", path.display(), txt.display());
+            std::process::exit(0);
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
+    }
+}
+
 fn main() {
     std::panic::set_hook(Box::new(|info| {
         let text = format!("{info}\n{}", std::backtrace::Backtrace::force_capture());
@@ -134,6 +165,9 @@ fn main() {
                 let _ = std::fs::write(dir.join("panic.txt"), text.as_bytes());
         }
     }));
+    if let Some(path) = dump_whats_new_path() {
+        dump_whats_new_and_exit(&path);
+    }
     if std::env::args().any(|a| a == "--wait-for-game") {
         crate::startup::wait_for_mx_bikes();
     }
@@ -147,10 +181,12 @@ fn main() {
     if !loaded.auto_update_on_launch {
         crate::update::check();
     }
-    let clock_log_path = {
-        crate::record::init();
-        crate::record::path()
-    };
+    crate::record::init();
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        let dir = std::path::PathBuf::from(local).join("Holeshot HUD").join("track-pbs");
+        mxbo_hud::track_pb::set_store_dir(dir);
+    }
+    let clock_log_path = crate::record::path();
     match clock_log_path {
         Some(p) => mxbo_hud::set_status_hint(format!("Clock log: {}", p.display())),
         None => mxbo_hud::set_status_hint("Clock log failed — see AppData\\Local\\Holeshot HUD\\logs\\boot.txt"),
@@ -204,14 +240,15 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
     apply_window_icons(host, icon_big, icon_small);
     crate::tray::add(host, icon_small);
     let start_minimized = std::env::args().any(|a| a == "--minimized" || a == "--wait-for-game");
-    let show_notes = {
-        let seen = crate::config::with_config(|c| c.whats_new_seen.clone());
-        crate::changelog::should_auto_open(
-            &seen,
-            crate::update::current_version(),
-            crate::changelog::just_updated(),
-        )
-    };
+    let show_notes = crate::changelog::force_whats_new()
+        || {
+            let seen = crate::config::with_config(|c| c.whats_new_seen.clone());
+            crate::changelog::should_auto_open(
+                &seen,
+                crate::update::current_version(),
+                crate::changelog::just_updated(),
+            )
+        };
     if start_minimized && !show_notes {
         let _ = ShowWindow(host, SW_SHOWMINNOACTIVE);
     } else {
@@ -222,11 +259,14 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
     }
 
     let mut game = find_game_hwnd();
+    let mut last_game_pid = crate::startup::mx_bikes_pid();
     let mut restart_hint = false;
-    let mut compat_done = false;
-    if let Some(path) = crate::startup::mx_bikes_pid().and_then(compat::exe_path_for_pid) {
+    if let Some(path) = crate::plugin::game_exe() {
+        let wrote = compat::ensure_disable_fullscreen_optimizations(&path);
+        restart_hint = wrote && last_game_pid.is_some();
+    }
+    if let Some(path) = last_game_pid.and_then(compat::exe_path_for_pid) {
         restart_hint = compat::ensure_disable_fullscreen_optimizations(&path);
-        compat_done = true;
     }
     let (mut x, mut y, mut w, mut h) = game
         .and_then(client_screen_rect)
@@ -250,6 +290,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
     let mut f8_was = false;
     let mut f9_was = false;
     let mut spectate_down = false;
+    let mut live_mark: Option<(f32, f32, f32, f32)> = None;
     let mut next_game_scan = Instant::now();
     let mut placed = false;
     let mut saw_game = crate::startup::mx_bikes_pid().is_some();
@@ -290,11 +331,27 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
                 placed = false;
             }
             next_game_scan = Instant::now() + Duration::from_millis(500);
-            if game.is_none() {
+            let pid = crate::startup::mx_bikes_pid();
+            let game_on = pid.is_some();
+            if pid != last_game_pid {
+                let had_game = last_game_pid.is_some();
+                last_game_pid = pid;
+                if let Some(path) = pid.and_then(compat::exe_path_for_pid) {
+                    let wrote = compat::ensure_disable_fullscreen_optimizations(&path);
+                    restart_hint = wrote && had_game;
+                } else {
+                    restart_hint = false;
+                    shm = None;
+                    cmd = None;
+                }
+            }
+            if !game_on {
                 crate::plugin::retry_if_needed();
             }
-            let game_on = crate::startup::mx_bikes_pid().is_some();
             if game_on {
+                if !saw_game {
+                    crate::settings::hide(host);
+                }
                 saw_game = true;
                 game_gone_at = None;
             } else if saw_game {
@@ -307,12 +364,6 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
                     crate::config::update_config(|_| {});
                     quit_app();
                 }
-            }
-        }
-        if !compat_done {
-            if let Some(path) = crate::startup::mx_bikes_pid().and_then(compat::exe_path_for_pid) {
-                restart_hint = compat::ensure_disable_fullscreen_optimizations(&path);
-                compat_done = true;
             }
         }
         let overlay_on = zfix.keep_overlay_above(hwnd, game, host);
@@ -359,8 +410,19 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         } else {
             None
         };
-        zfix.set_layout_mode(hwnd, layout_on || hover_rider.is_some());
-        if layout_on {
+        let hover_mark = overlay_on
+            && live_mark.is_some_and(|(mx, my, mw, mh)| {
+                crate::layout::cursor_norm(x, y, w, h).is_some_and(|(nx, ny)| {
+                    let px = nx * w as f32;
+                    let py = ny * h as f32;
+                    px >= mx && px < mx + mw && py >= my && py < my + mh
+                })
+            });
+        zfix.set_layout_mode(hwnd, layout_on || hover_rider.is_some() || hover_mark);
+        if hover_mark {
+            let cur = LoadCursorW(None, IDC_HAND).unwrap_or_default();
+            let _ = SetCursor(cur);
+        } else if layout_on {
             let cur = LoadCursorW(None, IDC_ARROW).unwrap_or_default();
             let _ = SetCursor(cur);
         } else if hover_rider.is_some() {
@@ -370,16 +432,20 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         let lmb = unsafe { GetAsyncKeyState(VK_LBUTTON.0 as i32) < 0 };
         let spectate_click = lmb && !spectate_down;
         spectate_down = lmb;
-        if spectate_click && !layout_on {
-            if let (Some(num), Some(c)) = (hover_rider, cmd.as_ref()) {
-                c.request(num);
+        if spectate_click {
+            if hover_mark {
+                crate::settings::show(host);
+            } else if !layout_on {
+                if let (Some(num), Some(c)) = (hover_rider, cmd.as_ref()) {
+                    c.request(num);
+                }
             }
         }
 
         let settings_vk = crate::config::with_config(|c| c.settings_key.vk());
         let settings_down = unsafe { GetAsyncKeyState(settings_vk) < 0 };
         if settings_down && !f8_was {
-            crate::settings::show(host);
+            crate::settings::toggle(host);
         }
         f8_was = settings_down;
         let f9 = unsafe { GetAsyncKeyState(VK_F9.0 as i32) < 0 };
@@ -425,7 +491,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         if let Some(s) = last_snap.as_mut() {
             cfg.apply_to_snapshot(s);
         }
-        editor.tick(hwnd, x, y, w, h, last_snap.as_ref(), &cfg);
+        editor.tick(hwnd, x, y, w, h, last_snap.as_ref(), &cfg, hover_mark);
         if let Some(s) = last_snap.as_mut() {
             editor.apply(s);
         }
@@ -437,6 +503,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         let age = raw_age.clamp(0.0, 0.08);
         let live = raw_age < 2.5;
         let settings_open = crate::settings::is_open();
+        crate::feedback::tick(settings_open);
         if live {
             if let Some(s) = last_snap.as_ref() {
                 crate::record::tick(s);
@@ -447,8 +514,19 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
                 s.on_track = 1;
             }
         }
-        if let (Some(c), Some(s)) = (cmd.as_ref(), last_snap.as_mut()) {
-            if !c.spectating() && s.local_race_num > 0 {
+        if live {
+            if let Some(s) = last_snap.as_ref() {
+                mxbo_hud::delta::tick(s);
+                mxbo_hud::sector::tick(s);
+            }
+        }
+        if let Some(s) = last_snap.as_mut() {
+            let spectating = cmd.as_ref().is_some_and(|c| c.spectating());
+            if spectating {
+                // Replay still publishes leftover bike data. Drop it so the map follows
+                // the camera subject; riding turns this back on the next live tick.
+                s.has_telemetry = 0;
+            } else if s.has_telemetry != 0 || s.local_race_num > 0 {
                 s.focus_race_num = s.local_race_num;
             }
         }
@@ -477,8 +555,14 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
             h as u32,
             age,
             overlay_on && restart_hint,
+            overlay_on && crate::plugin::needs_restart(),
             layout_on,
         );
+        if overlay_on {
+            live_mark = Some(render::draw_live_mark(&mut pixmap, w as u32, h as u32, hover_mark));
+        } else {
+            live_mark = None;
+        }
         dib.blit_premul_bgra(pixmap.data());
         dib.present(hwnd, w, h, x, y);
         crate::settings::paint(&fonts);

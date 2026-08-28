@@ -1,7 +1,10 @@
 pub mod config;
+pub mod delta;
 pub mod race_store;
 pub mod render;
+pub mod sector;
 pub mod snapshot;
+pub mod track_pb;
 
 pub use race_store::{ClockSample, RaceFlag, RaceStore};
 pub use render::{

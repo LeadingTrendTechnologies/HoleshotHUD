@@ -15,6 +15,7 @@ enum Target {
     Ticker,
     Sys,
     Sector,
+    Delta,
     Stance,
 }
 
@@ -51,6 +52,7 @@ pub struct Editor {
     ticker: Option<Rect>,
     sys: Option<Rect>,
     sector: Option<Rect>,
+    delta: Option<Rect>,
     stance: Option<Rect>,
     drag: Option<Drag>,
     mouse_was_down: bool,
@@ -92,6 +94,9 @@ impl Editor {
         if let Some(s) = self.sector {
             cfg.sector = s;
         }
+        if let Some(s) = self.delta {
+            cfg.delta = s;
+        }
         if let Some(s) = self.stance {
             cfg.stance = s;
         }
@@ -106,10 +111,11 @@ impl Editor {
         oh: i32,
         snap: Option<&Snapshot>,
         cfg: &HudConfig,
+        block_press: bool,
     ) {
         let ctrl = Self::ctrl_down();
         let down = unsafe { GetAsyncKeyState(VK_LBUTTON.0 as i32) < 0 };
-        let pressed = down && !self.mouse_was_down;
+        let pressed = down && !self.mouse_was_down && !block_press;
         let released = !down && self.mouse_was_down;
         self.mouse_was_down = down;
 
@@ -151,6 +157,7 @@ impl Editor {
                 Target::Ticker => self.ticker = Some(r),
                 Target::Sys => self.sys = Some(r),
                 Target::Sector => self.sector = Some(r),
+                Target::Delta => self.delta = Some(r),
                 Target::Stance => self.stance = Some(r),
             }
             let _ = overlay;
@@ -172,6 +179,7 @@ impl Editor {
         self.ticker = None;
         self.sys = None;
         self.sector = None;
+        self.delta = None;
         self.stance = None;
     }
 
@@ -188,6 +196,7 @@ impl Editor {
         let ticker = self.ticker;
         let sys = self.sys;
         let sector = self.sector;
+        let delta = self.delta;
         let stance = self.stance;
         crate::config::update_config(|cfg| {
             cfg.map = map;
@@ -210,6 +219,9 @@ impl Editor {
             }
             if let Some(s) = sector {
                 cfg.sector = s;
+            }
+            if let Some(s) = delta {
+                cfg.delta = s;
             }
             if let Some(s) = stance {
                 cfg.stance = s;
@@ -276,15 +288,11 @@ fn rect_of(s: &Snapshot, ed: &Editor, cfg: &HudConfig, t: Target) -> Rect {
         Target::Relative => ed.relative.unwrap_or(s.relative),
         Target::Minimap => ed.minimap.unwrap_or(cfg.minimap),
         Target::Radar => ed.radar.unwrap_or(cfg.radar),
-        Target::Dash => {
-            let mut r = ed.dash.unwrap_or_else(crate::render::dash_visual);
-            let vis = crate::render::dash_visual();
-            r.w = vis.w;
-            r
-        }
+        Target::Dash => ed.dash.unwrap_or(cfg.dash),
         Target::Ticker => ed.ticker.unwrap_or(cfg.ticker),
         Target::Sys => ed.sys.unwrap_or(cfg.sys),
         Target::Sector => ed.sector.unwrap_or(cfg.sector),
+        Target::Delta => ed.delta.unwrap_or(cfg.delta),
         Target::Stance => ed.stance.unwrap_or(cfg.stance),
     }
 }
@@ -300,16 +308,18 @@ fn shown(s: &Snapshot, cfg: &HudConfig, t: Target) -> bool {
         Target::Ticker => cfg.show_ticker,
         Target::Sys => cfg.show_sys,
         Target::Sector => cfg.sector_visible(),
+        Target::Delta => cfg.delta_visible(),
         Target::Stance => cfg.stance_visible(),
     }
 }
 
 fn hit(s: &Snapshot, ed: &Editor, cfg: &HudConfig, x: f32, y: f32, ow: i32, oh: i32) -> Option<(Target, Handle)> {
-    const ORDER: [Target; 10] = [
+    const ORDER: [Target; 11] = [
         Target::Dash,
         Target::Ticker,
         Target::Sys,
         Target::Sector,
+        Target::Delta,
         Target::Stance,
         Target::Minimap,
         Target::Radar,
@@ -397,10 +407,11 @@ fn min_px(t: Target) -> (f32, f32) {
         Target::Map => (90.0, 90.0),
         Target::Minimap => (72.0, 72.0),
         Target::Radar => (72.0, 72.0),
-        Target::Dash => (220.0, 100.0),
+        Target::Dash => (96.0, 48.0),
         Target::Ticker => (360.0, 44.0),
         Target::Sys => (160.0, 90.0),
-        Target::Sector => (140.0, 72.0),
+        Target::Sector => (260.0, 72.0),
+        Target::Delta => (220.0, 48.0),
         Target::Stance => (72.0, 36.0),
     }
 }

@@ -40,6 +40,11 @@ function summary(kind, data) {
   return clip(data.message, 72) || kind;
 }
 
+function sinceTag(data) {
+  const v = clip(data.first_version, 32);
+  return v ? `[since ${v}] ` : "";
+}
+
 async function saveGist(token, kind, data) {
   const files = {
     "feedback.json": {
@@ -49,6 +54,7 @@ async function saveGist(token, kind, data) {
           rating: data.rating || 0,
           message: clipRaw(data.message, 4000),
           version: clip(data.version, 32),
+          first_version: clip(data.first_version, 32),
           os: clip(data.os, 64),
           track: clip(data.track, 80),
           log_name: data.log ? clip(data.log_name || "race.jsonl", 80) : null,
@@ -74,7 +80,7 @@ async function saveGist(token, kind, data) {
       "X-GitHub-Api-Version": "2022-11-28",
     },
     body: JSON.stringify({
-      description: `${PREFIX} ${kind} · ${summary(kind, data)}`,
+      description: `${PREFIX} ${kind} · ${sinceTag(data)}${summary(kind, data)}`,
       public: false,
       files,
     }),
@@ -138,7 +144,7 @@ module.exports = async function handler(req, res) {
     });
     return;
   }
-  res.status(201).json({ ok: true });
+  res.status(201).json({ ok: true, id: saved.id || null });
 };
 
 module.exports.config = {

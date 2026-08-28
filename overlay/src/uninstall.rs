@@ -119,6 +119,8 @@ if ({wipe}) {{
   Remove-Item -LiteralPath (Join-Path '{install}' 'Holeshot-HUD.ini') -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath (Join-Path '{install}' 'mxbo.ini') -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath (Join-Path '{install}' 'gamedir.txt') -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath (Join-Path '{install}' 'tickets.json') -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath (Join-Path '{install}' 'track-pbs') -Recurse -Force -ErrorAction SilentlyContinue
 }}
 "#
     );

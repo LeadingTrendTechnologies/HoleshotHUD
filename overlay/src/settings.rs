@@ -28,7 +28,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     IsWindowVisible, LoadCursorW, SetCursor, SetForegroundWindow, SetWindowPos, SetWindowTextW,
     ShowWindow,
     SystemParametersInfoW, EVENT_OBJECT_FOCUS, EVENT_OBJECT_NAMECHANGE, HWND_NOTOPMOST, HWND_TOPMOST,
-    IDC_ARROW, IDC_HAND, IDC_IBEAM, IDC_SIZEALL, OBJID_CLIENT, SPI_GETHIGHCONTRAST, SW_RESTORE, SW_SHOW,
+    IDC_ARROW, IDC_HAND, IDC_IBEAM, IDC_SIZEALL, OBJID_CLIENT, SPI_GETHIGHCONTRAST, SW_MINIMIZE, SW_RESTORE, SW_SHOW,
     SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, WM_CHAR,
     WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_SETCURSOR,
 };
@@ -233,6 +233,7 @@ enum Tab {
     Ticker,
     Sys,
     Sector,
+    Delta,
     Stance,
 }
 
@@ -242,7 +243,7 @@ impl Tab {
     }
 
     fn is_labs(self) -> bool {
-        matches!(self, Tab::Sector)
+        matches!(self, Tab::Sector | Tab::Delta)
     }
 }
 
@@ -260,6 +261,7 @@ enum Hit {
     TabTicker,
     TabSys,
     TabSector,
+    TabDelta,
     TabStance,
     StShow,
     RelShow,
@@ -272,6 +274,9 @@ enum Hit {
     TickerShow,
     SysShow,
     SectorShow,
+    SectorLive,
+    DeltaShow,
+    TrackPbClear,
     StanceShow,
     StanceShowSit,
     FeatureSector,
@@ -304,6 +309,7 @@ enum Hit {
     RelLast,
     MapOthers,
     MapSf,
+    MapSectors,
     MapArrows,
     MapCrown,
     MapPlace,
@@ -313,6 +319,7 @@ enum Hit {
     MapDotPos,
     MiniOthers,
     MiniSf,
+    MiniSectors,
     MiniArrows,
     MiniCrown,
     MiniPlace,
@@ -324,11 +331,13 @@ enum Hit {
     RadarRear,
     StBg,
     StHl,
+    StStripe,
     StTextOpen,
     StTextWhite,
     StTextBlack,
     RelBg,
     RelHl,
+    RelStripe,
     RelTextOpen,
     RelTextWhite,
     RelTextBlack,
@@ -340,6 +349,7 @@ enum Hit {
     TickerBg,
     SysBg,
     SectorBg,
+    DeltaBg,
     StanceBg,
     StDec,
     StInc,
@@ -388,6 +398,11 @@ enum Hit {
     WhatsNewDismiss,
     WhatsNewScrim,
     WhatsNewPanel,
+    ReplyDismiss,
+    ReplySend,
+    ReplyText,
+    ReplyScrim,
+    ReplyPanel,
     StartWithWindows,
     MinimizeOnClose,
     CloseWithGame,
@@ -395,6 +410,7 @@ enum Hit {
     AutoUpdateOnLaunch,
     QuitApp,
     Uninstall,
+    GameFolder,
     FbRate,
     FbBug,
     FbFeature,
@@ -482,6 +498,9 @@ struct SettingsUi {
     whats_new_open: bool,
     whats_new_scroll: f32,
     whats_new_scroll_max: f32,
+    reply_id: Option<String>,
+    reply_scroll: f32,
+    reply_scroll_max: f32,
     /// Pixel offset into the open dropdown's option list.
     drop_scroll: f32,
     /// Open menu hit target: x, y, w, view_h, content_h.
@@ -538,6 +557,9 @@ pub fn attach(host: HWND) {
         whats_new_open: false,
         whats_new_scroll: 0.0,
         whats_new_scroll_max: 0.0,
+        reply_id: None,
+        reply_scroll: 0.0,
+        reply_scroll_max: 0.0,
         drop_scroll: 0.0,
         drop_menu: None,
         bind_listen: false,
@@ -548,11 +570,26 @@ pub fn show(host: HWND) {
     unsafe {
         force_to_front(host);
     }
+    crate::feedback::refresh();
+}
+
+pub fn hide(host: HWND) {
+    unsafe {
+        let _ = ShowWindow(host, SW_MINIMIZE);
+    }
+}
+
+pub fn toggle(host: HWND) {
+    if is_open() {
+        hide(host);
+    } else {
+        show(host);
+    }
 }
 
 /// Open the What's new modal for this build's changelog. No-op if there are no notes.
 pub fn open_whats_new() {
-    if crate::changelog::current_notes().is_none() {
+    if crate::changelog::modal_notes().is_none() {
         return;
     }
     if let Some(ui) = UI.lock().unwrap().as_mut() {
@@ -566,12 +603,73 @@ pub fn open_whats_new() {
     }
 }
 
+/// Paint the next What's new board to a PNG (Settings chrome + modal).
+pub fn dump_whats_new(path: &std::path::Path) -> Result<crate::changelog::Notes, String> {
+    let notes = crate::changelog::next_notes().ok_or_else(|| "No Unreleased or current notes.".to_string())?;
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2)
+        .or_else(Fonts::load)
+        .ok_or_else(|| "Need Exo 2 to paint What's new.".to_string())?;
+    *UI.lock().unwrap() = Some(SettingsUi {
+        host: HWND::default(),
+        tab: Tab::App,
+        last_widget: Tab::Standings,
+        hover: None,
+        focus: None,
+        hits: Vec::new(),
+        open_drop: None,
+        drag: None,
+        slide: None,
+        scroll: 0.0,
+        content_h: 0.0,
+        scroll_max: 0.0,
+        nav_scroll: 0.0,
+        nav_content_h: 0.0,
+        nav_top: 0.0,
+        nav_bottom: 0.0,
+        banner_dismissed: false,
+        whats_new_open: true,
+        whats_new_scroll: 0.0,
+        whats_new_scroll_max: 0.0,
+        reply_id: None,
+        reply_scroll: 0.0,
+        reply_scroll_max: 0.0,
+        drop_scroll: 0.0,
+        drop_menu: None,
+        bind_listen: false,
+    });
+    let mut px = Pixmap::new(1000, 720).ok_or_else(|| "Could not allocate preview.".to_string())?;
+    draw(&mut px, &fonts, 1000.0, 720.0);
+    *UI.lock().unwrap() = None;
+    if let Some(dir) = path.parent() {
+        if !dir.as_os_str().is_empty() {
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+    }
+    let png = px.encode_png().map_err(|e| e.to_string())?;
+    std::fs::write(path, png).map_err(|e| e.to_string())?;
+    Ok(notes)
+}
+
 fn dismiss_whats_new() {
     let ver = crate::update::current_version().to_string();
     crate::config::update_config(|c| c.whats_new_seen = ver);
     if let Some(ui) = UI.lock().unwrap().as_mut() {
         ui.whats_new_open = false;
         ui.whats_new_scroll = 0.0;
+        ui.focus = None;
+    }
+}
+
+fn dismiss_reply() {
+    let id = UI.lock().unwrap().as_ref().and_then(|u| u.reply_id.clone());
+    if let Some(id) = id {
+        crate::feedback::dismiss_reply(&id);
+    }
+    crate::feedback::set_compose_focus(false);
+    if let Some(ui) = UI.lock().unwrap().as_mut() {
+        ui.reply_id = None;
+        ui.reply_scroll = 0.0;
         ui.focus = None;
     }
 }
@@ -760,6 +858,9 @@ pub fn handle_message(msg: u32, wp: WPARAM, lp: LPARAM) -> bool {
                 } else if ui.whats_new_open {
                     ui.whats_new_scroll =
                         (ui.whats_new_scroll - delta * 0.4).clamp(0.0, ui.whats_new_scroll_max);
+                } else if ui.reply_id.is_some() {
+                    ui.reply_scroll =
+                        (ui.reply_scroll - delta * 0.4).clamp(0.0, ui.reply_scroll_max);
                 } else {
                     let over_nav = in_client
                         && ui.nav_bottom > ui.nav_top
@@ -798,7 +899,7 @@ pub fn handle_message(msg: u32, wp: WPARAM, lp: LPARAM) -> bool {
                 (
                     hover.is_some(),
                     dragging || grip || sliding,
-                    hover == Some(Hit::FbText),
+                    hover == Some(Hit::FbText) || hover == Some(Hit::ReplyText),
                 )
             };
             unsafe {
@@ -888,6 +989,7 @@ fn is_slider(hit: Hit) -> bool {
             | Hit::TickerBg
             | Hit::SysBg
             | Hit::SectorBg
+            | Hit::DeltaBg
             | Hit::StanceBg
             | Hit::StW(_)
             | Hit::RelW(_)
@@ -968,6 +1070,7 @@ fn apply_slide(hit: Hit, mx: f32, x: f32, w: f32, min: i32, max: i32) {
         Hit::TickerBg => c.ticker_bg = v,
         Hit::SysBg => c.sys_bg = v,
         Hit::SectorBg => c.sector_bg = v,
+        Hit::DeltaBg => c.delta_bg = v,
         Hit::StanceBg => c.stance_bg = v,
         Hit::StW(i) => {
             if let Some(f) = c.st_order.get(i as usize).copied() {
@@ -1072,8 +1175,9 @@ fn click(p: (f32, f32)) {
         crate::feedback::set_focus(false);
         return;
     };
-    if !matches!(id, Hit::FbText) {
+    if !matches!(id, Hit::FbText | Hit::ReplyText) {
         crate::feedback::set_focus(false);
+        crate::feedback::set_compose_focus(false);
     }
     set_kb_focus(id);
     dispatch(id, p);
@@ -1133,6 +1237,10 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         }
         Hit::TabSector => {
             set_tab(Tab::Sector);
+            return;
+        }
+        Hit::TabDelta => {
+            set_tab(Tab::Delta);
             return;
         }
         Hit::TabStance => {
@@ -1200,6 +1308,13 @@ fn dispatch(id: Hit, p: (f32, f32)) {
             crate::stance::reset_standing();
             return;
         }
+        Hit::TrackPbClear => {
+            close_drop();
+            mxbo_hud::track_pb::clear_current();
+            mxbo_hud::delta::reload_saved();
+            mxbo_hud::sector::reload();
+            return;
+        }
         Hit::DashFootOpen(slot) => {
             toggle_drop(Drop::DashFoot(slot));
             return;
@@ -1244,6 +1359,25 @@ fn dispatch(id: Hit, p: (f32, f32)) {
             return;
         }
         Hit::WhatsNewScrim | Hit::WhatsNewPanel => {
+            close_drop();
+            return;
+        }
+        Hit::ReplyDismiss => {
+            close_drop();
+            dismiss_reply();
+            return;
+        }
+        Hit::ReplySend => {
+            close_drop();
+            crate::feedback::send_compose();
+            return;
+        }
+        Hit::ReplyText => {
+            close_drop();
+            crate::feedback::click_compose(p.0, p.1);
+            return;
+        }
+        Hit::ReplyScrim | Hit::ReplyPanel => {
             close_drop();
             return;
         }
@@ -1304,6 +1438,15 @@ fn dispatch(id: Hit, p: (f32, f32)) {
             }
             return;
         }
+        Hit::GameFolder => {
+            close_drop();
+            let host = UI.lock().unwrap().as_ref().map(|u| u.host);
+            let Some(host) = host else {
+                return;
+            };
+            crate::plugin::pick_game_folder(host);
+            return;
+        }
         Hit::FbRate => {
             close_drop();
             crate::feedback::set_kind(crate::feedback::Kind::Rate);
@@ -1353,16 +1496,21 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::TickerShow => c.show_ticker = !c.show_ticker,
         Hit::SysShow => c.show_sys = !c.show_sys,
         Hit::SectorShow => c.show_sector = !c.show_sector,
+        Hit::SectorLive => c.sector_live = !c.sector_live,
+        Hit::DeltaShow => c.show_delta = !c.show_delta,
         Hit::StanceShow => c.show_stance = !c.show_stance,
         Hit::StanceShowSit => c.stance_show_sit = !c.stance_show_sit,
         Hit::FeatureSector => {
             c.experimental = !c.experimental;
             if !c.experimental {
                 c.show_sector = false;
+                c.show_delta = false;
             }
         },
         Hit::TickerTitle => c.ticker_title = !c.ticker_title,
         Hit::TickerAutoscroll => c.ticker_autoscroll = !c.ticker_autoscroll,
+        Hit::StStripe => c.st_stripe = !c.st_stripe,
+        Hit::RelStripe => c.rel_stripe = !c.rel_stripe,
         Hit::StPos => c.st_pos = !c.st_pos,
         Hit::StNum => c.st_num = !c.st_num,
         Hit::StName => c.st_name = !c.st_name,
@@ -1390,6 +1538,7 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::RelLast => c.rel_last = !c.rel_last,
         Hit::MapOthers => c.map_others = !c.map_others,
         Hit::MapSf => c.map_sf = !c.map_sf,
+        Hit::MapSectors => c.map_sectors = !c.map_sectors,
         Hit::MapArrows => c.map_arrows = !c.map_arrows,
         Hit::MapCrown => c.map_crown = !c.map_crown,
         Hit::MapPlace => c.map_place = !c.map_place,
@@ -1398,6 +1547,7 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::MapDotPos => c.map_dot = DotLabel::Position,
         Hit::MiniOthers => c.mini_others = !c.mini_others,
         Hit::MiniSf => c.mini_sf = !c.mini_sf,
+        Hit::MiniSectors => c.mini_sectors = !c.mini_sectors,
         Hit::MiniArrows => c.mini_arrows = !c.mini_arrows,
         Hit::MiniCrown => c.mini_crown = !c.mini_crown,
         Hit::MiniPlace => c.mini_place = !c.mini_place,
@@ -1447,7 +1597,7 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::TickerDec => c.ticker_count = (c.ticker_count - 1).max(3),
         Hit::TickerInc => c.ticker_count = (c.ticker_count + 1).min(15),
         Hit::TabWidgets | Hit::TabApp | Hit::TabFeedback | Hit::TabSt | Hit::TabRel | Hit::TabMap | Hit::TabMini | Hit::TabRadar | Hit::TabDash
-        | Hit::TabTicker | Hit::TabSys | Hit::TabSector | Hit::TabStance
+        | Hit::TabTicker | Hit::TabSys | Hit::TabSector | Hit::TabDelta | Hit::TabStance
         | Hit::MapDotOpen | Hit::MiniDotOpen | Hit::FontOpen | Hit::UnitsOpen | Hit::StTextOpen | Hit::RelTextOpen
         | Hit::SettingsKeyOpen
         | Hit::StanceBindOpen
@@ -1458,13 +1608,14 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::InfoOpen(_, _)
         | Hit::UpdateCheck | Hit::UpdateInstall | Hit::UpdateBanner | Hit::UpdateBannerDismiss
         | Hit::WhatsNewOpen | Hit::WhatsNewDismiss | Hit::WhatsNewScrim | Hit::WhatsNewPanel
+        | Hit::ReplyDismiss | Hit::ReplySend | Hit::ReplyText | Hit::ReplyScrim | Hit::ReplyPanel
         | Hit::StartWithWindows | Hit::MinimizeOnClose
         | Hit::CloseWithGame | Hit::OpenWithGame
-        | Hit::AutoUpdateOnLaunch | Hit::QuitApp | Hit::Uninstall
+        | Hit::AutoUpdateOnLaunch | Hit::QuitApp | Hit::Uninstall | Hit::GameFolder
         | Hit::FbRate | Hit::FbBug | Hit::FbFeature | Hit::FbStar(_) | Hit::FbText | Hit::FbAttach | Hit::FbSend
         | Hit::StDrag(_) | Hit::RelDrag(_)
-        | Hit::StBg | Hit::StHl | Hit::RelBg | Hit::RelHl | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::StanceBg
-        | Hit::StW(_) | Hit::RelW(_) | Hit::Font(_) | Hit::StanceReset => {}
+        | Hit::StBg | Hit::StHl | Hit::RelBg | Hit::RelHl | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg
+        | Hit::StW(_) | Hit::RelW(_) | Hit::Font(_) | Hit::StanceReset | Hit::TrackPbClear => {}
     });
     if id == Hit::FeatureSector && !with_config(|c| c.experimental_unlocked()) {
         let on_labs = UI.lock().unwrap().as_ref().is_some_and(|u| u.tab.is_labs());
@@ -1508,6 +1659,7 @@ fn is_focusable(hit: Hit) -> bool {
     !matches!(
         hit,
         Hit::StDrag(_) | Hit::RelDrag(_) | Hit::UpdateBanner | Hit::WhatsNewScrim | Hit::WhatsNewPanel
+            | Hit::ReplyScrim | Hit::ReplyPanel
     )
 }
 
@@ -1540,15 +1692,17 @@ fn hit_label(hit: Hit) -> String {
         Hit::TabTicker => "Horizontal Standings".into(),
         Hit::TabSys => "Systems".into(),
         Hit::TabSector => "Sectors".into(),
+        Hit::TabDelta => "Delta Bar".into(),
         Hit::TabStance => "Stance".into(),
         Hit::StShow | Hit::RelShow | Hit::MapShow | Hit::MiniShow | Hit::RadarShow | Hit::DashShow
-        | Hit::TickerShow | Hit::SysShow | Hit::SectorShow | Hit::StanceShow => "Show on overlay".into(),
+        | Hit::TickerShow | Hit::SysShow | Hit::SectorShow | Hit::DeltaShow | Hit::StanceShow => "Show on overlay".into(),
         Hit::QuitApp => "Quit overlay".into(),
         Hit::Font(_) => "Font size".into(),
         Hit::Bold(_) => "Bold text".into(),
         Hit::StBg | Hit::RelBg | Hit::MapBg | Hit::MiniBg => "Background".into(),
-        Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::StanceBg => "Panel opacity".into(),
+        Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg => "Panel opacity".into(),
         Hit::StHl | Hit::RelHl => "Row highlight".into(),
+        Hit::StStripe | Hit::RelStripe => "Alternating rows".into(),
         Hit::StDec | Hit::StInc => "Rows".into(),
         Hit::RelDec | Hit::RelInc => "Nearby riders".into(),
         Hit::TickerDec | Hit::TickerInc => "Riders shown".into(),
@@ -1570,14 +1724,27 @@ fn hit_label(hit: Hit) -> String {
         Hit::StanceShowSit => "Show sitting".into(),
         Hit::DashRev => "Rev indicator".into(),
         Hit::DashSimple => "Simple dash".into(),
+        Hit::MapSectors => "Sector lines".into(),
+        Hit::MiniSectors => "Sector lines".into(),
+        Hit::SectorLive => "Live sector".into(),
         Hit::StanceReset => "Reset to standing".into(),
+        Hit::TrackPbClear => "Clear this track".into(),
         Hit::FbText => "Feedback message".into(),
         Hit::FbSend => "Send feedback".into(),
         Hit::Uninstall => "Uninstall".into(),
+        Hit::GameFolder => "MX Bikes folder".into(),
         Hit::UpdateCheck => "Check for updates".into(),
         Hit::UpdateInstall => "Install update".into(),
-        Hit::WhatsNewOpen => "What's new".into(),
-        Hit::WhatsNewDismiss => "Got it".into(),
+        Hit::WhatsNewOpen => {
+            if crate::changelog::previewing() {
+                "Preview next".into()
+            } else {
+                "What's new".into()
+            }
+        }
+        Hit::WhatsNewDismiss | Hit::ReplyDismiss => "Got it".into(),
+        Hit::ReplySend => "Send".into(),
+        Hit::ReplyText => "Write a reply".into(),
         _ => "Control".into(),
     }
 }
@@ -1602,6 +1769,15 @@ fn handle_key(vk: u16, shift: bool, _ctrl: bool) -> bool {
         let whats_new = UI.lock().unwrap().as_ref().is_some_and(|u| u.whats_new_open);
         if whats_new {
             dismiss_whats_new();
+            return true;
+        }
+        let reply_open = UI.lock().unwrap().as_ref().is_some_and(|u| u.reply_id.is_some());
+        if reply_open {
+            if crate::feedback::compose_snapshot().focused {
+                crate::feedback::set_compose_focus(false);
+                return true;
+            }
+            dismiss_reply();
             return true;
         }
         let open = UI.lock().unwrap().as_ref().is_some_and(|u| u.open_drop.is_some() || u.bind_listen);
@@ -1696,8 +1872,11 @@ fn cycle_focus(forward: bool) {
     }
     if matches!(id, Hit::FbText) {
         crate::feedback::set_focus(true);
+    } else if matches!(id, Hit::ReplyText) {
+        crate::feedback::set_compose_focus(true);
     } else {
         crate::feedback::set_focus(false);
+        crate::feedback::set_compose_focus(false);
     }
     announce(host, &hit_label(id));
 }
@@ -1766,6 +1945,7 @@ fn nudge_slider(hit: Hit, delta: i32) {
         Hit::TickerBg => c.ticker_bg,
         Hit::SysBg => c.sys_bg,
         Hit::SectorBg => c.sector_bg,
+        Hit::DeltaBg => c.delta_bg,
         Hit::StanceBg => c.stance_bg,
         Hit::StW(i) => c.st_order.get(i as usize).map(|f| f.width(c)).unwrap_or(min),
         Hit::RelW(i) => c.rel_order.get(i as usize).map(|f| f.width(c)).unwrap_or(min),
@@ -1786,6 +1966,7 @@ fn nudge_slider(hit: Hit, delta: i32) {
         Hit::TickerBg => c.ticker_bg = v,
         Hit::SysBg => c.sys_bg = v,
         Hit::SectorBg => c.sector_bg = v,
+        Hit::DeltaBg => c.delta_bg = v,
         Hit::StanceBg => c.stance_bg = v,
         Hit::StW(i) => {
             if let Some(f) = c.st_order.get(i as usize).copied() {
@@ -1855,8 +2036,18 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
     px.fill(bg());
 
     let cfg = with_config(|c| c.clone());
-    let (tab, hover, focus, open_drop, drag, scroll, nav_scroll, banner_dismissed, whats_new_open, whats_new_scroll, bind_listen) = {
-        let ui = UI.lock().unwrap();
+    let pending = crate::feedback::pending_reply();
+    let (tab, hover, focus, open_drop, drag, scroll, nav_scroll, banner_dismissed, whats_new_open, whats_new_scroll, bind_listen, reply_scroll, reply_id) = {
+        let mut ui = UI.lock().unwrap();
+        if let Some(u) = ui.as_mut() {
+            if !u.whats_new_open && u.reply_id.is_none() {
+                if let Some(view) = pending.as_ref() {
+                    u.reply_id = Some(view.id.clone());
+                    u.reply_scroll = 0.0;
+                    u.focus = Some(Hit::ReplyText);
+                }
+            }
+        }
         let ui = ui.as_ref();
         (
             ui.map(|u| u.tab).unwrap_or(Tab::Standings),
@@ -1870,6 +2061,8 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
             ui.map(|u| u.whats_new_open).unwrap_or(false),
             ui.map(|u| u.whats_new_scroll).unwrap_or(0.0),
             ui.map(|u| u.bind_listen).unwrap_or(false),
+            ui.map(|u| u.reply_scroll).unwrap_or(0.0),
+            ui.and_then(|u| u.reply_id.clone()),
         )
     };
     let tab = if tab.is_labs() && !cfg.experimental_unlocked() {
@@ -1934,6 +2127,7 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
         Tab::Ticker => pane_ticker(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
         Tab::Sys => pane_sys(px, fonts, &cfg, hover, &mut hits, x, py, cw),
         Tab::Sector => pane_sector(px, fonts, &cfg, hover, &mut hits, x, py, cw),
+        Tab::Delta => pane_delta(px, fonts, &cfg, hover, &mut hits, x, py, cw),
         Tab::Stance => pane_stance(px, fonts, &cfg, hover, open_drop, bind_listen, &mut hits, x, py, cw),
     };
     draw_top_bar(px, fonts, w, top_y, tab, cfg.settings_key.label(), hover, &mut hits);
@@ -1942,12 +2136,24 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
         draw_update_banner(px, fonts, w, kind, hover, &mut hits);
     }
     let mut whats_new_scroll_max = 0.0;
+    let mut reply_scroll_max = 0.0;
+    let reply_view = reply_id
+        .as_deref()
+        .and_then(crate::feedback::ticket_view)
+        .or_else(|| pending.clone());
+    if let Some(view) = reply_view.as_ref() {
+        crate::feedback::prepare_compose(&view.id);
+    }
     if whats_new_open {
-        if let Some(notes) = crate::changelog::current_notes() {
+        if let Some(notes) = crate::changelog::modal_notes() {
             hits.clear();
             whats_new_scroll_max = draw_whats_new(px, fonts, w, h, &notes, hover, whats_new_scroll, &mut hits);
             paint_focus(px, &hits, focus);
         }
+    } else if let Some(view) = reply_view.as_ref() {
+        hits.clear();
+        reply_scroll_max = draw_reply(px, fonts, w, h, view, hover, reply_scroll, &mut hits);
+        paint_focus(px, &hits, focus);
     } else {
         paint_drop_menus(px, fonts, hover, &mut hits);
         paint_focus(px, &hits, focus);
@@ -1962,6 +2168,8 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
         ui.scroll = ui.scroll.clamp(0.0, max);
         ui.whats_new_scroll_max = whats_new_scroll_max;
         ui.whats_new_scroll = ui.whats_new_scroll.clamp(0.0, whats_new_scroll_max);
+        ui.reply_scroll_max = reply_scroll_max;
+        ui.reply_scroll = ui.reply_scroll.clamp(0.0, reply_scroll_max);
         if widgets {
             ui.nav_top = clip_top;
             ui.nav_bottom = clip_bottom;
@@ -2003,6 +2211,7 @@ fn widget_short_name(id: WidgetId) -> &'static str {
         WidgetId::Ticker => "H-Standings",
         WidgetId::Sys => "Systems",
         WidgetId::Sector => "Sectors",
+        WidgetId::Delta => "Delta Bar",
         WidgetId::Stance => "Stance",
     }
 }
@@ -2174,7 +2383,10 @@ fn widget_groups(cfg: &HudConfig) -> Vec<(&'static str, Vec<(Tab, Hit, &'static 
     if cfg.experimental_unlocked() {
         groups.push((
             "Labs",
-            vec![(Tab::Sector, Hit::TabSector, "Sectors", cfg.show_sector)],
+            vec![
+                (Tab::Sector, Hit::TabSector, "Sectors", cfg.show_sector),
+                (Tab::Delta, Hit::TabDelta, "Delta Bar", cfg.show_delta),
+            ],
         ));
     }
     groups
@@ -2570,6 +2782,227 @@ fn draw_whats_new(
     scroll_max
 }
 
+fn draw_reply(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    win_w: f32,
+    win_h: f32,
+    view: &crate::feedback::ReplyView,
+    hover: Option<Hit>,
+    scroll: f32,
+    hits: &mut Vec<HitBox>,
+) -> f32 {
+    let scrim = Color::from_rgba8(8, 8, 10, 204);
+    if let Some(r) = Rect::from_xywh(0.0, 0.0, win_w, win_h) {
+        fill_rect(px, r, scrim);
+    }
+    hits.push(HitBox {
+        id: Hit::ReplyScrim,
+        x: 0.0,
+        y: 0.0,
+        w: win_w,
+        h: win_h,
+    });
+
+    let compose = crate::feedback::compose_snapshot();
+    let pad = 22.0;
+    let plaque_h = 40.0;
+    let skew = 6.0;
+    let btn_h = 40.0;
+    let box_h = 72.0;
+    let footer_h = 16.0 + box_h + 10.0 + 18.0 + 8.0 + btn_h + 16.0;
+    let panel_w = 520.0_f32.min(win_w - 48.0).max(320.0);
+    let inner_w = (panel_w - pad * 2.0).max(200.0);
+    let head_size = 16.0;
+    let body_size = 12.0;
+    let line_h = 18.0;
+    let last_dev = view.lines.last().is_some_and(|l| l.from_dev);
+    let headline = if last_dev {
+        "Can you tell us more?"
+    } else {
+        "We wrote back"
+    };
+    let heads = wrap_fb(fonts, headline, inner_w, head_size);
+    let wrapped: Vec<(&str, bool, Vec<String>)> = view
+        .lines
+        .iter()
+        .map(|l| {
+            (
+                if l.from_dev { "Holeshot" } else { "You" },
+                l.from_dev,
+                wrap_fb(fonts, &l.text, inner_w, body_size),
+            )
+        })
+        .collect();
+    let mut body_h = heads.len() as f32 * 22.0 + 10.0;
+    for (_, _, lines) in &wrapped {
+        body_h += 16.0 + lines.len() as f32 * line_h + 10.0;
+    }
+
+    let header_h = pad + plaque_h + 16.0;
+    let want = header_h + body_h + footer_h;
+    let panel_h = want.min(win_h - 48.0).max(header_h + footer_h + 24.0);
+    let panel_x = ((win_w - panel_w) * 0.5).max(16.0);
+    let panel_y = ((win_h - panel_h) * 0.5).max(16.0);
+    let board = if high_contrast_on() {
+        panel()
+    } else {
+        Color::from_rgba8(20, 20, 22, 255)
+    };
+    fill_round(px, panel_x, panel_y, panel_w, panel_h, 10.0, board);
+    hits.push(HitBox {
+        id: Hit::ReplyPanel,
+        x: panel_x,
+        y: panel_y,
+        w: panel_w,
+        h: panel_h,
+    });
+
+    let plaque_x = panel_x + pad;
+    let plaque_y = panel_y + pad;
+    let kind_sz = 18.0;
+    let kind_w = measure(fonts, view.kind_label, kind_sz);
+    let plaque_w = (kind_w + 36.0).min(inner_w).max(72.0);
+    fill_skew(px, plaque_x, plaque_y, (plaque_w - skew).max(48.0), plaque_h, skew, accent());
+    text(
+        px,
+        fonts,
+        view.kind_label,
+        kind_sz,
+        plaque_x + 16.0,
+        plaque_y + 10.0,
+        ink(),
+        false,
+    );
+
+    let body_top = plaque_y + plaque_h + 16.0;
+    let body_bot = panel_y + panel_h - footer_h;
+    let view_h = (body_bot - body_top).max(8.0);
+    let scroll_max = (body_h - view_h).max(0.0);
+    let scroll = scroll.clamp(0.0, scroll_max);
+
+    if view_h > 8.0 && inner_w > 8.0 {
+        if let Some(mut body) = Pixmap::new(inner_w.ceil() as u32, view_h.ceil() as u32) {
+            body.fill(board);
+            let mut y = -scroll;
+            for line in &heads {
+                if y + 22.0 > 0.0 && y < view_h {
+                    text(&mut body, fonts, line, head_size, 0.0, y, text_col(), false);
+                }
+                y += 22.0;
+            }
+            y += 10.0;
+            for (who, from_dev, lines) in &wrapped {
+                if y + 16.0 > 0.0 && y < view_h {
+                    text(&mut body, fonts, &who.to_ascii_uppercase(), 10.0, 0.0, y, dim(), false);
+                }
+                y += 16.0;
+                let col = if *from_dev { text_col() } else { muted() };
+                for line in lines {
+                    if y + line_h > 0.0 && y < view_h {
+                        text(&mut body, fonts, line, body_size, 0.0, y, col, false);
+                    }
+                    y += line_h;
+                }
+                y += 10.0;
+            }
+            px.draw_pixmap(
+                panel_x as i32 + pad as i32,
+                body_top as i32,
+                body.as_ref(),
+                &PixmapPaint::default(),
+                Transform::identity(),
+                None,
+            );
+        }
+    }
+
+    if scroll_max > 1.0 && view_h > 16.0 {
+        let track_x = panel_x + panel_w - 10.0;
+        let thumb_h = (view_h * view_h / body_h.max(view_h)).clamp(16.0, view_h);
+        let thumb_y = body_top
+            + if scroll_max > 0.0 {
+                scroll / scroll_max * (view_h - thumb_h)
+            } else {
+                0.0
+            };
+        fill_round(
+            px,
+            track_x,
+            body_top,
+            3.0,
+            view_h,
+            1.5,
+            Color::from_rgba8(255, 255, 255, 18),
+        );
+        fill_round(
+            px,
+            track_x,
+            thumb_y,
+            3.0,
+            thumb_h,
+            1.5,
+            Color::from_rgba8(255, 255, 255, 48),
+        );
+    }
+
+    let box_x = panel_x + pad;
+    let box_y = panel_y + panel_h - footer_h + 16.0;
+    crate::feedback::set_compose_rect(box_x, box_y, inner_w, box_h);
+    hits.push(HitBox {
+        id: Hit::ReplyText,
+        x: box_x,
+        y: box_y,
+        w: inner_w,
+        h: box_h,
+    });
+    let box_fill = if compose.focused {
+        Color::from_rgba8(20, 20, 24, 255)
+    } else {
+        btn_bg()
+    };
+    outlined(px, box_x, box_y, inner_w, box_h, 8.0, box_fill);
+    let tx = box_x + 12.0;
+    let ty = box_y + 10.0;
+    let tw = (inner_w - 24.0).max(40.0);
+    if compose.message.is_empty() && !compose.focused {
+        text(px, fonts, "Write a reply", 12.0, tx, ty + 2.0, dim(), false);
+        crate::feedback::set_caret_layout(tx, ty, 16.0, vec![vec![(0, 0.0)]]);
+    } else {
+        draw_fb_text(px, fonts, &compose.message, compose.cursor, tx, ty, tw, box_h - 16.0);
+    }
+
+    let status_y = box_y + box_h + 8.0;
+    let (status, status_c) = match &compose.status {
+        crate::feedback::Status::Idle => ("", muted()),
+        crate::feedback::Status::Sending => ("Sending…", muted()),
+        crate::feedback::Status::Sent => ("Sent.", accent()),
+        crate::feedback::Status::Error(msg) => (msg.as_str(), Color::from_rgba8(255, 120, 100, 255)),
+    };
+    if !status.is_empty() {
+        text(px, fonts, status, 11.0, box_x, status_y, status_c, false);
+    }
+
+    let btn_y = panel_y + panel_h - 16.0 - btn_h;
+    let got_w = 120.0;
+    action_btn(px, fonts, box_x, btn_y, got_w, btn_h, "Got it", Hit::ReplyDismiss, hover, hits, false);
+    let sending = matches!(compose.status, crate::feedback::Status::Sending);
+    action_btn(
+        px,
+        fonts,
+        box_x + got_w + 10.0,
+        btn_y,
+        (inner_w - got_w - 10.0).max(100.0),
+        btn_h,
+        if sending { "Sending…" } else { "Send" },
+        Hit::ReplySend,
+        hover,
+        hits,
+        true,
+    );
+    scroll_max
+}
+
 fn nav_group(px: &mut Pixmap, fonts: &Fonts, x: f32, y: f32, label: &str) -> f32 {
     text(px, fonts, &label.to_ascii_uppercase(), 10.0, x + 14.0, y + 6.0, dim(), false);
     y + 24.0
@@ -2682,6 +3115,10 @@ fn nav_icon(px: &mut Pixmap, hit: Hit, cx: f32, cy: f32, c: Color) {
             fill_round(px, cx - 6.8, cy - 5.4, 13.6, 3.2, 1.0, c);
             fill_round(px, cx - 6.8, cy - 1.1, 13.6, 3.2, 1.0, c);
             fill_round(px, cx - 6.8, cy + 3.2, 13.6, 3.2, 1.0, c);
+        }
+        Hit::TabDelta => {
+            fill_round(px, cx - 7.0, cy - 1.6, 14.0, 3.2, 1.4, c);
+            fill_round(px, cx - 0.7, cy - 5.4, 1.4, 10.8, 0.6, c);
         }
         Hit::TabStance => {
             fill_round(px, cx - 5.4, cy + 1.4, 4.4, 4.2, 1.0, c);
@@ -2823,6 +3260,27 @@ fn pane_app(
     let install = fit_path(fonts, &crate::update::install_dir_display(), 12.0, w - 8.0);
     text(px, fonts, &install, 13.0, x + 4.0, y, text_col(), false);
     y += 22.0;
+    text(px, fonts, "MX Bikes", 10.0, x + 2.0, y + 2.0, dim(), false);
+    y += 18.0;
+    let game = crate::plugin::game_dir()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|| "Not found".into());
+    let game = fit_path(fonts, &game, 12.0, w - 148.0);
+    text(px, fonts, &game, 13.0, x + 4.0, y, text_col(), false);
+    action_btn(px, fonts, x + w - 132.0, y - 6.0, 132.0, 28.0, "Change folder", Hit::GameFolder, hover, hits, false);
+    y += 28.0;
+    let plugin_line = if crate::plugin::plugin_installed() {
+        "Plugin is in the game plugins folder."
+    } else {
+        "Plugin is missing. Fully quit MX Bikes, then Change folder or restart the overlay."
+    };
+    let plugin_col = if crate::plugin::plugin_installed() {
+        muted()
+    } else {
+        accent()
+    };
+    text(px, fonts, plugin_line, 11.0, x + 4.0, y, plugin_col, false);
+    y += 22.0;
     if crate::update::update_may_need_admin() {
         text(px, fonts, crate::update::ADMIN_UPDATE_HINT, 11.0, x + 4.0, y, accent(), false);
         y += 20.0;
@@ -2882,7 +3340,7 @@ fn pane_app(
         hover,
         hits,
     );
-    text(px, fonts, "Medal and other clip apps use F8. F9 still rotates the clock log.", 11.0, x + 4.0, y + 2.0, dim(), false);
+    text(px, fonts, "Press again to close. Medal and other clip apps use F8. F9 still rotates the clock log.", 11.0, x + 4.0, y + 2.0, dim(), false);
     y += 22.0;
     y = section(px, fonts, x, y, "Startup");
     y = toggle_row(px, fonts, x, y, w, "Open when Windows starts", cfg.start_with_windows, Hit::StartWithWindows, hover, hits);
@@ -2910,12 +3368,12 @@ fn pane_app(
     }
     y = toggle_row(px, fonts, x, y, w, "Open when MX Bikes opens", cfg.open_with_game, Hit::OpenWithGame, hover, hits);
     if cfg.open_with_game {
-        text(px, fonts, "Starts the overlay when MX Bikes launches (background wait — not the HUD exe).", 11.0, x + 4.0, y + 2.0, dim(), false);
+        text(px, fonts, "Starts the overlay in the tray when MX Bikes launches. F8 or the HUD mark opens settings.", 11.0, x + 4.0, y + 2.0, dim(), false);
         y += 22.0;
     }
     y = section(px, fonts, x, y, "Labs");
     y = toggle_row(px, fonts, x, y, w, "Experimental widgets", cfg.experimental, Hit::FeatureSector, hover, hits);
-    text(px, fonts, "Adds Sectors. Off until you turn this on.", 11.0, x + 4.0, y + 2.0, dim(), false);
+    text(px, fonts, "Adds Sectors and Delta Bar. Off until you turn this on.", 11.0, x + 4.0, y + 2.0, dim(), false);
     y += 22.0;
     y = section(px, fonts, x, y, "Updates");
     let need_admin = crate::update::update_may_need_admin();
@@ -2980,9 +3438,17 @@ fn pane_app(
         action_btn(px, fonts, bx, iy, btn_w, 32.0, "Check for updates", Hit::UpdateCheck, hover, hits, false);
         bx += btn_w + 10.0;
     }
-    if crate::changelog::current_notes().is_some() {
-        action_btn(px, fonts, bx, iy, 120.0, 32.0, "What's new", Hit::WhatsNewOpen, hover, hits, false);
-        bx += 130.0;
+    if crate::changelog::modal_notes().is_some() {
+        let label = if crate::changelog::previewing()
+            && crate::changelog::next_notes().as_ref().map(|n| n.version.as_str())
+                != crate::changelog::current_notes().as_ref().map(|n| n.version.as_str())
+        {
+            "Preview next"
+        } else {
+            "What's new"
+        };
+        action_btn(px, fonts, bx, iy, 132.0, 32.0, label, Hit::WhatsNewOpen, hover, hits, false);
+        bx += 142.0;
     }
     if show_install {
         action_btn(
@@ -3451,6 +3917,9 @@ fn pane_standings(
         )
     });
     g.place(|cx, cy, cw| {
+        toggle_row(px, fonts, cx, cy, cw, "Alternating rows", cfg.st_stripe, Hit::StStripe, hover, hits)
+    });
+    g.place(|cx, cy, cw| {
         stepper_row(px, fonts, cx, cy, cw, "Rows", &cfg.standings_rows.to_string(), Hit::StDec, Hit::StInc, hover, hits)
     });
     y = g.end();
@@ -3540,6 +4009,9 @@ fn pane_relative(
         )
     });
     g.place(|cx, cy, cw| {
+        toggle_row(px, fonts, cx, cy, cw, "Alternating rows", cfg.rel_stripe, Hit::RelStripe, hover, hits)
+    });
+    g.place(|cx, cy, cw| {
         stepper_row(
             px,
             fonts,
@@ -3611,6 +4083,7 @@ fn pane_map(
     y = section(px, fonts, x, y, "On the map");
     y = toggle_row(px, fonts, x, y, w, "Other riders", cfg.map_others, Hit::MapOthers, hover, hits);
     y = toggle_row(px, fonts, x, y, w, "Start / finish", cfg.map_sf, Hit::MapSf, hover, hits);
+    y = toggle_row(px, fonts, x, y, w, "Sector lines", cfg.map_sectors, Hit::MapSectors, hover, hits);
     y = toggle_row(px, fonts, x, y, w, "Track arrows", cfg.map_arrows, Hit::MapArrows, hover, hits);
     y = toggle_row(px, fonts, x, y, w, "Leader crown", cfg.map_crown, Hit::MapCrown, hover, hits);
     y = toggle_row(px, fonts, x, y, w, "Nearest ahead / behind", cfg.map_place, Hit::MapPlace, hover, hits);
@@ -3665,6 +4138,7 @@ fn pane_minimap(
     y = section(px, fonts, x, y, "On the minimap");
     y = toggle_row(px, fonts, x, y, w, "Other riders", cfg.mini_others, Hit::MiniOthers, hover, hits);
     y = toggle_row(px, fonts, x, y, w, "Start / finish", cfg.mini_sf, Hit::MiniSf, hover, hits);
+    y = toggle_row(px, fonts, x, y, w, "Sector lines", cfg.mini_sectors, Hit::MiniSectors, hover, hits);
     y = toggle_row(px, fonts, x, y, w, "Track arrows", cfg.mini_arrows, Hit::MiniArrows, hover, hits);
     y = toggle_row(px, fonts, x, y, w, "Leader crown", cfg.mini_crown, Hit::MiniCrown, hover, hits);
     y = toggle_row(px, fonts, x, y, w, "Nearest ahead / behind", cfg.mini_place, Hit::MiniPlace, hover, hits);
@@ -3853,16 +4327,66 @@ fn pane_sector(
         y,
         w,
         "Sectors",
-        "Split times and delta vs your best",
+        "Split times vs your best at this point in the sector",
         Some((cfg.show_sector, Hit::SectorShow)),
         hover,
         hits,
     );
+    y = note_lines(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        "The wide cell is the sector you are in. Live sector ticks vs your best at this point; off waits until the split. Same tape as Delta Bar. Saved per track.",
+    );
+    y = toggle_row(px, fonts, x, y, w, "Live sector", cfg.sector_live, Hit::SectorLive, hover, hits);
+    action_btn(px, fonts, x, y, 168.0, 32.0, "Clear this track", Hit::TrackPbClear, hover, hits, false);
+    y += 40.0;
     if !cfg.show_sector {
         return y;
     }
     y = style_controls(px, fonts, x, y, w, WidgetId::Sector, cfg, "Panel opacity", cfg.sector_bg, Hit::SectorBg, hover, hits);
     look_section(px, fonts, x, y, w, WidgetId::Sector, hover, hits)
+}
+
+fn pane_delta(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    cfg: &HudConfig,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+    x: f32,
+    y: f32,
+    w: f32,
+) -> f32 {
+    let mut y = heading(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        "Delta Bar",
+        "Time vs your best at this point on the lap",
+        Some((cfg.show_delta, Hit::DeltaShow)),
+        hover,
+        hits,
+    );
+    y = note_lines(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        "Compares this lap to a lap we recorded — not the in-game ghost. Saved per track. REC while the first lap fills if none is saved; it says to complete two full laps.",
+    );
+    action_btn(px, fonts, x, y, 168.0, 32.0, "Clear this track", Hit::TrackPbClear, hover, hits, false);
+    y += 40.0;
+    if !cfg.show_delta {
+        return y;
+    }
+    y = style_controls(px, fonts, x, y, w, WidgetId::Delta, cfg, "Panel opacity", cfg.delta_bg, Hit::DeltaBg, hover, hits);
+    look_section(px, fonts, x, y, w, WidgetId::Delta, hover, hits)
 }
 
 fn pane_stance(
@@ -4972,10 +5496,50 @@ mod tests {
             whats_new_open: open,
             whats_new_scroll: 0.0,
             whats_new_scroll_max: 0.0,
+            reply_id: None,
+            reply_scroll: 0.0,
+            reply_scroll_max: 0.0,
             drop_scroll: 0.0,
             drop_menu: None,
             bind_listen: false,
         }
+    }
+
+    fn golden_dir() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/goldens")
+    }
+
+    fn update_goldens() -> bool {
+        matches!(
+            std::env::var("UPDATE_GOLDENS").as_deref(),
+            Ok("1") | Ok("true") | Ok("TRUE")
+        )
+    }
+
+    fn assert_golden(name: &str, px: &Pixmap) {
+        let dir = golden_dir();
+        let path = dir.join(format!("{name}.png"));
+        if update_goldens() {
+            fs::create_dir_all(&dir).expect("goldens dir");
+            fs::write(&path, px.encode_png().expect("png")).expect("write golden");
+            return;
+        }
+        let bytes = fs::read(&path).unwrap_or_else(|_| {
+            panic!("missing golden {name}.png — run with UPDATE_GOLDENS=1")
+        });
+        let expected = Pixmap::decode_png(&bytes).expect("decode golden");
+        if expected.width() != px.width()
+            || expected.height() != px.height()
+            || expected.data() != px.data()
+        {
+            let actual_path = dir.join(format!("{name}.actual.png"));
+            let _ = fs::write(&actual_path, px.encode_png().expect("png"));
+            panic!("golden mismatch {name} (wrote {})", actual_path.display());
+        }
+    }
+
+    fn hit_ids(hits: &[HitBox]) -> Vec<Hit> {
+        hits.iter().map(|h| h.id).collect()
     }
 
     #[test]
@@ -4986,26 +5550,48 @@ mod tests {
         let mut px = Pixmap::new(1000, 720).expect("pixmap");
         draw(&mut px, &fonts, 1000.0, 720.0);
         let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
-        assert!(
-            hits.iter().any(|h| h.id == Hit::WhatsNewDismiss),
-            "Got it must be clickable"
-        );
-        assert!(hits.iter().any(|h| h.id == Hit::WhatsNewScrim));
-        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join(".impeccable")
-            .join("review");
-        let _ = fs::create_dir_all(&dir);
-        let png = px.encode_png().expect("png");
-        fs::write(dir.join("whats-new-desktop.png"), &png).expect("write review png");
-        fs::write(dir.join("desktop.png"), &png).expect("write desktop png");
-        fs::write(dir.join("hero-repro.png"), &png).expect("write hero repro");
+        assert!(hit_ids(&hits).contains(&Hit::WhatsNewDismiss));
+        assert!(hit_ids(&hits).contains(&Hit::WhatsNewScrim));
+        let dismiss = hits.iter().find(|h| h.id == Hit::WhatsNewDismiss).unwrap();
+        assert!(dismiss.w > 80.0 && dismiss.h > 24.0);
+        assert_golden("whats-new", &px);
         *UI.lock().unwrap() = None;
+    }
+
+    #[test]
+    fn reply_modal_paints_got_it() {
+        refresh_palette();
+        let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+        let view = crate::feedback::ReplyView {
+            id: "t1".into(),
+            kind_label: "Bug",
+            lines: vec![
+                crate::feedback::ChatLine {
+                    from_dev: false,
+                    text: "The map vanished".into(),
+                },
+                crate::feedback::ChatLine {
+                    from_dev: true,
+                    text: "Which track were you on?".into(),
+                },
+            ],
+        };
+        let mut px = Pixmap::new(1000, 720).expect("pixmap");
+        let mut hits = Vec::new();
+        let _ = draw_reply(&mut px, &fonts, 1000.0, 720.0, &view, None, 0.0, &mut hits);
+        let ids = hit_ids(&hits);
+        assert!(ids.contains(&Hit::ReplyDismiss));
+        assert!(ids.contains(&Hit::ReplySend));
+        assert!(ids.contains(&Hit::ReplyText));
+        assert!(ids.contains(&Hit::ReplyScrim));
+        assert_golden("reply", &px);
     }
 
     #[test]
     fn wrap_fb_does_not_split_words() {
         let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+        assert_eq!(wrap_fb(&fonts, "", 100.0, 16.0), vec![""]);
+        assert_eq!(wrap_fb(&fonts, "a\n\nb", 400.0, 16.0), vec!["a", "", "b"]);
         let s = "Follow a rider in replay, sit or stand from Stance";
         let widest = s
             .split_whitespace()

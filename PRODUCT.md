@@ -30,11 +30,11 @@ A broadcast-style race HUD MX Bikes does not ship: standings, relative, map/mini
 
 ## Capabilities and Constraints
 
-- Widgets: Standings, Relative, Horizontal Standings, Map, Minimap, Radar, Dash, Systems, Stance. Sectors are labs-only until **Experimental widgets** is on.
+- Widgets: Standings, Relative, Horizontal Standings, Map, Minimap, Radar, Dash, Systems, Stance. Sectors and Delta Bar are labs-only until **Experimental widgets** is on. Sectors delta is vs your best on this track (saved).
 - Fresh install: every **Show on overlay** toggle starts off. Nothing draws until the rider turns it on. Widgets only draw during a session (not in the garage, lobby, or menus). Stance follows a local bind, not rider animation.
 - Optional simpler in-game HUD (`ingame_hud`) draws inside the game; overlay work does not go there.
 - Architecture: `Holeshot-HUD.dlo` → shared memory `Local\MXBOHudV9` → Rust overlay. Field availability is gated by the PiBoSo plugin API (see `wiki/Home.md`). Bump `MXBO_SHM_VERSION` when the snapshot layout changes.
-- Auto-update from GitHub releases; after an in-app update, Settings shows a What's new board for this version. In-app feedback (F8 → App) posts private gists.
+- Auto-update from GitHub releases; after an in-app update, Settings shows a What's new board for this version. In-app feedback (F8 → Feedback) posts private gists; a reply from the inbox pops up in settings on that PC, and they can write back.
 - MX Bikes only. Not a general sim HUD.
 
 ## Brand Commitments

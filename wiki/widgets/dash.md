@@ -16,7 +16,7 @@ This is the most stateful widget. Clock and flag bugs almost always belong here,
 
 A `~Lapped` tag sits beside the lap/clock text whenever `lapped` is true — the focus rider's classification `gap_laps >= 1`, gated on being on track, out of warmup, and off the gate. It widens the right column, so the panel grows once when you get lapped rather than clipping. Amber (`dash_lapped_col`), a little smaller than the lap text and nudged onto its baseline.
 
-Fixed body: gear | RPM + speed | position + lap/clock text. **Simple dash** (`dash_simple`) strips that to a compact lockup: orange skew **gear plaque** (ink-on-accent digit) plus large italic speed with a vertical `MPH`/`KPH` stack. No RPM, place, footer, or rev bar. White/checkered flags still wrap the plaque. The RPM/speed column is sized from the widest digits (`0`–`9`), not the live value, so gear and position do not shift as RPM changes. **P#** and `~Lapped` use live `RaceStore` rank/gaps during a race; session clock still uses game laps. `P#` reads `standing_pos`, so it counts an on-track pass straight away instead of at the line — see [live race order](../live-order.md). It also falls back to `local_race_num` when there is no focus rider. Footer is three slots (default Engine, Air, Best); options include **Local time** (`DashField::LocalTime`, same 12h clock as standings). Optional rev bar from `local_rpm` vs `max_rpm` / `shift_rpm`. Footer and rev stay in the ini while Simple dash is on.
+Fixed body: gear | RPM + speed | position + lap/clock text. The plaque fills the widget rect: height scales type, extra width is column gap. Hold Ctrl and drag to resize. Default 11.5%×10.8%, bottom-centered. **Simple dash** (`dash_simple`) strips that to a compact lockup: orange skew **gear plaque** (ink-on-accent digit) plus large italic speed with a vertical `MPH`/`KPH` stack. No RPM, place, footer, or rev bar. White/checkered flags still wrap the plaque. The RPM/speed column is sized from the widest digits (`0`–`9`), not the live value, so gear and position do not shift as RPM changes. **P#** and `~Lapped` use live `RaceStore` rank/gaps during a race; session clock still uses game laps. `P#` reads `standing_pos`, so it counts an on-track pass straight away instead of at the line — see [live race order](../live-order.md). It also falls back to `local_race_num` when there is no focus rider. Footer is three slots (default Engine, Air, Best); options include **Local time** (`DashField::LocalTime`, same 12h clock as standings). Optional rev bar from `local_rpm` vs `max_rpm` / `shift_rpm`. Footer and rev stay in the ini while Simple dash is on.
 
 ## Session clock (hard-won)
 
@@ -81,9 +81,11 @@ One path for lap motos and timed extras, driven by `laps_left`. Lap motos count 
 - Do not drop flag wrap in Simple dash. White and checkered still sit on the compact plaque.
 - Do not paint Simple dash gear in lapped-red; the gear tile is Holeshot orange with dark ink.
 - Do not throw away footer / rev settings when Simple dash is on; they come back when it is off.
+- Do not lock dash size to a content-only visual rect. Orange handles and hit testing use the widget rect; the plaque fills that rect. Hold Ctrl and drag to scale. Default is 11.5%×10.8%, bottom-centered.
 
 ## Change log
 
+- 2026-08-27 — Default dash is 11.5%×10.8% (the size we settled on in-game). The plaque fills the widget rect so Ctrl-drag on the orange handles actually resizes it.
 - 2026-08-26 — Simple dash is gear + speed only: orange skew gear plaque, vertical unit stack, flags still wrap. Footer and rev hide in settings but stay in the ini.
 
 - 2026-08-25 — Checkered wrap stays around the dash (sides and bottom), using the same soft grey squares as the top. Checkers fade in from both sides and hug the caption; Font Awesome `flag` sits with the label. White flag uses the same icon.

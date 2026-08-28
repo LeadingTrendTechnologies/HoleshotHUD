@@ -1,4 +1,5 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -10,10 +11,12 @@ use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM
 
 use crate::record::{self, FeedbackLog};
 use crate::update;
-use crate::util::json_escape;
+use crate::util::{json_array_slice, json_bool, json_escape, json_string};
 
 const FEEDBACK_URL: &str = "https://holeshot-hud.vercel.app/api/feedback";
 const MAX_MESSAGE: usize = 1500;
+const MAX_TICKETS: usize = 20;
+const POLL_EVERY: Duration = Duration::from_secs(60);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
@@ -67,7 +70,68 @@ struct CaretLayout {
 }
 
 static FORM: OnceLock<Mutex<Form>> = OnceLock::new();
+static COMPOSE: OnceLock<Mutex<Compose>> = OnceLock::new();
 static CARET: OnceLock<Mutex<CaretLayout>> = OnceLock::new();
+static TICKETS: OnceLock<Mutex<Vec<Ticket>>> = OnceLock::new();
+static POLL_AT: OnceLock<Mutex<Option<Instant>>> = OnceLock::new();
+static POLLING: AtomicBool = AtomicBool::new(false);
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ChatLine {
+    pub from_dev: bool,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReplyView {
+    pub id: String,
+    pub kind_label: &'static str,
+    pub lines: Vec<ChatLine>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Msg {
+    from_dev: bool,
+    text: String,
+    at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Ticket {
+    id: String,
+    kind: String,
+    summary: String,
+    sent_at: String,
+    reply: String,
+    replied_at: String,
+    thread: Vec<Msg>,
+    seen_reply: bool,
+}
+
+#[derive(Clone)]
+pub struct Compose {
+    pub id: String,
+    pub message: String,
+    pub cursor: usize,
+    pub focused: bool,
+    pub caret_at: Instant,
+    pub status: Status,
+    pub text_rect: (f32, f32, f32, f32),
+}
+
+impl Default for Compose {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            message: String::new(),
+            cursor: 0,
+            focused: false,
+            caret_at: Instant::now(),
+            status: Status::Idle,
+            text_rect: (0.0, 0.0, 0.0, 0.0),
+        }
+    }
+}
 
 fn caret_lock() -> std::sync::MutexGuard<'static, CaretLayout> {
     CARET
@@ -98,6 +162,20 @@ fn lock() -> std::sync::MutexGuard<'static, Form> {
         .unwrap_or_else(|e| e.into_inner())
 }
 
+fn tickets_lock() -> std::sync::MutexGuard<'static, Vec<Ticket>> {
+    TICKETS
+        .get_or_init(|| Mutex::new(load_tickets()))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
+fn compose_lock() -> std::sync::MutexGuard<'static, Compose> {
+    COMPOSE
+        .get_or_init(|| Mutex::new(Compose::default()))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
 pub fn snapshot() -> Form {
     lock().clone()
 }
@@ -119,16 +197,77 @@ pub fn toggle_attach() {
     f.attach_log = !f.attach_log;
 }
 
+pub fn is_focused() -> bool {
+    lock().focused || compose_lock().focused
+}
+
 pub fn set_focus(on: bool) {
-    let mut f = lock();
-    f.focused = on;
+    {
+        let mut f = lock();
+        f.focused = on;
+        if on {
+            f.caret_at = Instant::now();
+        }
+    }
     if on {
-        f.caret_at = Instant::now();
+        compose_lock().focused = false;
     }
 }
 
-pub fn is_focused() -> bool {
-    lock().focused
+pub fn compose_snapshot() -> Compose {
+    compose_lock().clone()
+}
+
+pub fn prepare_compose(id: &str) {
+    let mut c = compose_lock();
+    if c.id != id {
+        *c = Compose {
+            id: id.into(),
+            caret_at: Instant::now(),
+            ..Compose::default()
+        };
+        c.id = id.into();
+    }
+}
+
+pub fn set_compose_focus(on: bool) {
+    {
+        let mut c = compose_lock();
+        c.focused = on;
+        if on {
+            c.caret_at = Instant::now();
+        }
+    }
+    if on {
+        lock().focused = false;
+    }
+}
+
+pub fn set_compose_rect(x: f32, y: f32, w: f32, h: f32) {
+    compose_lock().text_rect = (x, y, w, h);
+}
+
+pub fn click_compose(px: f32, py: f32) {
+    set_compose_focus(true);
+    let mut c = compose_lock();
+    c.caret_at = Instant::now();
+    let lay = caret_lock();
+    if lay.rows.is_empty() {
+        c.cursor = c.message.len();
+        return;
+    }
+    let row = ((py - lay.y0).max(0.0) / lay.line_h.max(1.0)) as usize;
+    let row = row.min(lay.rows.len() - 1);
+    let x = px - lay.x0;
+    let stops = &lay.rows[row];
+    let mut best = stops.first().map(|s| s.0).unwrap_or(0);
+    for pair in stops.windows(2) {
+        let mid = (pair[0].1 + pair[1].1) * 0.5;
+        if x >= mid {
+            best = pair[1].0;
+        }
+    }
+    c.cursor = best.min(c.message.len());
 }
 
 pub fn set_text_rect(x: f32, y: f32, w: f32, h: f32) {
@@ -159,6 +298,9 @@ pub fn click_text(px: f32, py: f32) {
 }
 
 pub fn on_char(ch: char) -> bool {
+    if compose_lock().focused {
+        return compose_char(ch);
+    }
     let mut f = lock();
     if !f.focused {
         return false;
@@ -175,6 +317,9 @@ pub fn on_char(ch: char) -> bool {
 }
 
 pub fn on_key(vk: u16, ctrl: bool) -> bool {
+    if compose_lock().focused {
+        return compose_key(vk, ctrl);
+    }
     let mut f = lock();
     if !f.focused {
         return false;
@@ -236,8 +381,13 @@ pub fn on_key(vk: u16, ctrl: bool) -> bool {
 }
 
 pub fn caret_on() -> bool {
-    let f = lock();
-    f.focused && f.caret_at.elapsed().as_millis() % 1000 < 500
+    let form = lock();
+    if form.focused && form.caret_at.elapsed().as_millis() % 1000 < 500 {
+        return true;
+    }
+    drop(form);
+    let c = compose_lock();
+    c.focused && c.caret_at.elapsed().as_millis() % 1000 < 500
 }
 
 pub fn send() {
@@ -296,6 +446,125 @@ fn insert(f: &mut Form, ch: char) {
     f.status = Status::Idle;
 }
 
+fn insert_compose(c: &mut Compose, ch: char) {
+    if c.message.chars().count() >= MAX_MESSAGE {
+        return;
+    }
+    c.message.insert(c.cursor, ch);
+    c.cursor += ch.len_utf8();
+    c.caret_at = Instant::now();
+    c.status = Status::Idle;
+}
+
+fn compose_char(ch: char) -> bool {
+    let mut c = compose_lock();
+    if !c.focused {
+        return false;
+    }
+    if ch == '\r' || ch == '\n' {
+        insert_compose(&mut c, '\n');
+        return true;
+    }
+    if ch.is_control() {
+        return true;
+    }
+    insert_compose(&mut c, ch);
+    true
+}
+
+fn compose_key(vk: u16, ctrl: bool) -> bool {
+    let mut c = compose_lock();
+    if !c.focused {
+        return false;
+    }
+    c.caret_at = Instant::now();
+    match vk {
+        0x08 => {
+            if c.cursor > 0 {
+                let prev = prev_char(&c.message, c.cursor);
+                let cur = c.cursor;
+                c.message.replace_range(prev..cur, "");
+                c.cursor = prev;
+            }
+            true
+        }
+        0x2E => {
+            if c.cursor < c.message.len() {
+                let cur = c.cursor;
+                let next = next_char(&c.message, cur);
+                c.message.replace_range(cur..next, "");
+            }
+            true
+        }
+        0x25 => {
+            c.cursor = prev_char(&c.message, c.cursor);
+            true
+        }
+        0x27 => {
+            c.cursor = next_char(&c.message, c.cursor);
+            true
+        }
+        0x24 => {
+            c.cursor = 0;
+            true
+        }
+        0x23 => {
+            c.cursor = c.message.len();
+            true
+        }
+        0x1B => {
+            c.focused = false;
+            true
+        }
+        0x56 if ctrl => {
+            drop(c);
+            if let Some(text) = clipboard_text() {
+                let mut c = compose_lock();
+                for ch in text.chars() {
+                    if ch == '\r' {
+                        continue;
+                    }
+                    insert_compose(&mut c, ch);
+                }
+            }
+            true
+        }
+        _ => true,
+    }
+}
+
+pub fn send_compose() {
+    let (id, message) = {
+        let mut c = compose_lock();
+        if matches!(c.status, Status::Sending) {
+            return;
+        }
+        if c.id.is_empty() {
+            return;
+        }
+        if c.message.trim().is_empty() {
+            c.status = Status::Error("Write a reply first.".into());
+            return;
+        }
+        c.status = Status::Sending;
+        c.focused = false;
+        (c.id.clone(), c.message.trim().to_string())
+    };
+    std::thread::spawn(move || {
+        let result = post_followup(&id, &message);
+        let mut c = compose_lock();
+        match result {
+            Ok(()) => {
+                append_user_msg(&id, &message);
+                c.message.clear();
+                c.cursor = 0;
+                c.status = Status::Sent;
+            }
+            Err(e) => c.status = Status::Error(followup_error(&e)),
+        }
+    });
+}
+
 fn prev_char(s: &str, i: usize) -> usize {
     if i == 0 {
         return 0;
@@ -316,7 +585,12 @@ fn next_char(s: &str, i: usize) -> usize {
 
 fn submit(kind: Kind, rating: u8, message: &str, log: Option<&FeedbackLog>, attach: bool) -> Status {
     match post(kind, rating, message, log, attach) {
-        Ok(()) => Status::Sent,
+        Ok(id) => {
+            if let Some(id) = id {
+                remember_ticket(id, kind, rating, message);
+            }
+            Status::Sent
+        }
         Err(e) => {
             copy_report(kind, rating, message, log);
             Status::Error(send_error(&e))
@@ -347,7 +621,7 @@ fn copy_report(kind: Kind, rating: u8, message: &str, log: Option<&FeedbackLog>)
     let _ = set_clipboard(&text, path);
 }
 
-fn post(kind: Kind, rating: u8, message: &str, log: Option<&FeedbackLog>, attach: bool) -> Result<(), String> {
+fn post(kind: Kind, rating: u8, message: &str, log: Option<&FeedbackLog>, attach: bool) -> Result<Option<String>, String> {
     let url = feedback_url();
     let body = payload_json(kind, rating, message, log, attach);
     let agent = ureq::AgentBuilder::new()
@@ -359,10 +633,12 @@ fn post(kind: Kind, rating: u8, message: &str, log: Option<&FeedbackLog>, attach
         .set("Content-Type", "application/json")
         .send_string(&body)
         .map_err(|e| format!("{e}"))?;
-    if resp.status() >= 200 && resp.status() < 300 {
-        Ok(())
+    let status = resp.status();
+    let text = resp.into_string().unwrap_or_default();
+    if status >= 200 && status < 300 {
+        Ok(json_string(&text, "id").filter(|id| !id.is_empty()))
     } else {
-        Err(format!("HTTP {}", resp.status()))
+        Err(format!("HTTP {status}"))
     }
 }
 
@@ -388,6 +664,17 @@ fn feedback_url() -> String {
     FEEDBACK_URL.to_string()
 }
 
+fn first_install_version() -> String {
+    crate::config::with_config(|c| {
+        let v = c.first_install_version.trim();
+        if v.is_empty() {
+            "unknown".into()
+        } else {
+            v.to_string()
+        }
+    })
+}
+
 fn payload_json(kind: Kind, rating: u8, message: &str, log: Option<&FeedbackLog>, attach: bool) -> String {
     let kind_s = match kind {
         Kind::Rate => "rating",
@@ -399,10 +686,12 @@ fn payload_json(kind: Kind, rating: u8, message: &str, log: Option<&FeedbackLog>
     } else {
         rating.to_string()
     };
+    let first_version = first_install_version();
     let mut s = format!(
-        "{{\"kind\":\"{kind_s}\",\"rating\":{rating_s},\"message\":\"{}\",\"version\":\"{}\",\"os\":\"{} {}\"",
+        "{{\"kind\":\"{kind_s}\",\"rating\":{rating_s},\"message\":\"{}\",\"version\":\"{}\",\"first_version\":\"{}\",\"os\":\"{} {}\"",
         json_escape(message),
         json_escape(update::current_version()),
+        json_escape(&first_version),
         json_escape(std::env::consts::OS),
         json_escape(std::env::consts::ARCH),
     );
@@ -426,8 +715,9 @@ fn payload_json(kind: Kind, rating: u8, message: &str, log: Option<&FeedbackLog>
 fn plain_report(kind: Kind, rating: u8, message: &str, log: Option<&FeedbackLog>) -> String {
     let mut body = String::new();
     body.push_str(&format!(
-        "Holeshot HUD {}\n{} {}\n\n",
+        "Holeshot HUD {}\nFirst install {}\n{} {}\n\n",
         update::current_version(),
+        first_install_version(),
         std::env::consts::OS,
         std::env::consts::ARCH
     ));
@@ -542,4 +832,608 @@ fn set_clipboard_file(path: &Path) -> Result<(), ()> {
         let _ = SetClipboardData(15, HANDLE(hg.0));
     }
     Ok(())
+}
+
+pub fn ticket_view(id: &str) -> Option<ReplyView> {
+    let tickets = tickets_lock();
+    let t = tickets.iter().find(|t| t.id == id)?;
+    Some(view_of(t))
+}
+
+pub fn pending_reply() -> Option<ReplyView> {
+    tickets_lock().iter().find_map(|t| {
+        if !unread_dev(t) {
+            return None;
+        }
+        Some(view_of(t))
+    })
+}
+
+fn view_of(t: &Ticket) -> ReplyView {
+    let mut lines = Vec::new();
+    if !t.summary.is_empty() {
+        lines.push(ChatLine {
+            from_dev: false,
+            text: t.summary.clone(),
+        });
+    }
+    for m in &t.thread {
+        lines.push(ChatLine {
+            from_dev: m.from_dev,
+            text: m.text.clone(),
+        });
+    }
+    if lines.len() == 1 && !t.reply.is_empty() && t.thread.is_empty() {
+        lines.push(ChatLine {
+            from_dev: true,
+            text: t.reply.clone(),
+        });
+    }
+    ReplyView {
+        id: t.id.clone(),
+        kind_label: kind_label(&t.kind),
+        lines,
+    }
+}
+
+fn unread_dev(t: &Ticket) -> bool {
+    if t.seen_reply {
+        return false;
+    }
+    if let Some(last) = t.thread.last() {
+        return last.from_dev;
+    }
+    !t.reply.is_empty()
+}
+
+pub fn dismiss_reply(id: &str) {
+    {
+        let mut tickets = tickets_lock();
+        if let Some(t) = tickets.iter_mut().find(|t| t.id == id) {
+            t.seen_reply = true;
+        }
+        save_tickets(&tickets);
+    }
+}
+
+/// Poll for replies while settings is on screen. No-op every frame unless due.
+pub fn tick(settings_open: bool) {
+    if !settings_open {
+        return;
+    }
+    if tickets_lock().is_empty() {
+        return;
+    }
+    let mut last = POLL_AT
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let due = last.map(|t| t.elapsed() >= POLL_EVERY).unwrap_or(true);
+    if !due {
+        return;
+    }
+    *last = Some(Instant::now());
+    drop(last);
+    spawn_poll();
+}
+
+/// Settings just came to the front — fetch replies now.
+pub fn refresh() {
+    if tickets_lock().is_empty() {
+        return;
+    }
+    if let Ok(mut last) = POLL_AT
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+    {
+        *last = Some(Instant::now());
+    }
+    spawn_poll();
+}
+
+fn spawn_poll() {
+    if POLLING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let ids: Vec<String> = tickets_lock().iter().map(|t| t.id.clone()).collect();
+    if ids.is_empty() {
+        POLLING.store(false, Ordering::SeqCst);
+        return;
+    }
+    std::thread::spawn(move || {
+        if let Ok(remote) = fetch_tickets(&ids) {
+            merge_remote(&remote);
+        }
+        POLLING.store(false, Ordering::SeqCst);
+    });
+}
+
+fn kind_label(kind: &str) -> &'static str {
+    match kind {
+        "bug" => "Bug",
+        "feature" => "Feature",
+        "rating" => "Rating",
+        _ => "Feedback",
+    }
+}
+
+fn kind_key(kind: Kind) -> &'static str {
+    match kind {
+        Kind::Rate => "rating",
+        Kind::Bug => "bug",
+        Kind::Feature => "feature",
+    }
+}
+
+fn clip_summary(s: &str) -> String {
+    let t = s.split_whitespace().collect::<Vec<_>>().join(" ");
+    if t.chars().count() <= 72 {
+        t
+    } else {
+        format!("{}…", t.chars().take(71).collect::<String>())
+    }
+}
+
+fn remember_ticket(id: String, kind: Kind, rating: u8, message: &str) {
+    let summary = if kind == Kind::Rate && message.trim().is_empty() {
+        format!("{rating}/5")
+    } else {
+        clip_summary(message)
+    };
+    let ticket = Ticket {
+        id,
+        kind: kind_key(kind).into(),
+        summary,
+        sent_at: String::new(),
+        reply: String::new(),
+        replied_at: String::new(),
+        thread: Vec::new(),
+        seen_reply: false,
+    };
+    let mut tickets = tickets_lock();
+    tickets.retain(|t| t.id != ticket.id);
+    tickets.insert(0, ticket);
+    if tickets.len() > MAX_TICKETS {
+        tickets.truncate(MAX_TICKETS);
+    }
+    save_tickets(&tickets);
+}
+
+fn merge_remote(remote: &[Ticket]) {
+    let mut tickets = tickets_lock();
+    for incoming in remote {
+        if let Some(local) = tickets.iter_mut().find(|t| t.id == incoming.id) {
+            if !incoming.kind.is_empty() {
+                local.kind = incoming.kind.clone();
+            }
+            if !incoming.summary.is_empty() {
+                local.summary = incoming.summary.clone();
+            }
+            let thread_changed = incoming.thread != local.thread;
+            if incoming.reply != local.reply || thread_changed {
+                if unread_dev(incoming) {
+                    local.seen_reply = false;
+                }
+            }
+            local.reply = incoming.reply.clone();
+            local.replied_at = incoming.replied_at.clone();
+            local.thread = incoming.thread.clone();
+        }
+    }
+    save_tickets(&tickets);
+}
+
+fn append_user_msg(id: &str, text: &str) {
+    let mut tickets = tickets_lock();
+    if let Some(local) = tickets.iter_mut().find(|t| t.id == id) {
+        local.thread.push(Msg {
+            from_dev: false,
+            text: text.into(),
+            at: String::new(),
+        });
+        local.seen_reply = true;
+    }
+    save_tickets(&tickets);
+}
+
+fn post_followup(id: &str, message: &str) -> Result<(), String> {
+    let url = tickets_url();
+    let body = format!(
+        "{{\"id\":\"{}\",\"message\":\"{}\"}}",
+        json_escape(id),
+        json_escape(message)
+    );
+    let agent = ureq::AgentBuilder::new()
+        .timeout(Duration::from_secs(30))
+        .user_agent("mxbo-overlay")
+        .build();
+    let resp = agent
+        .post(&url)
+        .set("Content-Type", "application/json")
+        .send_string(&body)
+        .map_err(|e| format!("{e}"))?;
+    let status = resp.status();
+    if status >= 200 && status < 300 {
+        Ok(())
+    } else {
+        Err(format!("HTTP {status}"))
+    }
+}
+
+fn followup_error(e: &str) -> String {
+    let e = e.to_ascii_lowercase();
+    if e.contains("503") {
+        "Couldn't send. Add FEEDBACK_GITHUB_TOKEN on Vercel.".into()
+    } else if e.contains("404") || e.contains("not found") {
+        "Couldn't send. Deploy /api/tickets to Vercel.".into()
+    } else if e.contains("could not") || e.contains("timed out") || e.contains("dns") {
+        "Couldn't send. No connection to the server.".into()
+    } else {
+        "Couldn't send. Try again.".into()
+    }
+}
+
+fn fetch_tickets(ids: &[String]) -> Result<Vec<Ticket>, String> {
+    let url = format!("{}?ids={}", tickets_url(), ids.join(","));
+    let agent = ureq::AgentBuilder::new()
+        .timeout(Duration::from_secs(20))
+        .user_agent("mxbo-overlay")
+        .build();
+    let text = agent
+        .get(&url)
+        .call()
+        .map_err(|e| format!("{e}"))?
+        .into_string()
+        .map_err(|e| format!("{e}"))?;
+    Ok(parse_remote_tickets(&text))
+}
+
+fn tickets_url() -> String {
+    feedback_url().replacen("/api/feedback", "/api/tickets", 1)
+}
+
+fn app_dir() -> Option<PathBuf> {
+    Some(PathBuf::from(std::env::var("LOCALAPPDATA").ok()?).join("Holeshot HUD"))
+}
+
+fn tickets_path() -> Option<PathBuf> {
+    Some(app_dir()?.join("tickets.json"))
+}
+
+fn load_tickets() -> Vec<Ticket> {
+    let Some(path) = tickets_path() else {
+        return Vec::new();
+    };
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    parse_local_tickets(&text)
+}
+
+#[cfg(not(test))]
+fn save_tickets(tickets: &[Ticket]) {
+    let Some(path) = tickets_path() else {
+        return;
+    };
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = std::fs::write(path, serialize_tickets(tickets));
+}
+
+#[cfg(test)]
+fn save_tickets(_tickets: &[Ticket]) {}
+
+fn serialize_tickets(tickets: &[Ticket]) -> String {
+    let mut s = String::from("[\n");
+    for (i, t) in tickets.iter().enumerate() {
+        if i > 0 {
+            s.push_str(",\n");
+        }
+        s.push_str("  {");
+        s.push_str(&format!(
+            "\"id\":\"{}\",\"kind\":\"{}\",\"summary\":\"{}\",\"sent_at\":\"{}\",\"reply\":\"{}\",\"replied_at\":\"{}\",\"thread\":{},\"seen_reply\":{}",
+            json_escape(&t.id),
+            json_escape(&t.kind),
+            json_escape(&t.summary),
+            json_escape(&t.sent_at),
+            json_escape(&t.reply),
+            json_escape(&t.replied_at),
+            serialize_thread(&t.thread),
+            if t.seen_reply { "true" } else { "false" },
+        ));
+        s.push('}');
+    }
+    s.push_str("\n]\n");
+    s
+}
+
+fn parse_local_tickets(text: &str) -> Vec<Ticket> {
+    json_objects(text)
+        .into_iter()
+        .filter_map(|obj| {
+            let id = json_string(obj, "id").filter(|s| !s.is_empty())?;
+            Some(Ticket {
+                id,
+                kind: json_string(obj, "kind").unwrap_or_default(),
+                summary: json_string(obj, "summary").unwrap_or_default(),
+                sent_at: json_string(obj, "sent_at").unwrap_or_default(),
+                reply: json_string(obj, "reply").unwrap_or_default(),
+                replied_at: json_string(obj, "replied_at").unwrap_or_default(),
+                thread: parse_thread(obj),
+                seen_reply: json_bool(obj, "seen_reply").unwrap_or(false),
+            })
+        })
+        .take(MAX_TICKETS)
+        .collect()
+}
+
+fn parse_remote_tickets(text: &str) -> Vec<Ticket> {
+    let slice = json_array_slice(text, "tickets").unwrap_or(text);
+    json_objects(slice)
+        .into_iter()
+        .filter_map(|obj| {
+            let id = json_string(obj, "id").filter(|s| !s.is_empty())?;
+            if json_array_slice(obj, "tickets").is_some() {
+                return None;
+            }
+            Some(Ticket {
+                id,
+                kind: json_string(obj, "kind").unwrap_or_default(),
+                summary: json_string(obj, "summary").unwrap_or_default(),
+                sent_at: json_string(obj, "at").unwrap_or_default(),
+                reply: json_string(obj, "reply").unwrap_or_default(),
+                replied_at: json_string(obj, "replied_at").unwrap_or_default(),
+                thread: parse_thread(obj),
+                seen_reply: false,
+            })
+        })
+        .collect()
+}
+
+fn serialize_thread(thread: &[Msg]) -> String {
+    let mut s = String::from("[");
+    for (i, m) in thread.iter().enumerate() {
+        if i > 0 {
+            s.push(',');
+        }
+        s.push_str(&format!(
+            "{{\"from\":\"{}\",\"text\":\"{}\",\"at\":\"{}\"}}",
+            if m.from_dev { "dev" } else { "user" },
+            json_escape(&m.text),
+            json_escape(&m.at),
+        ));
+    }
+    s.push(']');
+    s
+}
+
+fn parse_thread(obj: &str) -> Vec<Msg> {
+    if let Some(arr) = json_array_slice(obj, "thread") {
+        let mut out = Vec::new();
+        for m in json_objects(arr) {
+            let text = json_string(m, "text").unwrap_or_default();
+            if text.is_empty() {
+                continue;
+            }
+            let from = json_string(m, "from").unwrap_or_default();
+            out.push(Msg {
+                from_dev: from == "dev",
+                text,
+                at: json_string(m, "at").unwrap_or_default(),
+            });
+        }
+        return out;
+    }
+    if let Some(reply) = json_string(obj, "reply").filter(|s| !s.is_empty()) {
+        return vec![Msg {
+            from_dev: true,
+            text: reply,
+            at: json_string(obj, "replied_at").unwrap_or_default(),
+        }];
+    }
+    Vec::new()
+}
+
+fn json_objects(text: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] != b'{' {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        let mut depth = 0i32;
+        let mut in_str = false;
+        let mut esc = false;
+        while i < bytes.len() {
+            let c = bytes[i];
+            if in_str {
+                if esc {
+                    esc = false;
+                } else if c == b'\\' {
+                    esc = true;
+                } else if c == b'"' {
+                    in_str = false;
+                }
+            } else if c == b'"' {
+                in_str = true;
+            } else if c == b'{' {
+                depth += 1;
+            } else if c == b'}' {
+                depth -= 1;
+                if depth == 0 {
+                    if let Ok(slice) = std::str::from_utf8(&bytes[start..=i]) {
+                        out.push(slice);
+                    }
+                    i += 1;
+                    break;
+                }
+            }
+            i += 1;
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn json_roundtrip_keeps_newlines() {
+        let tickets = vec![Ticket {
+            id: "abc".into(),
+            kind: "bug".into(),
+            summary: "It crashed".into(),
+            sent_at: String::new(),
+            reply: "Fixed in the next build.\nThanks.".into(),
+            replied_at: String::new(),
+            thread: Vec::new(),
+            seen_reply: false,
+        }];
+        let text = serialize_tickets(&tickets);
+        let back = parse_local_tickets(&text);
+        assert_eq!(back, tickets);
+    }
+
+    #[test]
+    fn pending_skips_seen_and_empty() {
+        *tickets_lock() = vec![
+            Ticket {
+                id: "a".into(),
+                kind: "bug".into(),
+                summary: "Old".into(),
+                sent_at: String::new(),
+                reply: "Already read".into(),
+                replied_at: String::new(),
+                thread: Vec::new(),
+                seen_reply: true,
+            },
+            Ticket {
+                id: "b".into(),
+                kind: "feature".into(),
+                summary: "Minimap zoom".into(),
+                sent_at: String::new(),
+                reply: "We added a slider.".into(),
+                replied_at: String::new(),
+                thread: Vec::new(),
+                seen_reply: false,
+            },
+        ];
+        let view = pending_reply().expect("unread");
+        assert_eq!(view.id, "b");
+        assert_eq!(view.kind_label, "Feature");
+        assert_eq!(
+            view.lines,
+            vec![
+                ChatLine {
+                    from_dev: false,
+                    text: "Minimap zoom".into(),
+                },
+                ChatLine {
+                    from_dev: true,
+                    text: "We added a slider.".into(),
+                },
+            ]
+        );
+        dismiss_reply("b");
+        assert!(pending_reply().is_none());
+    }
+
+    #[test]
+    fn send_error_maps_status_text() {
+        assert_eq!(
+            send_error("HTTP 503"),
+            "Couldn't send. Add FEEDBACK_GITHUB_TOKEN on Vercel."
+        );
+        assert_eq!(
+            send_error("413 payload"),
+            "Couldn't send. Race log was too large."
+        );
+        assert_eq!(
+            send_error("gist failed"),
+            "Couldn't send. Token needs gist access on Vercel."
+        );
+        assert_eq!(
+            send_error("404 not found"),
+            "Couldn't send. Deploy /api/feedback to Vercel."
+        );
+        assert_eq!(
+            send_error("timed out"),
+            "Couldn't send. No connection to the server."
+        );
+        assert_eq!(
+            send_error("nope"),
+            "Couldn't send. Report and log file copied."
+        );
+    }
+
+    #[test]
+    fn merge_remote_reopens_unread_dev_reply() {
+        *tickets_lock() = vec![Ticket {
+            id: "b".into(),
+            kind: "feature".into(),
+            summary: "Minimap zoom".into(),
+            sent_at: String::new(),
+            reply: "We added a slider.".into(),
+            replied_at: String::new(),
+            thread: vec![Msg {
+                from_dev: true,
+                text: "We added a slider.".into(),
+                at: String::new(),
+            }],
+            seen_reply: true,
+        }];
+        assert!(pending_reply().is_none());
+        merge_remote(&[Ticket {
+            id: "b".into(),
+            kind: "feature".into(),
+            summary: "Minimap zoom".into(),
+            sent_at: String::new(),
+            reply: "Which track?".into(),
+            replied_at: String::new(),
+            thread: vec![
+                Msg {
+                    from_dev: true,
+                    text: "We added a slider.".into(),
+                    at: String::new(),
+                },
+                Msg {
+                    from_dev: true,
+                    text: "Which track?".into(),
+                    at: String::new(),
+                },
+            ],
+            seen_reply: false,
+        }]);
+        let view = pending_reply().expect("unread again");
+        assert_eq!(view.id, "b");
+        assert_eq!(view.lines.last().unwrap().text, "Which track?");
+        assert!(view.lines.last().unwrap().from_dev);
+    }
+
+    #[test]
+    fn parse_remote_array() {
+        let body = r#"{"tickets":[{"id":"g1","kind":"bug","summary":"Hi","reply":"Hello\nthere","replied_at":"2026-01-01"}]}"#;
+        let got = parse_remote_tickets(body);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].id, "g1");
+        assert_eq!(got[0].reply, "Hello\nthere");
+        assert_eq!(got[0].thread.len(), 1);
+        assert!(got[0].thread[0].from_dev);
+    }
+
+    #[test]
+    fn parse_remote_thread() {
+        let body = r#"{"tickets":[{"id":"g1","kind":"bug","summary":"Crash","thread":[{"from":"dev","text":"Which track?"},{"from":"user","text":"Hangtown"}]}]}"#;
+        let got = parse_remote_tickets(body);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].thread.len(), 2);
+        assert!(got[0].thread[0].from_dev);
+        assert!(!got[0].thread[1].from_dev);
+        assert_eq!(got[0].thread[1].text, "Hangtown");
+    }
 }

@@ -119,6 +119,26 @@ components:
   table-row-you:
     backgroundColor: "{colors.you-row}"
     textColor: "{colors.text}"
+  sector-delta-pb:
+    backgroundColor: "{colors.best-lap-violet}"
+    textColor: "{colors.ink-on-accent}"
+    padding: "0 10px"
+    typography: "{typography.body}"
+  sector-delta-slower:
+    backgroundColor: "{colors.behind-red}"
+    textColor: "{colors.ink-on-accent}"
+    padding: "0 10px"
+    typography: "{typography.body}"
+  sector-delta-ahead:
+    backgroundColor: "{colors.ahead-green}"
+    textColor: "{colors.ink-on-accent}"
+    padding: "0 10px"
+    typography: "{typography.body}"
+  sector-delta-pending:
+    backgroundColor: "{colors.charcoal}"
+    textColor: "{colors.text-dim}"
+    padding: "0 10px"
+    typography: "{typography.body}"
   skew-plaque:
     backgroundColor: "{colors.holeshot-orange}"
     textColor: "{colors.ink-on-accent}"
@@ -154,7 +174,7 @@ components:
 
 Holeshot HUD is a TV race overlay sitting on the game: dark plaques, skewed hardware bars, and a hot orange that always means *you*. It is broadcast-hot — stronger bars, louder flags, denser tables — not a quiet utility panel and not a consumer app shell. The rider glances; the graphic has to punch.
 
-Type is Exo 2 ExtraBold Italic at table scale. Corners stay modest. Chrome is opt-in: a fresh install draws nothing. Settings is the same family in opaque charcoal, including a Center Plaque that can stack on the dimmed host. The website is not a second identity and not a marketing landing: it is an F8 Twin pit-box — settings pane, F8 widget rail, live HUD stage, Download as one orange clip-path plaque in a thin top bar.
+Type is Exo 2 ExtraBold Italic at table scale. Corners stay modest. Chrome is opt-in: a fresh install draws nothing. Settings is the same family in opaque charcoal, including a Center Plaque that can stack on the dimmed host. The website is not a second identity and not a marketing landing: it is an F8 Twin pit-box — settings pane, F8 widget rail, live HUD stage, Download as one orange clip-path plaque in a thin top bar. Sectors (labs) is the same family as Standings: a three-row split board, you-row on the last completed sector, delta in a content-sized meaning-colored skew plaque.
 
 Do not drift toward generic sim-HUD blues, glassmorphism blobs, or light “esports dashboard” kits. Manufacturer bike colors stay on pills only.
 
@@ -164,6 +184,7 @@ Do not drift toward generic sim-HUD blues, glassmorphism blobs, or light “espo
 - Exo 2 ExtraBold Italic as the HUD, settings, and web face (Teko / Goldman optional in the overlay)
 - Tonal charcoal stacking for depth — no card shadows
 - Race meaning uses blue / red / green / violet, never a second orange
+- Sectors is a split standings board: delta in the skew plaque, time secondary
 - Web preview is F8 Twin: settings pane, 204px widget rail, then the live stage
 
 ## Colors
@@ -178,18 +199,18 @@ One brand accent. Everything else is either charcoal, race meaning, or a manufac
 - **Charcoal / Charcoal Side / Panel / Pane**: Opaque settings and web chrome stacking. Charcoal Side is the top bar and settings rail. Pane is the web settings twin. Panel is inner boards and the Center Plaque.
 - **Hairline**: Borders, toggle-off tracks, dividers (white at ~12 alpha in settings).
 - **Text / Text Dim**: Cell ink and column headers. Tables may invert to black ink; pills never follow that invert.
-- **Ink on Accent / Ink on Light**: Dark type on orange plaques and light manufacturer pills.
+- **Ink on Accent / Ink on Light**: Dark type on orange plaques, light manufacturer pills, and colored Sectors delta plaques.
 - **Knob**: White toggle and slider thumbs.
 - **Tab On**: Selected rail/tab wash (~11% orange).
 - **Stage Warm / Stage Deep**: Full-bleed web stage gradient (warm vignette over deep ink). Not a card fill.
 - **Field Slate**: Every other rider until lapping rules fire.
 - **Track Line**: Centerline and dash outlines.
-- **You Row**: Gold-brown highlight behind the local rider in standings/relative (opacity is a user slider, default 50%).
+- **You Row**: Gold-brown highlight behind the local rider in standings/relative (opacity is a user slider, default 50%). Sectors uses the same fill at 72% on the last completed split.
 
 ### Race meaning (not a second brand)
 - **Lapping Blue / Lapped Red**: Other rows and dots only when a lap apart *and* closing. Off in warmup.
-- **Ahead Green / Behind Red**: Nearest-ahead / nearest-behind rings on map — not general rider color.
-- **Best Lap Violet**: Session-best lap time in tables.
+- **Ahead Green / Behind Red**: Nearest-ahead / nearest-behind rings on map — not general rider color. On Sectors, the same fills paint the delta plaque: red when slower than the comparison, green when the comparison is even (not a new best).
+- **Best Lap Violet**: Session-best lap time in tables, and the Sectors delta plaque when this split is a new or tied personal best.
 - **Dash Place**: Large italic P# on the dash.
 - **Flag Yellow**: Caution / yellow-flag segments on the shift/flag strip.
 
@@ -209,8 +230,8 @@ One brand accent. Everything else is either charcoal, race meaning, or a manufac
 - **Display** (ExtraBold Italic, 28px, tight, slight tracking): Dash gear, large P#, and the twin’s widget name (uppercase). The loudest type on a surface.
 - **Headline** (ExtraBold Italic, ~18px): Event title on the orange header bar; Settings pane titles (~22px) and What’s new version plaques (18px) on content-sized orange skews. Web wordmark is 26px ExtraBold Italic uppercase; “HUD” is Holeshot Orange with wider tracking (0.12em).
 - **Title** (ExtraBold Italic, 10px, 0.08em tracking): Twin section labels (SETTINGS), track-name plaques, board titles, and uppercase Center Plaque section labels.
-- **Body** (ExtraBold Italic, 12px): Standings and relative cells; settings field labels; Download plaque type. Default scale 100%; rider can set 70–160% per widget.
-- **Label** (700–800, 10px, uppercase, 0.06em): Column headers (P, #, NAME, GAP). Dim ink. Stage caption is 10px dim, not uppercase.
+- **Body** (ExtraBold Italic, 12px): Standings and relative cells; settings field labels; Download plaque type. Default scale 100%; rider can set 70–160% per widget. On Sectors the delta inside the plaque is the loudest line (~46% of row height, min 12px).
+- **Label** (700–800, 10px, uppercase, 0.06em): Column headers (P, #, NAME, GAP). Dim ink. Stage caption is 10px dim, not uppercase. Sectors S# labels and split times sit at this quieter size (dim; white on the you-row).
 
 ### Named Rules
 **The One-Face Rule.** HUD, settings, and the web demo speak Exo 2 ExtraBold Italic (or the rider’s Teko / Goldman in the overlay). Segoe is fallback only.
@@ -219,7 +240,7 @@ One brand accent. Everything else is either charcoal, race meaning, or a manufac
 
 ## Layout
 
-Widgets are free-floating rectangles on the game, placed by the rider (Ctrl-drag, snap-to-monitor). There is no page grid in the overlay. Density is race-table tight: 12px cells, 10px headers, bike bar 5px skewed 3px after Position.
+Widgets are free-floating rectangles on the game, placed by the rider (Ctrl-drag, snap-to-monitor). There is no page grid in the overlay. Density is race-table tight: 12px cells, 10px headers, bike bar 5px skewed 3px after Position. Sectors is three equal stacked rows (S1–S3) inside a Night Ink 6px board: label left, content-sized delta plaque centered, split time right.
 
 Settings is a left-rail tool inside F8: sidebar tabs (~48px rows, 8px gaps), opaque charcoal, 8–10px corners. A Center Plaque (What’s new) dims that host and centers a Panel board (~520px, 10px corners).
 
@@ -244,15 +265,17 @@ Settings may use a faint dark disc under knobs and menus (black ~50–90 alpha).
 
 ## Shapes
 
-Modest rounds: 4px pills and Download under-clip, 6px HUD boards / steppers / selects, 7px dash, 8px rail tabs and the web mark, 8–10px settings tabs and Center Plaque. Signature geometry is the **skew plaque** — a parallelogram used for rider-count, track name, the 5px bike bar after Position, Settings heading plaques, and the web Download bar.
+Modest rounds: 4px pills and Download under-clip, 6px HUD boards / steppers / selects, 7px dash, 8px rail tabs and the web mark, 8–10px settings tabs and Center Plaque. Signature geometry is the **skew plaque** — a parallelogram used for rider-count, track name, the 5px bike bar after Position, Sectors delta plaques, Settings heading plaques, and the web Download bar.
 
-HUD bars skew ~4px. Settings heading plaques skew 6–8px and size to the label (measure + 36px, min 72px), left-aligned. Web Download uses a clip-path parallelogram (`polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%)`; 6px cut when stacked), 12px Windows four-square mark, uppercase ExtraBold Italic. Bike pills are short stadium-rectangles, padded 10×4, vertically centered in the row.
+HUD bars skew ~4px. Sectors delta plaques skew 4–8px (14% of plaque height) and size to the delta string (measure + 20px, min 48px), centered in the row. Settings heading plaques skew 6–8px and size to the label (measure + 36px, min 72px), left-aligned. Web Download uses a clip-path parallelogram (`polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%)`; 6px cut when stacked), 12px Windows four-square mark, uppercase ExtraBold Italic. Bike pills are short stadium-rectangles, padded 10×4, vertically centered in the row.
 
 Map is a thin Track Line polyline, not a filled region. Radar is a square panel, white bike silhouette, circular blips (closer = larger, more orange). Flags are full-width banners (white flag: diagonal stripes into a white plaque; checkered: wrap the dash).
 
 **The TV Plaque Rule.** Skewed bars and manufacturer pills are broadcast hardware. Do not replace them with cards, chips-in-a-row, or Material buttons.
 
-**The Content-Sized Plaque Rule.** Heading plaques size to the label. Do not stretch orange across the board. Download is the exception: it is a CTA plaque, not a heading.
+**The Content-Sized Plaque Rule.** Heading plaques and Sectors delta plaques size to their text. Do not stretch a plaque into a full-width bar. Download is the exception: it is a CTA plaque, not a heading.
+
+**The Delta-Is-The-Glance Rule.** On Sectors, delta lives in the colored skew plaque. Split time stays dim on the right. Do not demote delta to a side column or an F1 three-cell tape.
 
 ## Components
 
@@ -267,7 +290,7 @@ TV-plaque energy even in chrome: filled orange for the one action, rail rows for
 
 ### Chips
 - **Bike pill:** Manufacturer color from bike name (Yamaha blue, Honda red, KTM orange, etc.). Ink flips at luminance 0.62. Table text color does not recode the pill.
-- **Skew plaque:** Holeshot Orange parallelogram, dark icon + count or track name (HUD scale).
+- **Skew plaque:** Holeshot Orange parallelogram, dark icon + count or track name (HUD scale). Sectors reuses the same parallelogram for split deltas, filled with race-meaning colors instead of orange.
 - **Heading plaque:** Content-sized orange parallelogram for Settings pane titles and the What’s new version. Ink-on-accent ExtraBold Italic, 16px left inset. The plaque is the heading — not an eyebrow above a title.
 
 ### Cards / Containers
@@ -287,6 +310,12 @@ Settings left rail and the web twin rail share one grammar: 8px rounded row, 4px
 
 ### Standings / Relative (signature)
 Tight classification boards. Alternating near-black rows. Your row = You Row tint. Session-best time = Best Lap Violet. Position is followed by a manufacturer skew bar. Headers uppercase dim. Rows slide when live order changes.
+
+### Sectors (signature)
+Labs-only until Experimental widgets is on. Night Ink 6px plaque, three columns. The last completed split is the wide hero (~56%) with a Holeshot Orange skew **S#** plaque and a large ExtraBold Italic delta. Flanks stay quiet. Green (`ahead-green`) is faster / personal best. Red is slower. Dim `--` is pending. Orange is you (the fresh cell), never a second meaning color. No Best Lap Violet on this widget. No drop-shadow glow.
+
+### Delta Bar (signature)
+Labs-only until Experimental widgets is on. Hair lockup: no plaque, no border. Orange Δ as a letter, huge ExtraBold Italic signed time, a 2px center-zero hairline, BEST and LAST capping the ends. When panel opacity is under 40%, those captions sit on night-ink pills. Green fill left of the tick is faster; red right is slower. Saturates at ±2.0 s. New installs start with panel opacity 0.
 
 ### Dash (signature)
 Horizontal plaque: gear box, RPM/speed stack, large italic orange P#, flag wrap on checkered/white. Shift lights are a green → yellow → red capsule row.
@@ -309,6 +338,9 @@ Web-only CTA in the top bar. Clip-path orange parallelogram, Windows four-square
 - **Do** start every widget hidden on a fresh install.
 - **Do** treat map fill as transparent unless the rider raises opacity.
 - **Do** size Settings heading plaques to the label (text + 36px), left-aligned.
+- **Do** draw Sectors as a three-column strip whose last completed split is the wide hero; green = faster / PB, red = slower.
+- **Do** mark that hero with a Holeshot Orange skew S# plaque.
+- **Do** draw Delta Bar as Hair: Δ letter, signed time, 2px center-zero line, BEST/LAST on the ends.
 - **Do** treat the website as an F8 Twin pit-box: settings, widget rail (204px), live stage, Download in the top bar.
 
 ### Don't:
@@ -320,4 +352,7 @@ Web-only CTA in the top bar. Clip-path orange parallelogram, Windows four-square
 - **Don't** recode manufacturer pills to follow White/Black table text.
 - **Don't** draw overlay work into the in-game C++ HUD (`ingame_hud`).
 - **Don't** stretch heading plaques into full-width orange bars.
+- **Don't** paint Sectors personal bests in Best Lap Violet — that violet stays on standings/relative lap times.
+- **Don't** ship Sectors or Delta Bar when Experimental widgets is off.
+- **Don't** draw Delta Bar as an orange Δ plaque or a fat capsule bar — Hair is type plus a 2px line.
 - **Don't** wrap the live HUD in a boxed canvas inside a left-rail dashboard.

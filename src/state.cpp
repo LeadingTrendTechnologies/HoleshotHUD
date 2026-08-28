@@ -23,6 +23,27 @@ namespace
         }
         return n;
     }
+
+    int sectorThreeMs(int s1, int s2, int lap)
+    {
+        if (s1 <= 0 || s2 <= 0 || lap <= 0)
+        {
+            return 0;
+        }
+        const int dur = lap - s1 - s2;
+        const int cum = lap - s2;
+        if (dur <= 0)
+        {
+            return cum > 0 ? cum : 0;
+        }
+        if (cum <= 0)
+        {
+            return dur;
+        }
+        const int dDur = dur > s1 ? dur - s1 : s1 - dur;
+        const int dCum = cum > s1 ? cum - s1 : s1 - cum;
+        return dDur <= dCum ? dur : cum;
+    }
 }
 
 void PluginState::clearEvent()
@@ -132,6 +153,7 @@ void PluginState::beginRun()
     }
     m_sectorLast = -1;
     m_sectorFinishedLap = -1;
+    m_lastLapEndTime = m_sessionTime;
 }
 
 void PluginState::endRun()
@@ -398,7 +420,7 @@ void PluginState::setLocalLap(int lapNum, int lapMs)
     }
 }
 
-void PluginState::setRaceLap(int raceNum, int lapNum, int lapMs)
+void PluginState::setRaceLap(int raceNum, int lapNum, int lapMs, int split0, int split1)
 {
     if (lapMs > 0)
     {
@@ -412,7 +434,7 @@ void PluginState::setRaceLap(int raceNum, int lapNum, int lapMs)
     setLocalLap(lapNum, lapMs);
     if (lapMs > 0)
     {
-        finishLapSectors(lapNum, lapMs);
+        finishLapSectors(lapNum, lapMs, split0, split1);
     }
 }
 
@@ -446,13 +468,17 @@ int PluginState::sectorAt(const int* values, int i)
 
 int PluginState::mapSplitIndex(int split) const
 {
-    if (split <= 0)
+    if (m_sectorCur[0] <= 0)
     {
         return 0;
     }
-    if (split == 1)
+    if (m_sectorCur[1] <= 0)
     {
-        return m_sectorCur[0] > 0 ? 1 : 0;
+        return split <= 0 ? 0 : 1;
+    }
+    if (m_sectorCur[2] <= 0 && split >= 2)
+    {
+        return 2;
     }
     return 1;
 }
@@ -463,9 +489,25 @@ void PluginState::recordSector(int idx, int timeMs, int bestDiff)
     {
         return;
     }
+    // RunSplit and RaceSplit both fire for the same split. A second write after
+    // the session best was already updated stores delta 0 on a new PB.
+    if (m_sectorCur[idx] > 0)
+    {
+        return;
+    }
     const int oldBest = m_sectorBest[idx];
     m_sectorCur[idx] = timeMs;
     m_sectorLast = idx;
+    if (idx == 0)
+    {
+        m_sectorCur[1] = 0;
+        m_sectorCur[2] = 0;
+        m_sectorLastLap[1] = 0;
+        m_sectorLastLap[2] = 0;
+        m_sectorDelta[1] = 0;
+        m_sectorDelta[2] = 0;
+        m_sectorDeltaValid &= ~0x6;
+    }
     if (oldBest > 0)
     {
         m_sectorDelta[idx] = timeMs - oldBest;
@@ -487,16 +529,37 @@ void PluginState::recordSector(int idx, int timeMs, int bestDiff)
     }
 }
 
-void PluginState::finishLapSectors(int lapNum, int lapMs)
+void PluginState::finishLapSectors(int lapNum, int lapMs, int split0, int split1)
 {
-    if (lapNum == m_sectorFinishedLap)
+    if (lapNum == m_sectorFinishedLap && m_sectorLastLap[2] > 0)
     {
         return;
     }
-    m_sectorFinishedLap = lapNum;
-    if (m_sectorCur[0] > 0 && m_sectorCur[1] > 0 && lapMs > m_sectorCur[0] + m_sectorCur[1])
+    if (m_sectorCur[0] <= 0 && split0 > 0)
     {
-        recordSector(2, lapMs - m_sectorCur[0] - m_sectorCur[1], 0);
+        m_sectorCur[0] = split0;
+    }
+    if (m_sectorCur[1] <= 0 && split1 > 0)
+    {
+        m_sectorCur[1] = split1;
+    }
+    if (m_sectorCur[0] <= 0)
+    {
+        m_sectorCur[0] = m_sectorLastLap[0];
+    }
+    if (m_sectorCur[1] <= 0)
+    {
+        m_sectorCur[1] = m_sectorLastLap[1];
+    }
+    m_sectorLastLap[2] = 0;
+    int s3 = sectorThreeMs(m_sectorCur[0], m_sectorCur[1], lapMs);
+    if (s3 <= 0 && m_sectorCur[1] > 0 && lapMs > m_sectorCur[1])
+    {
+        s3 = lapMs - m_sectorCur[1];
+    }
+    if (s3 > 0)
+    {
+        recordSector(2, s3, 0);
     }
     for (int i = 0; i < 3; ++i)
     {
@@ -506,7 +569,11 @@ void PluginState::finishLapSectors(int lapNum, int lapMs)
         }
         m_sectorCur[i] = 0;
     }
-    m_sectorLast = -1;
+    if (m_sectorLastLap[2] > 0)
+    {
+        m_sectorLast = 2;
+        m_sectorFinishedLap = lapNum;
+    }
 }
 
 int PluginState::sessionTimeMs() const
@@ -695,6 +762,10 @@ void PluginState::setTelemetry(const SPluginsBikeData_t& data, float time, float
 {
     m_hasTelemetry = true;
     m_sessionTime = time;
+    if (m_inRun && m_lastLapEndTime <= 0.0f && time > 0.0f)
+    {
+        m_lastLapEndTime = time;
+    }
     m_localGear = data.m_iGear;
     m_localRpm = data.m_iRPM;
     m_engineTemp = data.m_fWaterTemperature > 1.0f ? data.m_fWaterTemperature : data.m_fEngineTemperature;
@@ -759,7 +830,9 @@ void PluginState::clearSpectateSelection()
 
 bool PluginState::spectating() const
 {
-    return m_lastSpectate > 0.0 && (pluginNowSeconds() - m_lastSpectate) < 1.0;
+    // Replay calls SpectateVehicles every frame, so this stays true. Riding does
+    // not: drop camera focus as soon as the callback stops so the map follows you.
+    return m_lastSpectate > 0.0 && (pluginNowSeconds() - m_lastSpectate) < 0.25;
 }
 
 int PluginState::focusRaceNum() const

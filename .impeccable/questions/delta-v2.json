@@ -1,0 +1,39 @@
+{
+  "title": "Delta — quieter",
+  "question": "No plaques, no panel, no columns. Same data. Pick one, or say what still feels heavy.",
+  "options": [
+    {
+      "id": "air",
+      "label": "Air",
+      "kicker": "LEAST CHROME",
+      "thesis": "Just the number. Δ is a letter. BEST and LAST are captions. No box, no bar.",
+      "palette": ["#0A0A0C", "#30DC58", "#FF9430", "#84848A"],
+      "materials": ["Exo 2 type", "no panel", "no bar"],
+      "viewport": "Centered -0.840 in green. Tiny BEST / LAST under. Floats on the game.",
+      "risk": "No analog magnitude — if the bar is how you glance, this is too little.",
+      "comp": ".impeccable/mocks/delta-air.png"
+    },
+    {
+      "id": "hair",
+      "label": "Hair",
+      "thesis": "The bar survives as a 2px line. Everything else is type.",
+      "palette": ["#0A0A0C", "#30DC58", "#3A3A40", "#84848A"],
+      "materials": ["2px hairline", "center tick", "no panel"],
+      "viewport": "Number over a hairline that fills left of zero. BEST and LAST cap the ends.",
+      "risk": "At small deltas the fill is a short tick and may still feel like a pip.",
+      "comp": ".impeccable/mocks/delta-hair.png"
+    },
+    {
+      "id": "row",
+      "label": "Row",
+      "thesis": "One baseline. Live delta, then BEST, then LAST. Nothing stacked.",
+      "palette": ["#0A0A0C", "#30DC58", "#FF9430", "#E4E4E6"],
+      "materials": ["single line", "caption over time", "no bar"],
+      "viewport": "Δ -0.840 then two quiet stacks: BEST 1:12.140 and LAST 1:12.480.",
+      "risk": "Reads as a caption, not a widget — easy to miss at race speed.",
+      "comp": ".impeccable/mocks/delta-row.png"
+    }
+  ],
+  "steer": true,
+  "buildPath": { "value": "comp", "toggle": true }
+}

@@ -47,6 +47,7 @@
     .summary { margin: 8px 0 10px; }
     .actions { display: flex; gap: 8px; }
     pre { padding: 12px; overflow: auto; white-space: pre-wrap; color: #c8c8ce; font-size: 12px; }
+    textarea { width: 100%; min-height: 88px; background: #0c0c0e; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; resize: vertical; font: inherit; margin: 8px 0; }
     a { color: var(--accent); }
   </style>
 </head>
@@ -73,6 +74,8 @@
         <button class="chip" data-kind="rating" type="button">Ratings</button>
         <button class="chip" data-kind="bug" type="button">Bugs</button>
         <button class="chip" data-kind="feature" type="button">Features</button>
+        <button class="chip" data-kind="waiting" type="button">Waiting</button>
+        <button class="chip" data-kind="archived" type="button">Archived</button>
         <div class="stats">
           <p class="avg" id="avg"></p>
           <p class="avg" id="dl"></p>
@@ -148,20 +151,35 @@
     function render() {
       renderAvg();
       renderDownloads();
-      const shown = items.filter((it) => filter === "all" || it.kind === filter);
+      const shown = items.filter((it) => {
+        if (filter === "archived") return it.archived;
+        if (filter === "waiting") return it.waiting && !it.archived;
+        if (it.archived) return false;
+        return filter === "all" || it.kind === filter;
+      });
       list.innerHTML = shown.length ? "" : "<p class='when'>Nothing here yet.</p>";
       for (const it of shown) {
         const card = document.createElement("article");
         card.className = "card";
+        const flags = [
+          it.kind,
+          it.waiting ? "waiting" : it.replied ? "replied" : "",
+          it.archived ? "archived" : "",
+        ].filter(Boolean).join(" · ");
+        const since = it.since
+          ? it.since === "unknown"
+            ? "first install before tracking"
+            : `first ${it.since}`
+          : "";
         card.innerHTML = `
           <div class="row">
-            <span class="kind">${it.kind}</span>
-            <span class="when">${it.at ? new Date(it.at).toLocaleString() : ""}</span>
+            <span class="kind">${flags}</span>
+            <span class="when">${since}${since && it.at ? " · " : ""}${it.at ? new Date(it.at).toLocaleString() : ""}</span>
           </div>
           <p class="summary">${it.summary || ""}</p>
           <div class="actions">
             <button type="button" data-open="${it.id}">Details</button>
-            <button class="ghost" type="button" data-del="${it.id}">Done</button>
+            <button class="ghost" type="button" data-archive="${it.id}">Done</button>
           </div>
           <div class="detail" hidden></div>`;
         list.appendChild(card);
@@ -190,9 +208,52 @@
       });
     });
 
+    function esc(s) {
+      return String(s || "").replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
+    }
+
+    function parseThread(note) {
+      try {
+        const data = JSON.parse(note);
+        const thread = Array.isArray(data.thread) ? data.thread : [];
+        if (thread.length) return thread;
+        if (data.reply) return [{ from: "dev", text: String(data.reply) }];
+        return [];
+      } catch {
+        return [];
+      }
+    }
+
+    function threadHtml(note, original) {
+      const lines = [];
+      if (original) lines.push({ from: "user", text: original });
+      for (const m of parseThread(note)) {
+        if (m && m.text) lines.push({ from: m.from === "dev" ? "dev" : "user", text: String(m.text) });
+      }
+      if (!lines.length) return "";
+      return lines
+        .map((m) => `<p class="when">${m.from === "dev" ? "You" : "Rider"}</p><pre>${esc(m.text)}</pre>`)
+        .join("");
+    }
+
+    async function postInbox(body) {
+      const res = await fetch("/api/inbox", {
+        method: "POST",
+        headers: { ...headers(), "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.status === 401) throw new Error("Wrong password.");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Could not update that item.");
+      }
+      return res.json();
+    }
+
     list.addEventListener("click", async (e) => {
       const open = e.target.dataset.open;
-      const del = e.target.dataset.del;
+      const archive = e.target.dataset.archive;
+      const send = e.target.dataset.reply;
       if (open) {
         const card = e.target.closest(".card");
         const detail = card.querySelector(".detail");
@@ -208,15 +269,61 @@
         const gist = await res.json();
         const note = gist.files["feedback.json"] || "";
         const logName = Object.keys(gist.files).find((n) => n !== "feedback.json");
+        let original = "";
+        let meta = "";
+        try {
+          const data = JSON.parse(note);
+          original = String(data.message || "");
+          const bits = [];
+          if (data.version) bits.push(`sent ${data.version}`);
+          if (data.first_version) {
+            bits.push(
+              data.first_version === "unknown"
+                ? "first install before tracking"
+                : `first install ${data.first_version}`
+            );
+          }
+          if (data.os) bits.push(data.os);
+          meta = bits.join(" · ");
+        } catch {
+          original = "";
+        }
         detail.hidden = false;
-        detail.innerHTML = `<pre>${note.replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]))}</pre>
-          ${logName ? `<p class="when">${logName} attached</p><pre>${String(gist.files[logName]).replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]))}</pre>` : ""}`;
+        detail.innerHTML = `${meta ? `<p class="when">${esc(meta)}</p>` : ""}
+          ${threadHtml(note, original)}
+          ${logName ? `<p class="when">${esc(logName)} attached</p><pre>${esc(gist.files[logName])}</pre>` : ""}
+          <p class="when">Send a question — it pops up on their settings. They can write back.</p>
+          <textarea data-box="${open}" maxlength="4000" placeholder="Ask a follow-up"></textarea>
+          <div class="actions">
+            <button type="button" data-reply="${open}">Send</button>
+          </div>`;
       }
-      if (del) {
-        const res = await fetch(`/api/inbox?id=${encodeURIComponent(del)}`, { method: "DELETE", headers: headers() });
-        if (res.status === 204) {
-          items = items.filter((it) => it.id !== del);
+      if (archive) {
+        showErr("");
+        try {
+          await postInbox({ id: archive, archive: true });
+          const it = items.find((row) => row.id === archive);
+          if (it) it.archived = true;
           render();
+        } catch (err) {
+          showErr(err.message);
+        }
+      }
+      if (send) {
+        const box = list.querySelector(`[data-box="${send}"]`);
+        const reply = box ? box.value.trim() : "";
+        showErr("");
+        try {
+          await postInbox({ id: send, reply });
+          const it = items.find((row) => row.id === send);
+          if (it) {
+            it.replied = true;
+            it.waiting = false;
+          }
+          if (box) box.value = "";
+          e.target.textContent = "Sent";
+        } catch (err) {
+          showErr(err.message);
         }
       }
     });

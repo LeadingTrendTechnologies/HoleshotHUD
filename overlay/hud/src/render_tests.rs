@@ -24,6 +24,8 @@ fn reset_session() {
             init: false,
         };
     });
+    ST_SLIDE.with(|a| *a.borrow_mut() = TableSlides { rows: Vec::new() });
+    REL_SLIDE.with(|a| *a.borrow_mut() = TableSlides { rows: Vec::new() });
 }
 
 fn standing(race_num: i32, position: i32, laps: i32) -> Standing {
@@ -162,6 +164,134 @@ fn fonts() -> Fonts {
     Fonts::for_family(FontFamily::Roboto).expect("bundled Roboto")
 }
 
+fn golden_dir() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/goldens")
+}
+
+fn update_goldens() -> bool {
+    matches!(
+        std::env::var("UPDATE_GOLDENS").as_deref(),
+        Ok("1") | Ok("true") | Ok("TRUE")
+    )
+}
+
+fn crop_px(src: &Pixmap, x: f32, y: f32, w: f32, h: f32, pad: f32) -> Pixmap {
+    let x0 = (x - pad).floor().max(0.0) as i32;
+    let y0 = (y - pad).floor().max(0.0) as i32;
+    let x1 = ((x + w + pad).ceil() as i32).min(src.width() as i32);
+    let y1 = ((y + h + pad).ceil() as i32).min(src.height() as i32);
+    let cw = (x1 - x0).max(1) as u32;
+    let ch = (y1 - y0).max(1) as u32;
+    let mut out = Pixmap::new(cw, ch).expect("crop");
+    out.fill(Color::TRANSPARENT);
+    out.draw_pixmap(
+        -x0,
+        -y0,
+        src.as_ref(),
+        &tiny_skia::PixmapPaint::default(),
+        tiny_skia::Transform::identity(),
+        None,
+    );
+    out
+}
+
+fn assert_golden(name: &str, px: &Pixmap) {
+    let dir = golden_dir();
+    let path = dir.join(format!("{name}.png"));
+    if update_goldens() {
+        std::fs::create_dir_all(&dir).expect("goldens dir");
+        std::fs::write(&path, px.encode_png().expect("png")).expect("write golden");
+        return;
+    }
+    let bytes = std::fs::read(&path).unwrap_or_else(|_| {
+        panic!("missing golden {name}.png — run with UPDATE_GOLDENS=1")
+    });
+    let expected = Pixmap::decode_png(&bytes).expect("decode golden");
+    if expected.width() != px.width()
+        || expected.height() != px.height()
+        || expected.data() != px.data()
+    {
+        let actual_path = dir.join(format!("{name}.actual.png"));
+        let _ = std::fs::write(&actual_path, px.encode_png().expect("png"));
+        panic!(
+            "golden mismatch {name} (wrote {})",
+            actual_path.display()
+        );
+    }
+}
+
+fn hide_widgets(cfg: &mut HudConfig) {
+    cfg.show_standings = false;
+    cfg.show_relative = false;
+    cfg.show_map = false;
+    cfg.show_minimap = false;
+    cfg.show_radar = false;
+    cfg.show_dash = false;
+    cfg.show_ticker = false;
+    cfg.show_sys = false;
+    cfg.show_sector = false;
+    cfg.show_delta = false;
+    cfg.show_stance = false;
+}
+
+fn golden_snap(s: &Snapshot, cfg: &HudConfig) -> Snapshot {
+    let mut s = *s;
+    cfg.apply_to_snapshot(&mut s);
+    s
+}
+
+fn draw_widget_golden(name: &str, s: &Snapshot, cfg: &HudConfig, rect: crate::shm::Rect) {
+    let mut px = Pixmap::new(1280, 720).expect("pixmap");
+    draw(
+        &mut px,
+        &fonts(),
+        Some(s),
+        cfg,
+        1280,
+        720,
+        0.0,
+        false,
+        false,
+        false,
+    );
+    let crop = crop_px(
+        &px,
+        rect.x * 1280.0,
+        rect.y * 720.0,
+        rect.w * 1280.0,
+        rect.h * 720.0,
+        8.0,
+    );
+    assert_golden(name, &crop);
+}
+
+fn rgba8(c: Color) -> (u8, u8, u8, u8) {
+    (
+        (c.red() * 255.0).round() as u8,
+        (c.green() * 255.0).round() as u8,
+        (c.blue() * 255.0).round() as u8,
+        (c.alpha() * 255.0).round() as u8,
+    )
+}
+
+fn sample_px(px: &Pixmap, x: f32, y: f32) -> [u8; 4] {
+    let xi = (x.floor() as i32).clamp(0, px.width() as i32 - 1) as u32;
+    let yi = (y.floor() as i32).clamp(0, px.height() as i32 - 1) as u32;
+    let i = ((yi * px.width() + xi) * 4) as usize;
+    let d = px.data();
+    [d[i], d[i + 1], d[i + 2], d[i + 3]]
+}
+
+fn hit_nums_by_pos() -> Vec<i32> {
+    let mut hits = click_rider_hits();
+    hits.sort_by(|a, b| {
+        a.y.partial_cmp(&b.y)
+            .unwrap()
+            .then(a.x.partial_cmp(&b.x).unwrap())
+    });
+    hits.iter().map(|h| h.race_num).collect()
+}
+
 #[test]
 fn bundled_race_fonts_load() {
     for family in [
@@ -177,7 +307,7 @@ fn bundled_race_fonts_load() {
 
 fn draw_ok(s: &Snapshot, cfg: &HudConfig) {
     let mut px = Pixmap::new(1280, 720).expect("pixmap");
-    draw(&mut px, &fonts(), Some(s), cfg, 1280, 720, 0.0, false, false);
+    draw(&mut px, &fonts(), Some(s), cfg, 1280, 720, 0.0, false, false, false);
 }
 
 #[test]
@@ -196,13 +326,14 @@ fn formatters_cover_clock_gap_and_penalty() {
     assert_eq!(session_len_ms(8), 8 * 60_000);
     assert_eq!(session_len_ms(480), 480_000);
     assert_eq!(format_clock(0), "--:--.---");
-    assert!(format_clock(93_500).starts_with("01:"));
+    assert_eq!(format_clock(93_500), "01:33.500");
     assert_eq!(format_board_gap(0, 0, true), "-");
     assert_eq!(format_board_gap(0, 1, false), "1L");
     assert_eq!(format_board_gap(1500, 0, false), "1.5");
     assert_eq!(format_penalty(0), "---");
     assert_eq!(format_delta_ms(0), "0.000");
-    assert!(format_delta_ms(250).starts_with('+'));
+    assert_eq!(format_delta_ms(250), "+0.250");
+    assert_eq!(format_delta_ms(-347), "-0.347");
     assert_eq!(format_local_clock(0, 5), "12:05 AM");
     assert_eq!(format_local_clock(9, 14), "9:14 AM");
     assert_eq!(format_local_clock(12, 0), "12:00 PM");
@@ -214,16 +345,13 @@ fn formatters_cover_clock_gap_and_penalty() {
 
 #[test]
 fn bike_colors_match_factory_brands() {
-    let ktm = bike_color("450 SX-F", "MX1");
-    assert!(ktm.red() > 0.9 && ktm.green() > 0.2 && ktm.blue() < 0.12, "KTM should be orange");
-    let husky = bike_color("FC 450", "MX1");
-    assert!(husky.red() > 0.9 && husky.green() > 0.9, "Husqvarna should be white");
-    let yamaha = bike_color("YZ450F", "MX1");
-    assert!(yamaha.blue() > yamaha.red() && yamaha.blue() > yamaha.green(), "Yamaha should be blue");
-    let honda = bike_color("CRF450R", "MX1");
-    assert!(honda.red() > 0.7 && honda.green() < 0.25, "Honda should be red");
-    let kawi = bike_color("KX450", "MX1");
-    assert!(kawi.green() > kawi.red() && kawi.green() > kawi.blue(), "Kawasaki should be green");
+    assert_eq!(rgba8(bike_color("450 SX-F", "MX1")), (255, 96, 0, 255));
+    assert_eq!(rgba8(bike_color("FC 450", "MX1")), (240, 240, 244, 255));
+    assert_eq!(rgba8(bike_color("YZ450F", "MX1")), (0, 82, 196, 255));
+    assert_eq!(rgba8(bike_color("CRF450R", "MX1")), (220, 28, 36, 255));
+    assert_eq!(rgba8(bike_color("KX450", "MX1")), (80, 196, 32, 255));
+    assert_eq!(rgba8(bike_color("RM-Z450", "MX1")), (236, 208, 24, 255));
+    assert_eq!(rgba8(bike_color("MC 450", "MX1")), (196, 24, 40, 255));
 }
 
 #[test]
@@ -234,7 +362,7 @@ fn dash_footer_fields_fill_from_live_snapshot() {
     let cfg = HudConfig::new();
     assert_eq!(dash_foot_item(&s, &cfg, DashField::None), None);
     let speed = dash_foot_item(&s, &cfg, DashField::Speed).unwrap().1;
-    assert!(speed.contains("KPH"), "{speed}");
+    assert_eq!(speed, "65 KPH");
     assert_eq!(dash_foot_item(&s, &cfg, DashField::Rpm).unwrap().1, "7200");
     assert_eq!(dash_foot_item(&s, &cfg, DashField::Gear).unwrap().1, "3");
     assert_eq!(dash_foot_item(&s, &cfg, DashField::Position).unwrap().1, "P2");
@@ -257,6 +385,46 @@ fn dash_footer_fields_fill_from_live_snapshot() {
 }
 
 #[test]
+fn default_dash_is_compact() {
+    let _g = session_lock();
+    reset_session();
+    let s = live_snap();
+    let cfg = HudConfig::new();
+    let d = dash_layout(&fonts(), &s, &cfg, 1920.0, 1080.0);
+    assert!(!d.simple);
+    assert!((d.w - cfg.dash.w * 1920.0).abs() < 1.0, "plaque should fill the widget width, got {}", d.w);
+    assert!((d.h - cfg.dash.h * 1080.0).abs() < 1.0, "plaque should fill the widget height, got {}", d.h);
+    assert!((cfg.dash.w - 0.115).abs() < 0.001);
+    assert!((cfg.dash.h - 0.108).abs() < 0.001);
+}
+
+#[test]
+fn dash_follows_widget_width() {
+    let _g = session_lock();
+    reset_session();
+    let s = live_snap();
+    let tight = dash_layout(&fonts(), &s, &HudConfig::new(), 1920.0, 1080.0);
+    let mut cfg = HudConfig::new();
+    cfg.dash.w = 0.40;
+    let d = dash_layout(&fonts(), &s, &cfg, 1920.0, 1080.0);
+    assert_eq!(tight.w, 0.115 * 1920.0);
+    assert_eq!(d.w, 0.40 * 1920.0);
+}
+
+#[test]
+fn dash_follows_widget_height() {
+    let _g = session_lock();
+    reset_session();
+    let s = live_snap();
+    let tight = dash_layout(&fonts(), &s, &HudConfig::new(), 1920.0, 1080.0);
+    let mut cfg = HudConfig::new();
+    cfg.dash.h = 0.28;
+    let d = dash_layout(&fonts(), &s, &cfg, 1920.0, 1080.0);
+    assert_eq!(tight.h, 0.108 * 1080.0);
+    assert_eq!(d.h, 0.28 * 1080.0);
+}
+
+#[test]
 fn simple_dash_is_gear_and_speed_only() {
     let _g = session_lock();
     reset_session();
@@ -273,7 +441,7 @@ fn simple_dash_is_gear_and_speed_only() {
     assert!(d.foot.is_empty());
     assert_eq!(d.rev_h, 0.0);
     assert_eq!(d.footer_h, 0.0);
-    assert!(d.w < 280.0, "simple dash should content-size, got {}", d.w);
+    assert!((d.w - cfg.dash.w * 1280.0).abs() < 1.0, "simple dash should fill the widget width, got {}", d.w);
 }
 
 #[test]
@@ -294,7 +462,7 @@ fn simple_dash_renders() {
     cfg.dash.h = 0.52;
     let (fw, fh) = (640u32, 280u32);
     let mut hud = Pixmap::new(fw, fh).expect("pixmap");
-    draw(&mut hud, &fonts(), Some(&s), &cfg, fw, fh, 0.0, false, false);
+    draw(&mut hud, &fonts(), Some(&s), &cfg, fw, fh, 0.0, false, false, false);
     let lay = dash_layout(&fonts(), &s, &cfg, fw as f32, fh as f32);
     let pad = 28.0;
     let cx = (lay.x - pad).max(0.0) as u32;
@@ -311,11 +479,7 @@ fn simple_dash_renders() {
         tiny_skia::Transform::identity(),
         None,
     );
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.impeccable/review");
-    let _ = std::fs::create_dir_all(&dir);
-    let path = dir.join("dash-simple.png");
-    std::fs::write(&path, px.encode_png().expect("png")).expect("write dash-simple.png");
-    assert!(path.is_file());
+    assert_golden("dash-simple", &px);
 }
 
 #[test]
@@ -484,6 +648,31 @@ fn table_column_widths_follow_settings_when_they_fit() {
     assert!(name_tight < 80.0);
     assert!(name_tight >= 18.0);
     assert!((col_right(&tight) - (120.0 - pad)).abs() < 0.51);
+}
+
+#[test]
+fn hug_board_w_drops_empty_glass() {
+    let pad = 8.0;
+    let origin = 10.0;
+    let max_w = 600.0;
+    let slots = col_slots(
+        origin,
+        pad,
+        max_w,
+        &[StField::Pos, StField::Name, StField::Last],
+        |c| match c {
+            StField::Pos => 26.0,
+            StField::Name => 80.0,
+            StField::Last => 54.0,
+            _ => 40.0,
+        },
+        |c| matches!(c, StField::Name),
+    );
+    let hugged = hug_board_w(origin, pad, max_w, &slots);
+    assert!(hugged < 220.0, "plaque should hug columns, got {hugged}");
+    assert!((hugged - (col_right(&slots) - origin + pad)).abs() < 0.01);
+    let tight = hug_board_w(origin, pad, 120.0, &slots);
+    assert!(tight <= 120.0);
 }
 
 #[test]
@@ -2316,16 +2505,17 @@ fn radar_to_screen_puts_left_rear_below_and_left() {
     let (ox, oy, sx, sy) = (50.0, 40.0, 5.0, 4.0);
     let (you_x, you_y) = radar_to_screen(0.0, 0.0, ox, oy, sx, sy);
     let (lx, ly) = radar_to_screen(-4.0, -2.0, ox, oy, sx, sy);
-    assert!(lx < you_x);
-    assert!(ly > you_y);
+    assert_eq!((you_x, you_y), (50.0, 40.0));
+    assert_eq!((lx, ly), (40.0, 56.0));
     let (rx, ry) = radar_to_screen(0.0, 2.5, ox, oy, sx, sy);
-    assert!(rx > you_x);
-    assert!((ry - you_y).abs() < 0.01);
+    assert_eq!((rx, ry), (62.5, 40.0));
 }
 
 #[test]
 fn radar_blip_heat_rises_when_closer() {
-    assert!(radar_blip_heat(1.0) > radar_blip_heat(7.0));
+    assert_eq!(radar_blip_heat(1.0), 1.0);
+    assert!((radar_blip_heat(7.0) - 1.0 / 7.0).abs() < 1e-6);
+    assert_eq!(radar_blip_heat(8.0), 0.0);
 }
 
 #[test]
@@ -2343,122 +2533,90 @@ fn minimap_keeps_sparse_track_segments_near_the_rider() {
 
 #[test]
 fn minimap_zoom_stays_on_a_local_section() {
-    let near = mini_view_radius(100);
-    let far = mini_view_radius(0);
-    let mid = mini_view_radius(70);
-    assert!(near >= 20.0 && near <= 26.0);
-    assert!(far >= 80.0 && far <= 90.0);
-    assert!((mid - 40.0).abs() < 2.0);
-    assert!(far > near);
-    assert!(far < 120.0);
+    assert_eq!(mini_view_radius(100), 22.0);
+    assert_eq!(mini_view_radius(0), 85.0);
+    assert!((mini_view_radius(70) - 40.9).abs() < 0.001);
 }
 
 #[test]
-fn each_widget_renders_without_panic() {
-    let _g = session_lock();
-    reset_session();
-    let s = live_snap();
-    let mut cfg = HudConfig::new();
-    draw_ok(&s, &cfg);
+fn poly_at_frac_walks_centerline_distance() {
+    let mut s = Snapshot::default();
+    s.poly_count = 3;
+    s.track_length = 200.0;
+    s.poly[0] = Point { x: 0.0, z: 0.0 };
+    s.poly[1] = Point { x: 100.0, z: 0.0 };
+    s.poly[2] = Point { x: 100.0, z: 100.0 };
+    let a = poly_at_frac(&s, 3, 0.25).expect("s1");
+    assert!((a.wx - 50.0).abs() < 0.5, "wx {}", a.wx);
+    assert!(a.wz.abs() < 0.5, "wz {}", a.wz);
+    let b = poly_at_frac(&s, 3, 0.75).expect("s2");
+    assert!((b.wx - 100.0).abs() < 0.5, "wx {}", b.wx);
+    assert!((b.wz - 50.0).abs() < 0.5, "wz {}", b.wz);
+}
 
-    cfg.show_minimap = false;
-    cfg.show_radar = false;
-    cfg.show_dash = false;
-    cfg.show_ticker = false;
-    cfg.show_sys = false;
-    let mut only = s;
-    only.show_relative = 0;
-    only.show_map = 0;
-    only.show_standings = 1;
-    draw_ok(&only, &cfg);
-
-    only.show_standings = 0;
-    only.show_relative = 1;
-    draw_ok(&only, &cfg);
-
-    only.show_relative = 0;
-    only.show_map = 1;
-    draw_ok(&only, &cfg);
-
-    only.show_map = 0;
-    cfg.show_minimap = true;
-    draw_ok(&only, &cfg);
-
-    cfg.show_minimap = false;
-    cfg.show_radar = true;
-    draw_ok(&only, &cfg);
-
-    cfg.show_radar = false;
-    cfg.show_dash = true;
-    draw_ok(&only, &cfg);
-
-    cfg.show_dash = false;
-    cfg.show_ticker = true;
-    draw_ok(&only, &cfg);
-    cfg.ticker_autoscroll = true;
-    draw_ok(&only, &cfg);
-
-    cfg.show_ticker = false;
-    cfg.show_sys = true;
-    set_sys_stats(48.0, 62.0, 91.0, 11.0);
-    set_sys_procs([
-        SysProc {
-            cpu: 4.0,
-            mem_mb: 88.0,
-            mem_pct: 0.5,
-            on: true,
-        },
-        SysProc {
-            cpu: 22.0,
-            mem_mb: 1800.0,
-            mem_pct: 11.0,
-            on: true,
-        },
-        SysProc {
-            cpu: 8.0,
-            mem_mb: 180.0,
-            mem_pct: 1.1,
-            on: true,
-        },
-        SysProc {
-            cpu: -1.0,
-            mem_mb: 44.0,
-            mem_pct: 0.3,
-            on: true,
-        },
-    ]);
-    draw_ok(&only, &cfg);
-
-    cfg.show_sys = false;
-    cfg.experimental = true;
-    cfg.show_sector = true;
-    let mut sector = only;
+#[test]
+fn sector_row_formats_plugin_deltas() {
+    let mut sector = live_snap();
+    sector.show_standings = 0;
+    sector.show_relative = 0;
+    sector.show_map = 0;
     sector.sector_count = 3;
+    sector.current_lap_ms = 70_000;
     sector.sector_last = 1;
-    sector.sector_cur = [24_180, 25_760, 0];
+    sector.sector_cur = [24_093, 25_760, 0];
     sector.sector_last_lap = [24_310, 25_820, 23_090];
-    sector.sector_best = [24_050, 25_640, 22_910];
-    sector.sector_delta = [130, 120, 0];
+    sector.sector_best = [24_180, 25_640, 22_910];
+    sector.sector_delta = [-87, 120, 0];
     sector.sector_delta_valid = 0b011;
-    draw_ok(&sector, &cfg);
-    cfg.experimental = false;
-    draw_ok(&sector, &cfg);
-
-    cfg.show_sector = false;
-    cfg.experimental = false;
-    cfg.show_stance = true;
-    set_stance(false);
-    draw_ok(&only, &cfg);
-    set_stance(true);
-    draw_ok(&only, &cfg);
-    cfg.stance_style = StanceStyle::Icon;
-    set_stance(false);
-    draw_ok(&only, &cfg);
-    set_stance(true);
-    draw_ok(&only, &cfg);
-    cfg.stance_show_sit = true;
-    draw_ok(&only, &cfg);
-    set_stance(false);
+    let mid_s1 = super::sector_row(&sector, 0, true);
+    let mid_s3 = super::sector_row(&sector, 2, true);
+    assert!(!mid_s1.pending);
+    assert!(!mid_s1.fresh);
+    assert_eq!(mid_s1.delta, "-0.087");
+    assert!(mid_s3.fresh);
+    assert!(!mid_s3.pending);
+    let mut pb = sector;
+    pb.sector_best = [24_093, 25_640, 22_910];
+    pb.sector_delta = [-87, 120, 0];
+    pb.sector_delta_valid = 0b011;
+    let pb_s1 = super::sector_row(&pb, 0, true);
+    assert_eq!(pb_s1.delta, "-0.087");
+    assert_ne!(pb_s1.delta, "0.000");
+    let mut held = sector;
+    held.current_lap_ms = 0;
+    held.sector_cur = [0, 0, 0];
+    held.sector_last = 2;
+    held.sector_last_lap = [24_093, 25_760, 23_090];
+    held.sector_delta = [-87, 120, -40];
+    held.sector_delta_valid = 0b111;
+    let held_s3 = super::sector_row(&held, 2, true);
+    assert!(!held_s3.pending);
+    assert_eq!(held_s3.time, "23.090");
+    assert_eq!(held_s3.delta, "-0.040");
+    assert!(held_s3.fresh);
+    let mut inferred = held;
+    inferred.sector_last = 1;
+    inferred.sector_last_lap = [24_093, 25_760, 0];
+    inferred.sector_delta_valid = 0b011;
+    inferred.last_lap_ms = 24_093 + 25_760 + 23_090;
+    let inf_s3 = super::sector_row(&inferred, 2, true);
+    assert!(!inf_s3.pending);
+    assert_eq!(inf_s3.time, "23.090");
+    assert!(inf_s3.fresh);
+    let mut next_s1 = held;
+    next_s1.current_lap_ms = 40_000;
+    next_s1.sector_cur = [24_200, 0, 0];
+    next_s1.sector_last = 0;
+    next_s1.sector_last_lap = [24_093, 0, 0];
+    next_s1.sector_delta = [20, 0, 0];
+    next_s1.sector_delta_valid = 0b001;
+    let frozen_s1 = super::sector_row(&next_s1, 0, true);
+    let next_s2 = super::sector_row(&next_s1, 1, true);
+    let next_s3 = super::sector_row(&next_s1, 2, true);
+    assert_eq!(frozen_s1.delta, "+0.020");
+    assert!(!frozen_s1.fresh);
+    assert!(next_s2.fresh);
+    assert!(next_s3.pending);
 }
 
 #[test]
@@ -2574,14 +2732,14 @@ fn horizontal_standings_scrolls_from_the_leader() {
     assert!((wrapped - 30.0).abs() < 0.01);
     assert!(hstand_loop_x(11.0, 0.0, 12.0, 100.0, 700.0, 97.0).is_none());
     let (vis_wide, w_wide) = hstand_layout(1400.0, 1.0, 7, 20);
-    assert!(vis_wide > 7);
-    assert!(w_wide <= 140.0);
+    assert_eq!(vis_wide, 12);
+    assert!((w_wide - 1367.0 / 12.0).abs() < 0.01);
     let (vis_mid, w_mid) = hstand_layout(7.0 * 118.0 + 6.0 * 3.0, 1.0, 7, 20);
     assert_eq!(vis_mid, 7);
-    assert!(w_mid > 86.0 && w_mid <= 140.0);
+    assert_eq!(w_mid, 118.0);
     let (vis_narrow, w_narrow) = hstand_layout(280.0, 1.0, 7, 20);
-    assert!(vis_narrow < 7);
-    assert!(w_narrow >= 78.0);
+    assert_eq!(vis_narrow, 3);
+    assert!((w_narrow - 274.0 / 3.0).abs() < 0.01);
 }
 
 /// Both on the same lap, focus (#12) scored second but `along` metres up the track on the
@@ -2842,9 +3000,7 @@ fn standings_name_is_clickable() {
     cfg.show_sys = false;
     draw_ok(&s, &cfg);
     let hits = click_rider_hits();
-    let nums: Vec<_> = hits.iter().map(|h| h.race_num).collect();
-    assert!(nums.contains(&1), "standings hits {nums:?}");
-    assert!(nums.contains(&12), "standings hits {nums:?}");
+    assert_eq!(hit_nums_by_pos(), vec![1, 12]);
     for h in &hits {
         assert_eq!(
             click_rider_at(h.x + h.w * 0.5, h.y + h.h * 0.5),
@@ -2870,9 +3026,7 @@ fn horizontal_standings_cards_are_clickable() {
     cfg.show_sys = false;
     draw_ok(&s, &cfg);
     let hits = click_rider_hits();
-    let nums: Vec<_> = hits.iter().map(|h| h.race_num).collect();
-    assert!(nums.contains(&1), "ticker hits {nums:?}");
-    assert!(nums.contains(&12), "ticker hits {nums:?}");
+    assert_eq!(hit_nums_by_pos(), vec![1, 12]);
     for h in &hits {
         assert_eq!(
             click_rider_at(h.x + h.w * 0.5, h.y + h.h * 0.5),
@@ -2897,8 +3051,147 @@ fn replay_standings_draw_without_on_track() {
     cfg.show_ticker = false;
     cfg.show_sys = false;
     draw_ok(&s, &cfg);
-    let nums: Vec<_> = click_rider_hits().iter().map(|h| h.race_num).collect();
-    assert!(nums.contains(&1) && nums.contains(&12), "replay hits {nums:?}");
+    assert_eq!(hit_nums_by_pos(), vec![1, 12]);
+}
+
+#[test]
+fn standings_alternating_rows_can_turn_off() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.local_race_num = 1;
+    s.focus_race_num = 1;
+    s.standing_count = 4;
+    s.standings[2] = standing(3, 3, 5);
+    s.standings[3] = standing(4, 4, 5);
+    s.show_relative = 0;
+    s.show_map = 0;
+    let mut cfg = HudConfig::new();
+    cfg.show_standings = true;
+    cfg.show_minimap = false;
+    cfg.show_radar = false;
+    cfg.show_dash = false;
+    cfg.show_ticker = false;
+    cfg.show_sys = false;
+    let mut striped = Pixmap::new(1280, 720).expect("pixmap");
+    draw(&mut striped, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
+    let hits = click_rider_hits();
+    let mut by_y = hits.clone();
+    by_y.sort_by(|a, b| a.y.partial_cmp(&b.y).unwrap());
+    assert_eq!(
+        by_y.iter().map(|h| h.race_num).collect::<Vec<_>>(),
+        vec![1, 12, 3, 4]
+    );
+    let stripe_a = sample_px(
+        &striped,
+        by_y[1].x + by_y[1].w * 0.5,
+        by_y[1].y + by_y[1].h * 0.5,
+    );
+    let stripe_b = sample_px(
+        &striped,
+        by_y[2].x + by_y[2].w * 0.5,
+        by_y[2].y + by_y[2].h * 0.5,
+    );
+    assert_ne!(stripe_a, stripe_b, "odd/even stripe rows must differ");
+    cfg.st_stripe = false;
+    let mut flat = Pixmap::new(1280, 720).expect("pixmap");
+    draw(&mut flat, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
+    let flat_a = sample_px(
+        &flat,
+        by_y[1].x + by_y[1].w * 0.5,
+        by_y[1].y + by_y[1].h * 0.5,
+    );
+    let flat_b = sample_px(
+        &flat,
+        by_y[2].x + by_y[2].w * 0.5,
+        by_y[2].y + by_y[2].h * 0.5,
+    );
+    assert_eq!(flat_a, flat_b, "flat board rows must match away from focus");
+}
+
+#[test]
+fn stripe_row_bg_lifts_when_panel_is_opaque() {
+    assert_eq!(rgba8(stripe_row_bg(bg_a(78))), (0, 0, 0, 54));
+    assert_eq!(rgba8(stripe_row_bg(bg_a(100))), (255, 255, 255, 34));
+}
+
+#[test]
+fn standings_stripes_visible_on_opaque_panel() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.local_race_num = 1;
+    s.focus_race_num = 1;
+    s.standing_count = 4;
+    s.standings[2] = standing(3, 3, 5);
+    s.standings[3] = standing(4, 4, 5);
+    s.show_relative = 0;
+    s.show_map = 0;
+    let mut cfg = HudConfig::new();
+    cfg.show_standings = true;
+    cfg.show_minimap = false;
+    cfg.show_radar = false;
+    cfg.show_dash = false;
+    cfg.show_ticker = false;
+    cfg.show_sys = false;
+    cfg.st_bg = 100;
+    let mut striped = Pixmap::new(1280, 720).expect("pixmap");
+    draw(&mut striped, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
+    let hits = click_rider_hits();
+    let mut by_y = hits.clone();
+    by_y.sort_by(|a, b| a.y.partial_cmp(&b.y).unwrap());
+    let stripe_a = sample_px(
+        &striped,
+        by_y[1].x + by_y[1].w * 0.5,
+        by_y[1].y + by_y[1].h * 0.5,
+    );
+    let stripe_b = sample_px(
+        &striped,
+        by_y[2].x + by_y[2].w * 0.5,
+        by_y[2].y + by_y[2].h * 0.5,
+    );
+    assert_ne!(stripe_a, stripe_b, "opaque board must still zebra");
+    cfg.st_stripe = false;
+    let mut flat = Pixmap::new(1280, 720).expect("pixmap");
+    draw(&mut flat, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
+    let flat_a = sample_px(
+        &flat,
+        by_y[1].x + by_y[1].w * 0.5,
+        by_y[1].y + by_y[1].h * 0.5,
+    );
+    let flat_b = sample_px(
+        &flat,
+        by_y[2].x + by_y[2].w * 0.5,
+        by_y[2].y + by_y[2].h * 0.5,
+    );
+    assert_eq!(flat_a, flat_b);
+}
+
+#[test]
+fn blank_hud_paints_enable_hint_when_no_widget_is_on() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.on_track = 0;
+    s.has_telemetry = 0;
+    s.standing_count = 0;
+    s.rider_count = 0;
+    let cfg = HudConfig::new();
+    assert!(!cfg.any_overlay_widget());
+    let mut px = Pixmap::new(1280, 720).expect("pixmap");
+    draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
+    let crop = crop_px(&px, 1280.0 * 0.5 - 340.0, 8.0, 680.0, 40.0, 4.0);
+    assert_golden("blank-hint", &crop);
+}
+
+#[test]
+fn live_mark_paints_in_the_top_right() {
+    let mut px = Pixmap::new(1280, 720).expect("pixmap");
+    px.fill(Color::TRANSPARENT);
+    let (x, y, bw, bh) = draw_live_mark(&mut px, 1280, 720, false);
+    assert_eq!((x, y, bw, bh), (1230.0, 10.0, 40.0, 40.0));
+    let crop = crop_px(&px, x, y, bw, bh, 6.0);
+    assert_golden("live-mark", &crop);
 }
 
 #[test]
@@ -2922,5 +3215,204 @@ fn empty_session_hides_race_widgets() {
     draw_ok(&s, &cfg);
     assert!(click_rider_hits().is_empty());
     let mut px = Pixmap::new(1280, 720).expect("pixmap");
-    draw(&mut px, &fonts(), None, &cfg, 1280, 720, 0.0, false, false);
+    draw(&mut px, &fonts(), None, &cfg, 1280, 720, 0.0, false, false, false);
+}
+
+#[test]
+fn no_snapshot_does_not_ask_to_restart() {
+    let cfg = HudConfig::new();
+    let mut px = Pixmap::new(1280, 720).expect("pixmap");
+    draw(&mut px, &fonts(), None, &cfg, 1280, 720, 0.0, false, false, false);
+    let opaque = px.pixels().iter().filter(|p| p.alpha() > 20).count();
+    assert_eq!(opaque, 0, "menus / boot with a copied plugin must not show a restart plaque");
+}
+
+#[test]
+fn map_subject_pose_follows_spectated_rider_without_telemetry() {
+    let mut s = live_snap();
+    s.has_telemetry = 0;
+    s.focus_race_num = 1;
+    let pose = subject_pose(&s, 0.0).expect("spectate pose");
+    assert!(!pose.from_local);
+    assert_eq!(pose.x, 20.0);
+    assert_eq!(pose.z, 8.0);
+    assert_eq!(camera_subject(&s), 1);
+
+    s.has_telemetry = 1;
+    s.focus_race_num = 12;
+    let pose = subject_pose(&s, 0.0).expect("back on the bike");
+    assert!(pose.from_local);
+    assert_eq!(pose.x, 10.0);
+    assert_eq!(pose.z, 4.0);
+}
+
+#[test]
+fn map_subject_pose_uses_local_telemetry_while_riding() {
+    let s = live_snap();
+    let pose = subject_pose(&s, 0.0).expect("ride pose");
+    assert!(pose.from_local);
+    assert_eq!(pose.x, 10.0);
+    assert_eq!(pose.z, 4.0);
+}
+
+#[test]
+fn map_subject_pose_returns_to_me_when_riding_even_if_focus_is_stale() {
+    let mut s = live_snap();
+    s.has_telemetry = 1;
+    s.focus_race_num = 1;
+    let pose = subject_pose(&s, 0.0).expect("ride pose");
+    assert!(pose.from_local);
+    assert_eq!(pose.x, 10.0);
+    assert_eq!(pose.z, 4.0);
+}
+
+fn sys_procs_fixture() -> [SysProc; 4] {
+    [
+        SysProc {
+            cpu: 4.0,
+            mem_mb: 88.0,
+            mem_pct: 0.5,
+            on: true,
+        },
+        SysProc {
+            cpu: 22.0,
+            mem_mb: 1800.0,
+            mem_pct: 11.0,
+            on: true,
+        },
+        SysProc {
+            cpu: 8.0,
+            mem_mb: 180.0,
+            mem_pct: 1.1,
+            on: true,
+        },
+        SysProc {
+            cpu: -1.0,
+            mem_mb: 44.0,
+            mem_pct: 0.3,
+            on: true,
+        },
+    ]
+}
+
+fn sector_snap(base: Snapshot) -> Snapshot {
+    let mut s = base;
+    s.sector_count = 3;
+    s.current_lap_ms = 70_000;
+    s.sector_last = 1;
+    s.sector_cur = [24_093, 25_760, 0];
+    s.sector_last_lap = [24_310, 25_820, 23_090];
+    s.sector_best = [24_180, 25_640, 22_910];
+    s.sector_delta = [-87, 120, 0];
+    s.sector_delta_valid = 0b011;
+    s
+}
+
+#[test]
+fn widget_goldens_pin_paint() {
+    let _g = session_lock();
+    reset_session();
+    crate::delta::set_preview(None);
+    let base = live_snap();
+    let mut rel = base;
+    rel.standings[0].num_laps = 6;
+
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg.show_standings = true;
+    let s = golden_snap(&base, &cfg);
+    draw_widget_golden("standings", &s, &cfg, cfg.standings);
+
+    hide_widgets(&mut cfg);
+    cfg.show_relative = true;
+    let s = golden_snap(&rel, &cfg);
+    draw_widget_golden("relative", &s, &cfg, cfg.relative);
+
+    hide_widgets(&mut cfg);
+    cfg.show_map = true;
+    let s = golden_snap(&base, &cfg);
+    draw_widget_golden("map", &s, &cfg, cfg.map);
+
+    hide_widgets(&mut cfg);
+    cfg.show_minimap = true;
+    let s = golden_snap(&base, &cfg);
+    draw_widget_golden("minimap", &s, &cfg, cfg.minimap);
+
+    hide_widgets(&mut cfg);
+    cfg.show_radar = true;
+    let s = golden_snap(&base, &cfg);
+    draw_widget_golden("radar", &s, &cfg, cfg.radar);
+
+    hide_widgets(&mut cfg);
+    cfg.show_dash = true;
+    let s = golden_snap(&base, &cfg);
+    draw_widget_golden("dash", &s, &cfg, cfg.dash);
+
+    hide_widgets(&mut cfg);
+    cfg.show_ticker = true;
+    let s = golden_snap(&base, &cfg);
+    draw_widget_golden("ticker", &s, &cfg, cfg.ticker);
+
+    hide_widgets(&mut cfg);
+    cfg.show_sys = true;
+    set_sys_stats(48.0, 62.0, 91.0, 11.0);
+    set_sys_procs(sys_procs_fixture());
+    let s = golden_snap(&base, &cfg);
+    draw_widget_golden("sys", &s, &cfg, cfg.sys);
+
+    hide_widgets(&mut cfg);
+    cfg.experimental = true;
+    cfg.show_sector = true;
+    let s = golden_snap(&sector_snap(base), &cfg);
+    draw_widget_golden("sector", &s, &cfg, cfg.sector);
+
+    hide_widgets(&mut cfg);
+    cfg.experimental = true;
+    cfg.show_delta = true;
+    crate::delta::set_preview(Some(crate::delta::DeltaView {
+        ready: true,
+        recording: false,
+        has_delta: true,
+        delta_ms: -347,
+        ref_lap_ms: 72_140,
+        cover: 100,
+        last_lap_ms: 72_480,
+        new_best: false,
+    }));
+    let s = golden_snap(&base, &cfg);
+    draw_widget_golden("delta-ahead", &s, &cfg, cfg.delta);
+    crate::delta::set_preview(Some(crate::delta::DeltaView {
+        ready: true,
+        recording: false,
+        has_delta: true,
+        delta_ms: 812,
+        ref_lap_ms: 72_140,
+        cover: 100,
+        last_lap_ms: 72_480,
+        new_best: false,
+    }));
+    draw_widget_golden("delta-behind", &s, &cfg, cfg.delta);
+    crate::delta::set_preview(Some(crate::delta::DeltaView {
+        ready: false,
+        recording: true,
+        has_delta: false,
+        delta_ms: 0,
+        ref_lap_ms: 0,
+        cover: 40,
+        last_lap_ms: 0,
+        new_best: false,
+    }));
+    draw_widget_golden("delta-rec", &s, &cfg, cfg.delta);
+    crate::delta::set_preview(None);
+
+    hide_widgets(&mut cfg);
+    cfg.experimental = false;
+    cfg.show_stance = true;
+    cfg.stance_style = StanceStyle::Icon;
+    cfg.stance_show_sit = true;
+    set_stance(true);
+    let s = golden_snap(&base, &cfg);
+    draw_widget_golden("stance-stand", &s, &cfg, cfg.stance);
+    set_stance(false);
+    draw_widget_golden("stance-sit", &s, &cfg, cfg.stance);
 }

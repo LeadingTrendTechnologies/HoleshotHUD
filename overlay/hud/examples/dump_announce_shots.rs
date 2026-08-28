@@ -10,6 +10,7 @@ use mxbo_hud::render::{draw, Fonts};
 use mxbo_hud::shm::{
     write_name, Point, Rider, Snapshot, Standing, MAGIC, VERSION,
 };
+use mxbo_hud::{set_sys_procs, set_sys_stats, SysProc};
 use tiny_skia::Pixmap;
 
 const RIDERS: &[(&str, &str, &str)] = &[
@@ -49,20 +50,62 @@ fn main() {
         ("dash.png", W, H, |c| size_show(c, "dash", 0.22, 0.14)),
         ("ticker.png", W, H, |c| size_show(c, "ticker", 0.90, 0.10)),
         ("sys.png", W, H, |c| size_show(c, "sys", 0.30, 0.56)),
+        ("sector.png", W, H, |c| {
+            size_show(c, "sector", 0.42, 0.18);
+            c.experimental = true;
+            c.show_sector = true;
+            c.sector_live = true;
+        }),
+        ("delta.png", W, H, |c| {
+            size_show(c, "delta", 0.42, 0.12);
+            c.experimental = true;
+            c.show_delta = true;
+            c.delta_bg = 0;
+            mxbo_hud::delta::set_preview(Some(mxbo_hud::delta::DeltaView {
+                ready: true,
+                recording: false,
+                has_delta: true,
+                delta_ms: -347,
+                ref_lap_ms: 72_140,
+                cover: 100,
+                last_lap_ms: 72_480,
+                new_best: false,
+            }));
+        }),
         ("hero.png", W, HERO_H, layout_hero),
     ];
 
     for &(name, w, h, setup) in shots {
+        mxbo_hud::delta::set_preview(None);
+        mxbo_hud::sector::reload();
         let mut cfg = base_cfg();
         setup(&mut cfg);
         let mut snap = demo_snapshot();
+        if name == "sector.png" {
+            snap.current_lap_ms = 70_000;
+            snap.sector_last = 1;
+            snap.sector_cur = [24_093, 25_760, 0];
+            snap.sector_last_lap = [24_310, 25_820, 23_090];
+            snap.sector_best = [24_180, 25_640, 22_910];
+            snap.sector_delta = [-87, 120, 0];
+            snap.sector_delta_valid = 0b011;
+        }
+        if name == "sys.png" {
+            set_sys_stats(48.0, 62.0, 91.0, 11.0);
+            set_sys_procs([
+                SysProc { cpu: 12.0, mem_mb: 420.0, mem_pct: 2.6, on: true },
+                SysProc { cpu: 41.0, mem_mb: 1800.0, mem_pct: 11.0, on: true },
+                SysProc { cpu: 8.0, mem_mb: 180.0, mem_pct: 1.1, on: true },
+                SysProc { cpu: -1.0, mem_mb: 44.0, mem_pct: 0.3, on: true },
+            ]);
+        }
         cfg.apply_to_snapshot(&mut snap);
         let mut px = Pixmap::new(w, h).expect("pixmap");
         fill_backdrop(&mut px);
         // Warm layout / race store, then draw for real on a clean plate.
-        draw(&mut px, &fonts, Some(&snap), &cfg, w, h, 0.35, false, false);
+        draw(&mut px, &fonts, Some(&snap), &cfg, w, h, 0.35, false, false, false);
         fill_backdrop(&mut px);
-        draw(&mut px, &fonts, Some(&snap), &cfg, w, h, 0.35, false, false);
+        draw(&mut px, &fonts, Some(&snap), &cfg, w, h, 0.35, false, false, false);
         let path = out.join(name);
         std::fs::write(&path, px.encode_png().expect("png")).expect("write");
         println!("wrote {}", path.display());
@@ -78,6 +121,9 @@ fn base_cfg() -> HudConfig {
     cfg.rel_bike = true;
     cfg.st_hl = 50;
     cfg.rel_hl = 50;
+    cfg.st_stripe = true;
+    cfg.rel_stripe = true;
+    cfg.map_sectors = true;
     cfg.st_w_name = 100;
     cfg.rel_w_name = 100;
     cfg.st_w_bike = 64;
@@ -94,8 +140,9 @@ fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg.show_radar = name == "radar";
     cfg.show_ticker = name == "ticker";
     cfg.show_sys = name == "sys";
-    cfg.show_sector = false;
-    cfg.experimental = false;
+    cfg.show_sector = name == "sector";
+    cfg.show_delta = name == "delta";
+    cfg.experimental = name == "sector" || name == "delta";
 }
 
 fn size_show(cfg: &mut HudConfig, name: &str, w: f32, h: f32) {
@@ -109,6 +156,8 @@ fn size_show(cfg: &mut HudConfig, name: &str, w: f32, h: f32) {
         "dash" => WidgetId::Dash,
         "ticker" => WidgetId::Ticker,
         "sys" => WidgetId::Sys,
+        "sector" => WidgetId::Sector,
+        "delta" => WidgetId::Delta,
         _ => return,
     };
     {
@@ -122,6 +171,7 @@ fn size_show(cfg: &mut HudConfig, name: &str, w: f32, h: f32) {
             WidgetId::Ticker => &mut cfg.ticker,
             WidgetId::Sys => &mut cfg.sys,
             WidgetId::Sector => &mut cfg.sector,
+            WidgetId::Delta => &mut cfg.delta,
             WidgetId::Stance => &mut cfg.stance,
         };
         r.w = w;
@@ -140,6 +190,7 @@ fn layout_hero(cfg: &mut HudConfig) {
     cfg.show_ticker = true;
     cfg.show_sys = false;
     cfg.show_sector = false;
+    cfg.show_delta = false;
     cfg.standings = mxbo_hud::shm::Rect {
         x: 0.04,
         y: 0.10,
@@ -215,7 +266,14 @@ fn demo_snapshot() -> Snapshot {
     s.local_gear = 3;
     s.local_rpm = 9666;
     s.local_speed = 16.5;
-    s.current_lap_ms = 40_000;
+    s.current_lap_ms = 12_000;
+    s.sector_count = 3;
+    s.sector_last = 2;
+    s.sector_cur = [0, 0, 0];
+    s.sector_last_lap = [24_093, 25_760, 23_090];
+    s.sector_best = [24_180, 25_640, 22_910];
+    s.sector_delta = [-87, 120, -40];
+    s.sector_delta_valid = 0b111;
 
     let poly: Vec<Point> = demo_track::POLY
         .iter()
@@ -228,6 +286,7 @@ fn demo_snapshot() -> Snapshot {
     }
     s.track_length = demo_track::TRACK_LENGTH;
     s.sf_meters = demo_track::SF_METERS;
+    mxbo_hud::sector::set_split_fracs([0.31, 0.64]);
 
     s.rider_count = RIDERS.len() as i32;
     for (i, (name, _, _)) in RIDERS.iter().enumerate() {
