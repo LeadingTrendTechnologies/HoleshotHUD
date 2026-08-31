@@ -1,5 +1,5 @@
 use super::*;
-use crate::config::{BoardField, DashField, FontFamily, HudConfig, RelField, StField, StanceStyle};
+use crate::config::{BoardField, DashField, FontFamily, HudConfig, RelField, StField, StanceStyle, WidgetId};
 use crate::race_store::{effective_extra_laps, effective_race_laps, ClockMode};
 use crate::shm::{write_name, Point, Rider, Snapshot, Standing, MAGIC, VERSION};
 use std::sync::{Mutex, OnceLock};
@@ -224,18 +224,18 @@ fn assert_golden(name: &str, px: &Pixmap) {
 }
 
 fn hide_widgets(cfg: &mut HudConfig) {
-    cfg.show_standings = false;
-    cfg.show_relative = false;
-    cfg.show_map = false;
-    cfg.show_minimap = false;
-    cfg.show_radar = false;
-    cfg.show_dash = false;
-    cfg.show_ticker = false;
-    cfg.show_sys = false;
-    cfg.show_sector = false;
-    cfg.show_delta = false;
-    cfg.show_stance = false;
-    cfg.show_flag = false;
+    cfg[WidgetId::Standings].show = false;
+    cfg[WidgetId::Relative].show = false;
+    cfg[WidgetId::Map].show = false;
+    cfg[WidgetId::Minimap].show = false;
+    cfg[WidgetId::Radar].show = false;
+    cfg[WidgetId::Dash].show = false;
+    cfg[WidgetId::Ticker].show = false;
+    cfg[WidgetId::Sys].show = false;
+    cfg[WidgetId::Sector].show = false;
+    cfg[WidgetId::Delta].show = false;
+    cfg[WidgetId::Stance].show = false;
+    cfg[WidgetId::Flag].show = false;
 }
 
 fn golden_snap(s: &Snapshot, cfg: &HudConfig) -> Snapshot {
@@ -401,10 +401,10 @@ fn default_dash_is_compact() {
     let cfg = HudConfig::new();
     let d = dash_layout(&fonts(), &s, &cfg, 1920.0, 1080.0, DashFlag::None, 0.0);
     assert!(!d.simple);
-    assert!((d.w - cfg.dash.w * 1920.0).abs() < 1.0, "plaque should fill the widget width, got {}", d.w);
-    assert!((d.h - cfg.dash.h * 1080.0).abs() < 1.0, "plaque should fill the widget height, got {}", d.h);
-    assert!((cfg.dash.w - 0.111).abs() < 0.001);
-    assert!((cfg.dash.h - 0.115).abs() < 0.001);
+    assert!((d.w - cfg[WidgetId::Dash].rect.w * 1920.0).abs() < 1.0, "plaque should fill the widget width, got {}", d.w);
+    assert!((d.h - cfg[WidgetId::Dash].rect.h * 1080.0).abs() < 1.0, "plaque should fill the widget height, got {}", d.h);
+    assert!((cfg[WidgetId::Dash].rect.w - 0.111).abs() < 0.001);
+    assert!((cfg[WidgetId::Dash].rect.h - 0.115).abs() < 0.001);
 }
 
 #[test]
@@ -414,7 +414,7 @@ fn dash_follows_widget_width() {
     let s = live_snap();
     let tight = dash_layout(&fonts(), &s, &HudConfig::new(), 1920.0, 1080.0, DashFlag::None, 0.0);
     let mut cfg = HudConfig::new();
-    cfg.dash.w = 0.40;
+    cfg[WidgetId::Dash].rect.w = 0.40;
     let d = dash_layout(&fonts(), &s, &cfg, 1920.0, 1080.0, DashFlag::None, 0.0);
     assert_eq!(tight.w, 0.111 * 1920.0);
     assert_eq!(d.w, 0.40 * 1920.0);
@@ -427,7 +427,7 @@ fn dash_follows_widget_height() {
     let s = live_snap();
     let tight = dash_layout(&fonts(), &s, &HudConfig::new(), 1920.0, 1080.0, DashFlag::None, 0.0);
     let mut cfg = HudConfig::new();
-    cfg.dash.h = 0.28;
+    cfg[WidgetId::Dash].rect.h = 0.28;
     let d = dash_layout(&fonts(), &s, &cfg, 1920.0, 1080.0, DashFlag::None, 0.0);
     assert_eq!(tight.h, 0.115 * 1080.0);
     assert_eq!(d.h, 0.28 * 1080.0);
@@ -450,7 +450,7 @@ fn simple_dash_is_gear_and_speed_only() {
     assert!(d.foot.is_empty());
     assert_eq!(d.rev_h, 0.0);
     assert_eq!(d.footer_h, 0.0);
-    assert!((d.w - cfg.dash.w * 1280.0).abs() < 1.0, "simple dash should fill the widget width, got {}", d.w);
+    assert!((d.w - cfg[WidgetId::Dash].rect.w * 1280.0).abs() < 1.0, "simple dash should fill the widget width, got {}", d.w);
 }
 
 #[test]
@@ -462,13 +462,13 @@ fn simple_dash_renders() {
     s.show_relative = 0;
     s.show_map = 0;
     let mut cfg = HudConfig::new();
-    cfg.show_dash = true;
+    cfg[WidgetId::Dash].show = true;
     cfg.dash_simple = true;
-    cfg.dash_bg = 82;
+    cfg[WidgetId::Dash].bg = 82;
     cfg.units = crate::config::Units::Imperial;
-    cfg.dash.x = 0.08;
-    cfg.dash.y = 0.22;
-    cfg.dash.h = 0.52;
+    cfg[WidgetId::Dash].rect.x = 0.08;
+    cfg[WidgetId::Dash].rect.y = 0.22;
+    cfg[WidgetId::Dash].rect.h = 0.52;
     let (fw, fh) = (640u32, 280u32);
     let mut hud = Pixmap::new(fw, fh).expect("pixmap");
     draw(&mut hud, &fonts(), Some(&s), &cfg, fw, fh, 0.0, false, false, false);
@@ -2802,11 +2802,11 @@ fn hidden_widgets_do_not_need_live_telemetry() {
     let _g = session_lock();
     reset_session();
     let mut cfg = HudConfig::new();
-    cfg.show_minimap = false;
-    cfg.show_radar = false;
-    cfg.show_dash = false;
-    cfg.show_ticker = false;
-    cfg.show_sys = false;
+    cfg[WidgetId::Minimap].show = false;
+    cfg[WidgetId::Radar].show = false;
+    cfg[WidgetId::Dash].show = false;
+    cfg[WidgetId::Ticker].show = false;
+    cfg[WidgetId::Sys].show = false;
     let mut s = Snapshot::default();
     s.on_track = 1;
     s.show_standings = 0;
@@ -3171,11 +3171,11 @@ fn standings_name_is_clickable() {
     s.show_relative = 0;
     s.show_map = 0;
     let mut cfg = HudConfig::new();
-    cfg.show_minimap = false;
-    cfg.show_radar = false;
-    cfg.show_dash = false;
-    cfg.show_ticker = false;
-    cfg.show_sys = false;
+    cfg[WidgetId::Minimap].show = false;
+    cfg[WidgetId::Radar].show = false;
+    cfg[WidgetId::Dash].show = false;
+    cfg[WidgetId::Ticker].show = false;
+    cfg[WidgetId::Sys].show = false;
     draw_ok(&s, &cfg);
     let hits = click_rider_hits();
     assert_eq!(hit_nums_by_pos(), vec![1, 12]);
@@ -3197,11 +3197,11 @@ fn horizontal_standings_cards_are_clickable() {
     s.show_relative = 0;
     s.show_map = 0;
     let mut cfg = HudConfig::new();
-    cfg.show_minimap = false;
-    cfg.show_radar = false;
-    cfg.show_dash = false;
-    cfg.show_ticker = true;
-    cfg.show_sys = false;
+    cfg[WidgetId::Minimap].show = false;
+    cfg[WidgetId::Radar].show = false;
+    cfg[WidgetId::Dash].show = false;
+    cfg[WidgetId::Ticker].show = true;
+    cfg[WidgetId::Sys].show = false;
     draw_ok(&s, &cfg);
     let hits = click_rider_hits();
     assert_eq!(hit_nums_by_pos(), vec![1, 12]);
@@ -3223,11 +3223,11 @@ fn replay_standings_draw_without_on_track() {
     s.show_relative = 0;
     s.show_map = 0;
     let mut cfg = HudConfig::new();
-    cfg.show_minimap = false;
-    cfg.show_radar = false;
-    cfg.show_dash = false;
-    cfg.show_ticker = false;
-    cfg.show_sys = false;
+    cfg[WidgetId::Minimap].show = false;
+    cfg[WidgetId::Radar].show = false;
+    cfg[WidgetId::Dash].show = false;
+    cfg[WidgetId::Ticker].show = false;
+    cfg[WidgetId::Sys].show = false;
     draw_ok(&s, &cfg);
     assert_eq!(hit_nums_by_pos(), vec![1, 12]);
 }
@@ -3245,12 +3245,12 @@ fn standings_alternating_rows_can_turn_off() {
     s.show_relative = 0;
     s.show_map = 0;
     let mut cfg = HudConfig::new();
-    cfg.show_standings = true;
-    cfg.show_minimap = false;
-    cfg.show_radar = false;
-    cfg.show_dash = false;
-    cfg.show_ticker = false;
-    cfg.show_sys = false;
+    cfg[WidgetId::Standings].show = true;
+    cfg[WidgetId::Minimap].show = false;
+    cfg[WidgetId::Radar].show = false;
+    cfg[WidgetId::Dash].show = false;
+    cfg[WidgetId::Ticker].show = false;
+    cfg[WidgetId::Sys].show = false;
     let mut striped = Pixmap::new(1280, 720).expect("pixmap");
     draw(&mut striped, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
     let hits = click_rider_hits();
@@ -3306,13 +3306,13 @@ fn standings_stripes_visible_on_opaque_panel() {
     s.show_relative = 0;
     s.show_map = 0;
     let mut cfg = HudConfig::new();
-    cfg.show_standings = true;
-    cfg.show_minimap = false;
-    cfg.show_radar = false;
-    cfg.show_dash = false;
-    cfg.show_ticker = false;
-    cfg.show_sys = false;
-    cfg.st_bg = 100;
+    cfg[WidgetId::Standings].show = true;
+    cfg[WidgetId::Minimap].show = false;
+    cfg[WidgetId::Radar].show = false;
+    cfg[WidgetId::Dash].show = false;
+    cfg[WidgetId::Ticker].show = false;
+    cfg[WidgetId::Sys].show = false;
+    cfg[WidgetId::Standings].bg = 100;
     let mut striped = Pixmap::new(1280, 720).expect("pixmap");
     draw(&mut striped, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
     let hits = click_rider_hits();
@@ -3384,12 +3384,12 @@ fn empty_session_hides_race_widgets() {
     s.show_relative = 0;
     s.show_map = 0;
     let mut cfg = HudConfig::new();
-    cfg.show_minimap = false;
-    cfg.show_radar = false;
-    cfg.show_dash = false;
-    cfg.show_ticker = false;
-    cfg.show_sys = true;
-    cfg.show_stance = true;
+    cfg[WidgetId::Minimap].show = false;
+    cfg[WidgetId::Radar].show = false;
+    cfg[WidgetId::Dash].show = false;
+    cfg[WidgetId::Ticker].show = false;
+    cfg[WidgetId::Sys].show = true;
+    cfg[WidgetId::Stance].show = true;
     draw_ok(&s, &cfg);
     assert!(click_rider_hits().is_empty());
     let mut px = Pixmap::new(1280, 720).expect("pixmap");
@@ -3500,60 +3500,60 @@ fn widget_goldens_pin_paint() {
 
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
-    cfg.show_standings = true;
+    cfg[WidgetId::Standings].show = true;
     let s = golden_snap(&base, &cfg);
-    draw_widget_golden("standings", &s, &cfg, cfg.standings);
+    draw_widget_golden("standings", &s, &cfg, cfg[WidgetId::Standings].rect);
 
     hide_widgets(&mut cfg);
-    cfg.show_relative = true;
+    cfg[WidgetId::Relative].show = true;
     let s = golden_snap(&rel, &cfg);
-    draw_widget_golden("relative", &s, &cfg, cfg.relative);
+    draw_widget_golden("relative", &s, &cfg, cfg[WidgetId::Relative].rect);
 
     hide_widgets(&mut cfg);
-    cfg.show_map = true;
+    cfg[WidgetId::Map].show = true;
     cfg.map_sectors = false;
     let s = golden_snap(&base, &cfg);
-    draw_widget_golden("map", &s, &cfg, cfg.map);
+    draw_widget_golden("map", &s, &cfg, cfg[WidgetId::Map].rect);
     cfg.map_sectors = true;
 
     hide_widgets(&mut cfg);
-    cfg.show_minimap = true;
+    cfg[WidgetId::Minimap].show = true;
     cfg.mini_sectors = false;
     let s = golden_snap(&base, &cfg);
-    draw_widget_golden("minimap", &s, &cfg, cfg.minimap);
+    draw_widget_golden("minimap", &s, &cfg, cfg[WidgetId::Minimap].rect);
     cfg.mini_sectors = true;
 
     hide_widgets(&mut cfg);
-    cfg.show_radar = true;
+    cfg[WidgetId::Radar].show = true;
     let s = golden_snap(&base, &cfg);
-    draw_widget_golden("radar", &s, &cfg, cfg.radar);
+    draw_widget_golden("radar", &s, &cfg, cfg[WidgetId::Radar].rect);
 
     hide_widgets(&mut cfg);
-    cfg.show_dash = true;
+    cfg[WidgetId::Dash].show = true;
     let s = golden_snap(&base, &cfg);
-    draw_widget_golden("dash", &s, &cfg, cfg.dash);
+    draw_widget_golden("dash", &s, &cfg, cfg[WidgetId::Dash].rect);
 
     hide_widgets(&mut cfg);
-    cfg.show_ticker = true;
+    cfg[WidgetId::Ticker].show = true;
     let s = golden_snap(&base, &cfg);
-    draw_widget_golden("ticker", &s, &cfg, cfg.ticker);
+    draw_widget_golden("ticker", &s, &cfg, cfg[WidgetId::Ticker].rect);
 
     hide_widgets(&mut cfg);
-    cfg.show_sys = true;
+    cfg[WidgetId::Sys].show = true;
     set_sys_stats(48.0, 62.0, 91.0, 11.0);
     set_sys_procs(sys_procs_fixture());
     let s = golden_snap(&base, &cfg);
-    draw_widget_golden("sys", &s, &cfg, cfg.sys);
+    draw_widget_golden("sys", &s, &cfg, cfg[WidgetId::Sys].rect);
 
     hide_widgets(&mut cfg);
     cfg.experimental = true;
-    cfg.show_sector = true;
+    cfg[WidgetId::Sector].show = true;
     let s = golden_snap(&sector_snap(base), &cfg);
-    draw_widget_golden("sector", &s, &cfg, cfg.sector);
+    draw_widget_golden("sector", &s, &cfg, cfg[WidgetId::Sector].rect);
 
     hide_widgets(&mut cfg);
     cfg.experimental = true;
-    cfg.show_delta = true;
+    cfg[WidgetId::Delta].show = true;
     crate::delta::set_preview(Some(crate::delta::DeltaView {
         ready: true,
         recording: false,
@@ -3565,7 +3565,7 @@ fn widget_goldens_pin_paint() {
         new_best: false,
     }));
     let s = golden_snap(&base, &cfg);
-    draw_widget_golden("delta-ahead", &s, &cfg, cfg.delta);
+    draw_widget_golden("delta-ahead", &s, &cfg, cfg[WidgetId::Delta].rect);
     crate::delta::set_preview(Some(crate::delta::DeltaView {
         ready: true,
         recording: false,
@@ -3576,7 +3576,7 @@ fn widget_goldens_pin_paint() {
         last_lap_ms: 72_480,
         new_best: false,
     }));
-    draw_widget_golden("delta-behind", &s, &cfg, cfg.delta);
+    draw_widget_golden("delta-behind", &s, &cfg, cfg[WidgetId::Delta].rect);
     crate::delta::set_preview(Some(crate::delta::DeltaView {
         ready: false,
         recording: true,
@@ -3587,19 +3587,19 @@ fn widget_goldens_pin_paint() {
         last_lap_ms: 0,
         new_best: false,
     }));
-    draw_widget_golden("delta-rec", &s, &cfg, cfg.delta);
+    draw_widget_golden("delta-rec", &s, &cfg, cfg[WidgetId::Delta].rect);
     crate::delta::set_preview(None);
 
     hide_widgets(&mut cfg);
     cfg.experimental = false;
-    cfg.show_stance = true;
+    cfg[WidgetId::Stance].show = true;
     cfg.stance_style = StanceStyle::Icon;
     cfg.stance_show_sit = true;
     set_stance(true);
     let s = golden_snap(&base, &cfg);
-    draw_widget_golden("stance-stand", &s, &cfg, cfg.stance);
+    draw_widget_golden("stance-stand", &s, &cfg, cfg[WidgetId::Stance].rect);
     set_stance(false);
-    draw_widget_golden("stance-sit", &s, &cfg, cfg.stance);
+    draw_widget_golden("stance-sit", &s, &cfg, cfg[WidgetId::Stance].rect);
 }
 
 #[test]
@@ -3616,12 +3616,12 @@ fn flag_widget_draws_nothing_when_no_flag() {
     set_flag_preview(0);
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
-    cfg.show_flag = true;
+    cfg[WidgetId::Flag].show = true;
     let s = golden_snap(&live_snap(), &cfg);
     let mut px = Pixmap::new(1280, 720).expect("pixmap");
     draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
-    let cx = (cfg.flag.x + cfg.flag.w * 0.5) * 1280.0;
-    let cy = (cfg.flag.y + cfg.flag.h * 0.5) * 720.0;
+    let cx = (cfg[WidgetId::Flag].rect.x + cfg[WidgetId::Flag].rect.w * 0.5) * 1280.0;
+    let cy = (cfg[WidgetId::Flag].rect.y + cfg[WidgetId::Flag].rect.h * 0.5) * 720.0;
     assert_eq!(sample_px(&px, cx, cy)[3], 0, "no flag should leave the slot empty");
 }
 
@@ -3639,14 +3639,14 @@ fn flag_widget_paints_checkered() {
     set_flag_preview(2);
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
-    cfg.show_flag = true;
+    cfg[WidgetId::Flag].show = true;
     let s = golden_snap(&live_snap(), &cfg);
     let mut px = Pixmap::new(1280, 720).expect("pixmap");
     draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
-    let x0 = cfg.flag.x * 1280.0;
-    let y0 = cfg.flag.y * 720.0;
-    let x1 = x0 + cfg.flag.w * 1280.0;
-    let y1 = y0 + cfg.flag.h * 720.0;
+    let x0 = cfg[WidgetId::Flag].rect.x * 1280.0;
+    let y0 = cfg[WidgetId::Flag].rect.y * 720.0;
+    let x1 = x0 + cfg[WidgetId::Flag].rect.w * 1280.0;
+    let y1 = y0 + cfg[WidgetId::Flag].rect.h * 720.0;
     let mut lit = 0u32;
     let mut x = x0;
     while x < x1 {
@@ -3676,14 +3676,14 @@ fn flag_widget_paints_white() {
     set_flag_preview(1);
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
-    cfg.show_flag = true;
+    cfg[WidgetId::Flag].show = true;
     let s = golden_snap(&live_snap(), &cfg);
     let mut px = Pixmap::new(1280, 720).expect("pixmap");
     draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
-    let x0 = cfg.flag.x * 1280.0;
-    let y0 = cfg.flag.y * 720.0;
-    let x1 = x0 + cfg.flag.w * 1280.0;
-    let y1 = y0 + cfg.flag.h * 720.0;
+    let x0 = cfg[WidgetId::Flag].rect.x * 1280.0;
+    let y0 = cfg[WidgetId::Flag].rect.y * 720.0;
+    let x1 = x0 + cfg[WidgetId::Flag].rect.w * 1280.0;
+    let y1 = y0 + cfg[WidgetId::Flag].rect.h * 720.0;
     assert!(
         rect_has(&px, x0, y0, x1, y1, |p| p[3] > 40 && p[0] > 180 && p[1] > 180 && p[2] > 180),
         "white flag should paint a light cloth"
@@ -3693,8 +3693,8 @@ fn flag_widget_paints_white() {
 #[test]
 fn flag_default_matches_saved_size() {
     let cfg = HudConfig::new();
-    assert!((cfg.flag.w - 0.107).abs() < 0.001);
-    assert!((cfg.flag.h - 0.019).abs() < 0.001);
+    assert!((cfg[WidgetId::Flag].rect.w - 0.107).abs() < 0.001);
+    assert!((cfg[WidgetId::Flag].rect.h - 0.019).abs() < 0.001);
 }
 
 fn mid_race_snap() -> Snapshot {
@@ -3840,14 +3840,14 @@ fn flag_widget_paints_yellow() {
     set_flag_preview(3);
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
-    cfg.show_flag = true;
+    cfg[WidgetId::Flag].show = true;
     let s = golden_snap(&live_snap(), &cfg);
     let mut px = Pixmap::new(1280, 720).expect("pixmap");
     draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
-    let x0 = cfg.flag.x * 1280.0;
-    let y0 = cfg.flag.y * 720.0;
-    let x1 = x0 + cfg.flag.w * 1280.0;
-    let y1 = y0 + cfg.flag.h * 720.0;
+    let x0 = cfg[WidgetId::Flag].rect.x * 1280.0;
+    let y0 = cfg[WidgetId::Flag].rect.y * 720.0;
+    let x1 = x0 + cfg[WidgetId::Flag].rect.w * 1280.0;
+    let y1 = y0 + cfg[WidgetId::Flag].rect.h * 720.0;
     assert!(rect_has(&px, x0, y0, x1, y1, is_yellow), "yellow flag should paint the cloth");
 }
 
@@ -3865,14 +3865,14 @@ fn flag_caption_white_covers_the_label() {
     set_flag_preview(3);
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
-    cfg.show_flag = true;
+    cfg[WidgetId::Flag].show = true;
     let s = golden_snap(&live_snap(), &cfg);
     let mut px = Pixmap::new(1280, 720).expect("pixmap");
     draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
-    let w = cfg.flag.w * 1280.0;
-    let h = cfg.flag.h * 720.0;
-    let x = cfg.flag.x * 1280.0;
-    let y = cfg.flag.y * 720.0;
+    let w = cfg[WidgetId::Flag].rect.w * 1280.0;
+    let h = cfg[WidgetId::Flag].rect.h * 720.0;
+    let x = cfg[WidgetId::Flag].rect.x * 1280.0;
+    let y = cfg[WidgetId::Flag].rect.y * 720.0;
     let gw = flag_caption_group_w(&fonts(), h, 1.0, "YELLOW FLAG");
     let mid_y = y + h * 0.5;
     let cx = x + w * 0.5;
@@ -3903,14 +3903,14 @@ fn flag_caption_white_leaves_cloth_above_and_below() {
     set_flag_preview(3);
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
-    cfg.show_flag = true;
+    cfg[WidgetId::Flag].show = true;
     let s = golden_snap(&live_snap(), &cfg);
     let mut px = Pixmap::new(1280, 720).expect("pixmap");
     draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
-    let x0 = cfg.flag.x * 1280.0;
-    let y0 = cfg.flag.y * 720.0;
-    let w = cfg.flag.w * 1280.0;
-    let h = cfg.flag.h * 720.0;
+    let x0 = cfg[WidgetId::Flag].rect.x * 1280.0;
+    let y0 = cfg[WidgetId::Flag].rect.y * 720.0;
+    let w = cfg[WidgetId::Flag].rect.w * 1280.0;
+    let h = cfg[WidgetId::Flag].rect.h * 720.0;
     let cx = x0 + w * 0.5;
     let y1 = y0 + h;
     let cloth = |p: [u8; 4]| p[3] > 40 && p[0] > 200 && p[1] > 180 && p[2] < 80;
@@ -3938,14 +3938,14 @@ fn flag_widget_paints_blue() {
     set_flag_preview(4);
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
-    cfg.show_flag = true;
+    cfg[WidgetId::Flag].show = true;
     let s = golden_snap(&live_snap(), &cfg);
     let mut px = Pixmap::new(1280, 720).expect("pixmap");
     draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
-    let x0 = cfg.flag.x * 1280.0;
-    let y0 = cfg.flag.y * 720.0;
-    let x1 = x0 + cfg.flag.w * 1280.0;
-    let y1 = y0 + cfg.flag.h * 720.0;
+    let x0 = cfg[WidgetId::Flag].rect.x * 1280.0;
+    let y0 = cfg[WidgetId::Flag].rect.y * 720.0;
+    let x1 = x0 + cfg[WidgetId::Flag].rect.w * 1280.0;
+    let y1 = y0 + cfg[WidgetId::Flag].rect.h * 720.0;
     assert!(rect_has(&px, x0, y0, x1, y1, is_blue), "blue flag should paint the cloth");
 }
 
@@ -3963,14 +3963,14 @@ fn dash_wrap_does_not_paint_yellow() {
     set_flag_preview(3);
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
-    cfg.show_dash = true;
+    cfg[WidgetId::Dash].show = true;
     let s = golden_snap(&live_snap(), &cfg);
     let mut px = Pixmap::new(1280, 720).expect("pixmap");
     draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
-    let x0 = cfg.dash.x * 1280.0 - 8.0;
-    let y0 = (cfg.dash.y * 720.0 - 36.0).max(0.0);
-    let x1 = (cfg.dash.x + cfg.dash.w) * 1280.0 + 8.0;
-    let y1 = cfg.dash.y * 720.0;
+    let x0 = cfg[WidgetId::Dash].rect.x * 1280.0 - 8.0;
+    let y0 = (cfg[WidgetId::Dash].rect.y * 720.0 - 36.0).max(0.0);
+    let x1 = (cfg[WidgetId::Dash].rect.x + cfg[WidgetId::Dash].rect.w) * 1280.0 + 8.0;
+    let y1 = cfg[WidgetId::Dash].rect.y * 720.0;
     assert!(
         !rect_has(&px, x0, y0, x1, y1, is_yellow),
         "dash wrap must not paint yellow"

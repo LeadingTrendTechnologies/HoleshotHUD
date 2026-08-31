@@ -28,7 +28,7 @@ Gang-of-Four catalogs (Factory, Visitor, Abstract Factory, Singleton) are a poor
 | **Command** | Input becomes a small enum, applied later | Settings `Hit` is already this |
 | **Actor / channels** | Own a thread, talk via messages | Rarely needed here (one UI loop) |
 
-This overlay **already** uses RAII (`Shm`, `Cmd`, `Dib`, `StyleGuard`, `ClockLog`, `FullscreenFix`), ADTs (`WidgetId`, `StField`, `ClockMode`, `RaceFlag`, `Hit`), seqlock (`Shm::read`), and a facade (`RaceStore::tick` / `get`). It almost never uses custom traits, `From`/`TryFrom`, or newtypes.
+This overlay **already** uses RAII (`Shm`, `Cmd`, `Dib`, `StyleGuard`, `ClockLog`, `FullscreenFix`), ADTs (`WidgetId`, `StField`, `ClockMode`, `RaceFlag`, `Hit`), seqlock (`Shm::read`), and a facade (`RaceStore::refresh` / `with`). It almost never uses custom traits, `From`/`TryFrom`, or newtypes.
 
 ---
 
@@ -76,7 +76,7 @@ Priority is **value vs risk**, not “how textbook.” Skip anything in [Do not 
 
 **Need to know.** App / Feedback / What’s new panes stay custom. High-contrast palette in settings must stay OS-aware (not the HUD palette).
 
-**Verdict.** Worth it before adding widget #13. Mechanical, not clever.
+**Verdict.** **Done (2026-08-31).** `WidgetPaneSpec` + `open_widget_pane` + `table_style_controls` for standings/relative. Hits stay flat (no `Hit::Widget` nest). App / Feedback / What’s new still custom.
 
 ---
 
@@ -118,7 +118,7 @@ Priority is **value vs risk**, not “how textbook.” Skip anything in [Do not 
 
 **Need to know.** WASM preview also ticks `RaceStore`; keep that path. Measure before claiming a perf win (blit/Skia likely dominate).
 
-**Verdict.** Small, safe, do anytime. Pair with passing `&RaceStore` into `draw_standings` so you do not clone per widget.
+**Verdict.** **Done (2026-08-31).** `refresh` + re-entrant `with` on the draw path; `HudConfig` cloned only while the layout editor has a cfg-backed preview. Not a hitch fix — Skia/blit still dominate.
 
 ---
 
@@ -172,7 +172,7 @@ Priority is **value vs risk**, not “how textbook.” Skip anything in [Do not 
 
 **Break logic?** **No**, if set/clear still happens on the same thread as today (`quit_app` / create).
 
-**Verdict.** Trivial; do with any `main.rs` pass.
+**Verdict.** **Done (2026-08-31).** `static HOST: AtomicIsize` with `host_hwnd` / `set_host`, same pattern as the tray.
 
 ---
 

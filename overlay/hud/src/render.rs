@@ -4,8 +4,8 @@ use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Mutex, OnceLock};
 
-use crate::config::{BoardField, DashField, DotLabel, FontFamily, HudConfig, RelField, StField, StanceStyle, TableText};
-use crate::shm::{cstr, Snapshot};
+use crate::config::{BoardField, DashField, DotLabel, FontFamily, HudConfig, RelField, StField, StanceStyle, TableText, WidgetId};
+use crate::shm::{cstr, Snapshot, MAX_STANDINGS};
 pub use crate::race_store::{ClockSample, clock_sample};
 // Re-export clock / field helpers for `render_tests` (`use super::*`).
 #[allow(unused_imports)]
@@ -385,62 +385,19 @@ pub fn draw(px: &mut Pixmap, fonts: &Fonts, snap: Option<&Snapshot>, cfg: &HudCo
 
     let sw = w as f32;
     let sh = h as f32;
-    let _race = RaceStore::tick(s);
-    let delta = crate::delta::view();
-    let (flag, flag_grow) = if cfg.show_dash || cfg.show_flag {
-        tick_display_flag(s, cfg.show_flag && cfg.flag_yellow, cfg.show_flag && cfg.flag_blue)
-    } else {
-        (DashFlag::None, 0.0)
-    };
-    if s.show_standings != 0 {
-        let _g = push_style(fonts, cfg.st_bold, cfg.st_font);
-        draw_standings(px, fonts, s, cfg, sw, sh);
-    }
-    if s.show_relative != 0 {
-        let _g = push_style(fonts, cfg.rel_bold, cfg.rel_font);
-        draw_relative(px, fonts, s, cfg, sw, sh);
-    }
-    if s.show_map != 0 {
-        let _g = push_style(fonts, cfg.map_bold, cfg.map_font);
-        draw_map(px, fonts, s, cfg, sw, sh, age);
-    }
-    if cfg.show_minimap {
-        let _g = push_style(fonts, cfg.mini_bold, cfg.mini_font);
-        draw_minimap(px, fonts, s, cfg, sw, sh, age);
-    }
-    if cfg.show_radar {
-        let _g = push_style(fonts, cfg.radar_bold, cfg.radar_font);
-        draw_radar(px, fonts, s, cfg, sw, sh, age);
-    }
-    if cfg.show_dash {
-        let _g = push_style(fonts, cfg.dash_bold, cfg.dash_font);
-        let (dash_flag, dash_grow) = dash_wrap_flag(flag, flag_grow);
-        draw_dash(px, fonts, s, cfg, sw, sh, dash_flag, dash_grow);
-    }
-    if cfg.show_ticker {
-        let _g = push_style(fonts, cfg.ticker_bold, cfg.ticker_font);
-        draw_ticker(px, fonts, s, cfg, sw, sh);
-    }
-    if cfg.show_sys {
-        let _g = push_style(fonts, cfg.sys_bold, cfg.sys_font);
-        draw_sys(px, fonts, cfg, sw, sh);
-    }
-    if cfg.sector_visible() {
-        let _g = push_style(fonts, cfg.sector_bold, cfg.sector_font);
-        draw_sector(px, fonts, s, cfg, sw, sh);
-    }
-    if cfg.delta_visible() {
-        let _g = push_style(fonts, cfg.delta_bold, cfg.delta_font);
-        draw_delta(px, fonts, cfg, sw, sh, delta);
-    }
-    if cfg.show_flag {
-        let _g = push_style(fonts, cfg.flag_bold, cfg.flag_font);
-        draw_flag(px, fonts, cfg, sw, sh, flag, flag_grow);
-    }
-    if cfg.stance_visible() {
-        let _g = push_style(fonts, cfg.stance_bold, cfg.stance_font);
-        draw_stance(px, fonts, cfg, sw, sh);
-    }
+    RaceStore::refresh(s);
+    RaceStore::with(|_| {
+        let (flag, flag_grow) = if cfg[WidgetId::Dash].show || cfg[WidgetId::Flag].show {
+            tick_display_flag(
+                s,
+                cfg[WidgetId::Flag].show && cfg.flag_yellow,
+                cfg[WidgetId::Flag].show && cfg.flag_blue,
+            )
+        } else {
+            (DashFlag::None, 0.0)
+        };
+        draw_widgets(px, fonts, s, cfg, sw, sh, age, flag, flag_grow);
+    });
     if settings_hint {
         draw_layout(px, s, cfg, sw, sh);
         text(
@@ -453,6 +410,69 @@ pub fn draw(px: &mut Pixmap, fonts: &Fonts, snap: Option<&Snapshot>, cfg: &HudCo
             text_dim(),
             false,
         );
+    }
+}
+
+fn draw_widgets(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    s: &Snapshot,
+    cfg: &HudConfig,
+    sw: f32,
+    sh: f32,
+    age: f32,
+    flag: DashFlag,
+    flag_grow: f32,
+) {
+    let delta = crate::delta::view();
+    if s.show_standings != 0 {
+        let _g = push_style(fonts, cfg[WidgetId::Standings].bold, cfg[WidgetId::Standings].font);
+        draw_standings(px, fonts, s, cfg, sw, sh);
+    }
+    if s.show_relative != 0 {
+        let _g = push_style(fonts, cfg[WidgetId::Relative].bold, cfg[WidgetId::Relative].font);
+        draw_relative(px, fonts, s, cfg, sw, sh);
+    }
+    if s.show_map != 0 {
+        let _g = push_style(fonts, cfg[WidgetId::Map].bold, cfg[WidgetId::Map].font);
+        draw_map(px, fonts, s, cfg, sw, sh, age);
+    }
+    if cfg[WidgetId::Minimap].show {
+        let _g = push_style(fonts, cfg[WidgetId::Minimap].bold, cfg[WidgetId::Minimap].font);
+        draw_minimap(px, fonts, s, cfg, sw, sh, age);
+    }
+    if cfg[WidgetId::Radar].show {
+        let _g = push_style(fonts, cfg[WidgetId::Radar].bold, cfg[WidgetId::Radar].font);
+        draw_radar(px, fonts, s, cfg, sw, sh, age);
+    }
+    if cfg[WidgetId::Dash].show {
+        let _g = push_style(fonts, cfg[WidgetId::Dash].bold, cfg[WidgetId::Dash].font);
+        let (dash_flag, dash_grow) = dash_wrap_flag(flag, flag_grow);
+        draw_dash(px, fonts, s, cfg, sw, sh, dash_flag, dash_grow);
+    }
+    if cfg[WidgetId::Ticker].show {
+        let _g = push_style(fonts, cfg[WidgetId::Ticker].bold, cfg[WidgetId::Ticker].font);
+        draw_ticker(px, fonts, s, cfg, sw, sh);
+    }
+    if cfg[WidgetId::Sys].show {
+        let _g = push_style(fonts, cfg[WidgetId::Sys].bold, cfg[WidgetId::Sys].font);
+        draw_sys(px, fonts, cfg, sw, sh);
+    }
+    if cfg.sector_visible() {
+        let _g = push_style(fonts, cfg[WidgetId::Sector].bold, cfg[WidgetId::Sector].font);
+        draw_sector(px, fonts, s, cfg, sw, sh);
+    }
+    if cfg.delta_visible() {
+        let _g = push_style(fonts, cfg[WidgetId::Delta].bold, cfg[WidgetId::Delta].font);
+        draw_delta(px, fonts, cfg, sw, sh, delta);
+    }
+    if cfg[WidgetId::Flag].show {
+        let _g = push_style(fonts, cfg[WidgetId::Flag].bold, cfg[WidgetId::Flag].font);
+        draw_flag(px, fonts, cfg, sw, sh, flag, flag_grow);
+    }
+    if cfg.stance_visible() {
+        let _g = push_style(fonts, cfg[WidgetId::Stance].bold, cfg[WidgetId::Stance].font);
+        draw_stance(px, fonts, cfg, sw, sh);
     }
 }
 
@@ -528,51 +548,53 @@ fn round_rect_path(x: f32, y: f32, w: f32, h: f32, r: f32) -> Option<Path> {
 
 fn draw_layout(px: &mut Pixmap, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) {
     if s.show_standings != 0 {
-        layout_box(px, s.standings_rect.x * sw, s.standings_rect.y * sh, s.standings_rect.w * sw, s.standings_rect.h * sh, false);
+        let r = table_layout_rect(s, cfg, WidgetId::Standings, s.standings_rect, sw, sh);
+        layout_box(px, r.x * sw, r.y * sh, r.w * sw, r.h * sh, false);
     }
     if s.show_relative != 0 {
-        layout_box(px, s.relative.x * sw, s.relative.y * sh, s.relative.w * sw, s.relative.h * sh, false);
+        let r = table_layout_rect(s, cfg, WidgetId::Relative, s.relative, sw, sh);
+        layout_box(px, r.x * sw, r.y * sh, r.w * sw, r.h * sh, false);
     }
     if s.show_map != 0 {
         layout_box(px, s.map.x * sw, s.map.y * sh, s.map.w * sw, s.map.h * sh, false);
     }
-    if cfg.show_radar {
-        layout_box(px, cfg.radar.x * sw, cfg.radar.y * sh, cfg.radar.w * sw, cfg.radar.h * sh, false);
+    if cfg[WidgetId::Radar].show {
+        layout_box(px, cfg[WidgetId::Radar].rect.x * sw, cfg[WidgetId::Radar].rect.y * sh, cfg[WidgetId::Radar].rect.w * sw, cfg[WidgetId::Radar].rect.h * sh, false);
     }
-    if cfg.show_ticker {
-        layout_box(px, cfg.ticker.x * sw, cfg.ticker.y * sh, cfg.ticker.w * sw, cfg.ticker.h * sh, true);
+    if cfg[WidgetId::Ticker].show {
+        layout_box(px, cfg[WidgetId::Ticker].rect.x * sw, cfg[WidgetId::Ticker].rect.y * sh, cfg[WidgetId::Ticker].rect.w * sw, cfg[WidgetId::Ticker].rect.h * sh, true);
     }
-    if cfg.show_sys {
-        layout_box(px, cfg.sys.x * sw, cfg.sys.y * sh, cfg.sys.w * sw, cfg.sys.h * sh, false);
+    if cfg[WidgetId::Sys].show {
+        layout_box(px, cfg[WidgetId::Sys].rect.x * sw, cfg[WidgetId::Sys].rect.y * sh, cfg[WidgetId::Sys].rect.w * sw, cfg[WidgetId::Sys].rect.h * sh, false);
     }
     if cfg.sector_visible() {
-        layout_box(px, cfg.sector.x * sw, cfg.sector.y * sh, cfg.sector.w * sw, cfg.sector.h * sh, false);
+        layout_box(px, cfg[WidgetId::Sector].rect.x * sw, cfg[WidgetId::Sector].rect.y * sh, cfg[WidgetId::Sector].rect.w * sw, cfg[WidgetId::Sector].rect.h * sh, false);
     }
     if cfg.delta_visible() {
-        layout_box(px, cfg.delta.x * sw, cfg.delta.y * sh, cfg.delta.w * sw, cfg.delta.h * sh, false);
+        layout_box(px, cfg[WidgetId::Delta].rect.x * sw, cfg[WidgetId::Delta].rect.y * sh, cfg[WidgetId::Delta].rect.w * sw, cfg[WidgetId::Delta].rect.h * sh, false);
     }
     if cfg.stance_visible() {
-        layout_box(px, cfg.stance.x * sw, cfg.stance.y * sh, cfg.stance.w * sw, cfg.stance.h * sh, false);
+        layout_box(px, cfg[WidgetId::Stance].rect.x * sw, cfg[WidgetId::Stance].rect.y * sh, cfg[WidgetId::Stance].rect.w * sw, cfg[WidgetId::Stance].rect.h * sh, false);
     }
-    if cfg.show_flag {
-        layout_box(px, cfg.flag.x * sw, cfg.flag.y * sh, cfg.flag.w * sw, cfg.flag.h * sh, false);
+    if cfg[WidgetId::Flag].show {
+        layout_box(px, cfg[WidgetId::Flag].rect.x * sw, cfg[WidgetId::Flag].rect.y * sh, cfg[WidgetId::Flag].rect.w * sw, cfg[WidgetId::Flag].rect.h * sh, false);
     }
-    if cfg.show_dash {
+    if cfg[WidgetId::Dash].show {
         layout_box(
             px,
-            cfg.dash.x * sw,
-            cfg.dash.y * sh,
-            cfg.dash.w * sw,
-            cfg.dash.h * sh,
+            cfg[WidgetId::Dash].rect.x * sw,
+            cfg[WidgetId::Dash].rect.y * sh,
+            cfg[WidgetId::Dash].rect.w * sw,
+            cfg[WidgetId::Dash].rect.h * sh,
             false,
         );
     }
-    if cfg.show_minimap {
-        let rw = cfg.minimap.w * sw;
-        let rh = cfg.minimap.h * sh;
+    if cfg[WidgetId::Minimap].show {
+        let rw = cfg[WidgetId::Minimap].rect.w * sw;
+        let rh = cfg[WidgetId::Minimap].rect.h * sh;
         let d = rw.min(rh);
-        let cx = cfg.minimap.x * sw + rw * 0.5;
-        let cy = cfg.minimap.y * sh + rh * 0.5;
+        let cx = cfg[WidgetId::Minimap].rect.x * sw + rw * 0.5;
+        let cy = cfg[WidgetId::Minimap].rect.y * sh + rh * 0.5;
         layout_box(px, cx - d * 0.5, cy - d * 0.5, d, d, false);
     }
 }
@@ -797,6 +819,112 @@ fn hug_board_w<T>(origin: f32, pad: f32, max_w: f32, slots: &[(T, f32, f32)]) ->
     (x + cw - origin + pad).clamp(pad * 2.0 + 40.0, max_w)
 }
 
+fn table_font_k(pct: i32) -> f32 {
+    (pct.clamp(70, 160) as f32) / 100.0
+}
+
+fn table_stack_h(k: f32, vis_rows: usize, has_foot: bool, max_h: f32) -> f32 {
+    let head_h = 26.0 * k;
+    let col_h = 16.0 * k;
+    let track_h = 20.0 * k;
+    let row_h = 22.0 * k;
+    let foot_h = if has_foot { 20.0 * k } else { 0.0 };
+    (head_h + col_h + track_h + vis_rows as f32 * row_h + foot_h + 8.0).min(max_h)
+}
+
+fn standings_vis_rows(s: &Snapshot) -> usize {
+    let n = (s.standing_count.max(0) as usize).min(MAX_STANDINGS);
+    let max_rows = s.standings_rows.max(3) as usize;
+    n.min(max_rows).max(1)
+}
+
+fn relative_vis_rows(s: &Snapshot) -> usize {
+    let n = s.rider_count.max(0) as usize;
+    let focus = if s.focus_race_num > 0 {
+        s.focus_race_num
+    } else {
+        s.local_race_num
+    };
+    let mut have = s.has_telemetry != 0;
+    let mut uniq: Vec<usize> = Vec::new();
+    for i in 0..n {
+        let rider = &s.riders[i];
+        let empty = rider.race_num <= 0 && cstr(&rider.name).is_empty();
+        if empty {
+            continue;
+        }
+        if rider.race_num > 0 && uniq.iter().any(|&j| s.riders[j].race_num == rider.race_num) {
+            continue;
+        }
+        if rider.race_num == focus {
+            have = true;
+        }
+        uniq.push(i);
+    }
+    let side = s.relative_count.max(1) as usize;
+    if !have || uniq.is_empty() {
+        1
+    } else {
+        uniq.len().min(side * 2 + 1).max(1)
+    }
+}
+
+/// Painted standings / relative plaque in normalized overlay space (hugged columns, row stack).
+pub fn table_layout_rect(
+    s: &Snapshot,
+    cfg: &HudConfig,
+    id: WidgetId,
+    rect: crate::shm::Rect,
+    sw: f32,
+    sh: f32,
+) -> crate::shm::Rect {
+    if sw <= 0.0 || sh <= 0.0 {
+        return rect;
+    }
+    let (widths, flex, vis, has_foot) = match id {
+        WidgetId::Standings => {
+            let cols = cfg.standings_cols();
+            let flex = cols
+                .iter()
+                .position(|c| c.is_name())
+                .unwrap_or(cols.len().saturating_sub(1));
+            (
+                cols.iter().map(|c| c.width(cfg) as f32).collect::<Vec<_>>(),
+                flex,
+                standings_vis_rows(s),
+                BoardField::any(&cfg.st_foot),
+            )
+        }
+        WidgetId::Relative => {
+            let cols = cfg.relative_cols();
+            let flex = cols
+                .iter()
+                .position(|c| c.is_name())
+                .unwrap_or(cols.len().saturating_sub(1));
+            (
+                cols.iter().map(|c| c.width(cfg) as f32).collect::<Vec<_>>(),
+                flex,
+                relative_vis_rows(s),
+                BoardField::any(&cfg.rel_foot),
+            )
+        }
+        _ => return rect,
+    };
+    let k = table_font_k(cfg[id].font);
+    let pad = 8.0;
+    let max_w = rect.w * sw;
+    let idxs: Vec<usize> = (0..widths.len()).collect();
+    let slots = col_slots(0.0, pad, max_w, &idxs, |i| widths[i], |i| i == flex);
+    let w = hug_board_w(0.0, pad, max_w, &slots);
+    let h = table_stack_h(k, vis, has_foot, rect.h * sh);
+    crate::shm::Rect {
+        x: rect.x,
+        y: rect.y,
+        w: w / sw,
+        h: h / sh,
+    }
+}
+
 fn fill_focus_row(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, c: Color) {
     if let Some(rrt) = rr(x, y, w, h) {
         fill_rect(px, rrt, c);
@@ -917,7 +1045,7 @@ fn lap_rel(s: &Snapshot, race_num: i32) -> LapRel {
     if race_num <= 0 || race_num == focus {
         return LapRel::Same;
     }
-    let race = RaceStore::get();
+    RaceStore::with(|race| {
     let me = race
         .field
         .row_by_num(focus)
@@ -949,6 +1077,7 @@ fn lap_rel(s: &Snapshot, race_num: i32) -> LapRel {
     } else {
         LapRel::Same
     }
+    })
 }
 
 fn rider_dot_col(s: &Snapshot, race_num: i32) -> Color {
@@ -1005,38 +1134,82 @@ fn draw_count_track(px: &mut Pixmap, fonts: &Fonts, x: f32, cy: f32, n: usize, t
     text(px, fonts, track, 10.0, tx + 8.0, cy + 4.5, ink, false);
 }
 
-fn st_col_header(col: StField) -> &'static str {
-    match col {
-        StField::Pos => "P",
-        StField::Num => "#",
-        StField::Name => "NAME",
-        StField::Laps => "Completed Laps",
-        StField::Current => "Current Lap",
-        StField::Best => "Fastest",
-        StField::Last => "Last",
-        StField::Status => "ST",
-        StField::Gap => "GAP",
-        StField::Interval => "INT",
-        StField::Bike => "BIKE",
-        StField::Penalty => "PEN",
-        StField::Crashed => "CR",
+trait BoardCol: Copy + PartialEq {
+    fn header(self) -> &'static str;
+    fn width(self, cfg: &HudConfig) -> i32;
+    fn is_name(self) -> bool;
+    fn is_bike(self) -> bool;
+    fn is_pos(self) -> bool;
+}
+
+impl BoardCol for StField {
+    fn header(self) -> &'static str {
+        match self {
+            Self::Pos => "P",
+            Self::Num => "#",
+            Self::Name => "NAME",
+            Self::Laps => "Completed Laps",
+            Self::Current => "Current Lap",
+            Self::Best => "Fastest",
+            Self::Last => "Last",
+            Self::Status => "ST",
+            Self::Gap => "GAP",
+            Self::Interval => "INT",
+            Self::Bike => "BIKE",
+            Self::Penalty => "PEN",
+            Self::Crashed => "CR",
+        }
+    }
+
+    fn width(self, cfg: &HudConfig) -> i32 {
+        StField::width(self, cfg)
+    }
+
+    fn is_name(self) -> bool {
+        matches!(self, Self::Name)
+    }
+
+    fn is_bike(self) -> bool {
+        matches!(self, Self::Bike)
+    }
+
+    fn is_pos(self) -> bool {
+        matches!(self, Self::Pos)
     }
 }
 
-fn rel_col_header(col: RelField) -> &'static str {
-    match col {
-        RelField::Pos => "P",
-        RelField::Num => "#",
-        RelField::Name => "NAME",
-        RelField::Gap => "Gap",
-        RelField::Laps => "Completed Laps",
-        RelField::Current => "Current Lap",
-        RelField::Bike => "BIKE",
-        RelField::Penalty => "Pen",
-        RelField::Interval => "Int",
-        RelField::Crashed => "Crash",
-        RelField::Best => "Fastest",
-        RelField::Last => "Last",
+impl BoardCol for RelField {
+    fn header(self) -> &'static str {
+        match self {
+            Self::Pos => "P",
+            Self::Num => "#",
+            Self::Name => "NAME",
+            Self::Gap => "Gap",
+            Self::Laps => "Completed Laps",
+            Self::Current => "Current Lap",
+            Self::Bike => "BIKE",
+            Self::Penalty => "Pen",
+            Self::Interval => "Int",
+            Self::Crashed => "Crash",
+            Self::Best => "Fastest",
+            Self::Last => "Last",
+        }
+    }
+
+    fn width(self, cfg: &HudConfig) -> i32 {
+        RelField::width(self, cfg)
+    }
+
+    fn is_name(self) -> bool {
+        matches!(self, Self::Name)
+    }
+
+    fn is_bike(self) -> bool {
+        matches!(self, Self::Bike)
+    }
+
+    fn is_pos(self) -> bool {
+        matches!(self, Self::Pos)
     }
 }
 
@@ -1585,7 +1758,7 @@ fn dash_race_flag(s: &Snapshot) -> DashFlag {
         return reset_flag_state();
     }
     note_line_progress(s);
-    let store = RaceStore::get();
+    RaceStore::with(|store| {
     let stale = {
         let b = &store.clock.banner.1;
         b.is_empty() || b == "--:--"
@@ -1626,6 +1799,7 @@ fn dash_race_flag(s: &Snapshot) -> DashFlag {
         _ => DashFlag::None,
     };
     hold_across_line(s, flag)
+    })
 }
 
 /// Website demo: 0 none, 1 white, 2 checkered, 3 yellow, 4 blue. Negative = live.
@@ -1823,7 +1997,7 @@ fn board_item(s: &Snapshot, cfg: &HudConfig, field: BoardField) -> Option<(char,
     if field == BoardField::None {
         return None;
     }
-    let race = RaceStore::get();
+    RaceStore::with(|race| {
     let st = race
         .field
         .focus
@@ -1880,6 +2054,7 @@ fn board_item(s: &Snapshot, cfg: &HudConfig, field: BoardField) -> Option<(char,
         BoardField::FuelPct => format_fuel_pct(s.fuel, s.max_fuel),
     };
     Some((field.icon(), text))
+    })
 }
 
 fn draw_board_bar(
@@ -1937,12 +2112,282 @@ fn ellipsize(fonts: &Fonts, s: &str, size: f32, max_w: f32) -> String {
     out
 }
 
+struct TableLook<'a> {
+    bg: i32,
+    hl: i32,
+    text: TableText,
+    stripe: bool,
+    head: &'a [BoardField; 3],
+    foot: &'a [BoardField; 3],
+}
+
+struct TableBoard<'a, C: BoardCol> {
+    px: &'a mut Pixmap,
+    fonts: &'a Fonts,
+    s: &'a Snapshot,
+    cfg: &'a HudConfig,
+    slots: Vec<(C, f32, f32)>,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    row_h: f32,
+    body_y: f32,
+    foot_h: f32,
+    a: u8,
+    you_bg: Color,
+    stripe_c: Color,
+    stripe: bool,
+    bar_end: Option<f32>,
+    ink: Color,
+    ink_dim: Color,
+    out_c: Color,
+    foot: &'a [BoardField; 3],
+}
+
+struct TableRow<'a, C: BoardCol> {
+    vis_i: usize,
+    cy: f32,
+    x: f32,
+    w: f32,
+    row_h: f32,
+    slots: &'a [(C, f32, f32)],
+    bar_end: Option<f32>,
+    you_bg: Color,
+    ink: Color,
+    ink_dim: Color,
+    out_c: Color,
+}
+
+fn plaque_cap_a(a: u8) -> u8 {
+    ((a as u16 * 240) / 200).min(255) as u8
+}
+
+fn draw_table_board<C: BoardCol>(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    s: &Snapshot,
+    cfg: &HudConfig,
+    rect: crate::shm::Rect,
+    sw: f32,
+    sh: f32,
+    cols: &[C],
+    look: TableLook<'_>,
+    vis_rows: usize,
+    count_n: usize,
+    empty: Option<&'static str>,
+    body: impl FnOnce(&mut TableBoard<'_, C>),
+) {
+    let x = rect.x * sw;
+    let y = rect.y * sh;
+    let max_w = rect.w * sw;
+    let k = style_k();
+    let head_h = 26.0 * k;
+    let col_h = 16.0 * k;
+    let track_h = 20.0 * k;
+    let row_h = 22.0 * k;
+    let foot_h = if BoardField::any(look.foot) { 20.0 * k } else { 0.0 };
+    let h = table_stack_h(k, vis_rows, BoardField::any(look.foot), rect.h * sh);
+    let pad = 8.0;
+    let slots = col_slots(x, pad, max_w, cols, |c| c.width(cfg) as f32, |c| c.is_name());
+    let w = hug_board_w(x, pad, max_w, &slots);
+    let a = bg_a(look.bg);
+    if a > 0 {
+        fill_round(px, x, y, w, h, 6.0, Color::from_rgba8(8, 8, 10, a));
+        fill_round(px, x, y, w, head_h, 6.0, Color::from_rgba8(4, 4, 6, plaque_cap_a(a)));
+        if let Some(rrt) = rr(x, y + head_h - 6.0, w, 6.0) {
+            fill_rect(px, rrt, Color::from_rgba8(4, 4, 6, plaque_cap_a(a)));
+        }
+    }
+    draw_board_bar(px, fonts, s, cfg, look.head, x, y, w, head_h);
+    if let Some(msg) = empty {
+        text(px, fonts, msg, 12.0, x + 12.0, y + head_h + 10.0, text_dim(), false);
+        paint_table_footer(px, fonts, s, cfg, look.foot, x, y, w, h, foot_h, a);
+        return;
+    }
+
+    let (ink, ink_dim, out_c, hdr_c) = table_ink(look.text);
+    let bar_end = slots
+        .iter()
+        .find(|(c, _, _)| c.is_pos())
+        .map(|(_, cx, cw)| bike_bar_end(*cx, *cw));
+    let mut cy = y + head_h;
+    let track = {
+        let t = cstr(&s.track_name);
+        if t.is_empty() { "TRACK".into() } else { t.to_uppercase() }
+    };
+    draw_count_track(px, fonts, x, cy, count_n, &track);
+    if let Some(line) = rr(x + 8.0, cy + 18.0, w - 16.0, 1.2) {
+        fill_rect(px, line, accent());
+    }
+    cy += track_h;
+    let hdr_y = cy + 2.0;
+    for (col, cx, cw) in &slots {
+        let right = !col.is_name() && !col.is_bike();
+        let pad = if col.is_name() { name_left_pad(*cx, bar_end) } else { 0.0 };
+        col_text(px, fonts, col.header(), 10.0, *cx + pad, (*cw - pad).max(8.0), hdr_y, hdr_c, right);
+    }
+    cy += col_h;
+
+    let mut board = TableBoard {
+        px,
+        fonts,
+        s,
+        cfg,
+        slots,
+        x,
+        y,
+        w,
+        h,
+        row_h,
+        body_y: cy,
+        foot_h,
+        a,
+        you_bg: you_row_bg(look.hl),
+        stripe_c: stripe_row_bg(a),
+        stripe: look.stripe,
+        bar_end,
+        ink,
+        ink_dim,
+        out_c,
+        foot: look.foot,
+    };
+    body(&mut board);
+    paint_table_footer(board.px, board.fonts, board.s, board.cfg, board.foot, board.x, board.y, board.w, board.h, board.foot_h, board.a);
+}
+
+fn paint_table_footer(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    s: &Snapshot,
+    cfg: &HudConfig,
+    foot: &[BoardField; 3],
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    foot_h: f32,
+    a: u8,
+) {
+    if foot_h <= 0.0 {
+        return;
+    }
+    if a > 0 {
+        if let Some(rrt) = rr(x, y + h - foot_h, w, foot_h) {
+            fill_rect(px, rrt, Color::from_rgba8(4, 4, 6, plaque_cap_a(a)));
+        }
+    }
+    draw_board_bar(px, fonts, s, cfg, foot, x, y + h - foot_h, w, foot_h);
+}
+
+impl<C: BoardCol> TableBoard<'_, C> {
+    fn rows(
+        &mut self,
+        ids: &[i32],
+        slides: &mut TableSlides,
+        mut each: impl FnMut(&mut Pixmap, &Fonts, TableRow<'_, C>),
+    ) {
+        let row_ys = slides.step(ids, self.body_y, self.row_h, anim_now());
+        let x = self.x;
+        let w = self.w;
+        let row_h = self.row_h;
+        let body_y = self.body_y;
+        let a = self.a;
+        let stripe_c = self.stripe_c;
+        let bar_end = self.bar_end;
+        let you_bg = self.you_bg;
+        let ink = self.ink;
+        let ink_dim = self.ink_dim;
+        let out_c = self.out_c;
+        if self.stripe && a > 0 {
+            for vis_i in 0..ids.len() {
+                if vis_i % 2 == 1 {
+                    fill_focus_row(self.px, x, body_y + vis_i as f32 * row_h, w, row_h, stripe_c);
+                }
+            }
+        }
+        let px = &mut *self.px;
+        let fonts = self.fonts;
+        let slots = self.slots.as_slice();
+        for vis_i in 0..ids.len() {
+            each(
+                px,
+                fonts,
+                TableRow {
+                    vis_i,
+                    cy: row_ys[vis_i],
+                    x,
+                    w,
+                    row_h,
+                    slots,
+                    bar_end,
+                    you_bg,
+                    ink,
+                    ink_dim,
+                    out_c,
+                },
+            );
+        }
+    }
+}
+
+impl<C: BoardCol> TableRow<'_, C> {
+    fn fill_you(&self, px: &mut Pixmap) {
+        fill_focus_row(px, self.x, self.cy, self.w, self.row_h, self.you_bg);
+    }
+
+    fn fill(&self, px: &mut Pixmap, c: Color) {
+        fill_focus_row(px, self.x, self.cy, self.w, self.row_h, c);
+    }
+
+    fn paint(
+        &self,
+        px: &mut Pixmap,
+        fonts: &Fonts,
+        accent: Color,
+        click: Option<i32>,
+        mut cell: impl FnMut(C) -> (String, Color, bool),
+    ) {
+        paint_table_row(px, fonts, self, accent, click, &mut cell);
+    }
+}
+
+fn paint_table_row<C: BoardCol>(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    row: &TableRow<'_, C>,
+    accent: Color,
+    click: Option<i32>,
+    cell: &mut impl FnMut(C) -> (String, Color, bool),
+) {
+    let mut named = false;
+    for (kind, cx, cw) in row.slots {
+        if kind.is_pos() {
+            fill_skew(px, *cx + *cw + 1.0, row.cy + 4.0, BIKE_BAR_W, row.row_h - 8.0, BIKE_BAR_SKEW, accent);
+        }
+        let (val, color, right) = cell(*kind);
+        let pad = if kind.is_name() { name_left_pad(*cx, row.bar_end) } else { 0.0 };
+        if kind.is_name() {
+            named = true;
+            if let Some(num) = click {
+                push_click_rider(num, *cx + pad, row.cy, (*cw - pad).max(8.0), row.row_h);
+            }
+        }
+        if kind.is_bike() && !val.is_empty() {
+            draw_bike_pill(px, fonts, &val, *cx, row.cy, *cw, row.row_h, accent);
+        } else {
+            col_text(px, fonts, &val, 12.0, *cx + pad, (*cw - pad).max(8.0), row.cy + 4.0, color, right);
+        }
+    }
+    if !named {
+        if let Some(num) = click {
+            push_click_rider(num, row.x, row.cy, row.w, row.row_h);
+        }
+    }
+}
+
 fn draw_standings(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) {
-    let r = s.standings_rect;
-    let x = r.x * sw;
-    let y = r.y * sh;
-    let max_w = r.w * sw;
-    let race = RaceStore::get();
+    RaceStore::with(|race| {
     // Live order and live places, so a pass moves a row now instead of at the line.
     let mut board = race.field.board();
     if board.is_empty() {
@@ -1960,170 +2405,107 @@ fn draw_standings(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig,
     }
     let end = (start + max_rows).min(n);
     let slice = &board[start..end];
-
-    let k = style_k();
-    let head_h = 26.0 * k;
-    let col_h = 16.0 * k;
-    let track_h = 20.0 * k;
-    let row_h = 22.0 * k;
-    let foot_h = if BoardField::any(&cfg.st_foot) { 20.0 * k } else { 0.0 };
-    let vis = slice.len().max(1);
-    let h = (head_h + col_h + track_h + vis as f32 * row_h + foot_h + 8.0).min(r.h * sh);
     let cols = cfg.standings_cols();
-    let pad = 8.0;
-    let slots = col_slots(x, pad, max_w, &cols, |c| c.width(cfg) as f32, |c| matches!(c, StField::Name));
-    let w = hug_board_w(x, pad, max_w, &slots);
-    let a = bg_a(cfg.st_bg);
-    if a > 0 {
-        fill_round(px, x, y, w, h, 6.0, Color::from_rgba8(8, 8, 10, a));
-        fill_round(px, x, y, w, head_h, 6.0, Color::from_rgba8(4, 4, 6, ((a as u16 * 240) / 200).min(255) as u8));
-        if let Some(rrt) = rr(x, y + head_h - 6.0, w, 6.0) {
-            fill_rect(px, rrt, Color::from_rgba8(4, 4, 6, ((a as u16 * 240) / 200).min(255) as u8));
-        }
-    }
-
-    draw_board_bar(px, fonts, s, cfg, &cfg.st_head, x, y, w, head_h);
-
-    if rows == 0 {
-        text(px, fonts, "Waiting for race data", 12.0, x + 12.0, y + head_h + 10.0, text_dim(), false);
-        if foot_h > 0.0 {
-            draw_board_bar(px, fonts, s, cfg, &cfg.st_foot, x, y + h - foot_h, w, foot_h);
-        }
-        return;
-    }
-
-    let (ink, ink_dim, out_c, hdr_c) = table_ink(cfg.st_text);
-    let bar_end = slots
-        .iter()
-        .find(|(c, _, _)| *c == StField::Pos)
-        .map(|(_, cx, cw)| bike_bar_end(*cx, *cw));
-
-    let purple = Color::from_rgba8(196, 112, 255, 255);
-    let best_ms = if race.field.session_best_ms > 0 {
-        race.field.session_best_ms
-    } else {
-        board
-            .iter()
-            .map(|row| row.best_lap_ms)
-            .filter(|ms| *ms > 0)
-            .min()
-            .unwrap_or(0)
-    };
-    let you_bg = you_row_bg(cfg.st_hl);
-    let stripe_c = stripe_row_bg(a);
-
-    let mut cy = y + head_h;
-    let track = {
-        let t = cstr(&s.track_name);
-        if t.is_empty() { "TRACK".into() } else { t.to_uppercase() }
-    };
-    let track_col = accent();
-    draw_count_track(px, fonts, x, cy, n, &track);
-    if let Some(line) = rr(x + 8.0, cy + 18.0, w - 16.0, 1.2) {
-        fill_rect(px, line, track_col);
-    }
-    cy += track_h;
-
-    let hdr_y = cy + 2.0;
-    for (col, cx, cw) in &slots {
-        let right = !matches!(col, StField::Name | StField::Bike);
-        let pad = if matches!(col, StField::Name) { name_left_pad(*cx, bar_end) } else { 0.0 };
-        col_text(px, fonts, st_col_header(*col), 10.0, *cx + pad, (*cw - pad).max(8.0), hdr_y, hdr_c, right);
-    }
-    cy += col_h;
-
-    let body_y = cy;
-    let ids = row_ids(slice.iter().map(|row| row.race_num));
-    let row_ys = ST_SLIDE.with(|a| a.borrow_mut().step(&ids, body_y, row_h, anim_now()));
-    for vis_i in 0..slice.len() {
-        if cfg.st_stripe && vis_i % 2 == 1 && a > 0 {
-            fill_focus_row(px, x, body_y + vis_i as f32 * row_h, w, row_h, stripe_c);
-        }
-    }
-    for (vis_i, row) in slice.iter().enumerate() {
-        let cy = row_ys[vis_i];
-        let cat = cstr(&row.category);
-        let accent_c = bike_color(&cstr(&row.bike), &cat);
-
-        let is_focus = row.race_num == focus;
-        let out = standing_status(row).is_some() && standing_status(row) != Some("PIT");
-        if is_focus {
-            fill_focus_row(px, x, cy, w, row_h, you_bg);
-        }
-
-        let name_c = if out { out_c } else { ink };
-        let dim = if out { out_c } else { ink_dim };
-        let status = standing_status(row);
-        for (kind, cx, cw) in &slots {
-            if *kind == StField::Pos {
-                fill_skew(px, *cx + *cw + 1.0, cy + 4.0, BIKE_BAR_W, row_h - 8.0, BIKE_BAR_SKEW, accent_c);
-            }
-            let (val, color, right) = match kind {
-                StField::Pos => (format!("{}", row.position.max(0)), name_c, true),
-                StField::Num => (format!("{}", row.race_num), dim, true),
-                StField::Name => (cstr(&row.name).to_string(), name_c, false),
-                StField::Bike => (cstr(&row.bike).to_string(), name_c, false),
-                StField::Gap => (format_board_gap(row.gap_ms, row.gap_laps, row.position <= 1), dim, true),
-                StField::Interval => {
-                    let txt = race
-                        .field
-                        .row_by_num(row.race_num)
-                        .map(interval_text_from_row)
-                        .unwrap_or_else(|| interval_text(s, row));
-                    (txt, dim, true)
-                }
-                StField::Laps => (format!("{}", row.num_laps.max(0)), dim, true),
-                StField::Current => {
-                    let lap = race
-                        .field
-                        .row_by_num(row.race_num)
-                        .map(|r| r.current_lap)
-                        .unwrap_or_else(|| rider_current_lap(s, row.race_num, row.num_laps));
-                    (format!("{lap}"), dim, true)
-                }
-                StField::Best => (format_lap(row.best_lap_ms), if best_ms > 0 && row.best_lap_ms == best_ms && !out { purple } else { dim }, true),
-                StField::Last => {
-                    let ms = if row.last_lap_ms > 0 {
-                        row.last_lap_ms
-                    } else if row.race_num == focus {
-                        s.last_lap_ms
-                    } else {
-                        0
-                    };
-                    (format_lap(ms), dim, true)
-                }
-                StField::Status => (status.unwrap_or("").to_string(), dim, true),
-                StField::Penalty => (format_penalty(row.penalty_ms), dim, true),
-                StField::Crashed => {
-                    if row.crashed != 0 || rider_crashed(s, row.race_num) {
-                        ("CRASH".into(), behind_col(), true)
-                    } else {
-                        (String::new(), dim, true)
-                    }
-                }
-            };
-            let pad = if *kind == StField::Name { name_left_pad(*cx, bar_end) } else { 0.0 };
-            if *kind == StField::Name {
-                push_click_rider(row.race_num, *cx + pad, cy, (*cw - pad).max(8.0), row_h);
-            }
-            if *kind == StField::Bike && !val.is_empty() {
-                draw_bike_pill(px, fonts, &val, *cx, cy, *cw, row_h, accent_c);
+    let empty = if rows == 0 { Some("Waiting for race data") } else { None };
+    draw_table_board(
+        px,
+        fonts,
+        s,
+        cfg,
+        s.standings_rect,
+        sw,
+        sh,
+        &cols,
+        TableLook {
+            bg: cfg[WidgetId::Standings].bg,
+            hl: cfg.st_hl,
+            text: cfg.st_text,
+            stripe: cfg.st_stripe,
+            head: &cfg.st_head,
+            foot: &cfg.st_foot,
+        },
+        slice.len().max(1),
+        n,
+        empty,
+        |tbl| {
+            let purple = Color::from_rgba8(196, 112, 255, 255);
+            let best_ms = if race.field.session_best_ms > 0 {
+                race.field.session_best_ms
             } else {
-                col_text(px, fonts, &val, 12.0, *cx + pad, (*cw - pad).max(8.0), cy + 4.0, color, right);
-            }
-        }
-        if !slots.iter().any(|(kind, _, _)| *kind == StField::Name) {
-            push_click_rider(row.race_num, x, cy, w, row_h);
-        }
-    }
-    if foot_h > 0.0 {
-        if a > 0 {
-            if let Some(rrt) = rr(x, y + h - foot_h, w, foot_h) {
-                fill_rect(px, rrt, Color::from_rgba8(4, 4, 6, ((a as u16 * 240) / 200).min(255) as u8));
-            }
-        }
-        draw_board_bar(px, fonts, s, cfg, &cfg.st_foot, x, y + h - foot_h, w, foot_h);
-    }
+                board
+                    .iter()
+                    .map(|row| row.best_lap_ms)
+                    .filter(|ms| *ms > 0)
+                    .min()
+                    .unwrap_or(0)
+            };
+            let ids = row_ids(slice.iter().map(|row| row.race_num));
+            ST_SLIDE.with(|a| {
+                tbl.rows(&ids, &mut a.borrow_mut(), |px, fonts, row| {
+                    let standing = &slice[row.vis_i];
+                    let cat = cstr(&standing.category);
+                    let accent_c = bike_color(&cstr(&standing.bike), &cat);
+                    let is_focus = standing.race_num == focus;
+                    let out = standing_status(standing).is_some() && standing_status(standing) != Some("PIT");
+                    if is_focus {
+                        row.fill_you(px);
+                    }
+                    let name_c = if out { row.out_c } else { row.ink };
+                    let dim = if out { row.out_c } else { row.ink_dim };
+                    let status = standing_status(standing);
+                    row.paint(px, fonts, accent_c, Some(standing.race_num), |kind| match kind {
+                        StField::Pos => (format!("{}", standing.position.max(0)), name_c, true),
+                        StField::Num => (format!("{}", standing.race_num), dim, true),
+                        StField::Name => (cstr(&standing.name).to_string(), name_c, false),
+                        StField::Bike => (cstr(&standing.bike).to_string(), name_c, false),
+                        StField::Gap => (format_board_gap(standing.gap_ms, standing.gap_laps, standing.position <= 1), dim, true),
+                        StField::Interval => {
+                            let txt = race
+                                .field
+                                .row_by_num(standing.race_num)
+                                .map(interval_text_from_row)
+                                .unwrap_or_else(|| interval_text(s, standing));
+                            (txt, dim, true)
+                        }
+                        StField::Laps => (format!("{}", standing.num_laps.max(0)), dim, true),
+                        StField::Current => {
+                            let lap = race
+                                .field
+                                .row_by_num(standing.race_num)
+                                .map(|r| r.current_lap)
+                                .unwrap_or_else(|| rider_current_lap(s, standing.race_num, standing.num_laps));
+                            (format!("{lap}"), dim, true)
+                        }
+                        StField::Best => (
+                            format_lap(standing.best_lap_ms),
+                            if best_ms > 0 && standing.best_lap_ms == best_ms && !out { purple } else { dim },
+                            true,
+                        ),
+                        StField::Last => {
+                            let ms = if standing.last_lap_ms > 0 {
+                                standing.last_lap_ms
+                            } else if standing.race_num == focus {
+                                s.last_lap_ms
+                            } else {
+                                0
+                            };
+                            (format_lap(ms), dim, true)
+                        }
+                        StField::Status => (status.unwrap_or("").to_string(), dim, true),
+                        StField::Penalty => (format_penalty(standing.penalty_ms), dim, true),
+                        StField::Crashed => {
+                            if standing.crashed != 0 || rider_crashed(s, standing.race_num) {
+                                ("CRASH".into(), behind_col(), true)
+                            } else {
+                                (String::new(), dim, true)
+                            }
+                        }
+                    });
+                });
+            });
+        },
+    );
+    });
 }
 
 fn format_signed_delta(ms: i32, laps: i32) -> String {
@@ -2210,7 +2592,7 @@ fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
     // FIRST VIEWPORT: three columns; current ~56% wide with huge live delta and orange S#. Flanks stay quiet. Pending is "--".
     // FORM: sector-comp-fresh, user-locked; PB is Ahead Green instead of Best Lap Violet. No glow.
     // FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
-    let r = cfg.sector;
+    let r = cfg[WidgetId::Sector].rect;
     let x = r.x * sw;
     let y = r.y * sh;
     let w = r.w * sw;
@@ -2218,7 +2600,7 @@ fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
     if w < 88.0 || h < 44.0 {
         return;
     }
-    let a = bg_a(cfg.sector_bg);
+    let a = bg_a(cfg[WidgetId::Sector].bg);
     let n = 3usize;
     let pad_x = (w * 0.03).clamp(6.0, 12.0);
     let pad_y = (h * 0.08).clamp(5.0, 10.0);
@@ -2401,7 +2783,7 @@ fn draw_delta(
     // STORY: after one decent lap the line is live; it is not the in-game ghost.
     // FIRST VIEWPORT: Δ -0.840 over a hairline that fills left of a center tick; BEST and LAST cap the ends.
     // FORM: Hair · approved .impeccable/mocks/delta-hair.png
-    let r = cfg.delta;
+    let r = cfg[WidgetId::Delta].rect;
     let x = r.x * sw;
     let y = r.y * sh;
     let w = r.w * sw;
@@ -2409,7 +2791,7 @@ fn draw_delta(
     if w < 160.0 || h < 44.0 {
         return;
     }
-    let a = bg_a(cfg.delta_bg);
+    let a = bg_a(cfg[WidgetId::Delta].bg);
     if a > 0 {
         fill_round(px, x, y, w, h, 6.0, Color::from_rgba8(10, 10, 10, a));
     }
@@ -2484,7 +2866,7 @@ fn draw_delta(
 
     let times_y = line_y + line_h + foot_gap;
     let cap_y = times_y + (times_fs - cap_fs) * 0.45;
-    let pills = cfg.delta_bg < 40;
+    let pills = cfg[WidgetId::Delta].bg < 40;
     if view.recording {
         let hint = "complete two full laps";
         let hw = measure(fonts, hint, times_fs);
@@ -2692,7 +3074,7 @@ fn draw_stance_icon(px: &mut Pixmap, cfg: &HudConfig, x: f32, y: f32, w: f32, h:
     let Some(src) = stance_glyph(sitting) else {
         return false;
     };
-    let a = bg_a(cfg.stance_bg);
+    let a = bg_a(cfg[WidgetId::Stance].bg);
     if a > 0 {
         fill_round(px, x, y, w, h, 6.0, Color::from_rgba8(10, 10, 12, a));
     }
@@ -2721,7 +3103,7 @@ fn draw_stance_icon(px: &mut Pixmap, cfg: &HudConfig, x: f32, y: f32, w: f32, h:
 }
 
 fn draw_stance(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f32, sh: f32) {
-    let r = cfg.stance;
+    let r = cfg[WidgetId::Stance].rect;
     let x = r.x * sw;
     let y = r.y * sh;
     let w = r.w * sw;
@@ -2736,7 +3118,7 @@ fn draw_stance(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f32, sh: f32
         return;
     }
     let sitting = stance_sitting();
-    let a = bg_a(cfg.stance_bg);
+    let a = bg_a(cfg[WidgetId::Stance].bg);
     let stand = !sitting;
     let fill = if stand {
         Color::from_rgba8(255, 148, 48, a.max(220))
@@ -2759,7 +3141,7 @@ fn draw_flag(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f32, sh: f32, 
     if flag == DashFlag::None || grow <= 0.02 {
         return;
     }
-    let r = cfg.flag;
+    let r = cfg[WidgetId::Flag].rect;
     let x = r.x * sw;
     let y = r.y * sh;
     let w = r.w * sw;
@@ -2767,7 +3149,7 @@ fn draw_flag(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f32, sh: f32, 
     if w < 48.0 || h < 10.0 {
         return;
     }
-    let a = ((bg_a(cfg.flag_bg) as f32) * grow.clamp(0.0, 1.0)).round() as u8;
+    let a = ((bg_a(cfg[WidgetId::Flag].bg) as f32) * grow.clamp(0.0, 1.0)).round() as u8;
     if a == 0 {
         return;
     }
@@ -2910,7 +3292,7 @@ fn draw_sys(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f32, sh: f32) {
     // FIRST VIEWPORT: tall plaque, CPU left / MEM right, four process rows under each, FPS 91 and NET 11% in a footer.
     // FORM: Twin Columns, user-locked sys-twin.png.
     // FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
-    let r = cfg.sys;
+    let r = cfg[WidgetId::Sys].rect;
     let x = r.x * sw;
     let y = r.y * sh;
     let w = r.w * sw;
@@ -2918,7 +3300,7 @@ fn draw_sys(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f32, sh: f32) {
     if w < 88.0 || h < 72.0 {
         return;
     }
-    let a = bg_a(cfg.sys_bg);
+    let a = bg_a(cfg[WidgetId::Sys].bg);
     fill_round(px, x, y, w, h, 6.0, Color::from_rgba8(10, 10, 10, a));
     if a > 0 {
         if let Some(frame) = round_rect_path(x + 0.5, y + 0.5, w - 1.0, h - 1.0, 5.5) {
@@ -3045,13 +3427,13 @@ fn draw_sys(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f32, sh: f32) {
 }
 
 fn draw_ticker(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) {
-    let r = cfg.ticker;
+    let r = cfg[WidgetId::Ticker].rect;
     let x = r.x * sw;
     let y = r.y * sh;
     let w = (r.w * sw).max(280.0);
     let h = (r.h * sh).clamp(42.0, 64.0);
     let k = style_k();
-    let a = bg_a(cfg.ticker_bg);
+    let a = bg_a(cfg[WidgetId::Ticker].bg);
     let cut = (h * 0.16).clamp(8.0, 14.0);
     if a > 0 {
         fill_skew(px, x, y, w, h, cut, Color::from_rgba8(16, 16, 20, a));
@@ -3134,7 +3516,7 @@ fn draw_ticker(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
         );
     }
 
-    let race = RaceStore::get();
+    RaceStore::with(|race| {
     // Cards follow the live order, so a pass slides the field now, not at the line.
     let mut board = race.field.board();
     if board.is_empty() {
@@ -3220,6 +3602,7 @@ fn draw_ticker(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
             None,
         );
     }
+    });
 }
 
 fn hstand_card_x(index: f32, scroll: f32, origin: f32, stride: f32) -> f32 {
@@ -3437,11 +3820,13 @@ fn draw_ticker_card(
     } else if let Some(st) = standing_status(row) {
         st.to_string()
     } else {
-        RaceStore::get()
-            .field
-            .row_by_num(row.race_num)
-            .map(ticker_delta_from_row)
-            .unwrap_or_else(|| ticker_delta(focus, row))
+        RaceStore::with(|store| {
+            store
+                .field
+                .row_by_num(row.race_num)
+                .map(ticker_delta_from_row)
+                .unwrap_or_else(|| ticker_delta(focus, row))
+        })
     };
     text(px, fonts, &gap, gap_sz, text_x, y + h * 0.52, gap_c, false);
     if best_ms > 0 && row.best_lap_ms == best_ms && !out {
@@ -3593,8 +3978,8 @@ fn max_digit_w(fonts: &Fonts, size: f32) -> f32 {
 }
 
 fn dash_layout(fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32, flag: DashFlag, grow: f32) -> DashLay {
-    let x0 = cfg.dash.x * sw;
-    let y = cfg.dash.y * sh;
+    let x0 = cfg[WidgetId::Dash].rect.x * sw;
+    let y = cfg[WidgetId::Dash].rect.y * sh;
     if cfg.dash_simple {
         return dash_layout_simple(fonts, s, cfg, sw, sh, x0, y, flag, grow);
     }
@@ -3624,8 +4009,8 @@ fn dash_layout(fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32, f
 
     const NAT_H: f32 = 147.0;
     const NAT_W: f32 = 280.0;
-    let slot_w = (cfg.dash.w * sw).max(1.0);
-    let slot_h = (cfg.dash.h * sh).max(1.0);
+    let slot_w = (cfg[WidgetId::Dash].rect.w * sw).max(1.0);
+    let slot_h = (cfg[WidgetId::Dash].rect.h * sh).max(1.0);
     let k = (slot_h / NAT_H).min(slot_w / NAT_W).clamp(0.35, 2.4);
     let pad = 15.0 * k;
     let foot_pad = 5.0 * k;
@@ -3738,13 +4123,13 @@ fn dash_layout_simple(
 ) -> DashLay {
     const NAT_H: f32 = 92.0;
     const NAT_W: f32 = 220.0;
-    let k = ((cfg.dash.h * sh) / NAT_H)
-        .min((cfg.dash.w * sw) / NAT_W)
+    let k = ((cfg[WidgetId::Dash].rect.h * sh) / NAT_H)
+        .min((cfg[WidgetId::Dash].rect.w * sw) / NAT_W)
         .clamp(0.35, 2.4);
     let pad = 10.0 * k;
-    let main_h = (cfg.dash.h * sh - pad * 2.0).max(28.0 * k);
-    let h = cfg.dash.h * sh;
-    let w = cfg.dash.w * sw;
+    let main_h = (cfg[WidgetId::Dash].rect.h * sh - pad * 2.0).max(28.0 * k);
+    let h = cfg[WidgetId::Dash].rect.h * sh;
+    let w = cfg[WidgetId::Dash].rect.w * sw;
     let x = x0;
     let flag_full = if flag != DashFlag::None {
         (h * 0.22).clamp(20.0 * k, 28.0 * k)
@@ -4019,7 +4404,7 @@ fn format_delta_ms(ms: i32) -> String {
 
 
 fn dash_best_ms(s: &Snapshot) -> i32 {
-    let race = RaceStore::get();
+    RaceStore::with(|race| {
     let standing_best = race
         .field
         .focus
@@ -4032,13 +4417,14 @@ fn dash_best_ms(s: &Snapshot) -> i32 {
         .filter(|ms| *ms > 0)
         .min()
         .unwrap_or(0)
+    })
 }
 
 fn dash_foot_item(s: &Snapshot, cfg: &HudConfig, field: DashField) -> Option<(char, String)> {
     if field == DashField::None {
         return None;
     }
-    let race = RaceStore::get();
+    RaceStore::with(|race| {
     let st = race
         .field
         .focus
@@ -4108,6 +4494,7 @@ fn dash_foot_item(s: &Snapshot, cfg: &HudConfig, field: DashField) -> Option<(ch
         DashField::FuelPct => format_fuel_pct(s.fuel, s.max_fuel),
     };
     Some((field.icon(), text))
+    })
 }
 
 fn draw_diag_stripes_masked(
@@ -4423,10 +4810,10 @@ fn draw_simple_dash(px: &mut Pixmap, fonts: &Fonts, d: &DashLay, a: u8) {
 fn draw_dash(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32, flag: DashFlag, grow: f32) {
     let d = dash_layout(fonts, s, cfg, sw, sh, flag, grow);
     if d.simple {
-        draw_simple_dash(px, fonts, &d, bg_a(cfg.dash_bg));
+        draw_simple_dash(px, fonts, &d, bg_a(cfg[WidgetId::Dash].bg));
         return;
     }
-    let a = bg_a(cfg.dash_bg);
+    let a = bg_a(cfg[WidgetId::Dash].bg);
     if let Some(path) = chamfer_path(d.x, d.y, d.w, d.h, d.cut) {
         if a > 0 {
             fill_path(px, &path, Color::from_rgba8(18, 18, 20, a));
@@ -4506,10 +4893,6 @@ fn draw_dash(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: 
 }
 
 fn draw_relative(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) {
-    let r = s.relative;
-    let x = r.x * sw;
-    let y = r.y * sh;
-    let max_w = r.w * sw;
     let n = s.rider_count.max(0) as usize;
     let focus = if s.focus_race_num > 0 { s.focus_race_num } else { s.local_race_num };
     let mut focus_pos = s.local_track_pos;
@@ -4532,228 +4915,162 @@ fn draw_relative(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, 
     }
     let side = s.relative_count.max(1) as usize;
     let vis = if have { uniq.len().min(side * 2 + 1).max(1) } else { 1 };
-    let k = style_k();
-    let head_h = 26.0 * k;
-    let col_h = 16.0 * k;
-    let track_h = 20.0 * k;
-    let row_h = 22.0 * k;
-    let foot_h = if BoardField::any(&cfg.rel_foot) { 20.0 * k } else { 0.0 };
-    let h = (head_h + col_h + track_h + vis as f32 * row_h + foot_h + 8.0).min(r.h * sh);
     let cols = cfg.relative_cols();
-    let pad = 8.0;
-    let slots = col_slots(x, pad, max_w, &cols, |c| c.width(cfg) as f32, |c| matches!(c, RelField::Name));
-    let w = hug_board_w(x, pad, max_w, &slots);
-    let a = bg_a(cfg.rel_bg);
-    if a > 0 {
-        fill_round(px, x, y, w, h, 6.0, Color::from_rgba8(8, 8, 10, a));
-        fill_round(px, x, y, w, head_h, 6.0, Color::from_rgba8(4, 4, 6, ((a as u16 * 240) / 200).min(255) as u8));
-        if let Some(rrt) = rr(x, y + head_h - 6.0, w, 6.0) {
-            fill_rect(px, rrt, Color::from_rgba8(4, 4, 6, ((a as u16 * 240) / 200).min(255) as u8));
-        }
-    }
-
-    draw_board_bar(px, fonts, s, cfg, &cfg.rel_head, x, y, w, head_h);
-
-    if !have || uniq.is_empty() {
-        text(px, fonts, "Waiting for positions", 12.0, x + 12.0, y + head_h + 10.0, text_dim(), false);
-        if foot_h > 0.0 {
-            draw_board_bar(px, fonts, s, cfg, &cfg.rel_foot, x, y + h - foot_h, w, foot_h);
-        }
-        return;
-    }
-
-    fn wrap(other: f32, self_p: f32) -> f32 {
-        let mut d = other - self_p;
-        if d > 0.5 {
-            d -= 1.0;
-        }
-        if d < -0.5 {
-            d += 1.0;
-        }
-        d
-    }
-
-    let mut order: Vec<(usize, f32)> = uniq
-        .iter()
-        .map(|&i| (i, wrap(s.riders[i].track_pos, focus_pos)))
-        .collect();
-    order.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-    let self_idx = order
-        .iter()
-        .position(|(i, _)| s.riders[*i].race_num == focus)
-        .unwrap_or(0);
-    let behind = self_idx.min(side);
-    let ahead = (order.len() - self_idx - 1).min(side);
-    let mut show = Vec::new();
-    for k in (1..=ahead).rev() {
-        show.push(self_idx + k);
-    }
-    show.push(self_idx);
-    for k in 1..=behind {
-        show.push(self_idx - k);
-    }
-
-    let (ink, ink_dim, out_c, hdr_c) = table_ink(cfg.rel_text);
-    let bar_end = slots
-        .iter()
-        .find(|(c, _, _)| *c == RelField::Pos)
-        .map(|(_, cx, cw)| bike_bar_end(*cx, *cw));
-
-    let purple = Color::from_rgba8(196, 112, 255, 255);
-    let race = RaceStore::get();
-    let best_ms = if race.field.session_best_ms > 0 {
-        race.field.session_best_ms
+    let empty = if !have || uniq.is_empty() {
+        Some("Waiting for positions")
     } else {
-        s.standings
-            .iter()
-            .take(s.standing_count.max(0) as usize)
-            .map(|row| row.best_lap_ms)
-            .filter(|ms| *ms > 0)
-            .min()
-            .unwrap_or(0)
+        None
     };
-    let you_bg = you_row_bg(cfg.rel_hl);
-    let stripe_c = stripe_row_bg(a);
-
-    let mut cy = y + head_h;
-    let track = {
-        let t = cstr(&s.track_name);
-        if t.is_empty() { "TRACK".into() } else { t.to_uppercase() }
-    };
-    let track_col = accent();
-    draw_count_track(px, fonts, x, cy, n, &track);
-    if let Some(line) = rr(x + 8.0, cy + 18.0, w - 16.0, 1.2) {
-        fill_rect(px, line, track_col);
-    }
-    cy += track_h;
-
-    let hdr_y = cy + 2.0;
-    for (col, cx, cw) in &slots {
-        let label = rel_col_header(*col);
-        let right = !matches!(col, RelField::Name | RelField::Bike);
-        let pad = if matches!(col, RelField::Name) { name_left_pad(*cx, bar_end) } else { 0.0 };
-        col_text(px, fonts, label, 10.0, *cx + pad, (*cw - pad).max(8.0), hdr_y, hdr_c, right);
-    }
-    cy += col_h;
-
-    let track_len = if s.track_length > 1.0 { s.track_length } else { 1.0 };
-    let speed = s.local_speed.max(4.0);
-
-    let body_y = cy;
-    let ids = row_ids(show.iter().map(|oi| s.riders[order[*oi].0].race_num));
-    let row_ys = REL_SLIDE.with(|a| a.borrow_mut().step(&ids, body_y, row_h, anim_now()));
-    for (vis_i, _) in show.iter().enumerate() {
-        if cfg.rel_stripe && vis_i % 2 == 1 && a > 0 {
-            fill_focus_row(px, x, body_y + vis_i as f32 * row_h, w, row_h, stripe_c);
-        }
-    }
-    for (vis_i, oi) in show.iter().enumerate() {
-        let cy = row_ys[vis_i];
-        let (ri, wrapped) = order[*oi];
-        let rider = &s.riders[ri];
-        let is_self = rider.race_num == focus;
-        let race_row = race.field.row_by_num(rider.race_num);
-        let st = race_row.map(|r| &r.standing).or_else(|| standing_of(s, rider.race_num));
-        let cat = st.map(|r| cstr(&r.category)).unwrap_or_default();
-        let bike_name = st.map(|r| cstr(&r.bike)).unwrap_or_default();
-        let accent_c = bike_color(&bike_name, &cat);
-        let out = rider.crashed != 0
-            || st.is_some_and(|r| r.crashed != 0 || matches!(r.state, 1 | 3 | 4));
-        if is_self {
-            fill_focus_row(px, x, cy, w, row_h, you_bg);
-        } else if let Some(bg) = lap_row_bg(lap_rel(s, rider.race_num), cfg.rel_hl) {
-            fill_focus_row(px, x, cy, w, row_h, bg);
-        }
-
-        let name_c = if out { out_c } else { ink };
-        let dim = if out { out_c } else { ink_dim };
-        let pos = st.map(|r| r.position).unwrap_or(0);
-        let best = st.map(|r| r.best_lap_ms).unwrap_or(0);
-        let last_ms = if st.map(|r| r.last_lap_ms).unwrap_or(0) > 0 {
-            st.map(|r| r.last_lap_ms).unwrap_or(0)
-        } else if is_self {
-            s.last_lap_ms
-        } else {
-            0
-        };
-        for (kind, cx, cw) in &slots {
-            if *kind == RelField::Pos {
-                fill_skew(px, *cx + *cw + 1.0, cy + 4.0, BIKE_BAR_W, row_h - 8.0, BIKE_BAR_SKEW, accent_c);
+    draw_table_board(
+        px,
+        fonts,
+        s,
+        cfg,
+        s.relative,
+        sw,
+        sh,
+        &cols,
+        TableLook {
+            bg: cfg[WidgetId::Relative].bg,
+            hl: cfg.rel_hl,
+            text: cfg.rel_text,
+            stripe: cfg.rel_stripe,
+            head: &cfg.rel_head,
+            foot: &cfg.rel_foot,
+        },
+        vis,
+        n,
+        empty,
+        |tbl| {
+            let mut order: Vec<(usize, f32)> = uniq
+                .iter()
+                .map(|&i| (i, wrap_frac(s.riders[i].track_pos, focus_pos)))
+                .collect();
+            order.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+            let self_idx = order
+                .iter()
+                .position(|(i, _)| s.riders[*i].race_num == focus)
+                .unwrap_or(0);
+            let behind = self_idx.min(side);
+            let ahead = (order.len() - self_idx - 1).min(side);
+            let mut show = Vec::new();
+            for k in (1..=ahead).rev() {
+                show.push(self_idx + k);
             }
-            let (val, color, right) = match kind {
-                RelField::Pos => (
-                    if pos > 0 { format!("{pos}") } else { String::new() },
-                    name_c,
-                    true,
-                ),
-                RelField::Num => (format!("{}", rider.race_num), dim, true),
-                RelField::Name => (cstr(&rider.name).to_string(), name_c, false),
-                RelField::Bike => (bike_name.to_string(), name_c, false),
-                RelField::Gap => (
-                    if is_self {
-                        "0.0".into()
-                    } else {
-                        format!("{:.1}", ((wrapped * track_len) / speed).abs())
-                    },
-                    dim,
-                    true,
-                ),
-                RelField::Laps => (
-                    st.map(|r| format!("{}", r.num_laps.max(0))).unwrap_or_default(),
-                    dim,
-                    true,
-                ),
-                RelField::Current => (
-                    format!(
-                        "{}",
-                        race_row
-                            .map(|r| r.current_lap)
-                            .unwrap_or_else(|| {
-                                rider_current_lap(s, rider.race_num, st.map(|r| r.num_laps).unwrap_or(0))
-                            })
-                    ),
-                    dim,
-                    true,
-                ),
-                RelField::Penalty => (st.map(|r| format_penalty(r.penalty_ms)).unwrap_or_default(), dim, true),
-                RelField::Interval => (
-                    race_row
-                        .map(interval_text_from_row)
-                        .or_else(|| st.map(|r| interval_text(s, r)))
-                        .unwrap_or_default(),
-                    dim,
-                    true,
-                ),
-                RelField::Crashed => {
-                    if rider.crashed != 0 || st.is_some_and(|r| r.crashed != 0) {
-                        ("CRASH".into(), behind_col(), true)
-                    } else {
-                        (String::new(), dim, true)
-                    }
-                }
-                RelField::Best => (
-                    format_lap(best),
-                    if best_ms > 0 && best == best_ms && !out { purple } else { dim },
-                    true,
-                ),
-                RelField::Last => (format_lap(last_ms), dim, true),
-            };
-            let pad = if *kind == RelField::Name { name_left_pad(*cx, bar_end) } else { 0.0 };
-            if *kind == RelField::Bike && !val.is_empty() {
-                draw_bike_pill(px, fonts, &val, *cx, cy, *cw, row_h, accent_c);
+            show.push(self_idx);
+            for k in 1..=behind {
+                show.push(self_idx - k);
+            }
+
+            let purple = Color::from_rgba8(196, 112, 255, 255);
+            RaceStore::with(|race| {
+            let best_ms = if race.field.session_best_ms > 0 {
+                race.field.session_best_ms
             } else {
-                col_text(px, fonts, &val, 12.0, *cx + pad, (*cw - pad).max(8.0), cy + 4.0, color, right);
-            }
-        }
-    }
-    if foot_h > 0.0 {
-        if a > 0 {
-            if let Some(rrt) = rr(x, y + h - foot_h, w, foot_h) {
-                fill_rect(px, rrt, Color::from_rgba8(4, 4, 6, ((a as u16 * 240) / 200).min(255) as u8));
-            }
-        }
-        draw_board_bar(px, fonts, s, cfg, &cfg.rel_foot, x, y + h - foot_h, w, foot_h);
-    }
+                s.standings
+                    .iter()
+                    .take(s.standing_count.max(0) as usize)
+                    .map(|row| row.best_lap_ms)
+                    .filter(|ms| *ms > 0)
+                    .min()
+                    .unwrap_or(0)
+            };
+            let track_len = if s.track_length > 1.0 { s.track_length } else { 1.0 };
+            let speed = s.local_speed.max(4.0);
+            let ids = row_ids(show.iter().map(|oi| s.riders[order[*oi].0].race_num));
+            let hl = cfg.rel_hl;
+            REL_SLIDE.with(|a| {
+                tbl.rows(&ids, &mut a.borrow_mut(), |px, fonts, row| {
+                    let oi = show[row.vis_i];
+                    let (ri, wrapped) = order[oi];
+                    let rider = &s.riders[ri];
+                    let is_self = rider.race_num == focus;
+                    let race_row = race.field.row_by_num(rider.race_num);
+                    let st = race_row.map(|r| &r.standing).or_else(|| standing_of(s, rider.race_num));
+                    let cat = st.map(|r| cstr(&r.category)).unwrap_or_default();
+                    let bike_name = st.map(|r| cstr(&r.bike)).unwrap_or_default();
+                    let accent_c = bike_color(&bike_name, &cat);
+                    let out = rider.crashed != 0
+                        || st.is_some_and(|r| r.crashed != 0 || matches!(r.state, 1 | 3 | 4));
+                    if is_self {
+                        row.fill_you(px);
+                    } else if let Some(bg) = lap_row_bg(lap_rel(s, rider.race_num), hl) {
+                        row.fill(px, bg);
+                    }
+                    let name_c = if out { row.out_c } else { row.ink };
+                    let dim = if out { row.out_c } else { row.ink_dim };
+                    let pos = st.map(|r| r.position).unwrap_or(0);
+                    let best = st.map(|r| r.best_lap_ms).unwrap_or(0);
+                    let last_ms = if st.map(|r| r.last_lap_ms).unwrap_or(0) > 0 {
+                        st.map(|r| r.last_lap_ms).unwrap_or(0)
+                    } else if is_self {
+                        s.last_lap_ms
+                    } else {
+                        0
+                    };
+                    row.paint(px, fonts, accent_c, None, |kind| match kind {
+                        RelField::Pos => (
+                            if pos > 0 { format!("{pos}") } else { String::new() },
+                            name_c,
+                            true,
+                        ),
+                        RelField::Num => (format!("{}", rider.race_num), dim, true),
+                        RelField::Name => (cstr(&rider.name).to_string(), name_c, false),
+                        RelField::Bike => (bike_name.to_string(), name_c, false),
+                        RelField::Gap => (
+                            if is_self {
+                                "0.0".into()
+                            } else {
+                                format!("{:.1}", ((wrapped * track_len) / speed).abs())
+                            },
+                            dim,
+                            true,
+                        ),
+                        RelField::Laps => (
+                            st.map(|r| format!("{}", r.num_laps.max(0))).unwrap_or_default(),
+                            dim,
+                            true,
+                        ),
+                        RelField::Current => (
+                            format!(
+                                "{}",
+                                race_row
+                                    .map(|r| r.current_lap)
+                                    .unwrap_or_else(|| {
+                                        rider_current_lap(s, rider.race_num, st.map(|r| r.num_laps).unwrap_or(0))
+                                    })
+                            ),
+                            dim,
+                            true,
+                        ),
+                        RelField::Penalty => (st.map(|r| format_penalty(r.penalty_ms)).unwrap_or_default(), dim, true),
+                        RelField::Interval => (
+                            race_row
+                                .map(interval_text_from_row)
+                                .or_else(|| st.map(|r| interval_text(s, r)))
+                                .unwrap_or_default(),
+                            dim,
+                            true,
+                        ),
+                        RelField::Crashed => {
+                            if rider.crashed != 0 || st.is_some_and(|r| r.crashed != 0) {
+                                ("CRASH".into(), behind_col(), true)
+                            } else {
+                                (String::new(), dim, true)
+                            }
+                        }
+                        RelField::Best => (
+                            format_lap(best),
+                            if best_ms > 0 && best == best_ms && !out { purple } else { dim },
+                            true,
+                        ),
+                        RelField::Last => (format_lap(last_ms), dim, true),
+                    });
+                });
+            });
+            });
+        },
+    );
 }
 
 fn draw_map(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32, age: f32) {
@@ -4762,9 +5079,9 @@ fn draw_map(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f
     let y = r.y * sh;
     let w = r.w * sw;
     let h = r.h * sh;
-    if cfg.map_bg > 0 {
+    if cfg[WidgetId::Map].bg > 0 {
         if let Some(rect) = rr(x, y, w, h) {
-            fill_rect(px, rect, Color::from_rgba8(10, 10, 10, bg_a(cfg.map_bg)));
+            fill_rect(px, rect, Color::from_rgba8(10, 10, 10, bg_a(cfg[WidgetId::Map].bg)));
         }
     }
     let n = s.poly_count.max(0) as usize;
@@ -4920,7 +5237,7 @@ fn mini_view_radius(zoom: i32) -> f32 {
 }
 
 fn draw_minimap(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32, age: f32) {
-    let r = cfg.minimap;
+    let r = cfg[WidgetId::Minimap].rect;
     let x = r.x * sw;
     let y = r.y * sh;
     let w = r.w * sw;
@@ -4948,13 +5265,13 @@ fn draw_minimap(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, s
         return;
     };
     mini.fill(Color::TRANSPARENT);
-    if cfg.mini_bg > 0 {
+    if cfg[WidgetId::Minimap].bg > 0 {
         fill_circle(
             mini,
             sdim * 0.5,
             sdim * 0.5,
             sdim * 0.5 - 0.5,
-            Color::from_rgba8(18, 18, 20, bg_a(cfg.mini_bg)),
+            Color::from_rgba8(18, 18, 20, bg_a(cfg[WidgetId::Minimap].bg)),
         );
     }
 
@@ -5737,7 +6054,7 @@ fn draw_radar(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw:
     // FIRST VIEWPORT: square plaque, bike in the upper third, three circles inside the glass, 6/12 in stroke gaps, blips on top.
     // FORM: Range Arcs, user-locked radar-arcs.png. No wedges, no sweep, no title bar.
     // FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
-    let r = cfg.radar;
+    let r = cfg[WidgetId::Radar].rect;
     let x = r.x * sw;
     let y = r.y * sh;
     let w = (r.w * sw).max(48.0);
@@ -5745,7 +6062,7 @@ fn draw_radar(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw:
     let size = w.min(h);
     let pad = pad_from_size(size);
 
-    let a = bg_a(cfg.radar_bg);
+    let a = bg_a(cfg[WidgetId::Radar].bg);
     if a > 0 {
         fill_round(px, x, y, w, h, 6.0, Color::from_rgba8(14, 14, 16, a));
         if let Some(frame) = round_rect_path(x + 0.5, y + 0.5, w - 1.0, h - 1.0, 5.5) {
@@ -5761,7 +6078,7 @@ fn draw_radar(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw:
     let scale = radar_fit_scale(w, h, ox, oy, x, y, inset);
 
     if cfg.radar_rings {
-        draw_radar_range_rings(px, fonts, ox, oy, scale, x, y, w, h, size, cfg.radar_bg);
+        draw_radar_range_rings(px, fonts, ox, oy, scale, x, y, w, h, size, cfg[WidgetId::Radar].bg);
     }
 
     let bw = (size * 0.075).max(6.5);
@@ -6324,5 +6641,6 @@ fn append_visible_track(
 }
 
 #[cfg(test)]
-#[path = "render_tests.rs"]
-mod render_tests;
+mod render_tests {
+    include!("tests/render.rs");
+}

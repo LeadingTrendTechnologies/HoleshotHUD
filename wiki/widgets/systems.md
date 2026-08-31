@@ -32,9 +32,11 @@ Default box matches a compact overlay size (`0.086 × 0.186`). Existing layouts 
 - Labels are fixed length-4 (`SYS_PROC_N`). Changing the set means `sys.rs` and the atomics together.
 - Do not paint load with ahead-green or Holeshot orange.
 - FPS is the game’s Draw publish rate, not the overlay loop. SHM `seq` is a seqlock (advances by 2 per publish); divide by 2. Do not mix seq FPS with overlay frame counting while a snapshot is live.
+- Do not Toolhelp-snapshot MX Bikes modules every sample. That stalls the game. ReShade DLL size is cached (~30s). CPU/mem/net sampling only runs while this widget is shown in a session.
 
 ## Change log
 
+- 2026-08-31 — Stopped walking `mxbikes.exe` modules every 250ms (that can freeze the game). Meters sample only while Systems is on; ReShade size is cached for 30s.
 - 2026-08-30 — FPS was bouncing (~38 overlay loop vs ~140 seqlock units) because `note_fps` mixed both meters and treated seqlock `seq` as a frame counter (it steps by 2 per Draw). Game FPS is now `seq_delta / 2 / dt`; overlay FPS only when there is no snapshot.
 - 2026-08-29 — Twin Columns: CPU | MEM boards, process rows under each, FPS/NET footer. Gold heat instead of a green task-manager list. Default size `0.086 × 0.186`.
 - 2026-08-27 — A blank HUD with Systems off still follows the shared hide rule; the overlay plaque (not this widget) explains plugin-missing / widgets-off.

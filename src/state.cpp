@@ -59,6 +59,7 @@ void PluginState::clearEvent()
     m_localRaceNum = -1;
     m_centerline.clear();
     m_centerlineDirty = true;
+    m_mapRev++;
     m_sfMeters = 0.0f;
     m_trail.clear();
     m_trailStarted = false;
@@ -742,6 +743,7 @@ void PluginState::setCenterline(int numSegments, const SPluginsTrackSegment_t* s
     if (numSegments > 0 && !segments)
     {
         m_centerlineDirty = true;
+        m_mapRev++;
         return;
     }
     m_centerline.reserve(static_cast<size_t>(numSegments));
@@ -762,6 +764,7 @@ void PluginState::setCenterline(int numSegments, const SPluginsTrackSegment_t* s
         m_sfMeters = raceData[0];
     }
     m_centerlineDirty = true;
+    m_mapRev++;
 }
 
 void PluginState::setTelemetry(const SPluginsBikeData_t& data, float time, float pos)

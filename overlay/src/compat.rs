@@ -204,6 +204,9 @@ pub struct FullscreenFix {
     hide_after: Option<Instant>,
     last_raise: Instant,
     layout_on: bool,
+    /// Game HWND we already shrank 1px. Do not SetWindowPos it again on a
+    /// foreground flicker — that hitch freezes MX Bikes mid-moto.
+    shy_hwnd: isize,
 }
 
 impl FullscreenFix {
@@ -222,6 +225,7 @@ impl FullscreenFix {
                 hide_after: None,
                 last_raise: Instant::now() - Duration::from_secs(10),
                 layout_on: false,
+                shy_hwnd: 0,
             }
         }
     }
@@ -257,8 +261,10 @@ impl FullscreenFix {
                 if became || now.duration_since(self.last_raise) > Duration::from_secs(2) {
                     if let Some(game) = game {
                         hide_taskbars();
-                        if became {
+                        let id = game.0 as isize;
+                        if became && self.shy_hwnd != id {
                             keep_just_shy_of_fullscreen(game);
+                            self.shy_hwnd = id;
                         }
                     }
                     if let Some(set_band) = self.set_window_band {
@@ -288,6 +294,7 @@ impl FullscreenFix {
                     if game_gone {
                         restore_desktop(overlay);
                         self.hide_after = None;
+                        self.shy_hwnd = 0;
                         return false;
                     }
                     self.hide_after = Some(now + Duration::from_millis(1500));

@@ -1,11 +1,12 @@
 use std::mem::size_of;
 use std::os::windows::process::CommandExt;
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicIsize, Ordering};
 use std::time::Duration;
 
 use windows::core::w;
 use windows::Win32::Foundation::{
-    CloseHandle, GetLastError, ERROR_ALREADY_EXISTS, ERROR_SUCCESS, HANDLE,
+    CloseHandle, GetLastError, SetLastError, ERROR_ALREADY_EXISTS, ERROR_SUCCESS, HANDLE,
 };
 use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
@@ -24,6 +25,7 @@ const RUN_GAME: windows::core::PCWSTR = w!("Holeshot HUD game");
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const DETACHED_PROCESS: u32 = 0x0000_0008;
 const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
 const WAIT_MUTEX_NAME: windows::core::PCWSTR = w!("Local\\HoleshotHUD-wait");
 
 static HUD_MUTEX: AtomicIsize = AtomicIsize::new(0);
@@ -41,14 +43,7 @@ pub fn set_enabled(on: bool) {
 pub fn sync_from_config() {
     let (start, follow) = crate::config::with_config(|c| (c.start_with_windows, c.open_with_game));
     set_run_value(RUN_HUD, start, "--minimized");
-    // Registry uses the PowerShell waiter so a login wait does not lock the HUD exe.
-    if follow {
-        if let Some(cmd) = waiter_run_cmd() {
-            write_value(RUN_GAME, &cmd);
-        }
-    } else {
-        remove_value(RUN_GAME);
-    }
+    set_run_value(RUN_GAME, follow, "--wait-for-game");
 }
 
 pub fn wait_for_mx_bikes() {
@@ -56,19 +51,19 @@ pub fn wait_for_mx_bikes() {
         std::process::exit(0);
     }
     loop {
-        if mx_bikes_pid().is_some() {
-            break;
-        }
         if !mxbo_hud::config::HudConfig::load_file().open_with_game {
             release(&WAIT_MUTEX);
             std::process::exit(0);
         }
+        if mx_bikes_pid().is_some() && claim_hud_instance() {
+            release(&WAIT_MUTEX);
+            return;
+        }
         std::thread::sleep(Duration::from_millis(400));
     }
-    release(&WAIT_MUTEX);
 }
 
-/// Background wait for MX Bikes without keeping `Holeshot-HUD.exe` running (that locked rebuilds).
+/// Detached `--wait-for-game` child. Survives this process exiting.
 pub fn spawn_game_waiter() {
     if mutex_held(WAIT_MUTEX_NAME) {
         return;
@@ -76,12 +71,14 @@ pub fn spawn_game_waiter() {
     let Ok(exe) = std::env::current_exe() else {
         return;
     };
-    let Some(script) = waiter_powershell(&exe) else {
-        return;
-    };
-    let _ = crate::util::hidden_powershell()
-        .args(["-Command", &script])
-        .creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP)
+    let _ = Command::new(&exe)
+        .arg("--wait-for-game")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(
+            DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB,
+        )
         .spawn();
 }
 
@@ -160,36 +157,6 @@ pub fn mx_bikes_pid() -> Option<u32> {
     }
 }
 
-fn waiter_powershell(exe: &std::path::Path) -> Option<String> {
-    let exe_ps = exe.to_string_lossy().replace('\'', "''");
-    let ini = mxbo_hud::config::ini_path();
-    let ini_ps = ini.to_string_lossy().replace('\'', "''");
-    Some(format!(
-        "$created = $false; \
-         $m = New-Object System.Threading.Mutex($true, 'Local\\HoleshotHUD-wait', [ref]$created); \
-         if (-not $created) {{ exit 0 }}; \
-         try {{ \
-           while (-not (Get-Process -Name 'mxbikes' -ErrorAction SilentlyContinue)) {{ \
-             $ini = Get-Content -LiteralPath '{ini_ps}' -ErrorAction SilentlyContinue | Out-String; \
-             if ($ini -match '(?m)^open_with_game=0\\s*$') {{ exit 0 }}; \
-             Start-Sleep -Milliseconds 400 \
-           }}; \
-           Start-Process -FilePath '{exe_ps}' -ArgumentList '--minimized' \
-         }} finally {{ \
-           [void]$m.ReleaseMutex(); $m.Dispose() \
-         }}"
-    ))
-}
-
-fn waiter_run_cmd() -> Option<String> {
-    let exe = std::env::current_exe().ok()?;
-    let script = waiter_powershell(&exe)?;
-    let encoded = script.replace('"', "\\\"");
-    Some(format!(
-        "powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -Command \"{encoded}\""
-    ))
-}
-
 fn set_run_value(name: windows::core::PCWSTR, on: bool, flag: &str) {
     if on {
         if let Some(cmd) = exe_cmd(flag) {
@@ -243,6 +210,7 @@ fn with_run_key(f: impl FnOnce(HKEY)) {
 
 fn claim_named(name: windows::core::PCWSTR, slot: &AtomicIsize) -> bool {
     unsafe {
+        SetLastError(ERROR_SUCCESS);
         let Ok(h) = CreateMutexW(None, true, name) else {
             return false;
         };
@@ -257,6 +225,7 @@ fn claim_named(name: windows::core::PCWSTR, slot: &AtomicIsize) -> bool {
 
 fn mutex_held(name: windows::core::PCWSTR) -> bool {
     unsafe {
+        SetLastError(ERROR_SUCCESS);
         let Ok(h) = CreateMutexW(None, false, name) else {
             return false;
         };

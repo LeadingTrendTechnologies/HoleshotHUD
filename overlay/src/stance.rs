@@ -44,6 +44,8 @@ pub struct Tracker {
     capturing: bool,
     ignore: Snap,
     hid: HidPad,
+    xinput_slot: Option<u32>,
+    xinput_retry: Instant,
 }
 
 impl Default for Tracker {
@@ -54,17 +56,29 @@ impl Default for Tracker {
             capturing: false,
             ignore: Snap::default(),
             hid: HidPad::new(),
+            xinput_slot: None,
+            xinput_retry: Instant::now(),
         }
     }
 }
 
 impl Tracker {
     /// Poll sit/stand, or capture the next pad / key / mouse press while settings is listening.
-    pub fn tick(&mut self, bind: StanceBind, mode: StanceMode, listen: bool) -> Option<StanceBind> {
+    pub fn tick(
+        &mut self,
+        bind: StanceBind,
+        mode: StanceMode,
+        listen: bool,
+        active: bool,
+    ) -> Option<StanceBind> {
         if RESET.swap(false, Ordering::SeqCst) {
             self.sitting = false;
         }
-        let now = self.snapshot();
+        if !active && !listen {
+            mxbo_hud::set_stance(self.sitting);
+            return None;
+        }
+        let now = self.snapshot(bind, listen);
         let down = now.held(bind);
 
         if listen {
@@ -98,17 +112,53 @@ impl Tracker {
         None
     }
 
-    fn snapshot(&mut self) -> Snap {
-        let pad = if let Some((buttons, lt, rt)) = xinput_pad() {
-            mask_from_buttons(|b| xinput_held(buttons, lt, rt, b))
+    fn snapshot(&mut self, bind: StanceBind, listen: bool) -> Snap {
+        let need_pad = listen || StanceBind::ALL.contains(&bind);
+        let pad = if need_pad {
+            if let Some((buttons, lt, rt)) = self.xinput_pad() {
+                mask_from_buttons(|b| xinput_held(buttons, lt, rt, b))
+            } else {
+                self.hid.held_mask()
+            }
         } else {
-            self.hid.held_mask()
+            0
         };
-        Snap {
-            pad,
-            mouse: mouse_mask(),
-            keys: key_bits(),
+        let mouse = if listen || bind_is_mouse(bind) {
+            mouse_mask()
+        } else {
+            0
+        };
+        let keys = if listen || matches!(bind, StanceBind::Key(_)) {
+            key_bits()
+        } else {
+            [0; 32]
+        };
+        Snap { pad, mouse, keys }
+    }
+
+    fn xinput_pad(&mut self) -> Option<(u16, u8, u8)> {
+        let mut state = XINPUT_STATE::default();
+        if let Some(i) = self.xinput_slot {
+            if unsafe { XInputGetState(i, &mut state) } == 0 {
+                let g = state.Gamepad;
+                return Some((g.wButtons.0, g.bLeftTrigger, g.bRightTrigger));
+            }
+            self.xinput_slot = None;
+            self.xinput_retry = Instant::now() + Duration::from_secs(2);
+            return None;
         }
+        if Instant::now() < self.xinput_retry {
+            return None;
+        }
+        for i in 0u32..4 {
+            if unsafe { XInputGetState(i, &mut state) } == 0 {
+                self.xinput_slot = Some(i);
+                let g = state.Gamepad;
+                return Some((g.wButtons.0, g.bLeftTrigger, g.bRightTrigger));
+            }
+        }
+        self.xinput_retry = Instant::now() + Duration::from_secs(2);
+        None
     }
 }
 
@@ -134,6 +184,10 @@ pub(crate) fn apply_edge(sitting: bool, prev_down: bool, down: bool, mode: Stanc
             (next, down)
         }
     }
+}
+
+fn bind_is_mouse(bind: StanceBind) -> bool {
+    StanceBind::MOUSE.contains(&bind)
 }
 
 fn rising_input(prev: &Snap, now: &Snap) -> Option<StanceBind> {
@@ -281,17 +335,6 @@ fn mask_from_buttons(check: impl Fn(StanceBind) -> bool) -> u16 {
     })
 }
 
-fn xinput_pad() -> Option<(u16, u8, u8)> {
-    let mut state = XINPUT_STATE::default();
-    for i in 0u32..4 {
-        if unsafe { XInputGetState(i, &mut state) } == 0 {
-            let g = state.Gamepad;
-            return Some((g.wButtons.0, g.bLeftTrigger, g.bRightTrigger));
-        }
-    }
-    None
-}
-
 #[derive(Clone, Copy)]
 enum HidKind {
     DualSense,
@@ -437,7 +480,7 @@ impl HidPad {
         if self.device.is_some() || Instant::now() < self.next_scan {
             return;
         }
-        self.next_scan = Instant::now() + Duration::from_millis(800);
+        self.next_scan = Instant::now() + Duration::from_secs(3);
         let Some(api) = self.api.as_mut() else {
             return;
         };
@@ -460,158 +503,5 @@ impl HidPad {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn toggle_flips_on_press() {
-        let (sit, prev) = apply_edge(false, false, true, StanceMode::Toggle);
-        assert!(sit);
-        assert!(prev);
-        let (sit, prev) = apply_edge(true, true, true, StanceMode::Toggle);
-        assert!(sit);
-        assert!(prev);
-        let (sit, prev) = apply_edge(true, true, false, StanceMode::Toggle);
-        assert!(sit);
-        assert!(!prev);
-        let (sit, _) = apply_edge(true, false, true, StanceMode::Toggle);
-        assert!(!sit);
-    }
-
-    #[test]
-    fn hold_follows_button() {
-        assert_eq!(apply_edge(false, false, true, StanceMode::Hold), (true, true));
-        assert_eq!(apply_edge(true, true, true, StanceMode::Hold), (true, true));
-        assert_eq!(apply_edge(true, true, false, StanceMode::Hold), (false, false));
-    }
-
-    #[test]
-    fn capture_takes_first_new_press() {
-        let rb = bind_bit(StanceBind::PadRb);
-        let a = bind_bit(StanceBind::PadA);
-        assert_eq!(rising_bind(0, a), Some(StanceBind::PadA));
-        assert_eq!(rising_bind(a, a), None);
-        assert_eq!(rising_bind(rb, rb | a), Some(StanceBind::PadA));
-        assert_eq!(rising_bind(0, rb | a), Some(StanceBind::PadRb));
-    }
-
-    #[test]
-    fn capture_prefers_pad_then_mouse_then_key() {
-        let mut prev = Snap::default();
-        let mut now = Snap::default();
-        now.mouse = 1;
-        now.keys[0x20 / 8] |= 1 << (0x20 % 8);
-        now.pad = bind_bit(StanceBind::PadA);
-        assert_eq!(rising_input(&prev, &now), Some(StanceBind::PadA));
-        now.pad = 0;
-        assert_eq!(rising_input(&prev, &now), Some(StanceBind::MouseLeft));
-        now.mouse = 0;
-        assert_eq!(rising_input(&prev, &now), Some(StanceBind::Key(0x20)));
-        prev.keys = now.keys;
-        assert_eq!(rising_input(&prev, &now), None);
-    }
-
-    #[test]
-    fn dualsense_usb_square_is_not_l1() {
-        let mut usb = [0u8; 64];
-        usb[0] = 0x01;
-        usb[8] = 0x08 | (1 << 4);
-        let pad = ds_buttons(&usb).unwrap();
-        assert!(ds_held(pad, StanceBind::PadX));
-        assert!(!ds_held(pad, StanceBind::PadLb));
-        assert!(!ds_held(pad, StanceBind::PadDpadUp));
-        usb[8] = 0x08;
-        usb[9] = 1;
-        let pad = ds_buttons(&usb).unwrap();
-        assert!(ds_held(pad, StanceBind::PadLb));
-        assert!(!ds_held(pad, StanceBind::PadX));
-        assert!(!ds_held(pad, StanceBind::PadRb));
-    }
-
-    #[test]
-    fn dualsense_hat_and_l2() {
-        let mut usb = [0u8; 64];
-        usb[0] = 0x01;
-        usb[8] = 0;
-        let pad = ds_buttons(&usb).unwrap();
-        assert!(ds_held(pad, StanceBind::PadDpadUp));
-        assert!(!ds_held(pad, StanceBind::PadDpadDown));
-        usb[8] = 2;
-        let pad = ds_buttons(&usb).unwrap();
-        assert!(ds_held(pad, StanceBind::PadDpadRight));
-        usb[8] = 0x08;
-        usb[9] = 1 << 2;
-        let pad = ds_buttons(&usb).unwrap();
-        assert!(ds_held(pad, StanceBind::PadLt));
-        assert!(!ds_held(pad, StanceBind::PadRt));
-        usb[9] = 1 << 3;
-        let pad = ds_buttons(&usb).unwrap();
-        assert!(ds_held(pad, StanceBind::PadRt));
-        usb[9] = 0;
-        usb[5] = 40;
-        let pad = ds_buttons(&usb).unwrap();
-        assert!(ds_held(pad, StanceBind::PadLt));
-    }
-
-    #[test]
-    fn ds4_usb_square_and_l2() {
-        let mut usb = [0u8; 64];
-        usb[0] = 0x01;
-        usb[5] = 0x08 | (1 << 4);
-        let pad = ds4_buttons(&usb).unwrap();
-        assert!(ds_held(pad, StanceBind::PadX));
-        assert!(!ds_held(pad, StanceBind::PadDpadUp));
-        usb[5] = 0x08;
-        usb[6] = 1 << 2;
-        usb[8] = 40;
-        let pad = ds4_buttons(&usb).unwrap();
-        assert!(ds_held(pad, StanceBind::PadLt));
-        assert!(!ds_held(pad, StanceBind::PadRt));
-    }
-
-    #[test]
-    fn xinput_trigger_and_dpad() {
-        assert!(xinput_held(XINPUT_GAMEPAD_DPAD_LEFT.0, 0, 0, StanceBind::PadDpadLeft));
-        assert!(!xinput_held(0, 0, 0, StanceBind::PadLt));
-        assert!(xinput_held(0, 40, 0, StanceBind::PadLt));
-        assert!(xinput_held(0, 0, 40, StanceBind::PadRt));
-        assert!(!xinput_held(0, TRIGGER_DOWN, 0, StanceBind::PadLt));
-        assert!(!xinput_held(0, 0, 0, StanceBind::Key(0x20)));
-        assert!(!xinput_held(0, 0, 0, StanceBind::MouseLeft));
-    }
-
-    #[test]
-    fn dualsense_bt_square_is_not_l1() {
-        let mut bt = [0u8; 64];
-        bt[0] = 0x31;
-        bt[9] = 0x08 | (1 << 4);
-        let pad = ds_buttons(&bt).unwrap();
-        assert!(ds_held(pad, StanceBind::PadX));
-        assert!(!ds_held(pad, StanceBind::PadLb));
-        bt[9] = 0x08;
-        bt[10] = 1;
-        let pad = ds_buttons(&bt).unwrap();
-        assert!(ds_held(pad, StanceBind::PadLb));
-        assert!(!ds_held(pad, StanceBind::PadX));
-    }
-
-    #[test]
-    fn ds4_bt_square_and_l2() {
-        let mut bt = [0u8; 64];
-        bt[0] = 0x11;
-        bt[7] = 0x08 | (1 << 4);
-        let pad = ds4_buttons(&bt).unwrap();
-        assert!(ds_held(pad, StanceBind::PadX));
-        bt[7] = 0x08;
-        bt[10] = 40;
-        let pad = ds4_buttons(&bt).unwrap();
-        assert!(ds_held(pad, StanceBind::PadLt));
-        assert!(!ds_held(pad, StanceBind::PadRt));
-    }
-
-    #[test]
-    fn ds_buttons_rejects_empty() {
-        assert!(ds_buttons(&[]).is_none());
-        assert!(ds4_buttons(&[]).is_none());
-    }
-}
+#[path = "tests/stance.rs"]
+mod tests;

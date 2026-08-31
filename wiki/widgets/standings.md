@@ -4,7 +4,7 @@ Vertical classification board: place, number, name, and timing columns. Settings
 
 ## Code
 
-- Draw: `draw_standings` in `overlay/hud/src/render.rs`
+- Draw: `draw_standings` in `overlay/hud/src/render.rs` (chrome via `draw_table_board`)
 - Classification view: `RaceStore` / `RaceField` in `overlay/hud/src/race_store.rs` (interval, current lap, session best)
 - Columns / header / footer: `StField`, `BoardField`, `HudConfig` in `overlay/hud/src/config.rs`
 - Settings pane: `pane_standings` in `overlay/src/settings.rs`
@@ -28,7 +28,7 @@ Status labels: `1` DNS, `3` OUT, `4` DSQ, else PIT if `pit != 0`.
 - Best lap in the field is purple.
 - Bike column is a colored badge (`bike_color` from bike name + category). A skew bar after **Position** uses the same accent.
 - Header / footer are three `BoardField` slots each (session time, riders, fuel, etc.).
-- Name column uses its configured width (and only shrinks when the table is too narrow); other columns keep configured widths. The plaque hugs that column pack, so leftover widget width is not empty glass.
+- Name column uses its configured width (and only shrinks when the table is too narrow); other columns keep configured widths. The plaque hugs that column pack, so leftover widget width is not empty glass. Ctrl+resize width grows the Name column so the plaque actually gets bigger; height grows **Rows** (3–40).
 - Rows slide when order changes (`ST_SLIDE`).
 
 Default columns on: Position, Number, Name, Gap, Fastest, Last lap.
@@ -44,8 +44,13 @@ Default columns on: Position, Number, Name, Gap, Fastest, Last lap.
 - Missing `st_stripe` in the ini keeps alternating rows on.
 - Alternating rows must still read at **Background** 100% (lift, not extra black on night-ink).
 - Fuel header/footer is liters/US gallons (`Fuel`) or tank percent (`Fuel %`). Empty volume is `0.0`; `--` / `--%` only when tank size is missing.
+- Ctrl+resize chrome is the hugged plaque (column pack × row stack), not leftover widget glass. Dragging it larger still grows Name / Rows — do not leave the orange box as a no-op hug.
 
 ## Change log
+
+- 2026-08-31 — Ctrl+resize of the hugged plaque grows Name width and **Rows**, so the table can get larger instead of the orange box being a no-op.
+- 2026-08-31 — Ctrl+resize orange box (and grab handles) follow the hugged plaque, not leftover widget glass.
+- 2026-08-31 — Plaque, header/footer, stripes, bike pill, and row slide share `draw_table_board` with Relative. Windowing and cell text stay here.
 
 - 2026-08-29 — **Fuel %** is a separate header/footer option from volume.
 

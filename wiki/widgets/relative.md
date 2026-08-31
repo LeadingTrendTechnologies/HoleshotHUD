@@ -4,7 +4,7 @@ Riders immediately ahead and behind you on track position, not classification or
 
 ## Code
 
-- Draw: `draw_relative` in `overlay/hud/src/render.rs`
+- Draw: `draw_relative` in `overlay/hud/src/render.rs` (chrome via `draw_table_board`)
 - Columns: `RelField` in `overlay/hud/src/config.rs`
 - Settings: `pane_relative` in `overlay/src/settings.rs`
 - In-game HUD copy: `drawRelative` in `src/hud/widgets.cpp`
@@ -13,7 +13,7 @@ Riders immediately ahead and behind you on track position, not classification or
 
 Sorts `riders[].track_pos` wrapped around you (`wrap` so +0.5 / −0.5 is the far side of the loop). Focus is `focus_race_num`, else `local_race_num`.
 
-**Nearby riders** (`relative_count`) is count *each side*, not total rows. Visible set is up to `2 * count + 1` (ahead + you + behind).
+**Nearby riders** (`relative_count`) is count *each side*, not total rows. Visible set is up to `2 * count + 1` (ahead + you + behind). Ctrl+resize height changes that count (1–8).
 
 Classification is joined by race number for position, laps, bike, best/last, penalty, interval, status. The **Position** column is the live place (`RaceField` rows), so a pass shows there even though the row order is track order. See [live race order](../live-order.md).
 
@@ -37,8 +37,13 @@ Default columns on: Number, Name, Gap, Fastest, Last lap.
 - Missing `rel_stripe` in the ini keeps alternating rows on.
 - Alternating rows must still read at **Background** 100% (lift, not extra black on night-ink).
 - Fuel header/footer is liters/US gallons (`Fuel`) or tank percent (`Fuel %`). Empty volume is `0.0`; `--` / `--%` only when tank size is missing.
+- Ctrl+resize chrome is the hugged plaque (column pack × row stack), not leftover widget glass. Dragging it larger grows Name / nearby count.
 
 ## Change log
+
+- 2026-08-31 — Ctrl+resize of the hugged plaque grows Name width and nearby-rider count, so the table can get larger instead of the orange box being a no-op.
+- 2026-08-31 — Ctrl+resize orange box (and grab handles) follow the hugged plaque, not leftover widget glass.
+- 2026-08-31 — Plaque, header/footer, stripes, bike pill, and row slide share `draw_table_board` with Standings. Neighbor selection and gap-from-track-pos stay here.
 
 - 2026-08-29 — Two laps down no longer tints the leader’s row red. Same `gap_laps` preference as Map.
 - 2026-08-29 — **Fuel %** is a separate header/footer option from volume.

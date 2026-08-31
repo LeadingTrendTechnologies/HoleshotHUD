@@ -3,6 +3,7 @@
 #include "vendor/piboso/mxb_api.h"
 
 #include <chrono>
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -165,6 +166,7 @@ public:
 
     bool centerlineDirty() const { return m_centerlineDirty; }
     void clearCenterlineDirty() { m_centerlineDirty = false; }
+    uint32_t mapRev() const { return m_mapRev; }
 
 private:
     void resolveLocalRaceNum();
@@ -235,4 +237,5 @@ private:
     int m_sectorFinishedLap = -1;
 
     bool m_centerlineDirty = false;
+    uint32_t m_mapRev = 0;
 };

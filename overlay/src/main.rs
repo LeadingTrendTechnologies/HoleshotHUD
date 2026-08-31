@@ -20,7 +20,7 @@ mod util;
 
 use std::mem::size_of;
 use std::ptr::null_mut;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use std::time::{Duration, Instant};
 
 use tiny_skia::Pixmap;
@@ -38,11 +38,12 @@ use windows::Win32::UI::HiDpi::{SetProcessDpiAwareness, PROCESS_PER_MONITOR_DPI_
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_F9, VK_LBUTTON};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateIconFromResourceEx, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
-    GetClassNameW, GetClientRect, GetSystemMetrics, GetWindowThreadProcessId, IsWindow, LoadCursorW,
+    GetClassNameW, GetClientRect, GetSystemMetrics, GetWindowThreadProcessId, IsIconic, IsWindow,
+    IsWindowVisible, LoadCursorW,
     LoadImageW, LookupIconIdFromDirectoryEx, PeekMessageW, PostQuitMessage, RegisterClassExW,
     SendMessageW, SetCursor, SetWindowPos, ShowWindow, TranslateMessage, UpdateLayeredWindow,
     HWND_TOPMOST, ICON_BIG, ICON_SMALL, IDC_ARROW, IDC_HAND, IMAGE_ICON, LR_DEFAULTCOLOR, MSG, PM_REMOVE,
-    SM_CXSCREEN, SM_CYSCREEN, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_MINIMIZE, SW_SHOWMINNOACTIVE,
+    SM_CXSCREEN, SM_CYSCREEN, SWP_NOACTIVATE, SWP_SHOWWINDOW,
     SW_SHOWNOACTIVATE, ULW_ALPHA, WM_ACTIVATE, WM_CLOSE, WM_DESTROY, WM_QUIT, WM_SETCURSOR,
     WM_SETICON, WNDCLASSEXW, WS_CAPTION, WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
     WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_POPUP,
@@ -52,8 +53,16 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use crate::render::Fonts;
 use crate::shm::{Cmd, Shm, Snapshot, VERSION};
 
-static mut HOST: HWND = HWND(null_mut());
+static HOST: AtomicIsize = AtomicIsize::new(0);
 static QUITTING: AtomicBool = AtomicBool::new(false);
+
+fn host_hwnd() -> HWND {
+    HWND(HOST.load(Ordering::SeqCst) as *mut _)
+}
+
+fn set_host(hwnd: HWND) {
+    HOST.store(hwnd.0 as isize, Ordering::SeqCst);
+}
 
 /// Save is caller's job. Tears down tray/windows and ends the process so the exe unlocks for rebuilds.
 pub(crate) fn quit_app() {
@@ -61,15 +70,17 @@ pub(crate) fn quit_app() {
         return;
     }
     crate::compat::restore_taskbars();
-    crate::startup::kill_other_hud_processes();
+    if !crate::config::with_config(|c| c.open_with_game) {
+        crate::startup::kill_other_hud_processes();
+    }
     crate::tray::remove();
     crate::compat::stop_background_threads();
     unsafe {
-        let host = HOST;
+        let host = host_hwnd();
         if !host.0.is_null() && IsWindow(host).as_bool() {
             let _ = DestroyWindow(host);
         }
-        HOST = HWND(null_mut());
+        set_host(HWND(null_mut()));
         PostQuitMessage(0);
     }
     std::process::exit(0);
@@ -170,8 +181,7 @@ fn main() {
     }
     if std::env::args().any(|a| a == "--wait-for-game") {
         crate::startup::wait_for_mx_bikes();
-    }
-    if !crate::startup::claim_hud_instance() {
+    } else if !crate::startup::claim_hud_instance() {
         return;
     }
     let loaded = crate::config::HudConfig::load_file();
@@ -234,7 +244,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         None,
     )
     .expect("host window");
-    unsafe { HOST = host; }
+    set_host(host);
     crate::settings::attach(host);
     crate::startup::sync_from_config();
     apply_window_icons(host, icon_big, icon_small);
@@ -249,8 +259,10 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
                 crate::changelog::just_updated(),
             )
         };
+    // Registry / MX Bikes waiter pass --minimized. Stay in the tray (Hide), and do
+    // not let WM_ACTIVATE pop Settings back up.
     if start_minimized && !show_notes {
-        let _ = ShowWindow(host, SW_SHOWMINNOACTIVE);
+        crate::settings::hide(host);
     } else {
         crate::settings::show(host);
     }
@@ -349,7 +361,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
                 crate::plugin::retry_if_needed();
             }
             if game_on {
-                if !saw_game {
+                if !saw_game && crate::config::with_config(|c| c.minimize_on_close) {
                     crate::settings::hide(host);
                 }
                 saw_game = true;
@@ -359,10 +371,14 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
                 let (close, reopen) = crate::config::with_config(|c| (c.close_with_game, c.open_with_game));
                 if close && gone.elapsed() >= Duration::from_secs(3) {
                     if reopen {
-                        crate::startup::spawn_game_waiter();
+                        // Stay in the tray. A child waiter used to die with this process.
+                        crate::settings::hide(host);
+                        saw_game = false;
+                        game_gone_at = None;
+                    } else {
+                        crate::config::update_config(|_| {});
+                        quit_app();
                     }
-                    crate::config::update_config(|_| {});
-                    quit_app();
                 }
             }
         }
@@ -481,21 +497,31 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         if crate::update::should_quit() || QUITTING.load(Ordering::SeqCst) {
             quit_app();
         }
-        let mut cfg = crate::config::with_config(|c| c.clone());
-        if cfg.font_family != font_family {
-            if let Some(next) = Fonts::for_family(cfg.font_family) {
-                fonts = next;
-                font_family = cfg.font_family;
+        let commit_layout = crate::config::with_config(|cfg| {
+            if cfg.font_family != font_family {
+                if let Some(next) = Fonts::for_family(cfg.font_family) {
+                    fonts = next;
+                    font_family = cfg.font_family;
+                }
             }
+            if let Some(s) = last_snap.as_mut() {
+                cfg.apply_to_snapshot(s);
+            }
+            editor.tick(hwnd, x, y, w, h, last_snap.as_ref(), cfg, hover_mark)
+        });
+        if commit_layout {
+            editor.commit(last_snap.as_ref());
         }
-        if let Some(s) = last_snap.as_mut() {
-            cfg.apply_to_snapshot(s);
-        }
-        editor.tick(hwnd, x, y, w, h, last_snap.as_ref(), &cfg, hover_mark);
         if let Some(s) = last_snap.as_mut() {
             editor.apply(s);
         }
-        editor.apply_cfg(&mut cfg);
+        let preview_cfg = if editor.has_preview() {
+            let mut cfg = crate::config::with_config(|c| c.clone());
+            editor.apply_cfg(&mut cfg);
+            Some(cfg)
+        } else {
+            None
+        };
         let raw_age = last_snap
             .as_ref()
             .map(|s| qpc_age(s.tick_qpc, freq))
@@ -531,33 +557,66 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
             }
         }
         let in_session = last_snap.as_ref().is_some_and(|s| s.has_session_data());
-        let hud = if overlay_on && (live || layout_on || (settings_open && in_session)) {
+        // Plugin publish can pause for a few seconds during a hitch. Keep the last
+        // session HUD instead of blanking at 2.5s; drop after 15s so garage/menus
+        // still hide if SHM stops.
+        let hitch_hold = in_session && raw_age < 15.0;
+        let hud = if overlay_on && (live || hitch_hold || layout_on || (settings_open && in_session))
+        {
             last_snap.as_ref()
         } else {
             None
         };
 
         let frame_start = Instant::now();
-        sys.tick(last_snap.as_ref().map(|s| s.seq));
+        let (sys_show, stance_show, stance_bind, stance_mode) = match preview_cfg.as_ref() {
+            Some(cfg) => (
+                cfg[crate::config::WidgetId::Sys].show,
+                cfg[crate::config::WidgetId::Stance].show,
+                cfg.stance_bind,
+                cfg.stance_mode,
+            ),
+            None => crate::config::with_config(|cfg| {
+                (
+                    cfg[crate::config::WidgetId::Sys].show,
+                    cfg[crate::config::WidgetId::Stance].show,
+                    cfg.stance_bind,
+                    cfg.stance_mode,
+                )
+            }),
+        };
+        sys.tick(
+            last_snap.as_ref().map(|s| s.seq),
+            overlay_on && in_session && sys_show,
+        );
         if let Some(bind) = stance.tick(
-            cfg.stance_bind,
-            cfg.stance_mode,
+            stance_bind,
+            stance_mode,
             crate::settings::listening_bind(),
+            overlay_on && in_session && stance_show,
         ) {
             crate::settings::apply_stance_bind(bind);
         }
-        render::draw(
-            &mut pixmap,
-            &fonts,
-            hud,
-            &cfg,
-            w as u32,
-            h as u32,
-            age,
-            overlay_on && restart_hint,
-            overlay_on && crate::plugin::needs_restart(),
-            layout_on,
-        );
+        let mut paint = |cfg: &crate::config::HudConfig| {
+            render::draw(
+                &mut pixmap,
+                &fonts,
+                hud,
+                cfg,
+                w as u32,
+                h as u32,
+                age,
+                overlay_on && restart_hint,
+                overlay_on && crate::plugin::needs_restart(),
+                layout_on,
+            );
+        };
+        if let Some(cfg) = preview_cfg.as_ref() {
+            paint(cfg);
+        } else {
+            let cfg = crate::config::with_config(|c| c.clone());
+            paint(&cfg);
+        }
         if overlay_on {
             live_mark = Some(render::draw_live_mark(&mut pixmap, w as u32, h as u32, hover_mark));
         } else {
@@ -635,7 +694,7 @@ unsafe fn icon_from_ico(bytes: &[u8], size: i32) -> windows::Win32::UI::WindowsA
 }
 
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
-    if hwnd == HOST {
+    if hwnd == host_hwnd() {
         if msg == crate::tray::callback_msg() {
             crate::tray::on_callback(lp);
             return LRESULT(0);
@@ -645,14 +704,18 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
             return LRESULT(0);
         }
         if msg == WM_ACTIVATE && (wp.0 as u32 & 0xFFFF) != 0 {
-            crate::settings::show(hwnd);
+            // Tray-hidden windows are not visible and not iconic. Don't pop Settings
+            // just because Windows activated the host (Run key / MX Bikes waiter).
+            if IsWindowVisible(hwnd).as_bool() || IsIconic(hwnd).as_bool() {
+                crate::settings::show(hwnd);
+            }
         }
         if crate::settings::handle_message(msg, wp, lp) {
             return LRESULT(0);
         }
         if msg == WM_CLOSE {
             if crate::config::with_config(|c| c.minimize_on_close) {
-                let _ = ShowWindow(hwnd, SW_MINIMIZE);
+                crate::settings::hide(hwnd);
                 return LRESULT(0);
             }
             crate::config::update_config(|_| {});

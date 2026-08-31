@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::fs;
+use std::ops::{Index, IndexMut};
 use std::path::PathBuf;
 use std::sync::{LazyLock, Mutex};
 use std::time::SystemTime;
@@ -503,7 +504,7 @@ impl StanceStyle {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum WidgetId {
     Standings,
     Relative,
@@ -518,6 +519,105 @@ pub enum WidgetId {
     Stance,
     Flag,
 }
+
+impl WidgetId {
+    pub const ALL: [Self; 12] = [
+        Self::Standings,
+        Self::Relative,
+        Self::Map,
+        Self::Minimap,
+        Self::Radar,
+        Self::Dash,
+        Self::Ticker,
+        Self::Sys,
+        Self::Sector,
+        Self::Delta,
+        Self::Stance,
+        Self::Flag,
+    ];
+    pub const COUNT: usize = 12;
+
+    pub fn idx(self) -> usize {
+        self as usize
+    }
+
+    fn default_prefs(self) -> WidgetPrefs {
+        WidgetPrefs {
+            rect: self.default_rect(),
+            show: false,
+            font: 100,
+            bold: false,
+            bg: self.default_bg(),
+        }
+    }
+
+    fn default_rect(self) -> Rect {
+        match self {
+            Self::Standings => Rect { x: 0.012, y: 0.03, w: 0.20, h: 0.46 },
+            Self::Relative => Rect { x: 0.012, y: 0.62, w: 0.20, h: 0.36 },
+            Self::Map => Rect { x: 0.775, y: 0.62, w: 0.21, h: 0.34 },
+            Self::Minimap => Rect { x: 0.815, y: 0.035, w: 0.165, h: 0.295 },
+            Self::Radar => Rect { x: 0.438, y: 0.755, w: 0.124, h: 0.22 },
+            Self::Dash => Rect { x: 0.445, y: 0.865, w: 0.111, h: 0.115 },
+            Self::Ticker => Rect { x: 0.06, y: 0.012, w: 0.88, h: 0.055 },
+            Self::Sys => Rect { x: 0.012, y: 0.36, w: 0.086, h: 0.186 },
+            Self::Sector => Rect { x: 0.66, y: 0.78, w: 0.32, h: 0.14 },
+            Self::Delta => Rect { x: 0.36, y: 0.76, w: 0.28, h: 0.09 },
+            Self::Stance => Rect { x: 0.445, y: 0.705, w: 0.11, h: 0.065 },
+            Self::Flag => Rect { x: 0.447, y: 0.026, w: 0.107, h: 0.019 },
+        }
+    }
+
+    fn default_bg(self) -> i32 {
+        match self {
+            Self::Standings | Self::Relative => 78,
+            Self::Map | Self::Minimap | Self::Delta => 0,
+            Self::Radar | Self::Ticker | Self::Stance => 86,
+            Self::Dash | Self::Sys | Self::Sector => 82,
+            Self::Flag => 100,
+        }
+    }
+
+    /// Disk key names. Changing these breaks existing `Holeshot-HUD.ini` files.
+    fn ini(self) -> WidgetIni {
+        match self {
+            Self::Standings => WidgetIni { rect: "standings", show: "show_standings", font: "st_font", bold: "st_bold", bg: "st_bg" },
+            Self::Relative => WidgetIni { rect: "relative", show: "show_relative", font: "rel_font", bold: "rel_bold", bg: "rel_bg" },
+            Self::Map => WidgetIni { rect: "map", show: "show_map", font: "map_font", bold: "map_bold", bg: "map_bg" },
+            Self::Minimap => WidgetIni { rect: "minimap", show: "show_minimap", font: "mini_font", bold: "mini_bold", bg: "mini_bg" },
+            Self::Radar => WidgetIni { rect: "radar", show: "show_radar", font: "radar_font", bold: "radar_bold", bg: "radar_bg" },
+            Self::Dash => WidgetIni { rect: "dash", show: "show_dash", font: "dash_font", bold: "dash_bold", bg: "dash_bg" },
+            Self::Ticker => WidgetIni { rect: "ticker", show: "show_ticker", font: "ticker_font", bold: "ticker_bold", bg: "ticker_bg" },
+            Self::Sys => WidgetIni { rect: "sys", show: "show_sys", font: "sys_font", bold: "sys_bold", bg: "sys_bg" },
+            Self::Sector => WidgetIni { rect: "sector", show: "show_sector", font: "sector_font", bold: "sector_bold", bg: "sector_bg" },
+            Self::Delta => WidgetIni { rect: "delta", show: "show_delta", font: "delta_font", bold: "delta_bold", bg: "delta_bg" },
+            Self::Stance => WidgetIni { rect: "stance", show: "show_stance", font: "stance_font", bold: "stance_bold", bg: "stance_bg" },
+            Self::Flag => WidgetIni { rect: "flag", show: "show_flag", font: "flag_font", bold: "flag_bold", bg: "flag_bg" },
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct WidgetIni {
+    rect: &'static str,
+    show: &'static str,
+    font: &'static str,
+    bold: &'static str,
+    bg: &'static str,
+}
+
+/// Shared per-widget style: rect, visibility, font size, bold, background.
+/// Standings columns, dash layout, flag yellow/blue, etc. stay on `HudConfig`.
+#[derive(Clone, Copy, Debug)]
+pub struct WidgetPrefs {
+    pub rect: Rect,
+    pub show: bool,
+    pub font: i32,
+    pub bold: bool,
+    pub bg: i32,
+}
+
+const _: () = assert!(WidgetId::ALL.len() == WidgetId::COUNT);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum SnapAlign {
@@ -869,32 +969,9 @@ impl RelField {
 
 #[derive(Clone)]
 pub struct HudConfig {
-    pub standings: Rect,
-    pub relative: Rect,
-    pub map: Rect,
-    pub minimap: Rect,
-    pub radar: Rect,
-    pub dash: Rect,
-    pub ticker: Rect,
-    pub sys: Rect,
-    pub sector: Rect,
-    pub delta: Rect,
-    pub stance: Rect,
-    pub flag: Rect,
-    pub show_standings: bool,
-    pub show_relative: bool,
-    pub show_map: bool,
-    pub show_minimap: bool,
-    pub show_radar: bool,
-    pub show_dash: bool,
-    pub show_ticker: bool,
-    pub show_sys: bool,
-    pub show_sector: bool,
+    widgets: [WidgetPrefs; WidgetId::COUNT],
     /// Tick the current sector live. Off: times only after the split.
     pub sector_live: bool,
-    pub show_delta: bool,
-    pub show_stance: bool,
-    pub show_flag: bool,
     /// Nearby crash. Flags widget only. Off by default.
     pub flag_yellow: bool,
     /// Someone a lap up closing from behind. Flags widget only. Off by default.
@@ -953,25 +1030,13 @@ pub struct HudConfig {
     pub radar_sides: bool,
     pub radar_rear: bool,
     pub radar_rings: bool,
-    pub st_bg: i32,
     pub st_hl: i32,
     pub st_text: TableText,
     pub st_stripe: bool,
-    pub rel_bg: i32,
     pub rel_hl: i32,
     pub rel_text: TableText,
     pub rel_stripe: bool,
-    pub map_bg: i32,
-    pub mini_bg: i32,
     pub mini_zoom: i32,
-    pub radar_bg: i32,
-    pub dash_bg: i32,
-    pub ticker_bg: i32,
-    pub sys_bg: i32,
-    pub sector_bg: i32,
-    pub delta_bg: i32,
-    pub stance_bg: i32,
-    pub flag_bg: i32,
     pub dash_rev: bool,
     /// Gear + speed lockup; hides RPM, place, footer, and the rev bar.
     pub dash_simple: bool,
@@ -984,30 +1049,6 @@ pub struct HudConfig {
     pub st_foot: [BoardField; 3],
     pub rel_head: [BoardField; 3],
     pub rel_foot: [BoardField; 3],
-    pub st_font: i32,
-    pub rel_font: i32,
-    pub map_font: i32,
-    pub mini_font: i32,
-    pub radar_font: i32,
-    pub dash_font: i32,
-    pub ticker_font: i32,
-    pub sys_font: i32,
-    pub sector_font: i32,
-    pub delta_font: i32,
-    pub stance_font: i32,
-    pub flag_font: i32,
-    pub st_bold: bool,
-    pub rel_bold: bool,
-    pub map_bold: bool,
-    pub mini_bold: bool,
-    pub radar_bold: bool,
-    pub dash_bold: bool,
-    pub ticker_bold: bool,
-    pub sys_bold: bool,
-    pub sector_bold: bool,
-    pub delta_bold: bool,
-    pub stance_bold: bool,
-    pub flag_bold: bool,
     pub font_family: FontFamily,
     pub units: Units,
     pub start_with_windows: bool,
@@ -1058,91 +1099,8 @@ pub struct HudConfig {
 impl HudConfig {
     pub fn new() -> Self {
         Self {
-            standings: Rect {
-                x: 0.012,
-                y: 0.03,
-                w: 0.20,
-                h: 0.46,
-            },
-            relative: Rect {
-                x: 0.012,
-                y: 0.62,
-                w: 0.20,
-                h: 0.36,
-            },
-            map: Rect {
-                x: 0.775,
-                y: 0.62,
-                w: 0.21,
-                h: 0.34,
-            },
-            minimap: Rect {
-                x: 0.815,
-                y: 0.035,
-                w: 0.165,
-                h: 0.295,
-            },
-            radar: Rect {
-                x: 0.438,
-                y: 0.755,
-                w: 0.124,
-                h: 0.22,
-            },
-            dash: Rect {
-                x: 0.445,
-                y: 0.865,
-                w: 0.111,
-                h: 0.115,
-            },
-            ticker: Rect {
-                x: 0.06,
-                y: 0.012,
-                w: 0.88,
-                h: 0.055,
-            },
-            sys: Rect {
-                x: 0.012,
-                y: 0.36,
-                w: 0.086,
-                h: 0.186,
-            },
-            sector: Rect {
-                x: 0.66,
-                y: 0.78,
-                w: 0.32,
-                h: 0.14,
-            },
-            delta: Rect {
-                x: 0.36,
-                y: 0.76,
-                w: 0.28,
-                h: 0.09,
-            },
-            stance: Rect {
-                x: 0.445,
-                y: 0.705,
-                w: 0.11,
-                h: 0.065,
-            },
-            flag: Rect {
-                x: 0.447,
-                y: 0.026,
-                w: 0.107,
-                h: 0.019,
-            },
-            show_standings: false,
-            show_relative: false,
-            show_map: false,
-            show_minimap: false,
-            show_radar: false,
-            show_dash: false,
-            show_ticker: false,
-            show_sys: false,
-            show_sector: false,
+            widgets: std::array::from_fn(|i| WidgetId::ALL[i].default_prefs()),
             sector_live: true,
-            show_delta: false,
-            show_stance: false,
-            show_flag: false,
             flag_yellow: false,
             flag_blue: false,
             experimental: false,
@@ -1197,25 +1155,13 @@ impl HudConfig {
             radar_sides: true,
             radar_rear: true,
             radar_rings: true,
-            st_bg: 78,
             st_hl: 50,
             st_text: TableText::White,
             st_stripe: true,
-            rel_bg: 78,
             rel_hl: 50,
             rel_text: TableText::White,
             rel_stripe: true,
-            map_bg: 0,
-            mini_bg: 0,
             mini_zoom: 70,
-            radar_bg: 86,
-            dash_bg: 82,
-            ticker_bg: 86,
-            sys_bg: 82,
-            sector_bg: 82,
-            delta_bg: 0,
-            stance_bg: 86,
-            flag_bg: 100,
             dash_rev: true,
             dash_simple: false,
             dash_left: DashField::Engine,
@@ -1227,30 +1173,6 @@ impl HudConfig {
             st_foot: BoardField::DEFAULT_FOOT,
             rel_head: BoardField::DEFAULT_HEAD,
             rel_foot: BoardField::DEFAULT_FOOT,
-            st_font: 100,
-            rel_font: 100,
-            map_font: 100,
-            mini_font: 100,
-            radar_font: 100,
-            dash_font: 100,
-            ticker_font: 100,
-            sys_font: 100,
-            sector_font: 100,
-            delta_font: 100,
-            stance_font: 100,
-            flag_font: 100,
-            st_bold: false,
-            rel_bold: false,
-            map_bold: false,
-            mini_bold: false,
-            radar_bold: false,
-            dash_bold: false,
-            ticker_bold: false,
-            sys_bold: false,
-            sector_bold: false,
-            delta_bold: false,
-            stance_bold: false,
-            flag_bold: false,
             font_family: FontFamily::Exo2,
             units: Units::Metric,
             start_with_windows: false,
@@ -1323,68 +1245,11 @@ impl HudConfig {
             let val = v.trim();
             let f = val.parse::<f32>().unwrap_or(0.0);
             let b = val == "1" || val.eq_ignore_ascii_case("true") || val.eq_ignore_ascii_case("yes");
+            if apply_widget_prefs(&mut cfg, key, val, f, b) {
+                continue;
+            }
             match key {
-                "standings_x" => cfg.standings.x = f,
-                "standings_y" => cfg.standings.y = f,
-                "standings_w" => cfg.standings.w = f,
-                "standings_h" => cfg.standings.h = f,
-                "relative_x" => cfg.relative.x = f,
-                "relative_y" => cfg.relative.y = f,
-                "relative_w" => cfg.relative.w = f,
-                "relative_h" => cfg.relative.h = f,
-                "map_x" => cfg.map.x = f,
-                "map_y" => cfg.map.y = f,
-                "map_w" => cfg.map.w = f,
-                "map_h" => cfg.map.h = f,
-                "minimap_x" => cfg.minimap.x = f,
-                "minimap_y" => cfg.minimap.y = f,
-                "minimap_w" => cfg.minimap.w = f,
-                "minimap_h" => cfg.minimap.h = f,
-                "radar_x" => cfg.radar.x = f,
-                "radar_y" => cfg.radar.y = f,
-                "radar_w" => cfg.radar.w = f,
-                "radar_h" => cfg.radar.h = f,
-                "dash_x" => cfg.dash.x = f,
-                "dash_y" => cfg.dash.y = f,
-                "dash_w" => cfg.dash.w = f,
-                "dash_h" => cfg.dash.h = f,
-                "ticker_x" => cfg.ticker.x = f,
-                "ticker_y" => cfg.ticker.y = f,
-                "ticker_w" => cfg.ticker.w = f,
-                "ticker_h" => cfg.ticker.h = f.clamp(0.035, 0.07),
-                "sys_x" => cfg.sys.x = f,
-                "sys_y" => cfg.sys.y = f,
-                "sys_w" => cfg.sys.w = f,
-                "sys_h" => cfg.sys.h = f,
-                "sector_x" => cfg.sector.x = f,
-                "sector_y" => cfg.sector.y = f,
-                "sector_w" => cfg.sector.w = f,
-                "sector_h" => cfg.sector.h = f,
-                "delta_x" => cfg.delta.x = f,
-                "delta_y" => cfg.delta.y = f,
-                "delta_w" => cfg.delta.w = f,
-                "delta_h" => cfg.delta.h = f,
-                "stance_x" => cfg.stance.x = f,
-                "stance_y" => cfg.stance.y = f,
-                "stance_w" => cfg.stance.w = f,
-                "stance_h" => cfg.stance.h = f,
-                "flag_x" => cfg.flag.x = f,
-                "flag_y" => cfg.flag.y = f,
-                "flag_w" => cfg.flag.w = f,
-                "flag_h" => cfg.flag.h = f,
-                "show_standings" => cfg.show_standings = b,
-                "show_relative" => cfg.show_relative = b,
-                "show_map" => cfg.show_map = b,
-                "show_minimap" => cfg.show_minimap = b,
-                "show_radar" => cfg.show_radar = b,
-                "show_dash" => cfg.show_dash = b,
-                "show_ticker" => cfg.show_ticker = b,
-                "show_sys" => cfg.show_sys = b,
-                "show_sector" => cfg.show_sector = b,
                 "sector_live" => cfg.sector_live = b,
-                "show_delta" => cfg.show_delta = b,
-                "show_stance" => cfg.show_stance = b,
-                "show_flag" => cfg.show_flag = b,
                 "flag_caution" => {
                     cfg.flag_yellow = b;
                     cfg.flag_blue = b;
@@ -1446,25 +1311,13 @@ impl HudConfig {
                 "radar_sides" => cfg.radar_sides = b,
                 "radar_rear" => cfg.radar_rear = b,
                 "radar_rings" => cfg.radar_rings = b,
-                "st_bg" => cfg.st_bg = clamp_pct(val),
                 "st_hl" => cfg.st_hl = clamp_pct(val),
                 "st_text" => cfg.st_text = TableText::parse(val),
                 "st_stripe" => cfg.st_stripe = b,
-                "rel_bg" => cfg.rel_bg = clamp_pct(val),
                 "rel_hl" => cfg.rel_hl = clamp_pct(val),
                 "rel_text" => cfg.rel_text = TableText::parse(val),
                 "rel_stripe" => cfg.rel_stripe = b,
-                "map_bg" => cfg.map_bg = clamp_pct(val),
-                "mini_bg" => cfg.mini_bg = clamp_pct(val),
                 "mini_zoom" => cfg.mini_zoom = clamp_pct(val),
-                "radar_bg" => cfg.radar_bg = clamp_pct(val),
-                "dash_bg" => cfg.dash_bg = clamp_pct(val),
-                "ticker_bg" => cfg.ticker_bg = clamp_pct(val),
-                "sys_bg" => cfg.sys_bg = clamp_pct(val),
-                "sector_bg" => cfg.sector_bg = clamp_pct(val),
-                "delta_bg" => cfg.delta_bg = clamp_pct(val),
-                "stance_bg" => cfg.stance_bg = clamp_pct(val),
-                "flag_bg" => cfg.flag_bg = clamp_pct(val),
                 "dash_rev" => cfg.dash_rev = b,
                 "dash_simple" => cfg.dash_simple = b,
                 "dash_left" => cfg.dash_left = DashField::parse(val),
@@ -1476,30 +1329,6 @@ impl HudConfig {
                 "st_foot" => cfg.st_foot = parse_board(val, BoardField::DEFAULT_FOOT),
                 "rel_head" => cfg.rel_head = parse_board(val, BoardField::DEFAULT_HEAD),
                 "rel_foot" => cfg.rel_foot = parse_board(val, BoardField::DEFAULT_FOOT),
-                "st_font" => cfg.st_font = clamp_font(val),
-                "rel_font" => cfg.rel_font = clamp_font(val),
-                "map_font" => cfg.map_font = clamp_font(val),
-                "mini_font" => cfg.mini_font = clamp_font(val),
-                "radar_font" => cfg.radar_font = clamp_font(val),
-                "dash_font" => cfg.dash_font = clamp_font(val),
-                "ticker_font" => cfg.ticker_font = clamp_font(val),
-                "sys_font" => cfg.sys_font = clamp_font(val),
-                "sector_font" => cfg.sector_font = clamp_font(val),
-                "delta_font" => cfg.delta_font = clamp_font(val),
-                "stance_font" => cfg.stance_font = clamp_font(val),
-                "flag_font" => cfg.flag_font = clamp_font(val),
-                "st_bold" => cfg.st_bold = b,
-                "rel_bold" => cfg.rel_bold = b,
-                "map_bold" => cfg.map_bold = b,
-                "mini_bold" => cfg.mini_bold = b,
-                "radar_bold" => cfg.radar_bold = b,
-                "dash_bold" => cfg.dash_bold = b,
-                "ticker_bold" => cfg.ticker_bold = b,
-                "sys_bold" => cfg.sys_bold = b,
-                "sector_bold" => cfg.sector_bold = b,
-                "delta_bold" => cfg.delta_bold = b,
-                "stance_bold" => cfg.stance_bold = b,
-                "flag_bold" => cfg.flag_bold = b,
                 "font_family" => cfg.font_family = FontFamily::parse(val),
                 "units" => cfg.units = Units::parse(val),
                 "start_with_windows" => cfg.start_with_windows = b,
@@ -1558,9 +1387,9 @@ impl HudConfig {
             cfg.rel_best = true;
             cfg.rel_last = true;
         }
-        migrate_default_dash(&mut cfg.dash);
-        migrate_default_sector(&mut cfg.sector);
-        migrate_default_flag(&mut cfg.flag);
+        migrate_default_dash(&mut cfg[WidgetId::Dash].rect);
+        migrate_default_sector(&mut cfg[WidgetId::Sector].rect);
+        migrate_default_flag(&mut cfg[WidgetId::Flag].rect);
         if !saw_first_install || cfg.first_install_version.is_empty() {
             cfg.first_install_version = "unknown".into();
             cfg.save();
@@ -1573,6 +1402,18 @@ impl HudConfig {
         if let Some(dir) = path.parent() {
             let _ = fs::create_dir_all(dir);
         }
+        let st = self[WidgetId::Standings];
+        let rel = self[WidgetId::Relative];
+        let map = self[WidgetId::Map];
+        let mini = self[WidgetId::Minimap];
+        let radar = self[WidgetId::Radar];
+        let dash = self[WidgetId::Dash];
+        let ticker = self[WidgetId::Ticker];
+        let sys = self[WidgetId::Sys];
+        let sector = self[WidgetId::Sector];
+        let delta = self[WidgetId::Delta];
+        let stance = self[WidgetId::Stance];
+        let flag = self[WidgetId::Flag];
         let body = format!(
             "# Holeshot HUD layout (normalized 0..1, origin top-left)\n\
              [Layout]\n\
@@ -1639,66 +1480,66 @@ impl HudConfig {
              flag_bg={}\nflag_yellow={}\nflag_blue={}\nflag_font={}\nflag_bold={}\n\
              \n[App]\n\
              font_family={}\nunits={}\nsettings_key={}\nstart_with_windows={}\nminimize_on_close={}\nclose_with_game={}\nopen_with_game={}\nauto_update_on_launch={}\nwhats_new_seen={}\nfirst_install_version={}\nexperimental={}\n",
-            self.standings.x,
-            self.standings.y,
-            self.standings.w,
-            self.standings.h,
-            self.relative.x,
-            self.relative.y,
-            self.relative.w,
-            self.relative.h,
-            self.map.x,
-            self.map.y,
-            self.map.w,
-            self.map.h,
-            self.minimap.x,
-            self.minimap.y,
-            self.minimap.w,
-            self.minimap.h,
-            self.radar.x,
-            self.radar.y,
-            self.radar.w,
-            self.radar.h,
-            self.dash.x,
-            self.dash.y,
-            self.dash.w,
-            self.dash.h,
-            self.ticker.x,
-            self.ticker.y,
-            self.ticker.w,
-            self.ticker.h,
-            self.sys.x,
-            self.sys.y,
-            self.sys.w,
-            self.sys.h,
-            self.sector.x,
-            self.sector.y,
-            self.sector.w,
-            self.sector.h,
-            self.delta.x,
-            self.delta.y,
-            self.delta.w,
-            self.delta.h,
-            self.stance.x,
-            self.stance.y,
-            self.stance.w,
-            self.stance.h,
-            self.flag.x,
-            self.flag.y,
-            self.flag.w,
-            self.flag.h,
-            b(self.show_standings),
-            b(self.show_relative),
-            b(self.show_map),
-            b(self.show_minimap),
-            b(self.show_radar),
-            b(self.show_dash),
-            b(self.show_ticker),
-            b(self.show_sys),
-            b(self.show_sector),
-            b(self.show_delta),
-            b(self.show_stance),
-            b(self.show_flag),
+            st.rect.x,
+            st.rect.y,
+            st.rect.w,
+            st.rect.h,
+            rel.rect.x,
+            rel.rect.y,
+            rel.rect.w,
+            rel.rect.h,
+            map.rect.x,
+            map.rect.y,
+            map.rect.w,
+            map.rect.h,
+            mini.rect.x,
+            mini.rect.y,
+            mini.rect.w,
+            mini.rect.h,
+            radar.rect.x,
+            radar.rect.y,
+            radar.rect.w,
+            radar.rect.h,
+            dash.rect.x,
+            dash.rect.y,
+            dash.rect.w,
+            dash.rect.h,
+            ticker.rect.x,
+            ticker.rect.y,
+            ticker.rect.w,
+            ticker.rect.h,
+            sys.rect.x,
+            sys.rect.y,
+            sys.rect.w,
+            sys.rect.h,
+            sector.rect.x,
+            sector.rect.y,
+            sector.rect.w,
+            sector.rect.h,
+            delta.rect.x,
+            delta.rect.y,
+            delta.rect.w,
+            delta.rect.h,
+            stance.rect.x,
+            stance.rect.y,
+            stance.rect.w,
+            stance.rect.h,
+            flag.rect.x,
+            flag.rect.y,
+            flag.rect.w,
+            flag.rect.h,
+            b(st.show),
+            b(rel.show),
+            b(map.show),
+            b(mini.show),
+            b(radar.show),
+            b(dash.show),
+            b(ticker.show),
+            b(sys.show),
+            b(sector.show),
+            b(delta.show),
+            b(stance.show),
+            b(flag.show),
             b(self.ingame_hud),
             self.standings_rows,
             self.relative_count,
@@ -1730,12 +1571,12 @@ impl HudConfig {
             self.st_w_bike,
             self.st_w_penalty,
             self.st_w_crashed,
-            self.st_bg,
+            st.bg,
             self.st_hl,
             self.st_text.key(),
             b(self.st_stripe),
-            self.st_font,
-            b(self.st_bold),
+            st.font,
+            b(st.bold),
             join_board(&self.st_head),
             join_board(&self.st_foot),
             b(self.rel_num),
@@ -1763,12 +1604,12 @@ impl HudConfig {
             self.rel_w_crashed,
             self.rel_w_best,
             self.rel_w_last,
-            self.rel_bg,
+            rel.bg,
             self.rel_hl,
             self.rel_text.key(),
             b(self.rel_stripe),
-            self.rel_font,
-            b(self.rel_bold),
+            rel.font,
+            b(rel.bold),
             join_board(&self.rel_head),
             join_board(&self.rel_foot),
             b(self.map_others),
@@ -1780,9 +1621,9 @@ impl HudConfig {
             b(self.map_crown),
             b(self.map_place),
             self.map_dot.key(),
-            self.map_bg,
-            self.map_font,
-            b(self.map_bold),
+            map.bg,
+            map.font,
+            b(map.bold),
             b(self.mini_others),
             b(self.mini_sf),
             b(self.mini_sectors),
@@ -1791,53 +1632,53 @@ impl HudConfig {
             b(self.mini_crown),
             b(self.mini_place),
             self.mini_dot.key(),
-            self.mini_bg,
+            mini.bg,
             self.mini_zoom,
-            self.mini_font,
-            b(self.mini_bold),
+            mini.font,
+            b(mini.bold),
             b(self.radar_sides),
             b(self.radar_rear),
             b(self.radar_rings),
-            self.radar_bg,
-            self.radar_font,
-            b(self.radar_bold),
+            radar.bg,
+            radar.font,
+            b(radar.bold),
             b(self.dash_rev),
             b(self.dash_simple),
             self.dash_left.key(),
             self.dash_mid.key(),
             self.dash_right.key(),
-            self.dash_bg,
-            self.dash_font,
-            b(self.dash_bold),
+            dash.bg,
+            dash.font,
+            b(dash.bold),
             self.ticker_left.key(),
             self.ticker_right.key(),
             b(self.ticker_title),
             b(self.ticker_autoscroll),
-            self.ticker_bg,
-            self.ticker_font,
-            b(self.ticker_bold),
-            self.sys_bg,
-            self.sys_font,
-            b(self.sys_bold),
+            ticker.bg,
+            ticker.font,
+            b(ticker.bold),
+            sys.bg,
+            sys.font,
+            b(sys.bold),
             b(self.sector_live),
-            self.sector_bg,
-            self.sector_font,
-            b(self.sector_bold),
-            self.delta_bg,
-            self.delta_font,
-            b(self.delta_bold),
+            sector.bg,
+            sector.font,
+            b(sector.bold),
+            delta.bg,
+            delta.font,
+            b(delta.bold),
             self.stance_bind.key(),
             self.stance_mode.key(),
             self.stance_style.key(),
             b(self.stance_show_sit),
-            self.stance_bg,
-            self.stance_font,
-            b(self.stance_bold),
-            self.flag_bg,
+            stance.bg,
+            stance.font,
+            b(stance.bold),
+            flag.bg,
             b(self.flag_yellow),
             b(self.flag_blue),
-            self.flag_font,
-            b(self.flag_bold),
+            flag.font,
+            b(flag.bold),
             self.font_family.key(),
             self.units.key(),
             self.settings_key.key(),
@@ -1859,12 +1700,12 @@ impl HudConfig {
     }
 
     pub fn apply_to_snapshot(&self, s: &mut Snapshot) {
-        s.standings_rect = self.standings;
-        s.relative = self.relative;
-        s.map = self.map;
-        s.show_standings = i32::from(self.show_standings);
-        s.show_relative = i32::from(self.show_relative);
-        s.show_map = i32::from(self.show_map);
+        s.standings_rect = self[WidgetId::Standings].rect;
+        s.relative = self[WidgetId::Relative].rect;
+        s.map = self[WidgetId::Map].rect;
+        s.show_standings = i32::from(self[WidgetId::Standings].show);
+        s.show_relative = i32::from(self[WidgetId::Relative].show);
+        s.show_map = i32::from(self[WidgetId::Map].show);
         s.standings_rows = self.standings_rows;
         s.relative_count = self.relative_count;
     }
@@ -1885,90 +1726,32 @@ impl HudConfig {
         cols
     }
 
+    pub fn prefs(&self, id: WidgetId) -> &WidgetPrefs {
+        &self.widgets[id.idx()]
+    }
+
+    pub fn prefs_mut(&mut self, id: WidgetId) -> &mut WidgetPrefs {
+        &mut self.widgets[id.idx()]
+    }
+
     pub fn font_pct(&self, id: WidgetId) -> i32 {
-        match id {
-            WidgetId::Standings => self.st_font,
-            WidgetId::Relative => self.rel_font,
-            WidgetId::Map => self.map_font,
-            WidgetId::Minimap => self.mini_font,
-            WidgetId::Radar => self.radar_font,
-            WidgetId::Dash => self.dash_font,
-            WidgetId::Ticker => self.ticker_font,
-            WidgetId::Sys => self.sys_font,
-            WidgetId::Sector => self.sector_font,
-            WidgetId::Delta => self.delta_font,
-            WidgetId::Stance => self.stance_font,
-            WidgetId::Flag => self.flag_font,
-        }
+        self[id].font
     }
 
     pub fn set_font_pct(&mut self, id: WidgetId, v: i32) {
-        let v = v.clamp(70, 160);
-        match id {
-            WidgetId::Standings => self.st_font = v,
-            WidgetId::Relative => self.rel_font = v,
-            WidgetId::Map => self.map_font = v,
-            WidgetId::Minimap => self.mini_font = v,
-            WidgetId::Radar => self.radar_font = v,
-            WidgetId::Dash => self.dash_font = v,
-            WidgetId::Ticker => self.ticker_font = v,
-            WidgetId::Sys => self.sys_font = v,
-            WidgetId::Sector => self.sector_font = v,
-            WidgetId::Delta => self.delta_font = v,
-            WidgetId::Stance => self.stance_font = v,
-            WidgetId::Flag => self.flag_font = v,
-        }
+        self[id].font = v.clamp(70, 160);
     }
 
     pub fn bold(&self, id: WidgetId) -> bool {
-        match id {
-            WidgetId::Standings => self.st_bold,
-            WidgetId::Relative => self.rel_bold,
-            WidgetId::Map => self.map_bold,
-            WidgetId::Minimap => self.mini_bold,
-            WidgetId::Radar => self.radar_bold,
-            WidgetId::Dash => self.dash_bold,
-            WidgetId::Ticker => self.ticker_bold,
-            WidgetId::Sys => self.sys_bold,
-            WidgetId::Sector => self.sector_bold,
-            WidgetId::Delta => self.delta_bold,
-            WidgetId::Stance => self.stance_bold,
-            WidgetId::Flag => self.flag_bold,
-        }
+        self[id].bold
     }
 
     pub fn set_bold(&mut self, id: WidgetId, on: bool) {
-        match id {
-            WidgetId::Standings => self.st_bold = on,
-            WidgetId::Relative => self.rel_bold = on,
-            WidgetId::Map => self.map_bold = on,
-            WidgetId::Minimap => self.mini_bold = on,
-            WidgetId::Radar => self.radar_bold = on,
-            WidgetId::Dash => self.dash_bold = on,
-            WidgetId::Ticker => self.ticker_bold = on,
-            WidgetId::Sys => self.sys_bold = on,
-            WidgetId::Sector => self.sector_bold = on,
-            WidgetId::Delta => self.delta_bold = on,
-            WidgetId::Stance => self.stance_bold = on,
-            WidgetId::Flag => self.flag_bold = on,
-        }
+        self[id].bold = on;
     }
 
     pub fn widget_rect(&self, id: WidgetId) -> Rect {
-        match id {
-            WidgetId::Standings => self.standings,
-            WidgetId::Relative => self.relative,
-            WidgetId::Map => self.map,
-            WidgetId::Minimap => self.minimap,
-            WidgetId::Radar => self.radar,
-            WidgetId::Dash => self.dash,
-            WidgetId::Ticker => self.ticker,
-            WidgetId::Sys => self.sys,
-            WidgetId::Sector => self.sector,
-            WidgetId::Delta => self.delta,
-            WidgetId::Stance => self.stance,
-            WidgetId::Flag => self.flag,
-        }
+        self[id].rect
     }
 
     pub fn snapped_rect(&self, id: WidgetId, align: SnapAlign) -> Rect {
@@ -1978,21 +1761,7 @@ impl HudConfig {
     }
 
     pub fn snap(&mut self, id: WidgetId, align: SnapAlign) {
-        let r = match id {
-            WidgetId::Standings => &mut self.standings,
-            WidgetId::Relative => &mut self.relative,
-            WidgetId::Map => &mut self.map,
-            WidgetId::Minimap => &mut self.minimap,
-            WidgetId::Radar => &mut self.radar,
-            WidgetId::Dash => &mut self.dash,
-            WidgetId::Ticker => &mut self.ticker,
-            WidgetId::Sys => &mut self.sys,
-            WidgetId::Sector => &mut self.sector,
-            WidgetId::Delta => &mut self.delta,
-            WidgetId::Stance => &mut self.stance,
-            WidgetId::Flag => &mut self.flag,
-        };
-        snap_rect(r, align);
+        snap_rect(&mut self[id].rect, align);
     }
 
     pub fn relative_cols(&self) -> Vec<RelField> {
@@ -2013,31 +1782,78 @@ impl HudConfig {
     }
 
     pub fn sector_visible(&self) -> bool {
-        self.experimental_unlocked() && self.show_sector
+        self.experimental_unlocked() && self[WidgetId::Sector].show
     }
 
     pub fn delta_visible(&self) -> bool {
-        self.experimental_unlocked() && self.show_delta
+        self.experimental_unlocked() && self[WidgetId::Delta].show
     }
 
     pub fn stance_visible(&self) -> bool {
-        self.show_stance
+        self[WidgetId::Stance].show
     }
 
     pub fn any_overlay_widget(&self) -> bool {
-        self.show_standings
-            || self.show_relative
-            || self.show_map
-            || self.show_minimap
-            || self.show_radar
-            || self.show_dash
-            || self.show_ticker
-            || self.show_sys
-            || self.sector_visible()
-            || self.delta_visible()
-            || self.stance_visible()
-            || self.show_flag
+        WidgetId::ALL.iter().any(|&id| match id {
+            WidgetId::Sector => self.sector_visible(),
+            WidgetId::Delta => self.delta_visible(),
+            WidgetId::Stance => self.stance_visible(),
+            _ => self[id].show,
+        })
     }
+}
+
+impl Index<WidgetId> for HudConfig {
+    type Output = WidgetPrefs;
+
+    fn index(&self, id: WidgetId) -> &WidgetPrefs {
+        self.prefs(id)
+    }
+}
+
+impl IndexMut<WidgetId> for HudConfig {
+    fn index_mut(&mut self, id: WidgetId) -> &mut WidgetPrefs {
+        self.prefs_mut(id)
+    }
+}
+
+fn apply_widget_prefs(cfg: &mut HudConfig, key: &str, val: &str, f: f32, b: bool) -> bool {
+    for id in WidgetId::ALL {
+        let k = id.ini();
+        if key == k.show {
+            cfg[id].show = b;
+            return true;
+        }
+        if key == k.font {
+            cfg[id].font = clamp_font(val);
+            return true;
+        }
+        if key == k.bold {
+            cfg[id].bold = b;
+            return true;
+        }
+        if key == k.bg {
+            cfg[id].bg = clamp_pct(val);
+            return true;
+        }
+        if let Some(axis) = key.strip_prefix(k.rect).and_then(|s| s.strip_prefix('_')) {
+            match axis {
+                "x" => cfg[id].rect.x = f,
+                "y" => cfg[id].rect.y = f,
+                "w" => cfg[id].rect.w = f,
+                "h" => {
+                    cfg[id].rect.h = if id == WidgetId::Ticker {
+                        f.clamp(0.035, 0.07)
+                    } else {
+                        f
+                    };
+                }
+                _ => continue,
+            }
+            return true;
+        }
+    }
+    false
 }
 
 fn b(v: bool) -> i32 {
@@ -2561,323 +2377,5 @@ pub fn update_config(f: impl FnOnce(&mut HudConfig)) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn field_keys_round_trip() {
-        for field in DashField::ALL {
-            assert_eq!(DashField::parse(field.key()), field, "{field:?}");
-        }
-        for field in BoardField::ALL {
-            assert_eq!(BoardField::parse(field.key()), field, "{field:?}");
-        }
-        for field in StField::ALL {
-            assert_eq!(StField::parse(field.key()), Some(field), "{field:?}");
-        }
-        for field in RelField::ALL {
-            assert_eq!(RelField::parse(field.key()), Some(field), "{field:?}");
-        }
-        assert_eq!(DotLabel::parse(DotLabel::Number.key()), DotLabel::Number);
-        assert_eq!(DotLabel::parse(DotLabel::Position.key()), DotLabel::Position);
-        for family in FontFamily::ALL {
-            assert_eq!(FontFamily::parse(family.key()), family, "{}", family.label());
-        }
-        assert_eq!(FontFamily::parse("agency"), FontFamily::Exo2);
-        assert_eq!(FontFamily::parse("industry"), FontFamily::Teko);
-        assert_eq!(FontFamily::parse("faster"), FontFamily::Goldman);
-        assert_eq!(FontFamily::parse("bebas"), FontFamily::Goldman);
-        assert_eq!(FontFamily::parse("impact"), FontFamily::Montserrat);
-        for key in SettingsKey::ALL {
-            assert_eq!(SettingsKey::parse(key.key()), key, "{}", key.label());
-        }
-        assert_eq!(SettingsKey::parse("ins"), SettingsKey::Insert);
-        assert_eq!(SettingsKey::parse("nope"), SettingsKey::F8);
-        for bind in StanceBind::ALL {
-            assert_eq!(StanceBind::parse(&bind.key()), bind, "{}", bind.label());
-        }
-        for bind in StanceBind::MOUSE {
-            assert_eq!(StanceBind::parse(&bind.key()), bind, "{}", bind.label());
-        }
-        assert_eq!(StanceBind::parse("k32"), StanceBind::Key(0x20));
-        assert_eq!(StanceBind::parse("space"), StanceBind::Key(0x20));
-        assert_eq!(StanceBind::parse("lmb"), StanceBind::MouseLeft);
-        assert_eq!(StanceBind::parse("rb"), StanceBind::PadRb);
-        assert_eq!(StanceBind::parse("l1"), StanceBind::PadLb);
-        assert_eq!(StanceBind::parse("l2"), StanceBind::PadLt);
-        assert_eq!(StanceBind::parse("r2"), StanceBind::PadRt);
-        assert_eq!(StanceBind::parse("dpad_up"), StanceBind::PadDpadUp);
-        assert_eq!(StanceMode::parse("hold"), StanceMode::Hold);
-        assert_eq!(StanceMode::parse("toggle"), StanceMode::Toggle);
-        assert_eq!(StanceStyle::parse("icon"), StanceStyle::Icon);
-        assert_eq!(StanceStyle::parse("text"), StanceStyle::Text);
-    }
-
-    #[test]
-    fn default_hud_hides_every_widget() {
-        let cfg = HudConfig::new();
-        assert!(!cfg.show_standings);
-        assert!(!cfg.show_relative);
-        assert!(!cfg.show_map);
-        assert!(!cfg.show_minimap);
-        assert!(!cfg.show_radar);
-        assert!(cfg.radar_rings);
-        assert!(!cfg.show_dash);
-        assert!(!cfg.show_ticker);
-        assert!(!cfg.show_sys);
-        assert!(!cfg.show_sector);
-        assert!(cfg.sector_live);
-        assert!(!cfg.show_delta);
-        assert!(!cfg.show_stance);
-        assert!(!cfg.show_flag);
-        assert!(!cfg.flag_yellow);
-        assert!(!cfg.flag_blue);
-        assert!(!cfg.any_overlay_widget());
-        assert_eq!(cfg.stance_style, StanceStyle::Text);
-        assert!(!cfg.stance_show_sit);
-        assert!(!cfg.experimental);
-        assert!(cfg.whats_new_seen.is_empty());
-        assert!(cfg.first_install_version.is_empty());
-        assert!(cfg.ticker_title);
-        assert_eq!(cfg.font_family, FontFamily::Exo2);
-        assert!(cfg.st_stripe);
-        assert!(cfg.rel_stripe);
-        assert_eq!(cfg.standings, crate::shm::Rect {
-            x: 0.012,
-            y: 0.03,
-            w: 0.20,
-            h: 0.46,
-        });
-        assert_eq!(cfg.relative.w, 0.20);
-        assert_eq!(cfg.dash.w, 0.111);
-        assert_eq!(cfg.dash.h, 0.115);
-        assert!(!cfg.dash_simple);
-        assert_eq!(cfg.dash_left, DashField::Engine);
-        assert_eq!(cfg.dash_mid, DashField::Air);
-        assert_eq!(cfg.dash_right, DashField::Best);
-        assert!(BoardField::any(&BoardField::DEFAULT_HEAD));
-        assert!(!BoardField::any(&BoardField::DEFAULT_FOOT));
-        assert!(!cfg.standings_cols().is_empty());
-        assert!(!cfg.relative_cols().is_empty());
-        for id in [
-            WidgetId::Standings,
-            WidgetId::Relative,
-            WidgetId::Map,
-            WidgetId::Minimap,
-            WidgetId::Radar,
-            WidgetId::Dash,
-            WidgetId::Ticker,
-            WidgetId::Sys,
-            WidgetId::Sector,
-            WidgetId::Delta,
-            WidgetId::Stance,
-            WidgetId::Flag,
-        ] {
-            assert_eq!(cfg.font_pct(id), 100);
-        }
-    }
-
-    #[test]
-    fn old_default_dash_rect_migrates() {
-        let mut r = crate::shm::Rect {
-            x: 0.41,
-            y: 0.82,
-            w: 0.18,
-            h: 0.16,
-        };
-        super::migrate_default_dash(&mut r);
-        assert!((r.w - 0.111).abs() < 0.001);
-        assert!((r.h - 0.115).abs() < 0.001);
-        let mut mid = crate::shm::Rect {
-            x: 0.43,
-            y: 0.86,
-            w: 0.14,
-            h: 0.12,
-        };
-        super::migrate_default_dash(&mut mid);
-        assert!((mid.h - 0.115).abs() < 0.001);
-        let mut tiny = crate::shm::Rect {
-            x: 0.43,
-            y: 0.90,
-            w: 0.14,
-            h: 0.08,
-        };
-        super::migrate_default_dash(&mut tiny);
-        assert!((tiny.h - 0.115).abs() < 0.001);
-        let mut compact = crate::shm::Rect {
-            x: 0.442,
-            y: 0.872,
-            w: 0.115,
-            h: 0.108,
-        };
-        super::migrate_default_dash(&mut compact);
-        assert!((compact.w - 0.111).abs() < 0.001);
-        assert!((compact.h - 0.115).abs() < 0.001);
-        let mut slot = crate::shm::Rect {
-            x: 0.4536885,
-            y: 0.6840987,
-            w: 0.073346466,
-            h: 0.10811812,
-        };
-        super::migrate_default_dash(&mut slot);
-        assert!((slot.w - 0.111).abs() < 0.001);
-        assert!((slot.y - 0.6840987).abs() < 0.0001);
-        let mut custom = crate::shm::Rect {
-            x: 0.50,
-            y: 0.82,
-            w: 0.18,
-            h: 0.16,
-        };
-        super::migrate_default_dash(&mut custom);
-        assert!((custom.x - 0.50).abs() < 0.001);
-        assert!((custom.w - 0.18).abs() < 0.001);
-    }
-
-    #[test]
-    fn migrate_default_sector_restores_tall_strip() {
-        let mut factory = crate::shm::Rect {
-            x: 0.66,
-            y: 0.84,
-            w: 0.32,
-            h: 0.085,
-        };
-        super::migrate_default_sector(&mut factory);
-        assert!((factory.h - 0.14).abs() < 0.001);
-        assert!((factory.y - 0.78).abs() < 0.001);
-        let mut wide = crate::shm::Rect {
-            x: 0.60,
-            y: 0.8275,
-            w: 0.32,
-            h: 0.085,
-        };
-        super::migrate_default_sector(&mut wide);
-        assert!((wide.h - 0.14).abs() < 0.001);
-        assert!((wide.w - 0.32).abs() < 0.001);
-        let mut custom = crate::shm::Rect {
-            x: 0.50,
-            y: 0.70,
-            w: 0.20,
-            h: 0.16,
-        };
-        super::migrate_default_sector(&mut custom);
-        assert!((custom.h - 0.16).abs() < 0.001);
-    }
-
-    #[test]
-    fn migrate_default_flag_widens_portrait_cloth() {
-        let mut old = crate::shm::Rect {
-            x: 0.442,
-            y: 0.032,
-            w: 0.116,
-            h: 0.155,
-        };
-        super::migrate_default_flag(&mut old);
-        assert!((old.w - 0.107).abs() < 0.001);
-        assert!((old.h - 0.019).abs() < 0.001);
-        let mut wide = crate::shm::Rect {
-            x: 0.34,
-            y: 0.032,
-            w: 0.32,
-            h: 0.072,
-        };
-        super::migrate_default_flag(&mut wide);
-        assert!((wide.w - 0.107).abs() < 0.001);
-        assert!((wide.h - 0.019).abs() < 0.001);
-        let mut mock = crate::shm::Rect {
-            x: 0.414,
-            y: 0.032,
-            w: 0.172,
-            h: 0.030,
-        };
-        super::migrate_default_flag(&mut mock);
-        assert!((mock.w - 0.107).abs() < 0.001);
-        let mut custom = crate::shm::Rect {
-            x: 0.10,
-            y: 0.20,
-            w: 0.20,
-            h: 0.12,
-        };
-        super::migrate_default_flag(&mut custom);
-        assert!((custom.w - 0.20).abs() < 0.001);
-    }
-
-    #[test]
-    fn units_format_speed_and_temp() {
-        assert_eq!(Units::parse("imperial").format_speed(10.0), "22");
-        assert_eq!(Units::Metric.format_speed(10.0), "36");
-        assert_eq!(Units::Metric.format_temp(21.0), "21°C");
-        assert_eq!(Units::Imperial.format_temp(0.0), "--°F");
-        assert_eq!(Units::Imperial.format_temp(21.0), "70°F");
-        assert_eq!(Units::Metric.speed_label(), "KPH");
-        assert_eq!(Units::Imperial.speed_label(), "MPH");
-        assert_eq!(Units::Metric.format_fuel(5.6, 7.0), "5.6 L");
-        assert_eq!(Units::Imperial.format_fuel(5.6, 7.0), "1.5 gal");
-        assert_eq!(Units::Metric.format_fuel(0.0, 0.0), "-- L");
-        assert_eq!(Units::Imperial.format_fuel(0.0, 0.0), "-- gal");
-        assert_eq!(Units::Metric.format_fuel(0.0, 7.0), "0.0 L");
-    }
-
-    #[test]
-    fn disabled_columns_drop_from_widget_layout() {
-        let mut cfg = HudConfig::new();
-        cfg.st_name = false;
-        cfg.st_pos = false;
-        cfg.st_num = false;
-        cfg.st_gap = false;
-        cfg.st_best = false;
-        cfg.st_last = false;
-        assert_eq!(cfg.standings_cols(), vec![StField::Name]);
-        cfg.rel_name = false;
-        cfg.rel_num = false;
-        cfg.rel_gap = false;
-        cfg.rel_best = false;
-        cfg.rel_last = false;
-        assert_eq!(cfg.relative_cols(), vec![RelField::Name]);
-    }
-
-    #[test]
-    fn experimental_gates_labs_widgets() {
-        let mut cfg = HudConfig::new();
-        assert!(!cfg.experimental);
-        assert!(!cfg.experimental_unlocked());
-        cfg.show_sector = true;
-        cfg.show_delta = true;
-        cfg.show_stance = true;
-        assert!(!cfg.sector_visible());
-        assert!(!cfg.delta_visible());
-        assert!(cfg.stance_visible());
-        cfg.experimental = true;
-        assert!(cfg.sector_visible());
-        assert!(cfg.delta_visible());
-        assert!(cfg.stance_visible());
-        cfg.show_sector = false;
-        cfg.show_delta = false;
-        cfg.show_stance = false;
-        assert!(!cfg.sector_visible());
-        assert!(!cfg.delta_visible());
-        assert!(!cfg.stance_visible());
-    }
-
-    #[test]
-    fn ini_round_trip_enables_delta_and_sector() {
-        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-        let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let dir = std::env::temp_dir().join(format!("mxbo-ini-{}", std::process::id()));
-        let _ = std::fs::create_dir_all(&dir);
-        let path = dir.join("Holeshot-HUD.ini");
-        std::fs::write(
-            &path,
-            "show_delta=1\nshow_sector=1\nexperimental=1\nfirst_install_version=0.1.0\nst_last=1\nrel_last=1\n",
-        )
-        .unwrap();
-        std::env::set_var("MXBO_TEST_INI", &path);
-        let cfg = HudConfig::load_file();
-        std::env::remove_var("MXBO_TEST_INI");
-        let _ = std::fs::remove_dir_all(&dir);
-        assert!(cfg.show_delta);
-        assert!(cfg.show_sector);
-        assert!(cfg.experimental);
-        assert!(cfg.delta_visible());
-        assert!(cfg.sector_visible());
-    }
-}
+#[path = "tests/config.rs"]
+mod tests;

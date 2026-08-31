@@ -30,6 +30,8 @@ Starts **hidden**. Turn on **Show on overlay**. Lives under Cockpit with Dash an
 
 ## Change log
 
+- 2026-08-31 — Do not poll XInput/HID every overlay frame. Pad scan runs only while Stance is shown (or while listening for a bind). Disconnected XInput slots back off for 2s.
+
 - 2026-08-26 — Listening for a bind fills the Sit button row orange with “Press a button now” so it is not a small Press… chip.
 - 2026-08-26 — Disclaimer is flag-yellow (`#F4D624`), not dim gray, so it does not read as a subtitle.
 - 2026-08-26 — Hides without a session. Settings disclaimer: not connected to MX Bikes; follows the bind only.

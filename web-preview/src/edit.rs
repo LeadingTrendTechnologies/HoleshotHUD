@@ -1,4 +1,4 @@
-use mxbo_hud::config::HudConfig;
+use mxbo_hud::config::{HudConfig, WidgetId};
 use mxbo_hud::snapshot::Rect;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -69,17 +69,17 @@ pub fn parse_target(name: &str) -> Option<Target> {
 
 pub fn rect_of(cfg: &HudConfig, t: Target) -> Rect {
     match t {
-        Target::Map => cfg.map,
-        Target::Standings => cfg.standings,
-        Target::Relative => cfg.relative,
-        Target::Minimap => cfg.minimap,
-        Target::Radar => cfg.radar,
-        Target::Dash => cfg.dash,
-        Target::Ticker => cfg.ticker,
-        Target::Sys => cfg.sys,
-        Target::Sector => cfg.sector,
-        Target::Delta => cfg.delta,
-        Target::Flag => cfg.flag,
+        Target::Map => cfg[WidgetId::Map].rect,
+        Target::Standings => cfg[WidgetId::Standings].rect,
+        Target::Relative => cfg[WidgetId::Relative].rect,
+        Target::Minimap => cfg[WidgetId::Minimap].rect,
+        Target::Radar => cfg[WidgetId::Radar].rect,
+        Target::Dash => cfg[WidgetId::Dash].rect,
+        Target::Ticker => cfg[WidgetId::Ticker].rect,
+        Target::Sys => cfg[WidgetId::Sys].rect,
+        Target::Sector => cfg[WidgetId::Sector].rect,
+        Target::Delta => cfg[WidgetId::Delta].rect,
+        Target::Flag => cfg[WidgetId::Flag].rect,
     }
 }
 
@@ -89,17 +89,17 @@ pub fn edit_rect(cfg: &HudConfig, t: Target, ow: f32, oh: f32) -> Rect {
 
 pub fn set_rect(cfg: &mut HudConfig, t: Target, r: Rect) {
     match t {
-        Target::Map => cfg.map = r,
-        Target::Standings => cfg.standings = r,
-        Target::Relative => cfg.relative = r,
-        Target::Minimap => cfg.minimap = r,
-        Target::Radar => cfg.radar = r,
-        Target::Dash => cfg.dash = r,
-        Target::Ticker => cfg.ticker = r,
-        Target::Sys => cfg.sys = r,
-        Target::Sector => cfg.sector = r,
-        Target::Delta => cfg.delta = r,
-        Target::Flag => cfg.flag = r,
+        Target::Map => cfg[WidgetId::Map].rect = r,
+        Target::Standings => cfg[WidgetId::Standings].rect = r,
+        Target::Relative => cfg[WidgetId::Relative].rect = r,
+        Target::Minimap => cfg[WidgetId::Minimap].rect = r,
+        Target::Radar => cfg[WidgetId::Radar].rect = r,
+        Target::Dash => cfg[WidgetId::Dash].rect = r,
+        Target::Ticker => cfg[WidgetId::Ticker].rect = r,
+        Target::Sys => cfg[WidgetId::Sys].rect = r,
+        Target::Sector => cfg[WidgetId::Sector].rect = r,
+        Target::Delta => cfg[WidgetId::Delta].rect = r,
+        Target::Flag => cfg[WidgetId::Flag].rect = r,
     }
 }
 

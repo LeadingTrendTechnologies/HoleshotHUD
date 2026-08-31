@@ -25,7 +25,7 @@ fn embed_icon() {
     res.set_icon(icon.to_str().unwrap());
     res.set("ProductName", "Holeshot HUD");
     res.set("FileDescription", "Holeshot HUD");
-    res.set("FileVersion", "0.3.0.0");
-    res.set("ProductVersion", "0.3.0.0");
+    res.set("FileVersion", "0.3.1.0");
+    res.set("ProductVersion", "0.3.1.0");
     let _ = res.compile();
 }

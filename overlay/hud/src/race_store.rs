@@ -1,14 +1,14 @@
 //! Shared race view: session clock + classification field.
 //!
-//! Tick once per frame from `Snapshot`. Widgets call [`RaceStore::get`] without
-//! threading extra args through every `draw_*`.
+//! [`RaceStore::refresh`] once per overlay frame. Drawers use [`RaceStore::with`]
+//! (re-entrant) so they do not clone the store. [`RaceStore::tick`] still returns
+//! a clone for tests and clock logs.
 
 use crate::shm::{cstr, Snapshot, Standing, MAX_STANDINGS};
+use std::cell::Cell;
+use std::ptr::NonNull;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Mutex;
-
-#[cfg(target_arch = "wasm32")]
-use std::cell::Cell;
 
 fn anim_now() -> f32 {
     #[cfg(target_arch = "wasm32")]
@@ -149,6 +149,10 @@ static VIEW: Mutex<RaceStore> = Mutex::new(RaceStore {
         session_best_ms: 0,
     },
 });
+
+thread_local! {
+    static WITH: Cell<Option<NonNull<RaceStore>>> = const { Cell::new(None) };
+}
 
 /// Race order we published last tick, P1 first, as race numbers. The classification the
 /// game sends only moves when someone crosses the line, so this is also the hysteresis
@@ -462,21 +466,44 @@ pub(crate) fn timed_race_flag(s: &Snapshot) -> RaceFlag {
 }
 
 impl RaceStore {
-    /// Once per frame (start of `draw` / `clock_sample`).
-    pub fn tick(s: &Snapshot) -> RaceStore {
+    /// Fill `VIEW` without cloning. Overlay `draw` uses this, then [`with`].
+    pub fn refresh(s: &Snapshot) {
         // Clock first, and only it may mutate session state: the field reads the result.
         let clock = build_clock(s);
         let field = build_field(s, &clock);
-        let store = RaceStore { clock, field };
         if let Ok(mut g) = VIEW.lock() {
-            *g = store.clone();
+            g.clock = clock;
+            g.field = field;
         }
-        store
     }
 
-    /// Widgets: no extra draw() argument.
+    /// Once per frame for tests and clock logs. Overlay draw prefers [`refresh`] + [`with`].
+    pub fn tick(s: &Snapshot) -> RaceStore {
+        Self::refresh(s);
+        Self::get()
+    }
+
+    /// Borrow the last refresh. Re-entrant: nested `with` / [`get`] reuse the same borrow.
+    /// Do not lock `VIEW` in the callback (`reset_session_clock_track` skips it).
+    pub fn with<R>(f: impl FnOnce(&RaceStore) -> R) -> R {
+        if let Some(p) = WITH.with(|c| c.get()) {
+            return f(unsafe { p.as_ref() });
+        }
+        let g = VIEW.lock().unwrap_or_else(|e| e.into_inner());
+        WITH.with(|c| c.set(Some(NonNull::from(&*g))));
+        struct Clear;
+        impl Drop for Clear {
+            fn drop(&mut self) {
+                WITH.with(|c| c.set(None));
+            }
+        }
+        let _c = Clear;
+        f(&g)
+    }
+
+    /// Clone of the last refresh. Prefer [`with`] on the draw path.
     pub fn get() -> RaceStore {
-        VIEW.lock().map(|g| g.clone()).unwrap_or_default()
+        Self::with(|s| s.clone())
     }
 }
 
@@ -726,8 +753,12 @@ pub(crate) fn reset_session_clock_track() {
     if let Ok(mut g) = LIVE_ORDER.lock() {
         g.clear();
     }
-    if let Ok(mut g) = VIEW.lock() {
-        *g = RaceStore::default();
+    // `with()` holds VIEW. Clearing it here would deadlock, and mutating through
+    // the published `&RaceStore` would be unsound. Next `refresh` overwrites.
+    if WITH.with(|c| c.get()).is_none() {
+        if let Ok(mut g) = VIEW.lock() {
+            *g = RaceStore::default();
+        }
     }
 }
 
@@ -1610,14 +1641,14 @@ pub(crate) fn race_progress_text(s: &Snapshot) -> String {
 
 /// Prefer the last `RaceStore::tick` banner so draw does not mutate the clock again.
 fn race_progress_from_store_or_snap(s: &Snapshot) -> String {
-    let store = RaceStore::get();
-    let b = &store.clock.banner.1;
-    // Default / reset placeholder — tests and pre-tick callers still compute.
-    if b.is_empty() || b == "--:--" {
-        session_banner(s).1
-    } else {
-        b.clone()
-    }
+    RaceStore::with(|store| {
+        let b = &store.clock.banner.1;
+        if b.is_empty() || b == "--:--" {
+            session_banner(s).1
+        } else {
+            b.clone()
+        }
+    })
 }
 
 /// Laps still to run, counting the one you are on, so the final lap reads `1`.

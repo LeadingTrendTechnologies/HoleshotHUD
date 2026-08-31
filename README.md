@@ -77,8 +77,8 @@ Dev builds optimize crates like tiny-skia (`opt-level = 3`) so the HUD stays smo
 Push a tag to publish a downloadable release:
 
 ```bat
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.3.1
+git push origin v0.3.1
 ```
 
 ## Data wiki

@@ -300,27 +300,27 @@ fn center_widget(cfg: &mut HudConfig, name: &str) {
 /// Full dash needs room for ~Lapped; simple dash is gear + speed only.
 fn size_demo_dash(cfg: &mut HudConfig) {
     if cfg.dash_simple {
-        cfg.dash.w = 0.09;
-        cfg.dash.h = 0.08;
+        cfg[WidgetId::Dash].rect.w = 0.09;
+        cfg[WidgetId::Dash].rect.h = 0.08;
     } else {
-        cfg.dash.w = 0.16;
-        cfg.dash.h = 0.115;
+        cfg[WidgetId::Dash].rect.w = 0.16;
+        cfg[WidgetId::Dash].rect.h = 0.115;
     }
     cfg.snap(WidgetId::Dash, SnapAlign::Center);
 }
 
 fn show_only(cfg: &mut HudConfig, name: &str) {
-    cfg.show_standings = name == "standings";
-    cfg.show_relative = name == "relative";
-    cfg.show_dash = name == "dash";
-    cfg.show_map = name == "map";
-    cfg.show_minimap = name == "minimap";
-    cfg.show_radar = name == "radar";
-    cfg.show_ticker = name == "ticker";
-    cfg.show_sys = name == "sys";
-    cfg.show_sector = name == "sector";
-    cfg.show_delta = name == "delta";
-    cfg.show_flag = name == "flag";
+    cfg[WidgetId::Standings].show = name == "standings";
+    cfg[WidgetId::Relative].show = name == "relative";
+    cfg[WidgetId::Dash].show = name == "dash";
+    cfg[WidgetId::Map].show = name == "map";
+    cfg[WidgetId::Minimap].show = name == "minimap";
+    cfg[WidgetId::Radar].show = name == "radar";
+    cfg[WidgetId::Ticker].show = name == "ticker";
+    cfg[WidgetId::Sys].show = name == "sys";
+    cfg[WidgetId::Sector].show = name == "sector";
+    cfg[WidgetId::Delta].show = name == "delta";
+    cfg[WidgetId::Flag].show = name == "flag";
     // Overlay Labs stays off unless this demo is showing a labs widget.
     cfg.experimental = name == "sector" || name == "delta";
 }
@@ -426,22 +426,22 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "radar_sides" => cfg.radar_sides,
         "radar_rear" => cfg.radar_rear,
         "radar_rings" => cfg.radar_rings,
-        "st_bold" => cfg.st_bold,
+        "st_bold" => cfg[WidgetId::Standings].bold,
         "st_stripe" => cfg.st_stripe,
-        "rel_bold" => cfg.rel_bold,
+        "rel_bold" => cfg[WidgetId::Relative].bold,
         "rel_stripe" => cfg.rel_stripe,
-        "map_bold" => cfg.map_bold,
-        "mini_bold" => cfg.mini_bold,
-        "radar_bold" => cfg.radar_bold,
-        "dash_bold" => cfg.dash_bold,
+        "map_bold" => cfg[WidgetId::Map].bold,
+        "mini_bold" => cfg[WidgetId::Minimap].bold,
+        "radar_bold" => cfg[WidgetId::Radar].bold,
+        "dash_bold" => cfg[WidgetId::Dash].bold,
         "dash_rev" => cfg.dash_rev,
         "dash_simple" => cfg.dash_simple,
-        "ticker_bold" => cfg.ticker_bold,
-        "sys_bold" => cfg.sys_bold,
+        "ticker_bold" => cfg[WidgetId::Ticker].bold,
+        "sys_bold" => cfg[WidgetId::Sys].bold,
         "sector_live" => cfg.sector_live,
-        "sector_bold" => cfg.sector_bold,
-        "delta_bold" => cfg.delta_bold,
-        "flag_bold" => cfg.flag_bold,
+        "sector_bold" => cfg[WidgetId::Sector].bold,
+        "delta_bold" => cfg[WidgetId::Delta].bold,
+        "flag_bold" => cfg[WidgetId::Flag].bold,
         "flag_yellow" => cfg.flag_yellow,
         "flag_blue" => cfg.flag_blue,
         "ticker_title" => cfg.ticker_title,
@@ -494,22 +494,22 @@ fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
         "radar_sides" => cfg.radar_sides = on,
         "radar_rear" => cfg.radar_rear = on,
         "radar_rings" => cfg.radar_rings = on,
-        "st_bold" => cfg.st_bold = on,
+        "st_bold" => cfg[WidgetId::Standings].bold = on,
         "st_stripe" => cfg.st_stripe = on,
-        "rel_bold" => cfg.rel_bold = on,
+        "rel_bold" => cfg[WidgetId::Relative].bold = on,
         "rel_stripe" => cfg.rel_stripe = on,
-        "map_bold" => cfg.map_bold = on,
-        "mini_bold" => cfg.mini_bold = on,
-        "radar_bold" => cfg.radar_bold = on,
-        "dash_bold" => cfg.dash_bold = on,
+        "map_bold" => cfg[WidgetId::Map].bold = on,
+        "mini_bold" => cfg[WidgetId::Minimap].bold = on,
+        "radar_bold" => cfg[WidgetId::Radar].bold = on,
+        "dash_bold" => cfg[WidgetId::Dash].bold = on,
         "dash_rev" => cfg.dash_rev = on,
         "dash_simple" => cfg.dash_simple = on,
-        "ticker_bold" => cfg.ticker_bold = on,
-        "sys_bold" => cfg.sys_bold = on,
+        "ticker_bold" => cfg[WidgetId::Ticker].bold = on,
+        "sys_bold" => cfg[WidgetId::Sys].bold = on,
         "sector_live" => cfg.sector_live = on,
-        "sector_bold" => cfg.sector_bold = on,
-        "delta_bold" => cfg.delta_bold = on,
-        "flag_bold" => cfg.flag_bold = on,
+        "sector_bold" => cfg[WidgetId::Sector].bold = on,
+        "delta_bold" => cfg[WidgetId::Delta].bold = on,
+        "flag_bold" => cfg[WidgetId::Flag].bold = on,
         "flag_yellow" => cfg.flag_yellow = on,
         "flag_blue" => cfg.flag_blue = on,
         "ticker_title" => cfg.ticker_title = on,
@@ -522,32 +522,32 @@ fn int_val(cfg: &HudConfig, key: &str) -> Option<i32> {
     Some(match key {
         "standings_rows" => cfg.standings_rows,
         "relative_count" => cfg.relative_count,
-        "st_bg" => cfg.st_bg,
+        "st_bg" => cfg[WidgetId::Standings].bg,
         "st_hl" => cfg.st_hl,
-        "rel_bg" => cfg.rel_bg,
+        "rel_bg" => cfg[WidgetId::Relative].bg,
         "rel_hl" => cfg.rel_hl,
-        "map_bg" => cfg.map_bg,
-        "mini_bg" => cfg.mini_bg,
+        "map_bg" => cfg[WidgetId::Map].bg,
+        "mini_bg" => cfg[WidgetId::Minimap].bg,
         "mini_zoom" => cfg.mini_zoom,
-        "radar_bg" => cfg.radar_bg,
-        "dash_bg" => cfg.dash_bg,
-        "ticker_bg" => cfg.ticker_bg,
-        "sys_bg" => cfg.sys_bg,
-        "sector_bg" => cfg.sector_bg,
+        "radar_bg" => cfg[WidgetId::Radar].bg,
+        "dash_bg" => cfg[WidgetId::Dash].bg,
+        "ticker_bg" => cfg[WidgetId::Ticker].bg,
+        "sys_bg" => cfg[WidgetId::Sys].bg,
+        "sector_bg" => cfg[WidgetId::Sector].bg,
         "ticker_count" => cfg.ticker_count,
-        "st_font" => cfg.st_font,
-        "rel_font" => cfg.rel_font,
-        "map_font" => cfg.map_font,
-        "mini_font" => cfg.mini_font,
-        "radar_font" => cfg.radar_font,
-        "dash_font" => cfg.dash_font,
-        "ticker_font" => cfg.ticker_font,
-        "sys_font" => cfg.sys_font,
-        "sector_font" => cfg.sector_font,
-        "delta_font" => cfg.delta_font,
-        "delta_bg" => cfg.delta_bg,
-        "flag_font" => cfg.flag_font,
-        "flag_bg" => cfg.flag_bg,
+        "st_font" => cfg[WidgetId::Standings].font,
+        "rel_font" => cfg[WidgetId::Relative].font,
+        "map_font" => cfg[WidgetId::Map].font,
+        "mini_font" => cfg[WidgetId::Minimap].font,
+        "radar_font" => cfg[WidgetId::Radar].font,
+        "dash_font" => cfg[WidgetId::Dash].font,
+        "ticker_font" => cfg[WidgetId::Ticker].font,
+        "sys_font" => cfg[WidgetId::Sys].font,
+        "sector_font" => cfg[WidgetId::Sector].font,
+        "delta_font" => cfg[WidgetId::Delta].font,
+        "delta_bg" => cfg[WidgetId::Delta].bg,
+        "flag_font" => cfg[WidgetId::Flag].font,
+        "flag_bg" => cfg[WidgetId::Flag].bg,
         _ => return None,
     })
 }
@@ -556,20 +556,20 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
     match key {
         "standings_rows" => cfg.standings_rows = value.clamp(3, 40),
         "relative_count" => cfg.relative_count = value.clamp(1, 8),
-        "st_bg" => cfg.st_bg = value.clamp(0, 100),
+        "st_bg" => cfg[WidgetId::Standings].bg = value.clamp(0, 100),
         "st_hl" => cfg.st_hl = value.clamp(0, 100),
-        "rel_bg" => cfg.rel_bg = value.clamp(0, 100),
+        "rel_bg" => cfg[WidgetId::Relative].bg = value.clamp(0, 100),
         "rel_hl" => cfg.rel_hl = value.clamp(0, 100),
-        "map_bg" => cfg.map_bg = value.clamp(0, 100),
-        "mini_bg" => cfg.mini_bg = value.clamp(0, 100),
+        "map_bg" => cfg[WidgetId::Map].bg = value.clamp(0, 100),
+        "mini_bg" => cfg[WidgetId::Minimap].bg = value.clamp(0, 100),
         "mini_zoom" => cfg.mini_zoom = value.clamp(0, 100),
-        "radar_bg" => cfg.radar_bg = value.clamp(0, 100),
-        "dash_bg" => cfg.dash_bg = value.clamp(0, 100),
-        "ticker_bg" => cfg.ticker_bg = value.clamp(0, 100),
-        "sys_bg" => cfg.sys_bg = value.clamp(0, 100),
-        "sector_bg" => cfg.sector_bg = value.clamp(0, 100),
-        "delta_bg" => cfg.delta_bg = value.clamp(0, 100),
-        "flag_bg" => cfg.flag_bg = value.clamp(0, 100),
+        "radar_bg" => cfg[WidgetId::Radar].bg = value.clamp(0, 100),
+        "dash_bg" => cfg[WidgetId::Dash].bg = value.clamp(0, 100),
+        "ticker_bg" => cfg[WidgetId::Ticker].bg = value.clamp(0, 100),
+        "sys_bg" => cfg[WidgetId::Sys].bg = value.clamp(0, 100),
+        "sector_bg" => cfg[WidgetId::Sector].bg = value.clamp(0, 100),
+        "delta_bg" => cfg[WidgetId::Delta].bg = value.clamp(0, 100),
+        "flag_bg" => cfg[WidgetId::Flag].bg = value.clamp(0, 100),
         "ticker_count" => cfg.ticker_count = value.clamp(3, 15),
         "st_font" => cfg.set_font_pct(WidgetId::Standings, value),
         "rel_font" => cfg.set_font_pct(WidgetId::Relative, value),

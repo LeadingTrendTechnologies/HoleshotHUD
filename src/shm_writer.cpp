@@ -21,10 +21,9 @@
 
 namespace
 {
-    void tessellate(const PluginState& state, MxboShmPoint* out, int32_t* count)
+    void tessellateInto(const PluginState& state, std::vector<MxboShmPoint>& pts)
     {
-        *count = 0;
-        std::vector<MxboShmPoint> pts;
+        pts.clear();
         pts.reserve(512);
 
         const auto& segs = state.centerline();
@@ -61,19 +60,14 @@ namespace
         if (pts.size() > MXBO_MAX_POLY)
         {
             const float stride = static_cast<float>(pts.size() - 1) / static_cast<float>(MXBO_MAX_POLY - 1);
+            std::vector<MxboShmPoint> thin;
+            thin.resize(MXBO_MAX_POLY);
             for (int i = 0; i < MXBO_MAX_POLY; ++i)
             {
                 const int idx = std::min(static_cast<int>(pts.size()) - 1, static_cast<int>(i * stride));
-                out[i] = pts[static_cast<size_t>(idx)];
+                thin[static_cast<size_t>(i)] = pts[static_cast<size_t>(idx)];
             }
-            *count = MXBO_MAX_POLY;
-            return;
-        }
-
-        *count = static_cast<int32_t>(pts.size());
-        if (*count > 0)
-        {
-            std::memcpy(out, pts.data(), static_cast<size_t>(*count) * sizeof(MxboShmPoint));
+            pts.swap(thin);
         }
     }
 }
@@ -180,6 +174,25 @@ void ShmWriter::close()
         m_cmdMap = nullptr;
     }
     m_lastSpectateQpc = 0;
+    m_poly.clear();
+    m_polyCount = 0;
+    m_polyRev = 0xFFFFFFFFu;
+    m_polyTrail = static_cast<size_t>(-1);
+}
+
+void ShmWriter::fillPolyCache(const PluginState& state)
+{
+    const bool lined = !state.centerline().empty();
+    const uint32_t rev = state.mapRev();
+    const size_t trail_n = lined ? 0 : state.trail().size();
+    if (m_polyRev == rev && m_polyTrail == trail_n)
+    {
+        return;
+    }
+    tessellateInto(state, m_poly);
+    m_polyCount = static_cast<int32_t>(m_poly.size());
+    m_polyRev = rev;
+    m_polyTrail = trail_n;
 }
 
 void ShmWriter::publish(const PluginState& state, const PluginConfig& config)
@@ -216,7 +229,12 @@ void ShmWriter::publish(const PluginState& state, const PluginConfig& config)
     local.trackLength = state.trackLength();
     local.sfMeters = state.startFinishMeters();
 
-    tessellate(state, local.poly, &local.polyCount);
+    fillPolyCache(state);
+    local.polyCount = (std::min)(m_polyCount, MXBO_MAX_POLY);
+    if (local.polyCount > 0)
+    {
+        std::memcpy(local.poly, m_poly.data(), static_cast<size_t>(local.polyCount) * sizeof(MxboShmPoint));
+    }
 
     const int nRiders = std::min(static_cast<int>(state.trackPositions().size()), MXBO_MAX_RIDERS);
     local.riderCount = nRiders;

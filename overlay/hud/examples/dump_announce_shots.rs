@@ -57,14 +57,14 @@ fn main() {
         ("sector.png", W, H, |c| {
             size_show(c, "sector", 0.42, 0.18);
             c.experimental = true;
-            c.show_sector = true;
+            c[WidgetId::Sector].show = true;
             c.sector_live = true;
         }),
         ("delta.png", W, H, |c| {
             size_show(c, "delta", 0.42, 0.12);
             c.experimental = true;
-            c.show_delta = true;
-            c.delta_bg = 0;
+            c[WidgetId::Delta].show = true;
+            c[WidgetId::Delta].bg = 0;
             mxbo_hud::delta::set_preview(Some(mxbo_hud::delta::DeltaView {
                 ready: true,
                 recording: false,
@@ -137,17 +137,17 @@ fn base_cfg() -> HudConfig {
 }
 
 fn show_only(cfg: &mut HudConfig, name: &str) {
-    cfg.show_standings = name == "standings";
-    cfg.show_relative = name == "relative";
-    cfg.show_dash = name == "dash";
-    cfg.show_map = name == "map";
-    cfg.show_minimap = name == "minimap";
-    cfg.show_radar = name == "radar";
-    cfg.show_ticker = name == "ticker";
-    cfg.show_sys = name == "sys";
-    cfg.show_sector = name == "sector";
-    cfg.show_delta = name == "delta";
-    cfg.show_flag = name == "flag";
+    cfg[WidgetId::Standings].show = name == "standings";
+    cfg[WidgetId::Relative].show = name == "relative";
+    cfg[WidgetId::Dash].show = name == "dash";
+    cfg[WidgetId::Map].show = name == "map";
+    cfg[WidgetId::Minimap].show = name == "minimap";
+    cfg[WidgetId::Radar].show = name == "radar";
+    cfg[WidgetId::Ticker].show = name == "ticker";
+    cfg[WidgetId::Sys].show = name == "sys";
+    cfg[WidgetId::Sector].show = name == "sector";
+    cfg[WidgetId::Delta].show = name == "delta";
+    cfg[WidgetId::Flag].show = name == "flag";
     cfg.experimental = name == "sector" || name == "delta";
 }
 
@@ -167,63 +167,47 @@ fn size_show(cfg: &mut HudConfig, name: &str, w: f32, h: f32) {
         "flag" => WidgetId::Flag,
         _ => return,
     };
-    {
-        let r = match id {
-            WidgetId::Standings => &mut cfg.standings,
-            WidgetId::Relative => &mut cfg.relative,
-            WidgetId::Map => &mut cfg.map,
-            WidgetId::Minimap => &mut cfg.minimap,
-            WidgetId::Radar => &mut cfg.radar,
-            WidgetId::Dash => &mut cfg.dash,
-            WidgetId::Ticker => &mut cfg.ticker,
-            WidgetId::Sys => &mut cfg.sys,
-            WidgetId::Sector => &mut cfg.sector,
-            WidgetId::Delta => &mut cfg.delta,
-            WidgetId::Stance => &mut cfg.stance,
-            WidgetId::Flag => &mut cfg.flag,
-        };
-        r.w = w;
-        r.h = h;
-    }
+    cfg[id].rect.w = w;
+    cfg[id].rect.h = h;
     cfg.snap(id, SnapAlign::Center);
 }
 
 fn layout_hero(cfg: &mut HudConfig) {
-    cfg.show_standings = true;
-    cfg.show_relative = false;
-    cfg.show_map = true;
-    cfg.show_minimap = false;
-    cfg.show_radar = true;
-    cfg.show_dash = true;
-    cfg.show_ticker = true;
-    cfg.show_sys = false;
-    cfg.show_sector = false;
-    cfg.show_delta = false;
-    cfg.standings = mxbo_hud::shm::Rect {
+    cfg[WidgetId::Standings].show = true;
+    cfg[WidgetId::Relative].show = false;
+    cfg[WidgetId::Map].show = true;
+    cfg[WidgetId::Minimap].show = false;
+    cfg[WidgetId::Radar].show = true;
+    cfg[WidgetId::Dash].show = true;
+    cfg[WidgetId::Ticker].show = true;
+    cfg[WidgetId::Sys].show = false;
+    cfg[WidgetId::Sector].show = false;
+    cfg[WidgetId::Delta].show = false;
+    cfg[WidgetId::Standings].rect = mxbo_hud::shm::Rect {
         x: 0.04,
         y: 0.10,
         w: 0.28,
         h: 0.58,
     };
-    cfg.map = mxbo_hud::shm::Rect {
+    cfg[WidgetId::Map].rect = mxbo_hud::shm::Rect {
         x: 0.52,
         y: 0.12,
         w: 0.42,
         h: 0.52,
     };
-    cfg.radar = mxbo_hud::shm::Rect {
+    cfg[WidgetId::Radar].rect = mxbo_hud::shm::Rect {
         x: 0.58,
         y: 0.72,
         w: 0.16,
         h: 0.20,
     };
-    cfg.dash = mxbo_hud::shm::Rect {
+    cfg[WidgetId::Dash].rect = mxbo_hud::shm::Rect {
         x: 0.80,
         y: 0.78,
         w: 0.14,
         h: 0.10,
     };
-    cfg.ticker = mxbo_hud::shm::Rect {
+    cfg[WidgetId::Ticker].rect = mxbo_hud::shm::Rect {
         x: 0.06,
         y: 0.02,
         w: 0.88,

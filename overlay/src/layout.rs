@@ -1,4 +1,5 @@
-use crate::config::HudConfig;
+use crate::config::{HudConfig, WidgetId, COL_W_MIN, NAME_W_MAX};
+use crate::render::table_layout_rect;
 use crate::shm::{Rect, Snapshot};
 use windows::Win32::Foundation::{HWND, POINT};
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_CONTROL, VK_LBUTTON};
@@ -33,6 +34,16 @@ enum Handle {
     SW,
 }
 
+impl Handle {
+    fn changes_w(self) -> bool {
+        matches!(self, Self::E | Self::W | Self::NE | Self::NW | Self::SE | Self::SW)
+    }
+
+    fn changes_h(self) -> bool {
+        matches!(self, Self::N | Self::S | Self::NE | Self::NW | Self::SE | Self::SW)
+    }
+}
+
 #[derive(Clone, Copy)]
 struct Drag {
     target: Target,
@@ -40,6 +51,8 @@ struct Drag {
     grab_x: f32,
     grab_y: f32,
     orig: Rect,
+    name_w: i32,
+    rows: i32,
 }
 
 #[derive(Default)]
@@ -56,6 +69,10 @@ pub struct Editor {
     delta: Option<Rect>,
     stance: Option<Rect>,
     flag: Option<Rect>,
+    st_w_name: Option<i32>,
+    rel_w_name: Option<i32>,
+    standings_rows: Option<i32>,
+    relative_count: Option<i32>,
     drag: Option<Drag>,
     mouse_was_down: bool,
 }
@@ -75,38 +92,81 @@ impl Editor {
         if let Some(r) = self.relative {
             s.relative = r;
         }
+        if let Some(n) = self.standings_rows {
+            s.standings_rows = n;
+        }
+        if let Some(n) = self.relative_count {
+            s.relative_count = n;
+        }
+    }
+
+    /// True when a drag preview must be written into a HudConfig copy for this frame.
+    pub fn has_preview(&self) -> bool {
+        self.minimap.is_some()
+            || self.radar.is_some()
+            || self.dash.is_some()
+            || self.ticker.is_some()
+            || self.sys.is_some()
+            || self.sector.is_some()
+            || self.delta.is_some()
+            || self.stance.is_some()
+            || self.flag.is_some()
+            || self.st_w_name.is_some()
+            || self.rel_w_name.is_some()
+            || self.standings_rows.is_some()
+            || self.relative_count.is_some()
     }
 
     pub fn apply_cfg(&self, cfg: &mut HudConfig) {
         if let Some(r) = self.minimap {
-            cfg.minimap = r;
+            cfg[WidgetId::Minimap].rect = r;
         }
         if let Some(r) = self.radar {
-            cfg.radar = r;
+            cfg[WidgetId::Radar].rect = r;
         }
         if let Some(r) = self.dash {
-            cfg.dash = r;
+            cfg[WidgetId::Dash].rect = r;
         }
         if let Some(t) = self.ticker {
-            cfg.ticker = t;
+            cfg[WidgetId::Ticker].rect = t;
         }
         if let Some(s) = self.sys {
-            cfg.sys = s;
+            cfg[WidgetId::Sys].rect = s;
         }
         if let Some(s) = self.sector {
-            cfg.sector = s;
+            cfg[WidgetId::Sector].rect = s;
         }
         if let Some(s) = self.delta {
-            cfg.delta = s;
+            cfg[WidgetId::Delta].rect = s;
         }
         if let Some(s) = self.stance {
-            cfg.stance = s;
+            cfg[WidgetId::Stance].rect = s;
         }
         if let Some(s) = self.flag {
-            cfg.flag = s;
+            cfg[WidgetId::Flag].rect = s;
+        }
+        if let Some(r) = self.standings {
+            cfg[WidgetId::Standings].rect = r;
+        }
+        if let Some(r) = self.relative {
+            cfg[WidgetId::Relative].rect = r;
+        }
+        if let Some(w) = self.st_w_name {
+            cfg.st_w_name = w;
+        }
+        if let Some(w) = self.rel_w_name {
+            cfg.rel_w_name = w;
+        }
+        if let Some(n) = self.standings_rows {
+            cfg.standings_rows = n;
+        }
+        if let Some(n) = self.relative_count {
+            cfg.relative_count = n;
         }
     }
 
+    /// Returns true when the drag should be written to config. Caller must
+    /// [`commit`] after dropping any `with_config` guard — `save` takes that lock.
     pub fn tick(
         &mut self,
         overlay: HWND,
@@ -117,7 +177,7 @@ impl Editor {
         snap: Option<&Snapshot>,
         cfg: &HudConfig,
         block_press: bool,
-    ) {
+    ) -> bool {
         let ctrl = Self::ctrl_down();
         let down = unsafe { GetAsyncKeyState(VK_LBUTTON.0 as i32) < 0 };
         let pressed = down && !self.mouse_was_down && !block_press;
@@ -125,26 +185,33 @@ impl Editor {
         self.mouse_was_down = down;
 
         let Some((nx, ny)) = cursor_norm(ox, oy, ow, oh) else {
-            return;
+            return false;
         };
 
         if !ctrl {
-            if self.drag.take().is_some() {
-                self.save(snap);
+            let commit = self.drag.take().is_some();
+            if !commit {
+                self.clear_preview();
             }
-            self.clear_preview();
-            return;
+            return commit;
         }
 
         if pressed {
             if let Some(s) = snap {
                 if let Some((t, h)) = hit(s, self, cfg, nx, ny, ow, oh) {
+                    let (name_w, rows) = match t {
+                        Target::Standings => (cfg.st_w_name, cfg.standings_rows),
+                        Target::Relative => (cfg.rel_w_name, cfg.relative_count),
+                        _ => (0, 0),
+                    };
                     self.drag = Some(Drag {
                         target: t,
                         handle: h,
                         grab_x: nx,
                         grab_y: ny,
-                        orig: rect_of(s, self, cfg, t),
+                        orig: visual_rect(s, cfg, rect_of(s, self, cfg, t), t, ow, oh),
+                        name_w,
+                        rows,
                     });
                 }
             }
@@ -166,13 +233,16 @@ impl Editor {
                 Target::Stance => self.stance = Some(r),
                 Target::Flag => self.flag = Some(r),
             }
+            apply_table_resize(self, cfg, d, r, ow, oh);
             let _ = overlay;
         }
 
-        if released && self.drag.take().is_some() {
-            self.save(snap);
-            self.clear_preview();
-        }
+        released && self.drag.take().is_some()
+    }
+
+    pub fn commit(&mut self, snap: Option<&Snapshot>) {
+        self.save(snap);
+        self.clear_preview();
     }
 
     fn clear_preview(&mut self) {
@@ -188,6 +258,10 @@ impl Editor {
         self.delta = None;
         self.stance = None;
         self.flag = None;
+        self.st_w_name = None;
+        self.rel_w_name = None;
+        self.standings_rows = None;
+        self.relative_count = None;
     }
 
     fn save(&self, snap: Option<&Snapshot>) {
@@ -207,35 +281,47 @@ impl Editor {
         let stance = self.stance;
         let flag = self.flag;
         crate::config::update_config(|cfg| {
-            cfg.map = map;
-            cfg.standings = standings;
-            cfg.relative = relative;
+            cfg[WidgetId::Map].rect = map;
+            cfg[WidgetId::Standings].rect = standings;
+            cfg[WidgetId::Relative].rect = relative;
             if let Some(m) = minimap {
-                cfg.minimap = m;
+                cfg[WidgetId::Minimap].rect = m;
             }
             if let Some(r) = radar {
-                cfg.radar = r;
+                cfg[WidgetId::Radar].rect = r;
             }
             if let Some(d) = dash {
-                cfg.dash = d;
+                cfg[WidgetId::Dash].rect = d;
             }
             if let Some(t) = ticker {
-                cfg.ticker = t;
+                cfg[WidgetId::Ticker].rect = t;
             }
             if let Some(s) = sys {
-                cfg.sys = s;
+                cfg[WidgetId::Sys].rect = s;
             }
             if let Some(s) = sector {
-                cfg.sector = s;
+                cfg[WidgetId::Sector].rect = s;
             }
             if let Some(s) = delta {
-                cfg.delta = s;
+                cfg[WidgetId::Delta].rect = s;
             }
             if let Some(s) = stance {
-                cfg.stance = s;
+                cfg[WidgetId::Stance].rect = s;
             }
             if let Some(s) = flag {
-                cfg.flag = s;
+                cfg[WidgetId::Flag].rect = s;
+            }
+            if let Some(w) = self.st_w_name {
+                cfg.st_w_name = w;
+            }
+            if let Some(w) = self.rel_w_name {
+                cfg.rel_w_name = w;
+            }
+            if let Some(n) = self.standings_rows {
+                cfg.standings_rows = n;
+            }
+            if let Some(n) = self.relative_count {
+                cfg.relative_count = n;
             }
         });
     }
@@ -262,33 +348,34 @@ fn contains(r: Rect, x: f32, y: f32) -> bool {
 fn contains_circle(r: Rect, x: f32, y: f32, ow: i32, oh: i32) -> bool {
     let px = x * ow as f32;
     let py = y * oh as f32;
-    let vis = visual_rect(r, Target::Minimap, ow, oh);
-    let rx = vis.x * ow as f32;
-    let ry = vis.y * oh as f32;
-    let rw = vis.w * ow as f32;
-    let rh = vis.h * oh as f32;
+    let rw = r.w * ow as f32;
+    let rh = r.h * oh as f32;
     let d = rw.min(rh) * 0.5;
-    let cx = rx + rw * 0.5;
-    let cy = ry + rh * 0.5;
+    let cx = r.x * ow as f32 + rw * 0.5;
+    let cy = r.y * oh as f32 + rh * 0.5;
     let dx = px - cx;
     let dy = py - cy;
     dx * dx + dy * dy <= d * d
 }
 
-fn visual_rect(r: Rect, t: Target, ow: i32, oh: i32) -> Rect {
-    if t != Target::Minimap {
-        return r;
-    }
-    let rw = r.w * ow as f32;
-    let rh = r.h * oh as f32;
-    let d = rw.min(rh);
-    let cx = r.x * ow as f32 + rw * 0.5;
-    let cy = r.y * oh as f32 + rh * 0.5;
-    Rect {
-        x: (cx - d * 0.5) / ow as f32,
-        y: (cy - d * 0.5) / oh as f32,
-        w: d / ow as f32,
-        h: d / oh as f32,
+fn visual_rect(s: &Snapshot, cfg: &HudConfig, r: Rect, t: Target, ow: i32, oh: i32) -> Rect {
+    match t {
+        Target::Minimap => {
+            let rw = r.w * ow as f32;
+            let rh = r.h * oh as f32;
+            let d = rw.min(rh);
+            let cx = r.x * ow as f32 + rw * 0.5;
+            let cy = r.y * oh as f32 + rh * 0.5;
+            Rect {
+                x: (cx - d * 0.5) / ow as f32,
+                y: (cy - d * 0.5) / oh as f32,
+                w: d / ow as f32,
+                h: d / oh as f32,
+            }
+        }
+        Target::Standings => table_layout_rect(s, cfg, WidgetId::Standings, r, ow as f32, oh as f32),
+        Target::Relative => table_layout_rect(s, cfg, WidgetId::Relative, r, ow as f32, oh as f32),
+        _ => r,
     }
 }
 
@@ -297,15 +384,15 @@ fn rect_of(s: &Snapshot, ed: &Editor, cfg: &HudConfig, t: Target) -> Rect {
         Target::Map => ed.map.unwrap_or(s.map),
         Target::Standings => ed.standings.unwrap_or(s.standings_rect),
         Target::Relative => ed.relative.unwrap_or(s.relative),
-        Target::Minimap => ed.minimap.unwrap_or(cfg.minimap),
-        Target::Radar => ed.radar.unwrap_or(cfg.radar),
-        Target::Dash => ed.dash.unwrap_or(cfg.dash),
-        Target::Ticker => ed.ticker.unwrap_or(cfg.ticker),
-        Target::Sys => ed.sys.unwrap_or(cfg.sys),
-        Target::Sector => ed.sector.unwrap_or(cfg.sector),
-        Target::Delta => ed.delta.unwrap_or(cfg.delta),
-        Target::Stance => ed.stance.unwrap_or(cfg.stance),
-        Target::Flag => ed.flag.unwrap_or(cfg.flag),
+        Target::Minimap => ed.minimap.unwrap_or(cfg[WidgetId::Minimap].rect),
+        Target::Radar => ed.radar.unwrap_or(cfg[WidgetId::Radar].rect),
+        Target::Dash => ed.dash.unwrap_or(cfg[WidgetId::Dash].rect),
+        Target::Ticker => ed.ticker.unwrap_or(cfg[WidgetId::Ticker].rect),
+        Target::Sys => ed.sys.unwrap_or(cfg[WidgetId::Sys].rect),
+        Target::Sector => ed.sector.unwrap_or(cfg[WidgetId::Sector].rect),
+        Target::Delta => ed.delta.unwrap_or(cfg[WidgetId::Delta].rect),
+        Target::Stance => ed.stance.unwrap_or(cfg[WidgetId::Stance].rect),
+        Target::Flag => ed.flag.unwrap_or(cfg[WidgetId::Flag].rect),
     }
 }
 
@@ -314,15 +401,15 @@ fn shown(s: &Snapshot, cfg: &HudConfig, t: Target) -> bool {
         Target::Map => s.show_map != 0,
         Target::Standings => s.show_standings != 0,
         Target::Relative => s.show_relative != 0,
-        Target::Minimap => cfg.show_minimap,
-        Target::Radar => cfg.show_radar,
-        Target::Dash => cfg.show_dash,
-        Target::Ticker => cfg.show_ticker,
-        Target::Sys => cfg.show_sys,
+        Target::Minimap => cfg[WidgetId::Minimap].show,
+        Target::Radar => cfg[WidgetId::Radar].show,
+        Target::Dash => cfg[WidgetId::Dash].show,
+        Target::Ticker => cfg[WidgetId::Ticker].show,
+        Target::Sys => cfg[WidgetId::Sys].show,
         Target::Sector => cfg.sector_visible(),
         Target::Delta => cfg.delta_visible(),
         Target::Stance => cfg.stance_visible(),
-        Target::Flag => cfg.show_flag,
+        Target::Flag => cfg[WidgetId::Flag].show,
     }
 }
 
@@ -345,7 +432,8 @@ fn hit(s: &Snapshot, ed: &Editor, cfg: &HudConfig, x: f32, y: f32, ow: i32, oh: 
         if !shown(s, cfg, t) {
             continue;
         }
-        let r = visual_rect(rect_of(s, ed, cfg, t), t, ow, oh);
+        let stored = rect_of(s, ed, cfg, t);
+        let r = visual_rect(s, cfg, stored, t, ow, oh);
         if let Some(h) = handle_at(r, x, y, ow, oh, t) {
             return Some((t, h));
         }
@@ -354,9 +442,10 @@ fn hit(s: &Snapshot, ed: &Editor, cfg: &HudConfig, x: f32, y: f32, ow: i32, oh: 
         if !shown(s, cfg, t) {
             continue;
         }
-        let r = rect_of(s, ed, cfg, t);
+        let stored = rect_of(s, ed, cfg, t);
+        let r = visual_rect(s, cfg, stored, t, ow, oh);
         let inside = if t == Target::Minimap {
-            contains_circle(r, x, y, ow, oh)
+            contains_circle(stored, x, y, ow, oh)
         } else {
             contains(r, x, y)
         };
@@ -412,6 +501,40 @@ fn handle_at(r: Rect, nx: f32, ny: f32, ow: i32, oh: i32, t: Target) -> Option<H
         return Some(Handle::E);
     }
     None
+}
+
+fn apply_table_resize(ed: &mut Editor, cfg: &HudConfig, d: Drag, r: Rect, ow: i32, oh: i32) {
+    if d.handle == Handle::Move {
+        return;
+    }
+    let id = match d.target {
+        Target::Standings => WidgetId::Standings,
+        Target::Relative => WidgetId::Relative,
+        _ => return,
+    };
+    let k = (cfg[id].font.clamp(70, 160) as f32) / 100.0;
+    let row_h = 22.0 * k;
+    if d.handle.changes_w() {
+        let w = (d.name_w as f32 + (r.w - d.orig.w) * ow as f32).round() as i32;
+        let w = w.clamp(COL_W_MIN, NAME_W_MAX);
+        match d.target {
+            Target::Standings => ed.st_w_name = Some(w),
+            Target::Relative => ed.rel_w_name = Some(w),
+            _ => {}
+        }
+    }
+    if d.handle.changes_h() && row_h > 0.5 {
+        let d_rows = ((r.h - d.orig.h) * oh as f32 / row_h).round() as i32;
+        match d.target {
+            Target::Standings => ed.standings_rows = Some((d.rows + d_rows).clamp(3, 40)),
+            Target::Relative => {
+                let orig_vis = 2 * d.rows + 1;
+                let new_vis = (orig_vis + d_rows).max(1);
+                ed.relative_count = Some(((new_vis - 1) / 2).clamp(1, 8));
+            }
+            _ => {}
+        }
+    }
 }
 
 fn min_px(t: Target) -> (f32, f32) {

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.3.1
+
+### Internals
+
+- Minimize on close hides Settings to the tray. The tray icon or settings key brings it back.
+- Open when Windows starts and starting with the game both open Settings in the tray.
+- With close-with-game and open-with-game both on, leaving a session keeps the overlay in the tray so it comes back when you race again.
+- A short freeze in MX Bikes no longer blanks overlay widgets.
+- Ctrl+resize of standings and relative grows the Name column and row count. The orange box is the plaque, not leftover empty glass.
+
 ## 0.3.0
 
 Range rings on radar so close vs far is a glance.

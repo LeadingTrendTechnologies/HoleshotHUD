@@ -1,5 +1,5 @@
 use std::mem::size_of;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use windows::Win32::Foundation::{CloseHandle, FILETIME};
 use windows::Win32::NetworkManagement::IpHelper::{FreeMibTable, GetIfTable2, IF_TYPE_SOFTWARE_LOOPBACK};
@@ -56,6 +56,9 @@ pub struct Sampler {
     mx: ProcStat,
     mxb_app: ProcStat,
     reshade: ProcStat,
+    reshade_pid: u32,
+    reshade_at: Option<Instant>,
+    reshade_mb: Option<f32>,
 }
 
 impl Default for Sampler {
@@ -82,17 +85,23 @@ impl Default for Sampler {
             mx: ProcStat::default(),
             mxb_app: ProcStat::default(),
             reshade: ProcStat::default(),
+            reshade_pid: 0,
+            reshade_at: None,
+            reshade_mb: None,
         }
     }
 }
 
 impl Sampler {
-    pub fn tick(&mut self, game_seq: Option<u32>) {
+    pub fn tick(&mut self, game_seq: Option<u32>, want_meters: bool) {
         self.note_fps(game_seq);
+        if !want_meters {
+            return;
+        }
         let now = Instant::now();
         if self
             .last_sample
-            .is_some_and(|t| now.duration_since(t).as_millis() < 250)
+            .is_some_and(|t| now.duration_since(t) < Duration::from_millis(500))
         {
             self.push();
             return;
@@ -131,7 +140,7 @@ impl Sampler {
 
         let mut dll_mb = 0.0f32;
         if let Some(pid) = found.mx {
-            if let Some(mb) = reshade_mb(pid) {
+            if let Some(mb) = self.reshade_cached(pid) {
                 dll_mb = mb;
             }
         }
@@ -151,6 +160,19 @@ impl Sampler {
         } else {
             refresh_slot(&mut self.reshade, found.reshade, dt, ncpu, total_mb);
         }
+    }
+
+    /// Toolhelp `SNAPMODULE` on mxbikes.exe can stall the game. Probe at most every 30s.
+    fn reshade_cached(&mut self, pid: u32) -> Option<f32> {
+        const TTL: Duration = Duration::from_secs(30);
+        if self.reshade_pid == pid && self.reshade_at.is_some_and(|t| t.elapsed() < TTL) {
+            return self.reshade_mb;
+        }
+        let mb = reshade_mb(pid);
+        self.reshade_pid = pid;
+        self.reshade_at = Some(Instant::now());
+        self.reshade_mb = mb;
+        mb
     }
 
     fn note_fps(&mut self, game_seq: Option<u32>) {
@@ -500,13 +522,5 @@ fn net_totals() -> (u64, u64) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::shm_publishes;
-
-    #[test]
-    fn seqlock_delta_is_half_the_seq_step() {
-        assert_eq!(shm_publishes(0, 140), 70);
-        assert_eq!(shm_publishes(10, 10), 0);
-        assert_eq!(shm_publishes(u32::MAX - 1, 2), 2);
-    }
-}
+#[path = "tests/sys.rs"]
+mod tests;
