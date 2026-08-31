@@ -12,6 +12,7 @@ When you change a widget, append a dated entry to that widget’s **Change log**
 | Minimap | Minimap | `Minimap` | [minimap.md](widgets/minimap.md) |
 | Radar | Radar | `Radar` | [radar.md](widgets/radar.md) |
 | Dash | Dash | `Dash` | [dash.md](widgets/dash.md) |
+| Flags | Flags | `Flag` | [flag.md](widgets/flag.md) |
 | Horizontal Standings | H-Standings | `Ticker` | [horizontal-standings.md](widgets/horizontal-standings.md) |
 | Systems | Systems | `Sys` | [systems.md](widgets/systems.md) |
 | Stance | Stance | `Stance` | [stance.md](widgets/stance.md) |
@@ -24,16 +25,16 @@ When you change a widget, append a dated entry to that widget’s **Change log**
 - Shared race view: `overlay/hud/src/race_store.rs` — `RaceStore::tick` once per frame; widgets `get()` session clock + classification.
 - **Live race order**: the game only republishes its classification when someone crosses the line, so `race_store` re-derives places every tick — the game order with any pass we can see in `riders[].track_pos` applied on top (`live_order` / `passed`). `RaceField.rows` come back in that order with `standing.position` set to it, and `live_position` / `live_leader` serve map-style lookups. See [live race order](live-order.md).
 - All widgets start **hidden** on a fresh install (`show_* = false`). Turn on with **Show on overlay**.
-- **Labs**: Sectors and Delta Bar stay off the overlay widget rail until **Experimental widgets** is on (Settings → Labs). `experimental=1` in the ini; `feature_sector=1` still unlocks (legacy). Stance is a regular Cockpit widget. The website demo lists them under an **Experimental** rail group (WASM turns the labs flag on only while those widgets are selected).
+- **Labs**: Sectors and Delta Bar stay off the overlay widget rail until **Experimental widgets** is on (Settings → Labs). `experimental=1` in the ini; `feature_sector=1` still unlocks (legacy). Stance and Flags are regular Cockpit widgets. The website demo lists labs under an **Experimental** rail group (WASM turns the labs flag on only while those widgets are selected).
 - Every widget has font size, bold, opacity, and snap-to-monitor. Hold **Ctrl** and drag to move or resize.
 - Overlay font families: default **Exo 2**. Also Segoe / Arial / Tahoma / Roboto, **Teko**, **Goldman**, **Montserrat**. Old ini keys `agency` / `industry` / `faster` map to Exo 2 / Teko / Goldman. `bebas` and `impact` map to Goldman and Montserrat.
-- Standings / relative / map visibility is copied onto the snapshot (`s.show_*`). Minimap / radar / dash / ticker / sys / stance read `cfg.show_*` directly. Sector and Delta Bar also require `experimental_unlocked()`.
+- Minimap / radar / dash / ticker / sys / stance / flag read `cfg.show_*` directly. Sector and Delta Bar also require `experimental_unlocked()`.
 - All widgets draw when session data is present (`on_track`, telemetry, standings, or riders) — including replay / spectate, which never set `RunInit`. They hide when the snapshot is empty (menus, lobby, garage) and when MX Bikes is not running. Hold Ctrl for layout boxes; that still forces a draw. The Holeshot HUD icon stays in the top-right whenever the overlay window is on the game (proof it is compositing); a click opens settings even while Ctrl is down. The settings key toggles settings closed if it is already open. A top plaque explains a blank HUD: no widget on (F8 → Show on overlay) or no live plugin data (fully quit MX Bikes and start it again).
 - Optional in-game HUD (`ingame_hud`) still draws a simpler standings + relative in C++ (`src/hud/widgets.cpp`). Overlay work does not go there.
 
 ## Shared rider colors (map, minimap, relative rows)
 
-Default other-rider color is dark slate. **Blue** only if they are a lap ahead **and** closing from behind. **Red** only if you are a lap ahead **and** closing on them. You are always orange. Off in warmup (`is_warmup`) — practice lap counts are not race lapping. See `lap_rel` / `rider_dot_col` in `render.rs`.
+Default other-rider color is dark slate. **Blue** only if they are a lap ahead **and** closing from behind. **Red** only if you are a lap ahead **and** closing on them. Two (or more) laps down is still blue when they close from behind — `other_laps_ahead` prefers `gap_laps` over `num_laps` so a lapped rider whose completed-lap count sits on the race lap does not invert the leader to red. You are always orange. Off in warmup (`is_warmup`) — practice lap counts are not race lapping. See `lap_rel` / `rider_dot_col` in `render.rs`.
 
 ## How to log a change
 

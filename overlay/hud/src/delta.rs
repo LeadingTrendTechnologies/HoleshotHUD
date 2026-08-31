@@ -145,6 +145,7 @@ impl LapTape {
 
 pub(crate) struct DeltaEngine {
     track_key: String,
+    bike_key: String,
     current: LapTape,
     reference: Option<LapTape>,
     ref_lap_ms: i32,
@@ -170,6 +171,7 @@ impl DeltaEngine {
     fn new() -> Self {
         Self {
             track_key: String::new(),
+            bike_key: String::new(),
             current: LapTape::new(),
             reference: None,
             ref_lap_ms: 0,
@@ -189,10 +191,20 @@ impl DeltaEngine {
         }
     }
 
-    fn reset_track(&mut self, key: String) {
+    fn reset_track(&mut self, track: String, bike: String) {
         *self = Self::new();
-        self.track_key = key.clone();
-        let pb = track_pb::bind(&key);
+        self.track_key = track.clone();
+        self.bike_key = bike.clone();
+        let pb = track_pb::bind(&track, &bike);
+        if pb.has_tape() {
+            self.reference = Some(LapTape::from_saved(pb.bins));
+            self.ref_lap_ms = pb.lap_ms;
+        }
+    }
+
+    fn adopt_bike(&mut self, bike: String) {
+        self.bike_key = bike.clone();
+        let pb = track_pb::bind(&self.track_key, &bike);
         if pb.has_tape() {
             self.reference = Some(LapTape::from_saved(pb.bins));
             self.ref_lap_ms = pb.lap_ms;
@@ -200,9 +212,21 @@ impl DeltaEngine {
     }
 
     pub fn tick(&mut self, s: &Snapshot) -> DeltaView {
-        let key = track_key(s);
-        if !key.is_empty() && key != self.track_key {
-            self.reset_track(key);
+        let track = cstr(&s.track_name).to_string();
+        let bike_now = track_pb::bike_class(&s.local_bike());
+        if !track.is_empty() {
+            let bike = if !bike_now.is_empty() {
+                bike_now
+            } else {
+                self.bike_key.clone()
+            };
+            if track != self.track_key || bike != self.bike_key {
+                if track == self.track_key && self.bike_key.is_empty() && !bike.is_empty() {
+                    self.adopt_bike(bike);
+                } else {
+                    self.reset_track(track, bike);
+                }
+            }
         }
 
         let pos = lap_pos(s);
@@ -276,10 +300,6 @@ impl DeltaEngine {
     }
 }
 
-fn track_key(s: &Snapshot) -> String {
-    cstr(&s.track_name).to_string()
-}
-
 /// Plugin `local_track_pos == 1.0` is the line, not a wrap. `rem_euclid(1.0)` is 0.0
 /// and would look like S/F while the clock is still the finished lap.
 pub(crate) fn lap_pos(s: &Snapshot) -> f32 {
@@ -351,7 +371,7 @@ fn try_commit(st: &mut DeltaEngine, lap_ms: i32) {
         st.reference = Some(st.current.clone());
         st.ref_lap_ms = lap_ms;
         if !st.track_key.is_empty() {
-            track_pb::commit_tape(&st.track_key, lap_ms, st.current.bins);
+            track_pb::commit_tape(&st.track_key, &st.bike_key, lap_ms, st.current.bins);
         }
         st.new_best_at = Some(Instant::now());
     }
@@ -409,6 +429,7 @@ fn live_view(st: &mut DeltaEngine, pos: f32, cur_ms: i32, dt: f32) -> DeltaView 
 
 static STORE: Mutex<DeltaEngine> = Mutex::new(DeltaEngine {
     track_key: String::new(),
+    bike_key: String::new(),
     current: LapTape {
         bins: [0; BINS],
         filled: 0,
@@ -469,9 +490,10 @@ pub fn view() -> DeltaView {
 /// Drop the in-memory tape after clearing the saved file.
 pub fn reload_saved() {
     if let Ok(mut g) = STORE.lock() {
-        let key = g.track_key.clone();
-        if !key.is_empty() {
-            g.reset_track(key);
+        let track = g.track_key.clone();
+        let bike = g.bike_key.clone();
+        if !track.is_empty() {
+            g.reset_track(track, bike);
         } else {
             g.reference = None;
             g.ref_lap_ms = 0;
@@ -499,6 +521,14 @@ fn snap(track: &str, pos: f32, cur_ms: i32, last_ms: i32, lap: i32) -> Snapshot 
     s.track_length = 1600.0;
     crate::shm::write_name(&mut s.track_name, track);
     s
+}
+
+#[cfg(test)]
+fn with_bike(s: &mut Snapshot, bike: &str) {
+    s.local_race_num = 1;
+    s.standing_count = 1;
+    s.standings[0].race_num = 1;
+    crate::shm::write_name(&mut s.standings[0].bike, bike);
 }
 
 #[cfg(test)]
@@ -793,7 +823,7 @@ mod tests {
         for i in 0..BINS {
             bins[i] = 100 + (i as i32) * 280;
         }
-        assert!(track_pb::commit_tape("Saved", 72_000, bins));
+        assert!(track_pb::commit_tape("Saved", "", 72_000, bins));
         let mut eng = DeltaEngine::new();
         let first = eng.tick(&snap("Saved", 0.05, 400, 72_000, 2));
         assert!(first.ready);
@@ -870,5 +900,57 @@ mod tests {
         tape.push(0.61, 100);
         assert_eq!(tape.filled, 3);
         assert_eq!(tape.bins[((0.61 * BINS as f32) as usize).min(BINS - 1)], 0);
+    }
+
+    #[test]
+    fn other_bike_does_not_load_saved_tape() {
+        let _lock = track_pb::exclusive_test();
+        let n = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("mxbo-delta-bike-{n}"));
+        track_pb::set_store_dir(dir.clone());
+        let mut bins = [0; BINS];
+        for i in 0..BINS {
+            bins[i] = 100 + (i as i32) * 280;
+        }
+        assert!(track_pb::commit_tape("Saved", "YZ450F", 72_000, bins));
+        let mut eng = DeltaEngine::new();
+        let mut two = snap("Saved", 0.05, 400, 72_000, 2);
+        with_bike(&mut two, "YZ250F");
+        let v = eng.tick(&two);
+        assert!(!v.ready, "250 must not load the 450 tape");
+        assert!(!v.has_delta);
+        let mut four = snap("Saved", 0.05, 400, 72_000, 2);
+        with_bike(&mut four, "YZ450F");
+        let mut eng2 = DeltaEngine::new();
+        let v2 = eng2.tick(&four);
+        assert!(v2.ready);
+        assert!(v2.has_delta);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn same_class_loads_saved_tape() {
+        let _lock = track_pb::exclusive_test();
+        let n = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("mxbo-delta-class-{n}"));
+        track_pb::set_store_dir(dir.clone());
+        let mut bins = [0; BINS];
+        for i in 0..BINS {
+            bins[i] = 100 + (i as i32) * 280;
+        }
+        assert!(track_pb::commit_tape("Saved", "YZ250F", 72_000, bins));
+        let mut eng = DeltaEngine::new();
+        let mut honda = snap("Saved", 0.05, 400, 72_000, 2);
+        with_bike(&mut honda, "CRF250R");
+        let v = eng.tick(&honda);
+        assert!(v.ready, "Honda 250 should load the Yamaha 250 tape");
+        assert!(v.has_delta);
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

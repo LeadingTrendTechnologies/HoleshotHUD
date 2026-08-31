@@ -27,7 +27,7 @@ Status labels: `1` DNS, `3` OUT, `4` DSQ, else PIT if `pit != 0`.
 - In replay / spectate, clicking a rider's **name** moves the game camera to them (`SpectateVehicles`). The overlay only captures that click while hovering a name; riding is not affected.
 - Best lap in the field is purple.
 - Bike column is a colored badge (`bike_color` from bike name + category). A skew bar after **Position** uses the same accent.
-- Header / footer are three `BoardField` slots each (session time, riders, etc.).
+- Header / footer are three `BoardField` slots each (session time, riders, fuel, etc.).
 - Name column uses its configured width (and only shrinks when the table is too narrow); other columns keep configured widths. The plaque hugs that column pack, so leftover widget width is not empty glass.
 - Rows slide when order changes (`ST_SLIDE`).
 
@@ -43,8 +43,15 @@ Default columns on: Position, Number, Name, Gap, Fastest, Last lap.
 - Leaving replay must drop camera focus back to you. A stuck spectate target keeps their row highlighted and starves the dash of your telemetry.
 - Missing `st_stripe` in the ini keeps alternating rows on.
 - Alternating rows must still read at **Background** 100% (lift, not extra black on night-ink).
+- Fuel header/footer is liters/US gallons (`Fuel`) or tank percent (`Fuel %`). Empty volume is `0.0`; `--` / `--%` only when tank size is missing.
 
 ## Change log
+
+- 2026-08-29 — **Fuel %** is a separate header/footer option from volume.
+
+- 2026-08-29 — Fuel reads as liters or US gallons from Units, not percent.
+
+- 2026-08-29 — Fuel level is a header/footer option (`BoardField::Fuel`). Percent of the tank from SHM `fuel` / `maxFuel`. Restart MX Bikes after this plugin so the V10 mapping is live.
 
 - 2026-08-27 — Plaque width hugs the columns so leftover widget space is not empty glass. Fresh-install board is 20% of the screen as a max (was 30%). Existing layouts in the ini are unchanged.
 

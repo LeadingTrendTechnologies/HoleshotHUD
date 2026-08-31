@@ -156,22 +156,28 @@ impl Sampler {
     fn note_fps(&mut self, game_seq: Option<u32>) {
         let now = Instant::now();
         if let Some(seq) = game_seq {
+            // SHM `seq` is a seqlock, not a frame counter: each plugin Draw
+            // publish does odd (lock) then even (unlock), so it advances by 2.
+            // Using the raw delta made 70 game FPS read as 140, and falling
+            // through to the overlay frame counter then overwrote that with
+            // the HUD loop (~38), so the meter bounced between the two.
             if let Some(prev) = self.last_seq_at {
                 let dt = now.duration_since(prev).as_secs_f32();
                 if dt >= 0.35 {
-                    let n = seq.wrapping_sub(self.last_seq);
+                    let n = shm_publishes(self.last_seq, seq);
                     if n > 0 && n < 400 {
                         self.fps = n as f32 / dt;
                     }
                     self.last_seq = seq;
                     self.last_seq_at = Some(now);
-                    return;
                 }
             } else {
                 self.last_seq = seq;
                 self.last_seq_at = Some(now);
             }
+            return;
         }
+        self.last_seq_at = None;
         self.frames += 1;
         let dt = now.duration_since(self.frames_at).as_secs_f32();
         if dt >= 0.4 {
@@ -217,6 +223,11 @@ impl Sampler {
         let bits = (octets - prev) as f32 * 8.0 / dt;
         ((bits / speed as f32) * 100.0).clamp(0.0, 100.0)
     }
+}
+
+/// Seqlock `seq` advances by 2 per plugin Draw publish (odd lock, even unlock).
+fn shm_publishes(prev: u32, next: u32) -> u32 {
+    next.wrapping_sub(prev) / 2
 }
 
 struct FoundPids {
@@ -485,5 +496,17 @@ fn net_totals() -> (u64, u64) {
         }
         FreeMibTable(table as *const _);
         (best_octets, best_speed)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::shm_publishes;
+
+    #[test]
+    fn seqlock_delta_is_half_the_seq_step() {
+        assert_eq!(shm_publishes(0, 140), 70);
+        assert_eq!(shm_publishes(10, 10), 0);
+        assert_eq!(shm_publishes(u32::MAX - 1, 2), 2);
     }
 }

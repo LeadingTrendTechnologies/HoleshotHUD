@@ -905,8 +905,11 @@ pub(crate) fn overtime_base(s: &Snapshot) -> i32 {
     let local = focus_num_laps(s);
     let lead = leader_num_laps(s);
     let local0 = OVERTIME_LOCAL_BASE.load(Ordering::Relaxed);
-    // Ignore empty standings (0/0 at expiry). Rebase once real laps reappear.
-    if local > 0 && (local0 < 0 || local0 == 0) {
+    // extras_started without recursing: leader past the frozen expiry base.
+    let started = overtime_active(s) && base > 0 && lead > base;
+    // High-water the timed-lap count. Standings often reset to 0 when +1 is published
+    // late; following that drop would fire white/checkered three laps early.
+    if local > 0 && (local0 < 0 || (local > local0 && !started)) {
         OVERTIME_LOCAL_BASE.store(local, Ordering::Relaxed);
     }
     if base < 0 || base == 0 {
@@ -937,7 +940,10 @@ pub(crate) fn note_overtime_base(s: &Snapshot) {
     let _ = overtime_base(s);
     let local = focus_num_laps(s);
     if local > 0 && !extras_started(s) {
-        OVERTIME_LOCAL_BASE.store(local, Ordering::Relaxed);
+        let prev = OVERTIME_LOCAL_BASE.load(Ordering::Relaxed);
+        if local > prev {
+            OVERTIME_LOCAL_BASE.store(local, Ordering::Relaxed);
+        }
     }
 }
 
@@ -1167,6 +1173,7 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
         LAST_SESSION_CLOCK.store(0, Ordering::Relaxed);
         IN_GATE.store(0, Ordering::Relaxed);
         SESSION_EXPIRED.store(1, Ordering::Relaxed);
+        let _ = overtime_base(s);
         return Some(0);
     }
     LAST_SESSION_CLOCK.store(clock, Ordering::Relaxed);
@@ -1348,6 +1355,7 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
             CHECKERED_LATCH.store(0, Ordering::Relaxed);
             return Some(remain);
         }
+        let _ = overtime_base(s);
         return Some(0);
     }
 
@@ -1374,6 +1382,7 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
         && (remain <= 800 || (started && timed_out))
     {
         SESSION_EXPIRED.store(1, Ordering::Relaxed);
+        let _ = overtime_base(s);
         return Some(0);
     }
     Some(remain)
@@ -1384,6 +1393,16 @@ pub(crate) fn overtime_active(s: &Snapshot) -> bool {
         && RACE_ARMED.load(Ordering::Relaxed) == 1
         && SAW_SESSION_TIME.load(Ordering::Relaxed) == 1
         && SESSION_EXPIRED.load(Ordering::Relaxed) == 1
+}
+
+/// 5–20 min race clock already expired, extras field still 0. MX Bikes often
+/// publishes `session_laps = 1` a lap later and resets standings when it does.
+fn timed_race_awaiting_extras(s: &Snapshot) -> bool {
+    RACE_ARMED.load(Ordering::Relaxed) == 1
+        && SESSION_EXPIRED.load(Ordering::Relaxed) == 1
+        && !is_lap_race(s)
+        && s.session_laps <= 0
+        && standard_race_minutes(session_len_ms(s.session_length))
 }
 
 pub(crate) fn prestart(s: &Snapshot) -> bool {
@@ -1632,10 +1651,14 @@ fn format_session_banner(s: &Snapshot, remain: Option<i32>) -> (char, String) {
         if overtime_active(s) {
             return ('\u{f11e}', overtime_lap_text(s));
         }
-        // Warmup/practice over: hide the clock (no sticky 00:00 / 00:30).
+        // Timed race over, extras not published yet. Don't look like warmup ended.
         if s.session_laps <= 0
             && (remain <= 0 || SESSION_EXPIRED.load(Ordering::Relaxed) == 1)
         {
+            if timed_race_awaiting_extras(s) {
+                let _ = overtime_base(s);
+                return ('\u{f2f2}', "00:00".into());
+            }
             return ('\u{f2f2}', String::new());
         }
         ('\u{f2f2}', timed_clock_text(s, remain))

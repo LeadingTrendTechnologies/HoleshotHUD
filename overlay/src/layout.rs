@@ -17,6 +17,7 @@ enum Target {
     Sector,
     Delta,
     Stance,
+    Flag,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -54,6 +55,7 @@ pub struct Editor {
     sector: Option<Rect>,
     delta: Option<Rect>,
     stance: Option<Rect>,
+    flag: Option<Rect>,
     drag: Option<Drag>,
     mouse_was_down: bool,
 }
@@ -99,6 +101,9 @@ impl Editor {
         }
         if let Some(s) = self.stance {
             cfg.stance = s;
+        }
+        if let Some(s) = self.flag {
+            cfg.flag = s;
         }
     }
 
@@ -159,6 +164,7 @@ impl Editor {
                 Target::Sector => self.sector = Some(r),
                 Target::Delta => self.delta = Some(r),
                 Target::Stance => self.stance = Some(r),
+                Target::Flag => self.flag = Some(r),
             }
             let _ = overlay;
         }
@@ -181,6 +187,7 @@ impl Editor {
         self.sector = None;
         self.delta = None;
         self.stance = None;
+        self.flag = None;
     }
 
     fn save(&self, snap: Option<&Snapshot>) {
@@ -198,6 +205,7 @@ impl Editor {
         let sector = self.sector;
         let delta = self.delta;
         let stance = self.stance;
+        let flag = self.flag;
         crate::config::update_config(|cfg| {
             cfg.map = map;
             cfg.standings = standings;
@@ -225,6 +233,9 @@ impl Editor {
             }
             if let Some(s) = stance {
                 cfg.stance = s;
+            }
+            if let Some(s) = flag {
+                cfg.flag = s;
             }
         });
     }
@@ -294,6 +305,7 @@ fn rect_of(s: &Snapshot, ed: &Editor, cfg: &HudConfig, t: Target) -> Rect {
         Target::Sector => ed.sector.unwrap_or(cfg.sector),
         Target::Delta => ed.delta.unwrap_or(cfg.delta),
         Target::Stance => ed.stance.unwrap_or(cfg.stance),
+        Target::Flag => ed.flag.unwrap_or(cfg.flag),
     }
 }
 
@@ -310,17 +322,19 @@ fn shown(s: &Snapshot, cfg: &HudConfig, t: Target) -> bool {
         Target::Sector => cfg.sector_visible(),
         Target::Delta => cfg.delta_visible(),
         Target::Stance => cfg.stance_visible(),
+        Target::Flag => cfg.show_flag,
     }
 }
 
 fn hit(s: &Snapshot, ed: &Editor, cfg: &HudConfig, x: f32, y: f32, ow: i32, oh: i32) -> Option<(Target, Handle)> {
-    const ORDER: [Target; 11] = [
+    const ORDER: [Target; 12] = [
         Target::Dash,
         Target::Ticker,
         Target::Sys,
         Target::Sector,
         Target::Delta,
         Target::Stance,
+        Target::Flag,
         Target::Minimap,
         Target::Radar,
         Target::Map,
@@ -413,6 +427,7 @@ fn min_px(t: Target) -> (f32, f32) {
         Target::Sector => (260.0, 72.0),
         Target::Delta => (220.0, 48.0),
         Target::Stance => (72.0, 36.0),
+        Target::Flag => (72.0, 12.0),
     }
 }
 

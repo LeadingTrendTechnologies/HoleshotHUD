@@ -8,7 +8,7 @@ This widget is **behind the Labs flag**. Settings → Labs → **Experimental wi
 
 - Draw: `draw_delta` in `overlay/hud/src/render.rs`
 - Store: `overlay/hud/src/delta.rs` — records `local_track_pos → current_lap_ms` on a decent lap, then compares live
-- Persist: `overlay/hud/src/track_pb.rs` — `%LOCALAPPDATA%\Holeshot HUD\track-pbs\<track>.json` keyed by `track_name`. Field `used` is unix seconds last ridden/written.
+- Persist: `overlay/hud/src/track_pb.rs` — `%LOCALAPPDATA%\Holeshot HUD\track-pbs\<track>.json` keyed by `track_name`. Field `bikes` is one tape per displacement (`250`, `450`, …). Field `used` is unix seconds last ridden/written. Split positions (`p`) are per track.
 - Tick: `delta::tick` from `overlay/src/main.rs` (not only from `draw`)
 - Settings: `pane_delta` in `overlay/src/settings.rs`
 - Flag: `HudConfig::experimental` (`experimental=1` in Holeshot-HUD.ini)
@@ -26,7 +26,7 @@ Hair lockup (approved `.impeccable/mocks/delta-hair.png`): no Δ plaque, no bord
 - When **Panel opacity** is under 40% (including 0), BEST, LAST, and NEW BEST sit on night-ink pills so they read on the game. A solid panel drops the pills.
 - **SET LAP** until you cross S/F to start a flying lap; **REC** while that first lap fills (no saved tape), with **complete two full laps** in the foot; a time after a tape exists (saved or this session). Orange fill on the hairline tracks coverage while REC. The out-lap does not record.
 
-A decent lap: ~20 s–15 min, coverage across most of 0..1. A dab does not throw the tape away. A faster later lap replaces the reference and the file. Track rename in MX Bikes is a new file (no track id). **Clear this track** deletes the shared file (delta + sectors).
+A decent lap: ~20 s–15 min, coverage across most of 0..1. A dab does not throw the tape away. A faster later lap replaces the reference for **this class** (every 250 shares; a 450 is separate). Track rename in MX Bikes is a new file (no track id). **Clear this track** deletes the shared file (every class, delta + sectors).
 
 ## Do not regress
 
@@ -46,14 +46,16 @@ A decent lap: ~20 s–15 min, coverage across most of 0..1. A dab does not throw
 - Hairline is 2px, fill grows from the center tick. Do not bring back the fat capsule bar.
 - Read the tape by interpolating the nearest filled bins at the fractional index. Do not hold a bin’s time across empty bins, and do not step the live bar from bin to bin.
 - Hairline damping is a ~0.4 s time constant, not a per-frame blend. Do not drop back to a 0.12/frame mix.
-- Persist is one JSON per `track_name` (no MySQL). Write when a faster decent lap commits, or when you visit a track that already has a file and `used` is missing or older than an hour. Load only the current track. Do not write every frame. Do not create a file just to stamp a date (no PB → no file).
-- Shared file with Sectors: `ms`/`bins` plus `s` (sector durations) and `used` (unix seconds). **Clear this track** on either pane wipes both.
+- Do not share a tape across classes. Key by displacement in the bike short name (`250`, `450`). A Yamaha 250 and a Honda 250 share; a 450 PB must not be the 250 reference.
+- Persist is one JSON per `track_name` (no MySQL). Inside it, `bikes` holds one tape per class. Write when a faster decent lap commits, or when you visit a track that already has a file and `used` is missing or older than an hour. Load only the current track. Do not write every frame. Do not create a file just to stamp a date (no PB → no file).
+- Shared file with Sectors: v2 `bikes` map (`ms`/`bins`/`s` per class) plus track-level `p` (sector split positions) and `used` (unix seconds). A v1 file (no `bikes`) is adopted into the first class you ride after the update. Model-name keys (`YZ450F`) fold into `450`. **Clear this track** on either pane wipes the whole file.
 - While **REC**, the foot must say **complete two full laps**. Do not leave REC as the only cue.
 - After a faster decent lap, LAST becomes orange **NEW BEST** plus the time for eight seconds. Do not keep showing LAST on that hold.
 - When Panel opacity is under 40%, BEST and LAST need night-ink pills. Do not leave those captions floating on the game at the Hair default of 0.
 
 ## Change log
 
+- 2026-08-30 — Tape is per class (`250` / `450`) in the track JSON. Yamaha 250 and Honda 250 share. A 450 PB is not the 250 reference. Old v1 files go to the first class you ride.
 - 2026-08-28 — Website demo lists Delta Bar under **Experimental**. WASM turns the labs flag on only while that widget is selected.
 - 2026-08-28 — Track JSON stores `used` (unix seconds). Stamped on PB write and when you visit a track that already has a file (at most hourly). Old files without it still load. No empty files for tracks with no PB.
 - 2026-08-28 — BEST / LAST type is larger. A new PB replaces LAST with orange **NEW BEST** and the time for eight seconds.

@@ -1,6 +1,6 @@
 # Radar
 
-Proximity blips beside and behind you. Settings subtitle: “Riders beside and behind you”. No track outline.
+Proximity blips beside and behind you. Settings subtitle: “Riders beside and behind you”. No track outline. Hairline range arcs at 3 / 6 / 12 m, centered on the bike, with dim **6** and **12** on the lower arcs (hidden when the widget is under 72 px).
 
 ## Code
 
@@ -21,7 +21,9 @@ Proximity blips beside and behind you. Settings subtitle: “Riders beside and b
 
 `radar_in_view`: rear blips if `radar_rear` and behind; side blips if `radar_sides` and `|lat| > 0.4`. You are a white bike silhouette near the top third (`radar_you_frac`).
 
-Blips heat by distance (closer = larger, more orange). Farther blips draw first so near ones sit on top. Crashed riders (and pit / DNS / out / DSQ) use the same `draw_state_mark` triangle as map/minimap — crash is the common one on radar. You get the mark on the white bike if you are down.
+Blips heat by distance (closer = larger, more orange). Farther blips draw first so near ones sit on top. Colors follow the Range Arcs mock: close `#FA7602`, far cream `#E4C670`, both opaque with a same-hue glow (no dark halo). Size is `0.020 + heat×0.014` of the widget, clamped 7–15 px. Crashed riders (and pit / DNS / out / DSQ) use the same `draw_state_mark` triangle as map/minimap — crash is the common one on radar. You get the mark on the white bike if you are down.
+
+**Range rings** (default on) can be toggled in settings / the demo. Off: panel, bike, and blips only. Stroke and 6/12 labels lift with panel opacity so they still read on a solid `#0E0E10` plaque (100% background).
 
 Local position is predicted with `age`, same as map/minimap. Requires telemetry; otherwise only the empty panel + your bike mark draw.
 
@@ -31,7 +33,10 @@ Local position is predicted with `age`, same as map/minimap. Requires telemetry;
 - Do not show far-ahead traffic; the forward cap is 3 m on purpose.
 - Panel opacity default is 86, unlike map/minimap.
 - Nearby crashed riders keep the map crash triangle (`\u{f071}`), not a color-only blip.
-- Do not draw the old orange side/rear zone wedges again; the panel is blips + your bike only.
+- Do not draw the old orange side/rear zone wedges again; the panel is range arcs + blips + your bike.
+- Range rings are circles fitted inside the plaque (12 m touches the sides or the bottom, not stretched to fill height). 6 and 12 sit in a gap on the stroke. Do not draw ovals, a sci-fi sweep, or a compass.
+- Range rings default on; `radar_rings` off still draws the panel, bike, and blips.
+- Solid panel (high `radar_bg`) must keep the rings lighter than `#0E0E10` — do not use the hairline token `#2A2A2E` for the arcs.
 
 ## Change log
 
@@ -40,3 +45,4 @@ Local position is predicted with `age`, same as map/minimap. Requires telemetry;
 - 2026-08-18 — Wiki created. Stretch filter and meter caps documented.
 - 2026-08-19 — Radar blips (and you) show the map crash / state icon so a downed rider beside or behind you is obvious.
 - 2026-08-25 — Removed the cream/orange blind-spot wedges behind the bike mark.
+- 2026-08-29 — **Range rings** toggle (default on). Rings lift with panel opacity so they stay readable at 100% background. Blips are larger (7–15 px), orange→cream with glow.

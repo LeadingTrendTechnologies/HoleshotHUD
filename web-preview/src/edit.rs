@@ -13,6 +13,7 @@ pub enum Target {
     Sys,
     Sector,
     Delta,
+    Flag,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -61,6 +62,7 @@ pub fn parse_target(name: &str) -> Option<Target> {
         "sys" => Target::Sys,
         "sector" => Target::Sector,
         "delta" => Target::Delta,
+        "flag" => Target::Flag,
         _ => return None,
     })
 }
@@ -77,6 +79,7 @@ pub fn rect_of(cfg: &HudConfig, t: Target) -> Rect {
         Target::Sys => cfg.sys,
         Target::Sector => cfg.sector,
         Target::Delta => cfg.delta,
+        Target::Flag => cfg.flag,
     }
 }
 
@@ -96,6 +99,7 @@ pub fn set_rect(cfg: &mut HudConfig, t: Target, r: Rect) {
         Target::Sys => cfg.sys = r,
         Target::Sector => cfg.sector = r,
         Target::Delta => cfg.delta = r,
+        Target::Flag => cfg.flag = r,
     }
 }
 
@@ -202,6 +206,7 @@ pub fn resize(orig: Rect, handle: Handle, nx: f32, ny: f32, grab_x: f32, grab_y:
         Target::Sys => (160.0, 90.0),
         Target::Sector => (88.0, 44.0),
         Target::Delta => (96.0, 48.0),
+        Target::Flag => (72.0, 12.0),
     };
     let min_w = min_w_px / ow;
     let min_h = min_h_px / oh;

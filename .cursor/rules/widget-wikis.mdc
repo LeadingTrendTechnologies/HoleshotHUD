@@ -16,6 +16,7 @@ Before changing a HUD widget, read its page under `wiki/widgets/`. Index: `wiki/
 | Minimap | `wiki/widgets/minimap.md` |
 | Radar | `wiki/widgets/radar.md` |
 | Dash (clock, extras, flags) | `wiki/widgets/dash.md` |
+| Flags | `wiki/widgets/flag.md` |
 | Horizontal Standings (`Ticker`) | `wiki/widgets/horizontal-standings.md` |
 | Systems | `wiki/widgets/systems.md` |
 | Sectors | `wiki/widgets/sector.md` |

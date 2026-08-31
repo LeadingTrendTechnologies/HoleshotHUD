@@ -14,6 +14,7 @@ fn session_lock() -> std::sync::MutexGuard<'static, ()> {
 
 fn reset_session() {
     reset_session_clock_track();
+    reset_flag_display();
     LAST_SESSION_SIG.store(0, Ordering::Relaxed);
     LAST_CUR_LAP.store(0, Ordering::Relaxed);
     HS_SCROLL.with(|a| {
@@ -75,6 +76,8 @@ fn live_snap() -> Snapshot {
         local_rpm: 7200,
         engine_temp: 82.0,
         air_temp: 21.0,
+        fuel: 5.6,
+        max_fuel: 7.0,
         last_lap_ms: 95_000,
         current_lap_ms: 40_000,
         best_lap_ms: 93_500,
@@ -232,6 +235,7 @@ fn hide_widgets(cfg: &mut HudConfig) {
     cfg.show_sector = false;
     cfg.show_delta = false;
     cfg.show_stance = false;
+    cfg.show_flag = false;
 }
 
 fn golden_snap(s: &Snapshot, cfg: &HudConfig) -> Snapshot {
@@ -369,6 +373,11 @@ fn dash_footer_fields_fill_from_live_snapshot() {
     assert_eq!(dash_foot_item(&s, &cfg, DashField::Number).unwrap().1, "#12");
     assert_eq!(dash_foot_item(&s, &cfg, DashField::Air).unwrap().1, "21°C");
     assert_eq!(dash_foot_item(&s, &cfg, DashField::Engine).unwrap().1, "82°C");
+    assert_eq!(dash_foot_item(&s, &cfg, DashField::Fuel).unwrap().1, "5.6 L");
+    let mut imp = cfg.clone();
+    imp.units = crate::config::Units::Imperial;
+    assert_eq!(dash_foot_item(&s, &imp, DashField::Fuel).unwrap().1, "1.5 gal");
+    assert_eq!(dash_foot_item(&s, &cfg, DashField::FuelPct).unwrap().1, "80%");
     assert_eq!(dash_foot_item(&s, &cfg, DashField::Bike).unwrap().1, "YZ450");
     assert_eq!(dash_foot_item(&s, &cfg, DashField::Class).unwrap().1, "MX1");
     let clock = dash_foot_item(&s, &cfg, DashField::LocalTime).unwrap().1;
@@ -390,12 +399,12 @@ fn default_dash_is_compact() {
     reset_session();
     let s = live_snap();
     let cfg = HudConfig::new();
-    let d = dash_layout(&fonts(), &s, &cfg, 1920.0, 1080.0);
+    let d = dash_layout(&fonts(), &s, &cfg, 1920.0, 1080.0, DashFlag::None, 0.0);
     assert!(!d.simple);
     assert!((d.w - cfg.dash.w * 1920.0).abs() < 1.0, "plaque should fill the widget width, got {}", d.w);
     assert!((d.h - cfg.dash.h * 1080.0).abs() < 1.0, "plaque should fill the widget height, got {}", d.h);
-    assert!((cfg.dash.w - 0.115).abs() < 0.001);
-    assert!((cfg.dash.h - 0.108).abs() < 0.001);
+    assert!((cfg.dash.w - 0.111).abs() < 0.001);
+    assert!((cfg.dash.h - 0.115).abs() < 0.001);
 }
 
 #[test]
@@ -403,11 +412,11 @@ fn dash_follows_widget_width() {
     let _g = session_lock();
     reset_session();
     let s = live_snap();
-    let tight = dash_layout(&fonts(), &s, &HudConfig::new(), 1920.0, 1080.0);
+    let tight = dash_layout(&fonts(), &s, &HudConfig::new(), 1920.0, 1080.0, DashFlag::None, 0.0);
     let mut cfg = HudConfig::new();
     cfg.dash.w = 0.40;
-    let d = dash_layout(&fonts(), &s, &cfg, 1920.0, 1080.0);
-    assert_eq!(tight.w, 0.115 * 1920.0);
+    let d = dash_layout(&fonts(), &s, &cfg, 1920.0, 1080.0, DashFlag::None, 0.0);
+    assert_eq!(tight.w, 0.111 * 1920.0);
     assert_eq!(d.w, 0.40 * 1920.0);
 }
 
@@ -416,11 +425,11 @@ fn dash_follows_widget_height() {
     let _g = session_lock();
     reset_session();
     let s = live_snap();
-    let tight = dash_layout(&fonts(), &s, &HudConfig::new(), 1920.0, 1080.0);
+    let tight = dash_layout(&fonts(), &s, &HudConfig::new(), 1920.0, 1080.0, DashFlag::None, 0.0);
     let mut cfg = HudConfig::new();
     cfg.dash.h = 0.28;
-    let d = dash_layout(&fonts(), &s, &cfg, 1920.0, 1080.0);
-    assert_eq!(tight.h, 0.108 * 1080.0);
+    let d = dash_layout(&fonts(), &s, &cfg, 1920.0, 1080.0, DashFlag::None, 0.0);
+    assert_eq!(tight.h, 0.115 * 1080.0);
     assert_eq!(d.h, 0.28 * 1080.0);
 }
 
@@ -433,7 +442,7 @@ fn simple_dash_is_gear_and_speed_only() {
     cfg.dash_simple = true;
     cfg.dash_rev = true;
     cfg.units = crate::config::Units::Imperial;
-    let d = dash_layout(&fonts(), &s, &cfg, 1280.0, 720.0);
+    let d = dash_layout(&fonts(), &s, &cfg, 1280.0, 720.0, DashFlag::None, 0.0);
     assert!(d.simple);
     assert_eq!(d.gear, "3");
     assert_eq!(d.speed, "40");
@@ -463,7 +472,7 @@ fn simple_dash_renders() {
     let (fw, fh) = (640u32, 280u32);
     let mut hud = Pixmap::new(fw, fh).expect("pixmap");
     draw(&mut hud, &fonts(), Some(&s), &cfg, fw, fh, 0.0, false, false, false);
-    let lay = dash_layout(&fonts(), &s, &cfg, fw as f32, fh as f32);
+    let lay = dash_layout(&fonts(), &s, &cfg, fw as f32, fh as f32, DashFlag::None, 0.0);
     let pad = 28.0;
     let cx = (lay.x - pad).max(0.0) as u32;
     let cy = (lay.y - pad).max(0.0) as u32;
@@ -494,6 +503,13 @@ fn standings_and_relative_board_fields() {
     assert_eq!(board_item(&s, &cfg, BoardField::Track).unwrap().1, "Test Track");
     assert_eq!(board_item(&s, &cfg, BoardField::Riders).unwrap().1, "2");
     assert_eq!(board_item(&s, &cfg, BoardField::SessionType).unwrap().1, "Session");
+    assert_eq!(board_item(&s, &cfg, BoardField::Fuel).unwrap().1, "5.6 L");
+    assert_eq!(board_item(&s, &cfg, BoardField::FuelPct).unwrap().1, "80%");
+    let mut empty_fuel = s;
+    empty_fuel.fuel = 0.0;
+    empty_fuel.max_fuel = 0.0;
+    assert_eq!(board_item(&empty_fuel, &cfg, BoardField::Fuel).unwrap().1, "-- L");
+    assert_eq!(board_item(&empty_fuel, &cfg, BoardField::FuelPct).unwrap().1, "--%");
     let mut timed = s;
     timed.session_length = 8;
     timed.session_laps = 0;
@@ -582,6 +598,44 @@ fn lap_rel_colors_lapping_and_lapped_riders() {
     s.riders[1].track_pos = 0.88;
     assert_eq!(rel(&s, 1), LapRel::LappedByMe);
     assert_eq!(rel(&s, 12), LapRel::Same);
+}
+
+#[test]
+fn lap_rel_leader_two_laps_up_stays_blue() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    let rel = |s: &Snapshot, n| {
+        let _ = RaceStore::tick(s);
+        lap_rel(s, n)
+    };
+    s.standings[0].num_laps = 7;
+    s.standings[1].num_laps = 5;
+    s.standings[0].gap_laps = 0;
+    s.standings[1].gap_laps = 2;
+    s.riders[0].track_pos = 0.82;
+    s.local_track_pos = 0.90;
+    s.riders[1].track_pos = 0.90;
+    assert_eq!(rel(&s, 1), LapRel::LappingMe, "two down, closing from behind");
+
+    s.riders[0].track_pos = 0.96;
+    s.local_track_pos = 0.88;
+    s.riders[1].track_pos = 0.88;
+    assert_eq!(rel(&s, 1), LapRel::Same, "two down, already gone by");
+
+    // Completed laps can sit on the race lap (or run ahead after our crossing)
+    // while gap_laps still says we are two down. Must not flip the leader to red.
+    s.standings[0].num_laps = 5;
+    s.standings[1].num_laps = 7;
+    s.riders[0].track_pos = 0.82;
+    s.local_track_pos = 0.90;
+    s.riders[1].track_pos = 0.90;
+    assert_eq!(rel(&s, 1), LapRel::LappingMe, "gap wins over inverted num_laps");
+
+    s.riders[0].track_pos = 0.96;
+    s.local_track_pos = 0.88;
+    s.riders[1].track_pos = 0.88;
+    assert_eq!(rel(&s, 1), LapRel::Same, "inverted laps after they pass is not red");
 }
 
 #[test]
@@ -991,6 +1045,84 @@ fn timed_plus_one_empty_standings_at_expiry_does_not_start_extras() {
     assert_eq!(board_item(&s, &cfg, BoardField::Session).unwrap().1, "1/1");
     assert_eq!(dash_foot_item(&s, &cfg, DashField::LapCount).unwrap().1, "1/1");
     assert_eq!(ticker_meta_label(BoardField::Lap, "1/1"), "LAPS");
+    assert_eq!(ticker_meta_label(BoardField::Fuel, "5.6 L"), "FUEL");
+}
+
+/// Timberline 8:00+1: extras published ~150s after expiry and standings reset to 0.
+/// Overtime bases must stay on the timed-lap counts, not rebuild from lap 1.
+#[test]
+fn eight_minute_plus_one_late_extras_and_standings_reset() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_length = 8;
+    s.session_laps = 0;
+    s.session_time_ms = 30_000;
+    s.current_lap = 1;
+    s.local_speed = 0.0;
+    s.standings[0].num_laps = 0;
+    s.standings[1].num_laps = 0;
+    let _ = session_remain_ms(&s);
+    s.session_time_ms = 8 * 60 * 1000;
+    s.current_lap = 4;
+    s.local_speed = 18.0;
+    s.standings[0].num_laps = 4;
+    s.standings[1].num_laps = 3;
+    let remain = session_remain_ms(&s).expect("countdown while time remains");
+    assert!(remain > 60_000, "expected a real countdown, got {remain}");
+    s.session_time_ms = 8 * 60 * 1000 - 1_000;
+    let _ = session_remain_ms(&s);
+    s.session_time_ms = 400;
+    assert_eq!(session_remain_ms(&s), Some(0));
+    s.session_time_ms = 8 * 60 * 1000;
+    let _ = session_remain_ms(&s);
+    assert_eq!(session_banner(&s).1, "00:00", "extras not published yet");
+    assert_eq!(dash_race_flag(&s), DashFlag::None);
+
+    s.current_lap = 5;
+    s.standings[1].num_laps = 4;
+    s.standings[0].num_laps = 3;
+    let _ = session_remain_ms(&s);
+    assert_eq!(dash_race_flag(&s), DashFlag::None, "uncounted lap, extras still unpublished");
+
+    s.session_laps = 1;
+    s.standings[0].num_laps = 0;
+    s.standings[1].num_laps = 0;
+    s.session_time_ms = 40_000;
+    assert_eq!(session_banner(&s).1, "0/1");
+    assert_eq!(dash_race_flag(&s), DashFlag::None, "empty standings after reset");
+
+    s.standings[0].num_laps = 1;
+    s.standings[1].num_laps = 1;
+    s.current_lap = 2;
+    assert_eq!(dash_race_flag(&s), DashFlag::None);
+    s.standings[0].num_laps = 2;
+    s.standings[1].num_laps = 2;
+    s.current_lap = 3;
+    assert_eq!(
+        dash_race_flag(&s),
+        DashFlag::None,
+        "rebuilt lap 2 is not the extra"
+    );
+    s.standings[0].num_laps = 3;
+    s.standings[1].num_laps = 3;
+    s.current_lap = 4;
+    assert_ne!(
+        dash_race_flag(&s),
+        DashFlag::Checkered,
+        "must not latch checkered three laps early"
+    );
+
+    s.standings[0].num_laps = 5;
+    s.standings[1].num_laps = 4;
+    s.current_lap = 5;
+    assert_eq!(ride_to(&mut s, 0.40), DashFlag::None);
+    s.standings[1].num_laps = 5;
+    s.current_lap = 6;
+    assert_eq!(dash_race_flag(&s), DashFlag::White, "last extra after the timed-lap base");
+    age_white_wave();
+    assert_eq!(ride_to(&mut s, 0.50), DashFlag::None);
+    assert_eq!(cross_line(&mut s, 6, 7), DashFlag::Checkered);
 }
 
 #[test]
@@ -1217,7 +1349,7 @@ fn lapped_tag_tracks_the_classification_gap() {
     assert!(lapped(&s), "two laps down");
     // The tag widens the right column, so make sure the dash still lays out and draws.
     let cfg = HudConfig::new();
-    assert!(dash_layout(&fonts(), &s, &cfg, 1280.0, 720.0).lapped);
+    assert!(dash_layout(&fonts(), &s, &cfg, 1280.0, 720.0, DashFlag::None, 0.0).lapped);
     draw_ok(&s, &cfg);
 
     // Not on the gate, and not while off track.
@@ -2519,6 +2651,46 @@ fn radar_blip_heat_rises_when_closer() {
 }
 
 #[test]
+fn radar_blip_color_matches_the_arcs_mock() {
+    let close = radar_blip_color(1.0);
+    let far = radar_blip_color(0.0);
+    assert!((close.red() - 250.0 / 255.0).abs() < 0.02);
+    assert!(close.green() < far.green());
+    assert_eq!(close.alpha(), 1.0);
+    assert_eq!(far.alpha(), 1.0);
+}
+
+#[test]
+fn radar_blip_radius_grows_with_heat_and_widget_size() {
+    let small_far = radar_blip_radius(0.0, 160.0);
+    let small_close = radar_blip_radius(1.0, 160.0);
+    let large_far = radar_blip_radius(0.0, 400.0);
+    let large_close = radar_blip_radius(1.0, 400.0);
+    assert!((small_far - 7.0).abs() < 1e-4);
+    assert!(small_close >= small_far);
+    assert!(large_close > large_far);
+    assert!(large_close > 12.0);
+    assert!(large_close <= 15.0);
+}
+
+#[test]
+fn radar_rings_lift_off_a_solid_plaque() {
+    let glass = radar_ring_color(0);
+    let solid = radar_ring_color(100);
+    assert!(solid.red() > glass.red() + 0.2);
+    assert!(solid.alpha() >= glass.alpha());
+    assert!(radar_ring_stroke(200.0, 100) > radar_ring_stroke(200.0, 0));
+}
+
+#[test]
+fn radar_fit_scale_keeps_the_12m_ring_inside_the_plaque() {
+    let s = radar_fit_scale(160.0, 160.0, 80.0, 40.0, 0.0, 0.0, 8.0);
+    assert!((s - 6.0).abs() < 1e-4);
+    assert!((radar_ring_radius(12.0, s) - 72.0).abs() < 1e-4);
+    assert!((radar_ring_radius(6.0, s) - 36.0).abs() < 1e-4);
+}
+
+#[test]
 fn minimap_keeps_sparse_track_segments_near_the_rider() {
     let mut s = live_snap();
     s.poly_count = 4;
@@ -2552,6 +2724,12 @@ fn poly_at_frac_walks_centerline_distance() {
     let b = poly_at_frac(&s, 3, 0.75).expect("s2");
     assert!((b.wx - 100.0).abs() < 0.5, "wx {}", b.wx);
     assert!((b.wz - 50.0).abs() < 0.5, "wz {}", b.wz);
+    s.sf_meters = 50.0;
+    let line = poly_at_frac(&s, 3, 0.0).expect("s1 starts at s/f");
+    assert!((line.wx - 50.0).abs() < 0.5, "sf wx {}", line.wx);
+    let s2 = poly_at_frac(&s, 3, 0.25).expect("s2 starts at first split");
+    assert!((s2.wx - 100.0).abs() < 0.5, "s2 wx {}", s2.wx);
+    assert!(s2.wz.abs() < 0.5, "s2 wz {}", s2.wz);
 }
 
 #[test]
@@ -3311,7 +3489,10 @@ fn sector_snap(base: Snapshot) -> Snapshot {
 #[test]
 fn widget_goldens_pin_paint() {
     let _g = session_lock();
+    let _pb = crate::track_pb::exclusive_test();
     reset_session();
+    crate::track_pb::reset_store();
+    crate::sector::reset_engine();
     crate::delta::set_preview(None);
     let base = live_snap();
     let mut rel = base;
@@ -3330,13 +3511,17 @@ fn widget_goldens_pin_paint() {
 
     hide_widgets(&mut cfg);
     cfg.show_map = true;
+    cfg.map_sectors = false;
     let s = golden_snap(&base, &cfg);
     draw_widget_golden("map", &s, &cfg, cfg.map);
+    cfg.map_sectors = true;
 
     hide_widgets(&mut cfg);
     cfg.show_minimap = true;
+    cfg.mini_sectors = false;
     let s = golden_snap(&base, &cfg);
     draw_widget_golden("minimap", &s, &cfg, cfg.minimap);
+    cfg.mini_sectors = true;
 
     hide_widgets(&mut cfg);
     cfg.show_radar = true;
@@ -3415,4 +3600,379 @@ fn widget_goldens_pin_paint() {
     draw_widget_golden("stance-stand", &s, &cfg, cfg.stance);
     set_stance(false);
     draw_widget_golden("stance-sit", &s, &cfg, cfg.stance);
+}
+
+#[test]
+fn flag_widget_draws_nothing_when_no_flag() {
+    let _g = session_lock();
+    reset_session();
+    struct Guard;
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            reset_flag_display();
+        }
+    }
+    let _pg = Guard;
+    set_flag_preview(0);
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg.show_flag = true;
+    let s = golden_snap(&live_snap(), &cfg);
+    let mut px = Pixmap::new(1280, 720).expect("pixmap");
+    draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
+    let cx = (cfg.flag.x + cfg.flag.w * 0.5) * 1280.0;
+    let cy = (cfg.flag.y + cfg.flag.h * 0.5) * 720.0;
+    assert_eq!(sample_px(&px, cx, cy)[3], 0, "no flag should leave the slot empty");
+}
+
+#[test]
+fn flag_widget_paints_checkered() {
+    let _g = session_lock();
+    reset_session();
+    struct Guard;
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            reset_flag_display();
+        }
+    }
+    let _pg = Guard;
+    set_flag_preview(2);
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg.show_flag = true;
+    let s = golden_snap(&live_snap(), &cfg);
+    let mut px = Pixmap::new(1280, 720).expect("pixmap");
+    draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
+    let x0 = cfg.flag.x * 1280.0;
+    let y0 = cfg.flag.y * 720.0;
+    let x1 = x0 + cfg.flag.w * 1280.0;
+    let y1 = y0 + cfg.flag.h * 720.0;
+    let mut lit = 0u32;
+    let mut x = x0;
+    while x < x1 {
+        let mut y = y0;
+        while y < y1 {
+            if sample_px(&px, x, y)[3] > 40 {
+                lit += 1;
+            }
+            y += 8.0;
+        }
+        x += 8.0;
+    }
+    assert!(lit > 20, "checkered flag should fill the widget, lit={lit}");
+}
+
+#[test]
+fn flag_widget_paints_white() {
+    let _g = session_lock();
+    reset_session();
+    struct Guard;
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            reset_flag_display();
+        }
+    }
+    let _pg = Guard;
+    set_flag_preview(1);
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg.show_flag = true;
+    let s = golden_snap(&live_snap(), &cfg);
+    let mut px = Pixmap::new(1280, 720).expect("pixmap");
+    draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
+    let x0 = cfg.flag.x * 1280.0;
+    let y0 = cfg.flag.y * 720.0;
+    let x1 = x0 + cfg.flag.w * 1280.0;
+    let y1 = y0 + cfg.flag.h * 720.0;
+    assert!(
+        rect_has(&px, x0, y0, x1, y1, |p| p[3] > 40 && p[0] > 180 && p[1] > 180 && p[2] > 180),
+        "white flag should paint a light cloth"
+    );
+}
+
+#[test]
+fn flag_default_matches_saved_size() {
+    let cfg = HudConfig::new();
+    assert!((cfg.flag.w - 0.107).abs() < 0.001);
+    assert!((cfg.flag.h - 0.019).abs() < 0.001);
+}
+
+fn mid_race_snap() -> Snapshot {
+    let mut s = live_snap();
+    s.session_laps = 10;
+    s.session_length = 0;
+    s.current_lap = 3;
+    s.standings[0].num_laps = 2;
+    s.standings[1].num_laps = 2;
+    s.local_track_pos = 0.40;
+    s.riders[1].track_pos = 0.40;
+    s.riders[0].track_pos = 0.33;
+    s.local_speed = 18.0;
+    s
+}
+
+fn crash_ahead(s: &mut Snapshot) {
+    s.riders[0].crashed = 1;
+    s.riders[0].track_pos = 0.43;
+    s.local_track_pos = 0.40;
+    s.riders[1].track_pos = 0.40;
+}
+
+fn crash_behind(s: &mut Snapshot) {
+    s.riders[0].crashed = 1;
+    s.riders[0].track_pos = 0.33;
+    s.local_track_pos = 0.40;
+    s.riders[1].track_pos = 0.40;
+}
+
+fn lapping_from_behind(s: &mut Snapshot) {
+    s.standings[0].num_laps = 3;
+    s.riders[0].track_pos = 0.365;
+    s.local_track_pos = 0.40;
+    s.riders[1].track_pos = 0.40;
+}
+
+fn rect_has(px: &Pixmap, x0: f32, y0: f32, x1: f32, y1: f32, pred: impl Fn([u8; 4]) -> bool) -> bool {
+    let mut x = x0;
+    while x < x1 {
+        let mut y = y0;
+        while y < y1 {
+            if pred(sample_px(px, x, y)) {
+                return true;
+            }
+            y += 6.0;
+        }
+        x += 6.0;
+    }
+    false
+}
+
+fn is_yellow(p: [u8; 4]) -> bool {
+    p[3] > 40 && p[0] > 200 && p[1] > 180 && p[2] < 80
+}
+
+fn is_blue(p: [u8; 4]) -> bool {
+    p[3] > 40 && p[2] > 170 && p[0] < 130 && p[1] > 80
+}
+
+#[test]
+fn caution_off_ignores_nearby_crash() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = mid_race_snap();
+    crash_ahead(&mut s);
+    assert_eq!(dash_race_flag(&s), DashFlag::None);
+    assert_eq!(wanted_flag(&s, false, false), DashFlag::None);
+    assert_eq!(caution_flag(&s, true, true), DashFlag::Yellow);
+}
+
+#[test]
+fn caution_yellow_on_nearby_crash() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = mid_race_snap();
+    crash_ahead(&mut s);
+    assert_eq!(wanted_flag(&s, true, false), DashFlag::Yellow);
+    assert_eq!(wanted_flag(&s, false, true), DashFlag::None);
+    crash_behind(&mut s);
+    assert_eq!(caution_flag(&s, true, true), DashFlag::None, "crash behind you is not a yellow");
+    crash_ahead(&mut s);
+    s.riders[0].track_pos = 0.399;
+    assert_eq!(caution_flag(&s, true, true), DashFlag::None, "crash on top of you is not a yellow");
+    crash_ahead(&mut s);
+    s.riders[0].track_pos = 0.55;
+    assert_eq!(caution_flag(&s, true, true), DashFlag::None, "crash far ahead is not a yellow");
+}
+
+#[test]
+fn caution_blue_when_being_lapped() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = mid_race_snap();
+    lapping_from_behind(&mut s);
+    assert_eq!(lap_rel(&s, 1), LapRel::LappingMe);
+    assert_eq!(wanted_flag(&s, false, true), DashFlag::Blue);
+    assert_eq!(wanted_flag(&s, false, false), DashFlag::None);
+    assert_eq!(wanted_flag(&s, true, false), DashFlag::None);
+    s.riders[0].track_pos = 0.28;
+    assert_eq!(lap_rel(&s, 1), LapRel::LappingMe);
+    assert_eq!(wanted_flag(&s, false, true), DashFlag::None, "lapper still too far for blue");
+}
+
+#[test]
+fn caution_yellow_beats_blue() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = mid_race_snap();
+    lapping_from_behind(&mut s);
+    s.rider_count = 3;
+    s.riders[2] = rider(5, 12.0, 5.0, 0.43);
+    s.riders[2].crashed = 1;
+    assert_eq!(caution_flag(&s, true, true), DashFlag::Yellow);
+    assert_eq!(caution_flag(&s, false, true), DashFlag::Blue);
+}
+
+#[test]
+fn caution_loses_to_white_and_checkered() {
+    assert_eq!(merge_caution(DashFlag::White, DashFlag::Yellow), DashFlag::White);
+    assert_eq!(merge_caution(DashFlag::Checkered, DashFlag::Blue), DashFlag::Checkered);
+    assert_eq!(merge_caution(DashFlag::None, DashFlag::Yellow), DashFlag::Yellow);
+}
+
+#[test]
+fn dash_wrap_skips_caution_flags() {
+    assert_eq!(dash_wrap_flag(DashFlag::Yellow, 1.0), (DashFlag::None, 0.0));
+    assert_eq!(dash_wrap_flag(DashFlag::Blue, 1.0), (DashFlag::None, 0.0));
+    assert_eq!(dash_wrap_flag(DashFlag::White, 0.8), (DashFlag::White, 0.8));
+}
+
+#[test]
+fn flag_widget_paints_yellow() {
+    let _g = session_lock();
+    reset_session();
+    struct Guard;
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            reset_flag_display();
+        }
+    }
+    let _pg = Guard;
+    set_flag_preview(3);
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg.show_flag = true;
+    let s = golden_snap(&live_snap(), &cfg);
+    let mut px = Pixmap::new(1280, 720).expect("pixmap");
+    draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
+    let x0 = cfg.flag.x * 1280.0;
+    let y0 = cfg.flag.y * 720.0;
+    let x1 = x0 + cfg.flag.w * 1280.0;
+    let y1 = y0 + cfg.flag.h * 720.0;
+    assert!(rect_has(&px, x0, y0, x1, y1, is_yellow), "yellow flag should paint the cloth");
+}
+
+#[test]
+fn flag_caption_white_covers_the_label() {
+    let _g = session_lock();
+    reset_session();
+    struct Guard;
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            reset_flag_display();
+        }
+    }
+    let _pg = Guard;
+    set_flag_preview(3);
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg.show_flag = true;
+    let s = golden_snap(&live_snap(), &cfg);
+    let mut px = Pixmap::new(1280, 720).expect("pixmap");
+    draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
+    let w = cfg.flag.w * 1280.0;
+    let h = cfg.flag.h * 720.0;
+    let x = cfg.flag.x * 1280.0;
+    let y = cfg.flag.y * 720.0;
+    let gw = flag_caption_group_w(&fonts(), h, 1.0, "YELLOW FLAG");
+    let mid_y = y + h * 0.5;
+    let cx = x + w * 0.5;
+    let mut sx = cx - gw * 0.5 - 10.0;
+    let x1 = cx + gw * 0.5 + 10.0;
+    while sx < x1 {
+        let p = sample_px(&px, sx, mid_y);
+        let yellow_through = p[3] > 40 && p[0] > 160 && p[2] < 120 && (p[0] as i16 - p[2] as i16) > 80;
+        assert!(
+            !yellow_through,
+            "white plaque should cover the label and side pad at {sx:.0}, got {p:?}"
+        );
+        sx += 1.0;
+    }
+}
+
+#[test]
+fn flag_caption_white_leaves_cloth_above_and_below() {
+    let _g = session_lock();
+    reset_session();
+    struct Guard;
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            reset_flag_display();
+        }
+    }
+    let _pg = Guard;
+    set_flag_preview(3);
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg.show_flag = true;
+    let s = golden_snap(&live_snap(), &cfg);
+    let mut px = Pixmap::new(1280, 720).expect("pixmap");
+    draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
+    let x0 = cfg.flag.x * 1280.0;
+    let y0 = cfg.flag.y * 720.0;
+    let w = cfg.flag.w * 1280.0;
+    let h = cfg.flag.h * 720.0;
+    let cx = x0 + w * 0.5;
+    let y1 = y0 + h;
+    let cloth = |p: [u8; 4]| p[3] > 40 && p[0] > 200 && p[1] > 180 && p[2] < 80;
+    assert!(
+        (1..4).any(|dy| cloth(sample_px(&px, cx, y0 + dy as f32))),
+        "cloth should show above the caption white"
+    );
+    assert!(
+        (1..4).any(|dy| cloth(sample_px(&px, x0 + 12.0, y1 - dy as f32))),
+        "cloth should show below the caption white"
+    );
+}
+
+#[test]
+fn flag_widget_paints_blue() {
+    let _g = session_lock();
+    reset_session();
+    struct Guard;
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            reset_flag_display();
+        }
+    }
+    let _pg = Guard;
+    set_flag_preview(4);
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg.show_flag = true;
+    let s = golden_snap(&live_snap(), &cfg);
+    let mut px = Pixmap::new(1280, 720).expect("pixmap");
+    draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
+    let x0 = cfg.flag.x * 1280.0;
+    let y0 = cfg.flag.y * 720.0;
+    let x1 = x0 + cfg.flag.w * 1280.0;
+    let y1 = y0 + cfg.flag.h * 720.0;
+    assert!(rect_has(&px, x0, y0, x1, y1, is_blue), "blue flag should paint the cloth");
+}
+
+#[test]
+fn dash_wrap_does_not_paint_yellow() {
+    let _g = session_lock();
+    reset_session();
+    struct Guard;
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            reset_flag_display();
+        }
+    }
+    let _pg = Guard;
+    set_flag_preview(3);
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg.show_dash = true;
+    let s = golden_snap(&live_snap(), &cfg);
+    let mut px = Pixmap::new(1280, 720).expect("pixmap");
+    draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
+    let x0 = cfg.dash.x * 1280.0 - 8.0;
+    let y0 = (cfg.dash.y * 720.0 - 36.0).max(0.0);
+    let x1 = (cfg.dash.x + cfg.dash.w) * 1280.0 + 8.0;
+    let y1 = cfg.dash.y * 720.0;
+    assert!(
+        !rect_has(&px, x0, y0, x1, y1, is_yellow),
+        "dash wrap must not paint yellow"
+    );
 }

@@ -23,3 +23,4 @@ announce-shots/whats-new.png
 announce-shots/whats-new.txt
 wiki/tests/*
 .impeccable/questions/*
+node_modules/

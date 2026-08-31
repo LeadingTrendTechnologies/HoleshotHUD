@@ -269,7 +269,7 @@ Modest rounds: 4px pills and Download under-clip, 6px HUD boards / steppers / se
 
 HUD bars skew ~4px. Sectors delta plaques skew 4–8px (14% of plaque height) and size to the delta string (measure + 20px, min 48px), centered in the row. Settings heading plaques skew 6–8px and size to the label (measure + 36px, min 72px), left-aligned. Web Download uses a clip-path parallelogram (`polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%)`; 6px cut when stacked), 12px Windows four-square mark, uppercase ExtraBold Italic. Bike pills are short stadium-rectangles, padded 10×4, vertically centered in the row.
 
-Map is a thin Track Line polyline, not a filled region. Radar is a square panel, white bike silhouette, circular blips (closer = larger, more orange). Flags are full-width banners (white flag: diagonal stripes into a white plaque; checkered: wrap the dash).
+Map is a thin Track Line polyline, not a filled region. Radar is a square panel, white bike silhouette, 3/6/12 m range circles that lift off a solid plaque (togglable), circular blips (closer = larger, more orange). Flags are full-width banners (white flag: diagonal stripes into a white plaque; checkered: wrap the dash).
 
 **The TV Plaque Rule.** Skewed bars and manufacturer pills are broadcast hardware. Do not replace them with cards, chips-in-a-row, or Material buttons.
 
@@ -321,7 +321,10 @@ Labs-only until Experimental widgets is on. Hair lockup: no plaque, no border. O
 Horizontal plaque: gear box, RPM/speed stack, large italic orange P#, flag wrap on checkered/white. Shift lights are a green → yellow → red capsule row.
 
 ### Map / Minimap / Radar (signature)
-You = larger Holeshot Orange dot. Others = Field Slate unless lapping/closing. Leader crown and ahead/behind rings are overlays, not recodes of the whole field. Radar: no blind-spot wedges — panel, bike, blips only.
+You = larger Holeshot Orange dot. Others = Field Slate unless lapping/closing. Leader crown and ahead/behind rings are overlays, not recodes of the whole field. Radar: no blind-spot wedges — panel, bike, optional 3/6/12 m circles (lighter on a solid plaque), blips.
+
+### Systems (signature)
+Twin-column night-ink 6px plaque. CPU left, MEM right, four process rows under each, FPS and NET in a footer. Huge ExtraBold Italic numbers. Heat tracks are gold, red when hot; FPS cream when the frame rate is healthy. No green task-manager bars. Orange is not used here.
 
 ### Center Plaque (signature)
 Blocking note on Settings (What’s new after an in-app update). Charcoal Side scrim; centered Panel board. Content-sized heading plaque names the version. Headline in text ink, uppercase dim section labels, orange dots + 12px body. One primary fill: **Got it**. Re-open from App → Updates via secondary **What’s new**.

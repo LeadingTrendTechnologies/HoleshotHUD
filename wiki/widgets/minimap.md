@@ -17,22 +17,24 @@ With a camera-subject pose (live telemetry while riding, or the spectated rider�
 
 Without a pose: whole-track fit, world-up, centered on the poly bounds.
 
-While riding you get an orange motion trail (velocity samples). Spectate has no local vel, so no trail. Others outside the circle are skipped. Default **Dot number** is bike **Number** (map defaults to **Position**). **Sector lines** match Map (dotted S1 / S2); a split outside the zoomed circle is skipped.
+While riding you get an orange motion trail (velocity samples). Spectate has no local vel, so no trail. Others outside the circle are skipped. Default **Dot number** is bike **Number** (map defaults to **Position**). **Sector lines** match Map (dotted S1 / S2 / S3 at sector starts); a gate outside the zoomed circle is skipped.
 
 Toggles match Map, plus **Zoom**. Default background 0.
 
 ## Do not regress
 
 - Sparse centerline used to blank the widget; keep drawing with whatever poly exists (0.1.0).
-- Same lapping color rules as Map. Do not invent a second palette. Off in warmup, same as Map.
+- Same lapping color rules as Map. Do not invent a second palette. Off in warmup, same as Map. Two laps down stays blue when they close from behind.
 - Position labels, leader crown and ahead / behind rings use live `RaceStore` rank during a race (same as Map). See [live race order](../live-order.md).
 - When live, keep north-up (along-track forward = up). Do not rotate the circle with bike roll/yaw as a radar.
 - Follow / north-up must use `subject_pose`, not `has_telemetry` alone, or spectate falls back to a whole-track fit with no orange you-dot.
 - After spectate, live telemetry must put the origin back on you. Do not keep following a stale camera target.
-- Sector lines use the same learned S1 / S2 as Map. Do not paint them orange. Skip a gate that is outside the circle.
+- Sector lines use the same sector-start gates as Map (S1 at S/F, S2 / S3 at learned splits). Do not paint them orange. Skip a gate that is outside the circle.
 
 ## Change log
 
+- 2026-08-30 — Shares the Map fix: sector lines mark where each sector starts, not where the previous one ended.
+- 2026-08-29 — Shares the Map fix: a rider two laps up stays blue (not red) when closing from behind.
 - 2026-08-28 — Thin violet dotted S1 / S2 sector lines, same toggle and splits as Map. Hidden when that split is outside the zoomed circle.
 - 2026-08-27 — Spectate follows the watched rider with the orange you-dot and north-up origin. Overlay drops leftover telemetry while spectating; riding turns it back on so the view snaps to you.
 - 2026-08-25 — Shares the Map's live-order marks: crown and ahead / behind rings follow a pass immediately.

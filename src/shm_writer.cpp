@@ -281,6 +281,8 @@ void ShmWriter::publish(const PluginState& state, const PluginConfig& config)
     }
     local.engineTemp = state.engineTemp();
     local.airTemp = state.airTemp();
+    local.fuel = state.fuel();
+    local.maxFuel = state.maxFuel();
     local.lastLapMs = state.lastLapMs();
     local.bestLapMs = state.bestLapMs();
     local.currentLapMs = state.currentLapMs();

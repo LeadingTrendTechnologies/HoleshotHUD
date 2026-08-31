@@ -21,7 +21,8 @@ pub struct SectorRow {
 }
 
 struct SectorEngine {
-    key: String,
+    track: String,
+    bike: String,
     saved: [i32; 3],
     bins: [i32; BINS],
     has_tape: bool,
@@ -39,7 +40,8 @@ struct SectorEngine {
 impl SectorEngine {
     const fn new() -> Self {
         Self {
-            key: String::new(),
+            track: String::new(),
+            bike: String::new(),
             saved: [0; 3],
             bins: [0; BINS],
             has_tape: false,
@@ -63,19 +65,29 @@ fn live() -> std::sync::MutexGuard<'static, SectorEngine> {
 }
 
 pub fn tick(s: &Snapshot) {
-    let key = cstr(&s.track_name).to_string();
+    let track = cstr(&s.track_name).to_string();
     let mut g = live();
-    if !key.is_empty() {
-        let pb = track_pb::bind(&key);
-        if key != g.key {
-            g.key = key;
-            g.freeze_time = [0; 3];
-            g.freeze_delta = [0; 3];
-            g.freeze_ok = 0;
-            g.freeze_delta_ok = 0;
-            g.last_cur = [0; 3];
-            g.last_clock = false;
-            g.smooth_i = -1;
+    if !track.is_empty() {
+        let bike_now = track_pb::bike_class(&s.local_bike());
+        let pb = track_pb::bind(&track, &bike_now);
+        let bike = if bike_now.is_empty() {
+            g.bike.clone()
+        } else {
+            bike_now
+        };
+        if track != g.track || bike != g.bike {
+            let learned = track == g.track && g.bike.is_empty() && !bike.is_empty();
+            g.track = track;
+            g.bike = bike;
+            if !learned {
+                g.freeze_time = [0; 3];
+                g.freeze_delta = [0; 3];
+                g.freeze_ok = 0;
+                g.freeze_delta_ok = 0;
+                g.last_cur = [0; 3];
+                g.last_clock = false;
+                g.smooth_i = -1;
+            }
             g.split_end = [
                 pb.split_milli[0] as f32 / 1000.0,
                 pb.split_milli[1] as f32 / 1000.0,
@@ -109,9 +121,15 @@ pub fn tick(s: &Snapshot) {
     g.last_clock = clock;
 }
 
-/// S1 and S2 as lap fraction. `0` means that split is not known yet.
+/// S1 and S2 *ends* as lap fraction. `0` means that split is not known yet.
 pub fn split_fracs() -> [f32; 2] {
     live().split_end
+}
+
+/// Where each sector begins. S1 is the line (`0`). S2 / S3 are `0` until that split is known.
+pub fn sector_starts() -> [(f32, &'static str); 3] {
+    let e = live().split_end;
+    [(0.0, "S1"), (e[0], "S2"), (e[1], "S3")]
 }
 
 /// Demo / tests: pin S1 / S2 without a saved tape.
@@ -119,14 +137,19 @@ pub fn set_split_fracs(ends: [f32; 2]) {
     live().split_end = ends;
 }
 
+#[cfg(test)]
+pub(crate) fn reset_engine() {
+    *live() = SectorEngine::new();
+}
+
 pub fn reload() {
     let mut g = live();
-    if g.key.is_empty() {
+    if g.track.is_empty() {
         g.saved = [0; 3];
         g.has_tape = false;
         return;
     }
-    let pb = track_pb::bind(&g.key);
+    let pb = track_pb::bind(&g.track, &g.bike);
     g.saved = pb.sectors;
     g.bins = pb.bins;
     g.has_tape = pb.has_tape();
@@ -170,8 +193,8 @@ pub fn row(s: &Snapshot, i: usize, live_on: bool) -> SectorRow {
     let clock = s.current_lap_ms > CLOCK_ON;
     let cur = s.sector_cur.get(i).copied().unwrap_or(0);
     let mut g = live();
-    let frozen = !g.key.is_empty()
-        && cstr(&s.track_name) == g.key
+    let frozen = !g.track.is_empty()
+        && cstr(&s.track_name) == g.track
         && (g.freeze_ok & (1 << i)) != 0;
     let cur_all = [
         s.sector_cur.first().copied().unwrap_or(0),
@@ -240,8 +263,8 @@ fn freeze_split(g: &mut SectorEngine, s: &Snapshot, i: usize, cur: [i32; 3]) {
     let pos = delta::lap_pos(s);
     if i < 2 && (0.04..0.96).contains(&pos) {
         g.split_end[i] = pos;
-        if !g.key.is_empty() {
-            track_pb::note_split_pos(&g.key, i, pos);
+        if !g.track.is_empty() {
+            track_pb::note_split_pos(&g.track, &g.bike, i, pos);
         }
     }
     g.freeze_time[i] = dur;
@@ -260,7 +283,7 @@ fn freeze_split(g: &mut SectorEngine, s: &Snapshot, i: usize, cur: [i32; 3]) {
             g.freeze_delta_ok &= !(1 << i);
         }
     }
-    if !g.key.is_empty() && track_pb::commit_sector(&g.key, i, dur) {
+    if !g.track.is_empty() && track_pb::commit_sector(&g.track, &g.bike, i, dur) {
         g.saved[i] = dur;
     }
 }
@@ -467,11 +490,11 @@ mod tests {
     }
 
     fn seed_tape() {
-        track_pb::bind("LiveTrack");
-        track_pb::commit_tape("LiveTrack", LAP, linear_bins(LAP));
-        track_pb::commit_sector("LiveTrack", 0, S1);
-        track_pb::commit_sector("LiveTrack", 1, S1);
-        track_pb::commit_sector("LiveTrack", 2, S1);
+        track_pb::bind("LiveTrack", "");
+        track_pb::commit_tape("LiveTrack", "", LAP, linear_bins(LAP));
+        track_pb::commit_sector("LiveTrack", "", 0, S1);
+        track_pb::commit_sector("LiveTrack", "", 1, S1);
+        track_pb::commit_sector("LiveTrack", "", 2, S1);
     }
 
     fn pos_for(ms: i32) -> f32 {
@@ -500,6 +523,10 @@ mod tests {
         set_split_fracs([0.31, 0.64]);
         assert!((split_fracs()[0] - 0.31).abs() < 1e-6);
         assert!((split_fracs()[1] - 0.64).abs() < 1e-6);
+        let starts = sector_starts();
+        assert_eq!(starts[0], (0.0, "S1"));
+        assert!((starts[1].0 - 0.31).abs() < 1e-6 && starts[1].1 == "S2");
+        assert!((starts[2].0 - 0.64).abs() < 1e-6 && starts[2].1 == "S3");
     }
 
     #[test]
@@ -585,7 +612,7 @@ mod tests {
         let r = row(&s, 0, true);
         assert_eq!(r.delta_ms, 23_000 - tape_at(line));
         assert_ne!(r.delta_ms, 0);
-        assert_eq!(track_pb::bind("LiveTrack").sectors[0], 23_000);
+        assert_eq!(track_pb::bind("LiveTrack", "").sectors[0], 23_000);
     }
 
     #[test]
@@ -598,7 +625,7 @@ mod tests {
         s.local_track_pos = line;
         s.sector_cur = [26_000, 0, 0];
         tick(&s);
-        assert_eq!(track_pb::bind("LiveTrack").sectors[0], 24_000);
+        assert_eq!(track_pb::bind("LiveTrack", "").sectors[0], 24_000);
         assert_eq!(row(&s, 0, true).delta_ms, 26_000 - tape_at(line));
     }
 
@@ -659,5 +686,45 @@ mod tests {
         s.sector_delta = [123, 0, 0];
         assert_eq!(row(&s, 0, true).delta_ms, 123);
         assert_eq!(row(&s, 0, true).time_ms, 24_000);
+    }
+
+    fn with_bike(s: &mut Snapshot, bike: &str) {
+        s.local_race_num = 1;
+        s.standing_count = 1;
+        s.standings[0].race_num = 1;
+        write_name(&mut s.standings[0].bike, bike);
+    }
+
+    #[test]
+    fn other_bike_is_not_compared() {
+        let _lock = tmp();
+        track_pb::commit_tape("LiveTrack", "YZ450F", LAP, linear_bins(LAP));
+        track_pb::commit_sector("LiveTrack", "YZ450F", 0, S1);
+        let mut s = snap();
+        with_bike(&mut s, "YZ250F");
+        s.current_lap_ms = 18_000;
+        s.local_track_pos = pos_for(20_000);
+        tick(&s);
+        let r = row(&s, 0, true);
+        assert!(r.live);
+        assert!(!r.has_delta, "250 must not use the 450 tape");
+        assert_eq!(track_pb::bind("LiveTrack", "YZ250F").lap_ms, 0);
+        assert_eq!(track_pb::bind("LiveTrack", "YZ450F").lap_ms, LAP);
+    }
+
+    #[test]
+    fn same_class_uses_saved_tape() {
+        let _lock = tmp();
+        track_pb::commit_tape("LiveTrack", "YZ250F", LAP, linear_bins(LAP));
+        track_pb::commit_sector("LiveTrack", "YZ250F", 0, S1);
+        let mut s = snap();
+        with_bike(&mut s, "CRF250R");
+        let here = pos_for(20_000);
+        s.current_lap_ms = 18_000;
+        s.local_track_pos = here;
+        tick(&s);
+        let r = row(&s, 0, true);
+        assert!(r.has_delta, "Honda 250 should use the Yamaha 250 tape");
+        assert_eq!(r.delta_ms, 18_000 - tape_at(here));
     }
 }

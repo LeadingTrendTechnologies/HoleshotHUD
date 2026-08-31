@@ -220,6 +220,7 @@ impl Preview {
         animate(&mut self.snap, self.t, dt.max(0.0).min(0.08));
         self.cfg.apply_to_snapshot(&mut self.snap);
         sync_delta_preview(&self.active, self.t);
+        sync_flag_preview(&self.active, self.t, self.cfg.flag_yellow, self.cfg.flag_blue);
     }
 
     pub fn frame(&mut self, width: u32, height: u32) -> Vec<u8> {
@@ -303,7 +304,7 @@ fn size_demo_dash(cfg: &mut HudConfig) {
         cfg.dash.h = 0.08;
     } else {
         cfg.dash.w = 0.16;
-        cfg.dash.h = 0.108;
+        cfg.dash.h = 0.115;
     }
     cfg.snap(WidgetId::Dash, SnapAlign::Center);
 }
@@ -319,6 +320,7 @@ fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg.show_sys = name == "sys";
     cfg.show_sector = name == "sector";
     cfg.show_delta = name == "delta";
+    cfg.show_flag = name == "flag";
     // Overlay Labs stays off unless this demo is showing a labs widget.
     cfg.experimental = name == "sector" || name == "delta";
 }
@@ -335,6 +337,7 @@ fn widget_id(name: &str) -> Option<WidgetId> {
         "sys" => WidgetId::Sys,
         "sector" => WidgetId::Sector,
         "delta" => WidgetId::Delta,
+        "flag" => WidgetId::Flag,
         _ => return None,
     })
 }
@@ -355,6 +358,28 @@ fn sync_delta_preview(active: &str, t: f32) {
         cover: 100,
         new_best: false,
     }));
+}
+
+fn sync_flag_preview(active: &str, t: f32, yellow: bool, blue: bool) {
+    if active != "flag" {
+        mxbo_hud::set_flag_preview(-1);
+        return;
+    }
+    let mut codes = [2i32, 1, 0, 0, 0];
+    let mut n = 2;
+    if yellow {
+        codes[n] = 3;
+        n += 1;
+    }
+    if blue {
+        codes[n] = 4;
+        n += 1;
+    }
+    codes[n] = 0;
+    n += 1;
+    let slot = 2.5;
+    let i = ((t % (slot * n as f32)) / slot) as usize;
+    mxbo_hud::set_flag_preview(codes[i.min(n - 1)]);
 }
 
 fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
@@ -400,6 +425,7 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "mini_numbers" => cfg.mini_numbers,
         "radar_sides" => cfg.radar_sides,
         "radar_rear" => cfg.radar_rear,
+        "radar_rings" => cfg.radar_rings,
         "st_bold" => cfg.st_bold,
         "st_stripe" => cfg.st_stripe,
         "rel_bold" => cfg.rel_bold,
@@ -415,6 +441,9 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "sector_live" => cfg.sector_live,
         "sector_bold" => cfg.sector_bold,
         "delta_bold" => cfg.delta_bold,
+        "flag_bold" => cfg.flag_bold,
+        "flag_yellow" => cfg.flag_yellow,
+        "flag_blue" => cfg.flag_blue,
         "ticker_title" => cfg.ticker_title,
         "ticker_autoscroll" => cfg.ticker_autoscroll,
         _ => return None,
@@ -464,6 +493,7 @@ fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
         "mini_numbers" => cfg.mini_numbers = on,
         "radar_sides" => cfg.radar_sides = on,
         "radar_rear" => cfg.radar_rear = on,
+        "radar_rings" => cfg.radar_rings = on,
         "st_bold" => cfg.st_bold = on,
         "st_stripe" => cfg.st_stripe = on,
         "rel_bold" => cfg.rel_bold = on,
@@ -479,6 +509,9 @@ fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
         "sector_live" => cfg.sector_live = on,
         "sector_bold" => cfg.sector_bold = on,
         "delta_bold" => cfg.delta_bold = on,
+        "flag_bold" => cfg.flag_bold = on,
+        "flag_yellow" => cfg.flag_yellow = on,
+        "flag_blue" => cfg.flag_blue = on,
         "ticker_title" => cfg.ticker_title = on,
         "ticker_autoscroll" => cfg.ticker_autoscroll = on,
         _ => {}
@@ -513,6 +546,8 @@ fn int_val(cfg: &HudConfig, key: &str) -> Option<i32> {
         "sector_font" => cfg.sector_font,
         "delta_font" => cfg.delta_font,
         "delta_bg" => cfg.delta_bg,
+        "flag_font" => cfg.flag_font,
+        "flag_bg" => cfg.flag_bg,
         _ => return None,
     })
 }
@@ -534,6 +569,7 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "sys_bg" => cfg.sys_bg = value.clamp(0, 100),
         "sector_bg" => cfg.sector_bg = value.clamp(0, 100),
         "delta_bg" => cfg.delta_bg = value.clamp(0, 100),
+        "flag_bg" => cfg.flag_bg = value.clamp(0, 100),
         "ticker_count" => cfg.ticker_count = value.clamp(3, 15),
         "st_font" => cfg.set_font_pct(WidgetId::Standings, value),
         "rel_font" => cfg.set_font_pct(WidgetId::Relative, value),
@@ -545,6 +581,7 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "sys_font" => cfg.set_font_pct(WidgetId::Sys, value),
         "sector_font" => cfg.set_font_pct(WidgetId::Sector, value),
         "delta_font" => cfg.set_font_pct(WidgetId::Delta, value),
+        "flag_font" => cfg.set_font_pct(WidgetId::Flag, value),
         _ => {}
     }
 }
@@ -655,6 +692,8 @@ fn demo_snapshot() -> Snapshot {
     s.shift_rpm = 11800;
     s.engine_temp = 89.0;
     s.air_temp = 24.0;
+    s.fuel = 5.6;
+    s.max_fuel = 7.0;
     s.session_laps = 12;
     s.session_length = 45 * 60;
     s.session_time_ms = 20 * 60 * 1000;

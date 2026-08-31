@@ -136,6 +136,8 @@ public:
     int localRpm() const { return m_localRpm; }
     float engineTemp() const { return m_engineTemp; }
     float airTemp() const { return m_airTemp; }
+    float fuel() const { return m_fuel; }
+    float maxFuel() const { return m_maxFuel; }
     int lastLapMs() const { return m_lastLapMs; }
     int bestLapMs() const { return m_bestLapMs; }
     int currentLapMs() const;
@@ -207,6 +209,8 @@ private:
     int m_localRpm = 0;
     float m_engineTemp = 0.0f;
     float m_airTemp = 0.0f;
+    float m_fuel = 0.0f;
+    float m_maxFuel = 0.0f;
     float m_sessionTime = 0.0f;
     float m_lastLapEndTime = 0.0f;
     int m_lastLapMs = 0;

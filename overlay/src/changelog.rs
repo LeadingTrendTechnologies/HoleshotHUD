@@ -182,6 +182,7 @@ const WIDGETS: &[(&str, &[&str])] = &[
     ("Stance", &["stance"]),
     ("Sectors", &["sectors", "sector"]),
     ("Delta Bar", &["delta bar"]),
+    ("Flags", &["flags widget"]),
 ];
 
 fn split_by_widget(notes: Notes) -> Notes {
@@ -367,6 +368,8 @@ fn internal_bullet(s: &str) -> bool {
         "race trace",
         "from a log",
         "mxbo.ini",
+        "mongodb",
+        "gist token",
     ];
     MARKERS.iter().any(|m| t.contains(m))
 }
@@ -571,11 +574,19 @@ Ten.
     }
 
     #[test]
-    fn next_notes_follow_current_when_unreleased_empty() {
+    fn next_notes_stamp_unreleased_as_the_next_patch() {
         let n = next_notes().expect("notes");
-        assert_eq!(n.version, crate::update::current_version());
-        assert!(n.headline.to_ascii_lowercase().contains("delta"));
-        assert!(n.sections.iter().any(|s| s.title == "Delta Bar"));
+        let current = crate::update::current_version();
+        let unreleased = parse_section(CHANGELOG, "Unreleased")
+            .and_then(rider_facing)
+            .filter(|n| !n.is_empty());
+        if unreleased.is_some() {
+            assert_eq!(n.version, bump_patch(current));
+        } else {
+            assert_eq!(n.version, current);
+        }
+        assert!(n.headline.to_ascii_lowercase().contains("radar"));
+        assert!(n.sections.iter().any(|s| s.title == "Radar"));
         assert!(n.sections.iter().all(|s| !internal_section(&s.title)));
     }
 
@@ -583,7 +594,7 @@ Ten.
     fn cargo_run_is_a_preview_build() {
         assert!(previewing());
         let n = modal_notes().expect("notes");
-        assert_eq!(n.version, crate::update::current_version());
+        assert_eq!(n.version, next_notes().expect("notes").version);
     }
 
     #[test]
@@ -707,14 +718,14 @@ Follow a rider, sit or stand, and see what changed.
     fn shipped_notes_are_grouped_by_widget() {
         let n = next_notes().expect("notes");
         let titles: Vec<&str> = n.sections.iter().map(|s| s.title.as_str()).collect();
-        assert!(titles.contains(&"Delta Bar"));
-        assert!(titles.contains(&"Sectors"));
-        assert!(titles.contains(&"Standings and Relative"));
-        assert!(titles.contains(&"Map and Minimap"));
-        assert!(titles.contains(&"Dash"));
+        assert!(titles.contains(&"Radar"), "expected Radar in {titles:?}");
         assert!(
-            !titles.contains(&"Relative"),
-            "shared Standings/Relative notes stay one section: {titles:?}"
+            !titles.contains(&"Website"),
+            "website notes stay out of What's new: {titles:?}"
+        );
+        assert!(
+            !titles.iter().any(|t| t.eq_ignore_ascii_case("overlay")),
+            "0.2.0 overlay notes are internals: {titles:?}"
         );
     }
 }

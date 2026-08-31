@@ -107,7 +107,7 @@ fn f9_dump_text(shm: Option<&Shm>, snap: Option<&Snapshot>) -> String {
     let mut o = String::from("No live Snapshot (overlay SHM version mismatch or plugin not publishing).\n");
     o.push_str(&format!("overlay VERSION={VERSION} rust_size={}\n", std::mem::size_of::<Snapshot>()));
     match shm {
-        None => o.push_str("OpenFileMapping Local\\MXBOHudV9 failed. Start MX Bikes with Holeshot-HUD.dlo loaded.\n"),
+        None => o.push_str("OpenFileMapping Local\\MXBOHudV10 failed. Start MX Bikes with Holeshot-HUD.dlo loaded.\n"),
         Some(s) => match s.header() {
             Some((magic, version, seq, size)) => {
                 o.push_str(&format!(

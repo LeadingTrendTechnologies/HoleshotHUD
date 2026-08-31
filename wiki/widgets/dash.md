@@ -16,7 +16,7 @@ This is the most stateful widget. Clock and flag bugs almost always belong here,
 
 A `~Lapped` tag sits beside the lap/clock text whenever `lapped` is true — the focus rider's classification `gap_laps >= 1`, gated on being on track, out of warmup, and off the gate. It widens the right column, so the panel grows once when you get lapped rather than clipping. Amber (`dash_lapped_col`), a little smaller than the lap text and nudged onto its baseline.
 
-Fixed body: gear | RPM + speed | position + lap/clock text. The plaque fills the widget rect: height scales type, extra width is column gap. Hold Ctrl and drag to resize. Default 11.5%×10.8%, bottom-centered. **Simple dash** (`dash_simple`) strips that to a compact lockup: orange skew **gear plaque** (ink-on-accent digit) plus large italic speed with a vertical `MPH`/`KPH` stack. No RPM, place, footer, or rev bar. White/checkered flags still wrap the plaque. The RPM/speed column is sized from the widest digits (`0`–`9`), not the live value, so gear and position do not shift as RPM changes. **P#** and `~Lapped` use live `RaceStore` rank/gaps during a race; session clock still uses game laps. `P#` reads `standing_pos`, so it counts an on-track pass straight away instead of at the line — see [live race order](../live-order.md). It also falls back to `local_race_num` when there is no focus rider. Footer is three slots (default Engine, Air, Best); options include **Local time** (`DashField::LocalTime`, same 12h clock as standings). Optional rev bar from `local_rpm` vs `max_rpm` / `shift_rpm`. Footer and rev stay in the ini while Simple dash is on.
+Fixed body: gear | RPM + speed | position + lap/clock text. The plaque fills the widget rect: height scales type, extra width is column gap. Hold Ctrl and drag to resize. Default 11.1%×11.5%, bottom-centered. **Simple dash** (`dash_simple`) strips that to a compact lockup: orange skew **gear plaque** (ink-on-accent digit) plus large italic speed with a vertical `MPH`/`KPH` stack. No RPM, place, footer, or rev bar. White/checkered flags still wrap the plaque. The RPM/speed column is sized from the widest digits (`0`–`9`), not the live value, so gear and position do not shift as RPM changes. **P#** and `~Lapped` use live `RaceStore` rank/gaps during a race; session clock still uses game laps. `P#` reads `standing_pos`, so it counts an on-track pass straight away instead of at the line — see [live race order](../live-order.md). It also falls back to `local_race_num` when there is no focus rider. Footer is three slots (default Engine, Air, Best); options include **Local time** (`DashField::LocalTime`, same 12h clock as standings), **Fuel** (`DashField::Fuel`, liters or US gallons from Units), and **Fuel %** (`DashField::FuelPct`). Optional rev bar from `local_rpm` vs `max_rpm` / `shift_rpm`. Footer and rev stay in the ini while Simple dash is on.
 
 ## Session clock (hard-won)
 
@@ -24,7 +24,7 @@ Practice, gate, and race time share **one** slot (`session_banner`).
 
 - **Lap moto:** `session_laps >= 4` is always a lap race, even if leftover warmup `10:00` or a leftover timed length (`8:00`) is still in `session_length`. 2- and 3-lap motos are lap races when length is not leftover practice or a standard timed length (5–20 min set). A leftover start board (`00:50` stored as length) is still `1 / 2`, not `0 / +2`. Leaked extras during warmup (length 0, live `05:00`) stay a countdown. If a live **5–20 min** clock has already been seen with 1–3 extras and length is unset/start-board (`TIMED_EXTRAS_HINT`), stay timed — do not flip to `1 / 2` after the gate (6:00+2).
 - Lap motos show `current / N` after green, not leftover minutes. Gate boards (about 8 s–2 min) still show a countdown until the clock runs up or you move. A later 45 s / 30 s board after `00:10` stays a countdown; leftover `08:00` must not replace it until the race clock actually ticks.
-- Timed race: countdown while `session_time_ms` is live (`07:32` only — no `+#` while the clock runs). When time expires, extras use `+1` (or `0 / +2`). Crossing as a backmarker at time-zero does **not** start extras (`local_overtime_taken`). Do not show `1 / 1` for +1 extras — that looks like a 1-lap moto.
+- Timed race: countdown while `session_time_ms` is live (`07:32` only — no `+#` while the clock runs). When time expires, extras use `0/1` then `1/1` for +1, or `0/2` … `2/2` for +2. Crossing as a backmarker at time-zero does **not** start extras (`local_overtime_taken`). `0/1` is the uncounted lap after the clock; `1/1` is the extra. It must advance — do not stick on `1/1` for laps you still have to run.
 - Clock stays `00:00` until you cross or the leader puts a lap on you (0.1.0).
 - Warmup `10:00` must not stick after a race: prefer the ticking clock (0.1.4).
 - Warmup/practice countdown hides when time hits zero (blank — not sticky `00:00` / `00:30`).
@@ -33,7 +33,7 @@ Plugin session fields are messy (warmup length leaking into race). Lots of atomi
 
 ## Flags
 
-Banner above the dash only (`draw_dash_wrap`). No striped side panels over the widget (reverted).
+Banner above the dash only (`draw_dash_wrap`). No striped side panels over the widget (reverted). The **Flags** widget is a separate cloth that uses the same `dash_race_flag` result for white/checkered; turning it on does not hide this wrap. Yellow and blue never wrap the dash.
 
 One path for lap motos and timed extras, driven by `laps_left`. Lap motos count `session_laps - laps_done`. Timed extras count down to the lap total you finish on, `OVERTIME_LOCAL_BASE + 1 + extras`, and stay `None` until the leader starts extras. Do **not** derive the timed count from `extras - local_overtime_done`: that clamps at zero and so reports the same "2 left" on the uncounted lap and on your first extra, which fires white a lap early.
 
@@ -42,7 +42,7 @@ One path for lap motos and timed extras, driven by `laps_left`. Lap motos count 
 - **Checkered has to be earned** (`finish_earned`): you must have completed a lap since the last frame that reported laps still to run (`LAPS_TO_RUN_AT`). Session fields glitch often enough that a single frame reading `laps_left == 0` would otherwise latch the flag mid-race — a timed set momentarily looking like a lap moto puts extras (`2`) against real lap counts (`6`), and `session_laps - laps_done` clamps to `0`.
 - **White is a wave, not a state.** It goes up on the run-in that starts your final lap (`laps_left == 2` and `line_approach`) and comes down `WHITE_WAVE_MS` (5 s) after the lap starts — `white_wave` stamps `WHITE_WAVE_AT` on the first frame of a lap that calls for white (`WHITE_WAVE_LAP` keys it to that lap, so the repeated `dash_layout` calls in a frame do not restamp it). The mid-lap stretch is deliberately bare; the checkered comes back for the finish run-in.
 - **Lapped riders:** once `leader_finished` the race is over, so the white is waved the moment the lap you are on becomes your last, and the checkered comes on your next crossing (`race_over_for_me`), even a lap short. `leader_finished` is `session_laps <= leader_num_laps <= session_laps + 2` on a lap moto (the upper bound rejects a glitched frame where extras masquerade as a lap count; nobody runs more than a cool-down lap past the finish), or `leader_num_laps >= overtime_base + 1 + extras` on a timed set. `LEADER_FIN_LOCAL_BASE` latches your lap count at that moment.
-- **The total shrinks to the race you run.** `effective_race_laps` is `LEADER_FIN_LOCAL_BASE + 1`, clamped to the distance: getting lapped in a 5-lap moto reads `4 / 4`, not `4 / 5`. The clamp matters — your own finish latches the base too, so a winner would otherwise read `5 / 6`. `effective_extra_laps` does the same for timed extras against `OVERTIME_LOCAL_BASE`, and `1 / +2` collapsing to a single extra shows as `+1`. `laps_left` uses the effective total on lap motos, so a lapped rider's flags fall out of ordinary lap counting instead of a special case.
+- **The total shrinks to the race you run.** `effective_race_laps` is `LEADER_FIN_LOCAL_BASE + 1`, clamped to the distance: getting lapped in a 5-lap moto reads `4 / 4`, not `4 / 5`. The clamp matters — your own finish latches the base too, so a winner would otherwise read `5 / 6`. `effective_extra_laps` does the same for timed extras against `OVERTIME_LOCAL_BASE`, and `1/2` collapsing to a single extra shows as `0/1` then `1/1`. `laps_left` uses the effective total on lap motos, so a lapped rider's flags fall out of ordinary lap counting instead of a special case.
 - **The run-in flag stays out across the line** (`hold_across_line`, `RUN_IN_FLAG`, `across_the_line`). Your lap count only catches up a frame or two after you are past the line, and until it does the lap rules still describe the lap you just finished. The approach window also stops `FLAG_LINE_MIN_M` (4 m) short of the line, so without holding that stretch the banner was None long enough for the hide animation to start and then grow again on the other side. The held flag lasts until the count catches up or you leave that window, and a latched checkered supersedes it. Coming back to the same flag after a brief None does not replay the grow (`flag_anim_step`).
 - **Geometry only decides the run-ins.** `line_approach` needs the 4–80 m window (`FLAG_LINE_MIN_M` / `FLAG_LINE_M`), a mid-lap sighting (`LAP_MID_SEEN`), a closing step (`CLOSING_ON_LINE`), and a known line. The latched checkered and the white wave are pure lap counting, so bad track data costs you the run-in flags and can never latch a wrong finish.
 - **Where the line is:** `sf_frac` prefers a position learned from your own lap crossings over `sf_meters`, which sits at `0` whenever the game sends no centerline and would park the window at the centerline origin instead of the timing line. Two crossings must agree within 5% of a lap (`SF_AGREE_FRAC`) before the learned value is trusted, so a rejoin or a stray lap increment cannot move the window.
@@ -57,7 +57,8 @@ One path for lap motos and timed extras, driven by `laps_left`. Lap motos count 
 - Do not let a leftover start-board length cap the live timed countdown (`effective_session_len_ms`).
 - Do not treat leaked extras during a live warmup clock (length 0, `05:00`) as a 2-lap moto.
 - Do not replace a later start board (`00:45` after `00:10`) with frozen `08:00` unless a live remaining clock has already been shown.
-- Do not show timed +1 extras as `1 / 1`; use `+1` after expiry (clock alone while time remains — no `08:00 +1`).
+- Do not stick 8:00+1 on `1/1` for laps still to run. After the clock: `0/1` until you start the extra, `1/1` on that lap (clock alone while time remains — no `08:00 +1`).
+- Do not lower `OVERTIME_LOCAL_BASE` / `OVERTIME_BASE_LAP` when standings reset to 0 after extras appear late on an 8:00+1. Those counts are high-water marks from the timed lap.
 - Do not append `+#` to the live timed countdown; extras text is only after the clock hits zero.
 - Do not start extras from a backmarker cross at time zero; wait for the leader.
 - Do not count the lap you are running when the leader starts extras. It does not count, so `8:00 + 2` from a mid-lap expiry is one uncounted lap then two extras — three crossings, and `laps_left` is `3` on the uncounted lap.
@@ -81,10 +82,21 @@ One path for lap motos and timed extras, driven by `laps_left`. Lap motos count 
 - Do not drop flag wrap in Simple dash. White and checkered still sit on the compact plaque.
 - Do not paint Simple dash gear in lapped-red; the gear tile is Holeshot orange with dark ink.
 - Do not throw away footer / rev settings when Simple dash is on; they come back when it is off.
-- Do not lock dash size to a content-only visual rect. Orange handles and hit testing use the widget rect; the plaque fills that rect. Hold Ctrl and drag to scale. Default is 11.5%×10.8%, bottom-centered.
+- Do not lock dash size to a content-only visual rect. Orange handles and hit testing use the widget rect; the plaque fills that rect. Hold Ctrl and drag to scale. Default is 11.1%×11.5%, bottom-centered.
+- Do not paint yellow or blue on the Dash wrap. Those exist only on the Flags widget, behind **Yellow flag** / **Blue flag**.
+- Fuel footer is liters/US gallons (`Fuel`) or tank percent (`Fuel %`). Empty volume is `0.0 L` / `0.0 gal`; `--` / `--%` only when tank size is missing.
 
 ## Change log
 
+- 2026-08-30 — Default size is 11.1%×11.5% (the in-game lockup we settled on). Untouched 11.5%×10.8% factory rects migrate; a custom placement is left alone.
+- 2026-08-30 — 8:00+1 that publishes extras late and resets standings to 0 no longer sticks on `1/1` or latches checkered three laps early. Overtime bases are high-water marks from the timed lap. Banner is `0/1` until you start the extra, `1/1` on that lap.
+
+- 2026-08-29 — Fuel reads as liters or US gallons from Units, not percent.
+
+- 2026-08-29 — Fuel level is a footer option (`DashField::Fuel`). Same tank percent as Standings / Relative / H-Standings.
+
+- 2026-08-29 — Dash wrap ignores yellow/blue. Those flags are Flags-widget only (`flag_yellow` / `flag_blue`).
+- 2026-08-28 — Flags widget shares `dash_race_flag` / `flag_anim_step`. Dash wrap stays when Flags is on.
 - 2026-08-28 — Website demo starts Dash at 16% width so **~Lapped** fits. Simple dash snaps to a compact 9%×8% lockup (overlay default stays 11.5%×10.8%).
 - 2026-08-27 — Default dash is 11.5%×10.8% (the size we settled on in-game). The plaque fills the widget rect so Ctrl-drag on the orange handles actually resizes it.
 - 2026-08-26 — Simple dash is gear + speed only: orange skew gear plaque, vertical unit stack, flags still wrap. Footer and rev hide in settings but stay in the ini.

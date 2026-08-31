@@ -15,6 +15,8 @@ const BOARD = [
   ["local", "Local time"],
   ["riders", "Riders"],
   ["stype", "Session type"],
+  ["fuel", "Fuel"],
+  ["fuelpct", "Fuel %"],
 ];
 
 const DASH = [
@@ -39,6 +41,8 @@ const DASH = [
   ["local", "Local time"],
   ["bike", "Bike"],
   ["class", "Class"],
+  ["fuel", "Fuel"],
+  ["fuelpct", "Fuel %"],
 ];
 
 const ST_COLS = [
@@ -103,6 +107,7 @@ const NAMES = {
   sys: "Systems",
   sector: "Sectors",
   delta: "Delta Bar",
+  flag: "Flags",
 };
 
 const canvas = document.getElementById("hud");
@@ -115,7 +120,7 @@ stageStatus.hidden = false;
 
 let preview;
 try {
-  await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=0.1.20-exp6", import.meta.url) });
+  await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=0.3.0", import.meta.url) });
   preview = new Preview();
   stageStatus.hidden = true;
 } catch (err) {
@@ -229,9 +234,10 @@ function renderSettings() {
     html += sliderRow("mini_zoom", "Zoom", 0, 100, "%");
   } else if (w === "radar") {
     html += styleControls("radar", "Panel opacity");
-    html += `<div class="section">Blind spots</div>`;
+    html += `<div class="section">On the radar</div>`;
     html += toggleRow("radar_sides", "Riders beside you");
     html += toggleRow("radar_rear", "Riders behind you");
+    html += toggleRow("radar_rings", "Range rings");
   } else if (w === "dash") {
     html += styleControls("dash", "Panel opacity");
     html += toggleRow("dash_simple", "Simple dash");
@@ -257,6 +263,10 @@ function renderSettings() {
     html += styleControls("sector", "Panel opacity");
   } else if (w === "delta") {
     html += styleControls("delta", "Panel opacity");
+  } else if (w === "flag") {
+    html += toggleRow("flag_yellow", "Yellow flag");
+    html += toggleRow("flag_blue", "Blue flag");
+    html += styleControls("flag", "Panel opacity");
   }
   html += snapGrid();
   settings.replaceChildren(el(html));

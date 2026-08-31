@@ -48,8 +48,12 @@ fn main() {
         ("minimap.png", W, H, |c| size_show(c, "minimap", 0.34, 0.58)),
         ("radar.png", W, H, |c| size_show(c, "radar", 0.24, 0.42)),
         ("dash.png", W, H, |c| size_show(c, "dash", 0.22, 0.14)),
+        ("flag.png", W, H, |c| {
+            size_show(c, "flag", 0.107, 0.019);
+            mxbo_hud::set_flag_preview(2);
+        }),
         ("ticker.png", W, H, |c| size_show(c, "ticker", 0.90, 0.10)),
-        ("sys.png", W, H, |c| size_show(c, "sys", 0.30, 0.56)),
+        ("sys.png", W, H, |c| size_show(c, "sys", 0.34, 0.38)),
         ("sector.png", W, H, |c| {
             size_show(c, "sector", 0.42, 0.18);
             c.experimental = true;
@@ -77,6 +81,7 @@ fn main() {
 
     for &(name, w, h, setup) in shots {
         mxbo_hud::delta::set_preview(None);
+        mxbo_hud::set_flag_preview(-1);
         mxbo_hud::sector::reload();
         let mut cfg = base_cfg();
         setup(&mut cfg);
@@ -142,6 +147,7 @@ fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg.show_sys = name == "sys";
     cfg.show_sector = name == "sector";
     cfg.show_delta = name == "delta";
+    cfg.show_flag = name == "flag";
     cfg.experimental = name == "sector" || name == "delta";
 }
 
@@ -158,6 +164,7 @@ fn size_show(cfg: &mut HudConfig, name: &str, w: f32, h: f32) {
         "sys" => WidgetId::Sys,
         "sector" => WidgetId::Sector,
         "delta" => WidgetId::Delta,
+        "flag" => WidgetId::Flag,
         _ => return,
     };
     {
@@ -173,6 +180,7 @@ fn size_show(cfg: &mut HudConfig, name: &str, w: f32, h: f32) {
             WidgetId::Sector => &mut cfg.sector,
             WidgetId::Delta => &mut cfg.delta,
             WidgetId::Stance => &mut cfg.stance,
+            WidgetId::Flag => &mut cfg.flag,
         };
         r.w = w;
         r.h = h;
@@ -257,6 +265,8 @@ fn demo_snapshot() -> Snapshot {
     s.shift_rpm = 11800;
     s.engine_temp = 89.0;
     s.air_temp = 24.0;
+    s.fuel = 5.6;
+    s.max_fuel = 7.0;
     s.session_laps = 12;
     s.session_length = 45 * 60;
     s.session_time_ms = 20 * 60 * 1000;

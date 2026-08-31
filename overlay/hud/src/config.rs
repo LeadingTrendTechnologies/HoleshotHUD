@@ -144,6 +144,20 @@ impl Units {
             Self::Imperial => format!("{:.0}°F", celsius * 9.0 / 5.0 + 32.0),
         }
     }
+
+    /// Game fuel is liters. Imperial uses US gallons (same as MPH / °F).
+    pub fn format_fuel(self, liters: f32, max_liters: f32) -> String {
+        if liters <= 0.0 && max_liters <= 0.01 {
+            return match self {
+                Self::Metric => "-- L".into(),
+                Self::Imperial => "-- gal".into(),
+            };
+        }
+        match self {
+            Self::Metric => format!("{:.1} L", liters.max(0.0)),
+            Self::Imperial => format!("{:.1} gal", liters.max(0.0) * 0.264172),
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -502,6 +516,7 @@ pub enum WidgetId {
     Sector,
     Delta,
     Stance,
+    Flag,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -865,6 +880,7 @@ pub struct HudConfig {
     pub sector: Rect,
     pub delta: Rect,
     pub stance: Rect,
+    pub flag: Rect,
     pub show_standings: bool,
     pub show_relative: bool,
     pub show_map: bool,
@@ -878,6 +894,11 @@ pub struct HudConfig {
     pub sector_live: bool,
     pub show_delta: bool,
     pub show_stance: bool,
+    pub show_flag: bool,
+    /// Nearby crash. Flags widget only. Off by default.
+    pub flag_yellow: bool,
+    /// Someone a lap up closing from behind. Flags widget only. Off by default.
+    pub flag_blue: bool,
     /// Off by default. Labs widgets stay hidden until this is on.
     pub experimental: bool,
     /// Plugin-only: when true the in-game HUD draws. Overlay still saves this key.
@@ -931,6 +952,7 @@ pub struct HudConfig {
     pub mini_dot: DotLabel,
     pub radar_sides: bool,
     pub radar_rear: bool,
+    pub radar_rings: bool,
     pub st_bg: i32,
     pub st_hl: i32,
     pub st_text: TableText,
@@ -949,6 +971,7 @@ pub struct HudConfig {
     pub sector_bg: i32,
     pub delta_bg: i32,
     pub stance_bg: i32,
+    pub flag_bg: i32,
     pub dash_rev: bool,
     /// Gear + speed lockup; hides RPM, place, footer, and the rev bar.
     pub dash_simple: bool,
@@ -972,6 +995,7 @@ pub struct HudConfig {
     pub sector_font: i32,
     pub delta_font: i32,
     pub stance_font: i32,
+    pub flag_font: i32,
     pub st_bold: bool,
     pub rel_bold: bool,
     pub map_bold: bool,
@@ -983,6 +1007,7 @@ pub struct HudConfig {
     pub sector_bold: bool,
     pub delta_bold: bool,
     pub stance_bold: bool,
+    pub flag_bold: bool,
     pub font_family: FontFamily,
     pub units: Units,
     pub start_with_windows: bool,
@@ -1064,10 +1089,10 @@ impl HudConfig {
                 h: 0.22,
             },
             dash: Rect {
-                x: 0.442,
-                y: 0.872,
-                w: 0.115,
-                h: 0.108,
+                x: 0.445,
+                y: 0.865,
+                w: 0.111,
+                h: 0.115,
             },
             ticker: Rect {
                 x: 0.06,
@@ -1078,8 +1103,8 @@ impl HudConfig {
             sys: Rect {
                 x: 0.012,
                 y: 0.36,
-                w: 0.185,
-                h: 0.30,
+                w: 0.086,
+                h: 0.186,
             },
             sector: Rect {
                 x: 0.66,
@@ -1099,6 +1124,12 @@ impl HudConfig {
                 w: 0.11,
                 h: 0.065,
             },
+            flag: Rect {
+                x: 0.447,
+                y: 0.026,
+                w: 0.107,
+                h: 0.019,
+            },
             show_standings: false,
             show_relative: false,
             show_map: false,
@@ -1111,6 +1142,9 @@ impl HudConfig {
             sector_live: true,
             show_delta: false,
             show_stance: false,
+            show_flag: false,
+            flag_yellow: false,
+            flag_blue: false,
             experimental: false,
             ingame_hud: false,
             standings_rows: 12,
@@ -1162,6 +1196,7 @@ impl HudConfig {
             mini_dot: DotLabel::Number,
             radar_sides: true,
             radar_rear: true,
+            radar_rings: true,
             st_bg: 78,
             st_hl: 50,
             st_text: TableText::White,
@@ -1180,6 +1215,7 @@ impl HudConfig {
             sector_bg: 82,
             delta_bg: 0,
             stance_bg: 86,
+            flag_bg: 100,
             dash_rev: true,
             dash_simple: false,
             dash_left: DashField::Engine,
@@ -1202,6 +1238,7 @@ impl HudConfig {
             sector_font: 100,
             delta_font: 100,
             stance_font: 100,
+            flag_font: 100,
             st_bold: false,
             rel_bold: false,
             map_bold: false,
@@ -1213,6 +1250,7 @@ impl HudConfig {
             sector_bold: false,
             delta_bold: false,
             stance_bold: false,
+            flag_bold: false,
             font_family: FontFamily::Exo2,
             units: Units::Metric,
             start_with_windows: false,
@@ -1330,6 +1368,10 @@ impl HudConfig {
                 "stance_y" => cfg.stance.y = f,
                 "stance_w" => cfg.stance.w = f,
                 "stance_h" => cfg.stance.h = f,
+                "flag_x" => cfg.flag.x = f,
+                "flag_y" => cfg.flag.y = f,
+                "flag_w" => cfg.flag.w = f,
+                "flag_h" => cfg.flag.h = f,
                 "show_standings" => cfg.show_standings = b,
                 "show_relative" => cfg.show_relative = b,
                 "show_map" => cfg.show_map = b,
@@ -1342,6 +1384,13 @@ impl HudConfig {
                 "sector_live" => cfg.sector_live = b,
                 "show_delta" => cfg.show_delta = b,
                 "show_stance" => cfg.show_stance = b,
+                "show_flag" => cfg.show_flag = b,
+                "flag_caution" => {
+                    cfg.flag_yellow = b;
+                    cfg.flag_blue = b;
+                }
+                "flag_yellow" => cfg.flag_yellow = b,
+                "flag_blue" => cfg.flag_blue = b,
                 "experimental" | "feature_experimental" | "feature_sector" => cfg.experimental = b,
                 "ingame_hud" => cfg.ingame_hud = b,
                 "standings_rows" => cfg.standings_rows = val.parse().unwrap_or(12).max(3),
@@ -1396,6 +1445,7 @@ impl HudConfig {
                 "mini_dot" => cfg.mini_dot = DotLabel::parse(val),
                 "radar_sides" => cfg.radar_sides = b,
                 "radar_rear" => cfg.radar_rear = b,
+                "radar_rings" => cfg.radar_rings = b,
                 "st_bg" => cfg.st_bg = clamp_pct(val),
                 "st_hl" => cfg.st_hl = clamp_pct(val),
                 "st_text" => cfg.st_text = TableText::parse(val),
@@ -1414,6 +1464,7 @@ impl HudConfig {
                 "sector_bg" => cfg.sector_bg = clamp_pct(val),
                 "delta_bg" => cfg.delta_bg = clamp_pct(val),
                 "stance_bg" => cfg.stance_bg = clamp_pct(val),
+                "flag_bg" => cfg.flag_bg = clamp_pct(val),
                 "dash_rev" => cfg.dash_rev = b,
                 "dash_simple" => cfg.dash_simple = b,
                 "dash_left" => cfg.dash_left = DashField::parse(val),
@@ -1436,6 +1487,7 @@ impl HudConfig {
                 "sector_font" => cfg.sector_font = clamp_font(val),
                 "delta_font" => cfg.delta_font = clamp_font(val),
                 "stance_font" => cfg.stance_font = clamp_font(val),
+                "flag_font" => cfg.flag_font = clamp_font(val),
                 "st_bold" => cfg.st_bold = b,
                 "rel_bold" => cfg.rel_bold = b,
                 "map_bold" => cfg.map_bold = b,
@@ -1447,6 +1499,7 @@ impl HudConfig {
                 "sector_bold" => cfg.sector_bold = b,
                 "delta_bold" => cfg.delta_bold = b,
                 "stance_bold" => cfg.stance_bold = b,
+                "flag_bold" => cfg.flag_bold = b,
                 "font_family" => cfg.font_family = FontFamily::parse(val),
                 "units" => cfg.units = Units::parse(val),
                 "start_with_windows" => cfg.start_with_windows = b,
@@ -1507,6 +1560,7 @@ impl HudConfig {
         }
         migrate_default_dash(&mut cfg.dash);
         migrate_default_sector(&mut cfg.sector);
+        migrate_default_flag(&mut cfg.flag);
         if !saw_first_install || cfg.first_install_version.is_empty() {
             cfg.first_install_version = "unknown".into();
             cfg.save();
@@ -1533,8 +1587,9 @@ impl HudConfig {
              sector_x={}\nsector_y={}\nsector_w={}\nsector_h={}\n\
              delta_x={}\ndelta_y={}\ndelta_w={}\ndelta_h={}\n\
              stance_x={}\nstance_y={}\nstance_w={}\nstance_h={}\n\
+             flag_x={}\nflag_y={}\nflag_w={}\nflag_h={}\n\
              \n[Widgets]\n\
-             show_standings={}\nshow_relative={}\nshow_map={}\nshow_minimap={}\nshow_radar={}\nshow_dash={}\nshow_ticker={}\nshow_sys={}\nshow_sector={}\nshow_delta={}\nshow_stance={}\n\
+             show_standings={}\nshow_relative={}\nshow_map={}\nshow_minimap={}\nshow_radar={}\nshow_dash={}\nshow_ticker={}\nshow_sys={}\nshow_sector={}\nshow_delta={}\nshow_stance={}\nshow_flag={}\n\
              ingame_hud={}\nstandings_rows={}\nrelative_count={}\nticker_count={}\n\
              \n[Standings]\n\
              st_pos={}\nst_num={}\nst_name={}\nst_gap={}\nst_interval={}\nst_laps={}\nst_current={}\nst_best={}\nst_last={}\nst_status={}\n\
@@ -1559,7 +1614,7 @@ impl HudConfig {
              mini_others={}\nmini_sf={}\nmini_sectors={}\nmini_numbers={}\nmini_arrows={}\nmini_crown={}\nmini_place={}\nmini_dot={}\n\
              mini_bg={}\nmini_zoom={}\nmini_font={}\nmini_bold={}\n\
              \n[Radar]\n\
-             radar_sides={}\nradar_rear={}\n\
+             radar_sides={}\nradar_rear={}\nradar_rings={}\n\
              radar_bg={}\nradar_font={}\nradar_bold={}\n\
              \n[Dash]\n\
              dash_rev={}\n\
@@ -1580,6 +1635,8 @@ impl HudConfig {
              \n[Stance]\n\
              stance_bind={}\nstance_mode={}\nstance_style={}\nstance_show_sit={}\n\
              stance_bg={}\nstance_font={}\nstance_bold={}\n\
+             \n[Flag]\n\
+             flag_bg={}\nflag_yellow={}\nflag_blue={}\nflag_font={}\nflag_bold={}\n\
              \n[App]\n\
              font_family={}\nunits={}\nsettings_key={}\nstart_with_windows={}\nminimize_on_close={}\nclose_with_game={}\nopen_with_game={}\nauto_update_on_launch={}\nwhats_new_seen={}\nfirst_install_version={}\nexperimental={}\n",
             self.standings.x,
@@ -1626,6 +1683,10 @@ impl HudConfig {
             self.stance.y,
             self.stance.w,
             self.stance.h,
+            self.flag.x,
+            self.flag.y,
+            self.flag.w,
+            self.flag.h,
             b(self.show_standings),
             b(self.show_relative),
             b(self.show_map),
@@ -1637,6 +1698,7 @@ impl HudConfig {
             b(self.show_sector),
             b(self.show_delta),
             b(self.show_stance),
+            b(self.show_flag),
             b(self.ingame_hud),
             self.standings_rows,
             self.relative_count,
@@ -1735,6 +1797,7 @@ impl HudConfig {
             b(self.mini_bold),
             b(self.radar_sides),
             b(self.radar_rear),
+            b(self.radar_rings),
             self.radar_bg,
             self.radar_font,
             b(self.radar_bold),
@@ -1770,6 +1833,11 @@ impl HudConfig {
             self.stance_bg,
             self.stance_font,
             b(self.stance_bold),
+            self.flag_bg,
+            b(self.flag_yellow),
+            b(self.flag_blue),
+            self.flag_font,
+            b(self.flag_bold),
             self.font_family.key(),
             self.units.key(),
             self.settings_key.key(),
@@ -1830,6 +1898,7 @@ impl HudConfig {
             WidgetId::Sector => self.sector_font,
             WidgetId::Delta => self.delta_font,
             WidgetId::Stance => self.stance_font,
+            WidgetId::Flag => self.flag_font,
         }
     }
 
@@ -1847,6 +1916,7 @@ impl HudConfig {
             WidgetId::Sector => self.sector_font = v,
             WidgetId::Delta => self.delta_font = v,
             WidgetId::Stance => self.stance_font = v,
+            WidgetId::Flag => self.flag_font = v,
         }
     }
 
@@ -1863,6 +1933,7 @@ impl HudConfig {
             WidgetId::Sector => self.sector_bold,
             WidgetId::Delta => self.delta_bold,
             WidgetId::Stance => self.stance_bold,
+            WidgetId::Flag => self.flag_bold,
         }
     }
 
@@ -1879,6 +1950,7 @@ impl HudConfig {
             WidgetId::Sector => self.sector_bold = on,
             WidgetId::Delta => self.delta_bold = on,
             WidgetId::Stance => self.stance_bold = on,
+            WidgetId::Flag => self.flag_bold = on,
         }
     }
 
@@ -1895,6 +1967,7 @@ impl HudConfig {
             WidgetId::Sector => self.sector,
             WidgetId::Delta => self.delta,
             WidgetId::Stance => self.stance,
+            WidgetId::Flag => self.flag,
         }
     }
 
@@ -1917,6 +1990,7 @@ impl HudConfig {
             WidgetId::Sector => &mut self.sector,
             WidgetId::Delta => &mut self.delta,
             WidgetId::Stance => &mut self.stance,
+            WidgetId::Flag => &mut self.flag,
         };
         snap_rect(r, align);
     }
@@ -1962,6 +2036,7 @@ impl HudConfig {
             || self.sector_visible()
             || self.delta_visible()
             || self.stance_visible()
+            || self.show_flag
     }
 }
 
@@ -2092,10 +2167,12 @@ pub enum BoardField {
     LocalTime,
     Riders,
     SessionType,
+    Fuel,
+    FuelPct,
 }
 
 impl BoardField {
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 16] = [
         Self::None,
         Self::Position,
         Self::ClassPos,
@@ -2110,6 +2187,8 @@ impl BoardField {
         Self::LocalTime,
         Self::Riders,
         Self::SessionType,
+        Self::Fuel,
+        Self::FuelPct,
     ];
 
     pub const DEFAULT_HEAD: [Self; 3] = [Self::Session, Self::None, Self::Riders];
@@ -2131,6 +2210,8 @@ impl BoardField {
             Self::LocalTime => "local",
             Self::Riders => "riders",
             Self::SessionType => "stype",
+            Self::Fuel => "fuel",
+            Self::FuelPct => "fuelpct",
         }
     }
 
@@ -2150,6 +2231,8 @@ impl BoardField {
             Self::LocalTime => "Local time",
             Self::Riders => "Riders",
             Self::SessionType => "Session type",
+            Self::Fuel => "Fuel",
+            Self::FuelPct => "Fuel %",
         }
     }
 
@@ -2169,6 +2252,8 @@ impl BoardField {
             "local" | "localtime" => Self::LocalTime,
             "riders" | "count" => Self::Riders,
             "stype" | "sessiontype" => Self::SessionType,
+            "fuel" => Self::Fuel,
+            "fuelpct" | "fuel%" | "fuelpercent" => Self::FuelPct,
             _ => Self::None,
         }
     }
@@ -2183,6 +2268,7 @@ impl BoardField {
             Self::Air => '\u{f72e}',
             Self::Best | Self::SessionBest => '\u{f2f2}',
             Self::SessionType => '\u{f11e}',
+            Self::Fuel | Self::FuelPct => '\u{f52f}',
         }
     }
 
@@ -2214,10 +2300,12 @@ pub enum DashField {
     LocalTime,
     Bike,
     Class,
+    Fuel,
+    FuelPct,
 }
 
 impl DashField {
-    pub const ALL: [Self; 21] = [
+    pub const ALL: [Self; 23] = [
         Self::None,
         Self::Speed,
         Self::Rpm,
@@ -2239,6 +2327,8 @@ impl DashField {
         Self::LocalTime,
         Self::Bike,
         Self::Class,
+        Self::Fuel,
+        Self::FuelPct,
     ];
 
     pub fn key(self) -> &'static str {
@@ -2264,6 +2354,8 @@ impl DashField {
             Self::LocalTime => "local",
             Self::Bike => "bike",
             Self::Class => "class",
+            Self::Fuel => "fuel",
+            Self::FuelPct => "fuelpct",
         }
     }
 
@@ -2290,6 +2382,8 @@ impl DashField {
             Self::LocalTime => "Local time",
             Self::Bike => "Bike",
             Self::Class => "Class",
+            Self::Fuel => "Fuel",
+            Self::FuelPct => "Fuel %",
         }
     }
 
@@ -2316,6 +2410,8 @@ impl DashField {
             "local" | "localtime" => Self::LocalTime,
             "bike" => Self::Bike,
             "class" => Self::Class,
+            "fuel" => Self::Fuel,
+            "fuelpct" | "fuel%" | "fuelpercent" => Self::FuelPct,
             _ => Self::None,
         }
     }
@@ -2337,6 +2433,7 @@ impl DashField {
             Self::Penalty => '\u{f06a}',
             Self::Bike => '\u{f21c}',
             Self::Class => '\u{f0c0}',
+            Self::Fuel | Self::FuelPct => '\u{f52f}',
         }
     }
 }
@@ -2349,7 +2446,7 @@ fn move_to<T>(items: &mut Vec<T>, from: usize, to: usize) {
     items.insert(to, item);
 }
 
-/// Untouched older factory placements pick up the compact in-game size (11.5%×10.8%).
+/// Untouched older factory placements pick up the compact in-game size (11.1%×11.5%).
 fn migrate_default_dash(r: &mut Rect) {
     let untouched = |x: f32, y: f32, w: f32, h: f32| {
         (r.x - x).abs() < 0.001
@@ -2358,10 +2455,10 @@ fn migrate_default_dash(r: &mut Rect) {
             && (r.h - h).abs() < 0.001
     };
     let factory = Rect {
-        x: 0.442,
-        y: 0.872,
-        w: 0.115,
-        h: 0.108,
+        x: 0.445,
+        y: 0.865,
+        w: 0.111,
+        h: 0.115,
     };
     if untouched(0.41, 0.82, 0.18, 0.16)
         || untouched(0.43, 0.86, 0.14, 0.12)
@@ -2369,6 +2466,7 @@ fn migrate_default_dash(r: &mut Rect) {
         || untouched(0.43, 0.87, 0.14, 0.11)
         || untouched(0.43, 0.84, 0.14, 0.14)
         || untouched(0.41, 0.84, 0.18, 0.14)
+        || untouched(0.442, 0.872, 0.115, 0.108)
     {
         *r = factory;
         return;
@@ -2376,7 +2474,28 @@ fn migrate_default_dash(r: &mut Rect) {
     // Slot was narrower than the plaque, so orange handles sat on the visual
     // edge and missed the saved rect. Keep placement; use the visual width.
     if r.w < 0.09 && (r.h - 0.108).abs() < 0.01 {
-        r.w = 0.115;
+        r.w = 0.111;
+    }
+}
+
+fn migrate_default_flag(r: &mut Rect) {
+    let factory = Rect {
+        x: 0.447,
+        y: 0.026,
+        w: 0.107,
+        h: 0.019,
+    };
+    let untouched = |x: f32, y: f32, w: f32, h: f32| {
+        (r.x - x).abs() < 0.001
+            && (r.y - y).abs() < 0.001
+            && (r.w - w).abs() < 0.001
+            && (r.h - h).abs() < 0.001
+    };
+    if untouched(0.442, 0.032, 0.116, 0.155)
+        || untouched(0.34, 0.032, 0.32, 0.072)
+        || untouched(0.414, 0.032, 0.172, 0.030)
+    {
+        *r = factory;
     }
 }
 
@@ -2502,6 +2621,7 @@ mod tests {
         assert!(!cfg.show_map);
         assert!(!cfg.show_minimap);
         assert!(!cfg.show_radar);
+        assert!(cfg.radar_rings);
         assert!(!cfg.show_dash);
         assert!(!cfg.show_ticker);
         assert!(!cfg.show_sys);
@@ -2509,6 +2629,9 @@ mod tests {
         assert!(cfg.sector_live);
         assert!(!cfg.show_delta);
         assert!(!cfg.show_stance);
+        assert!(!cfg.show_flag);
+        assert!(!cfg.flag_yellow);
+        assert!(!cfg.flag_blue);
         assert!(!cfg.any_overlay_widget());
         assert_eq!(cfg.stance_style, StanceStyle::Text);
         assert!(!cfg.stance_show_sit);
@@ -2526,8 +2649,8 @@ mod tests {
             h: 0.46,
         });
         assert_eq!(cfg.relative.w, 0.20);
-        assert_eq!(cfg.dash.w, 0.115);
-        assert_eq!(cfg.dash.h, 0.108);
+        assert_eq!(cfg.dash.w, 0.111);
+        assert_eq!(cfg.dash.h, 0.115);
         assert!(!cfg.dash_simple);
         assert_eq!(cfg.dash_left, DashField::Engine);
         assert_eq!(cfg.dash_mid, DashField::Air);
@@ -2548,6 +2671,7 @@ mod tests {
             WidgetId::Sector,
             WidgetId::Delta,
             WidgetId::Stance,
+            WidgetId::Flag,
         ] {
             assert_eq!(cfg.font_pct(id), 100);
         }
@@ -2562,8 +2686,8 @@ mod tests {
             h: 0.16,
         };
         super::migrate_default_dash(&mut r);
-        assert!((r.w - 0.115).abs() < 0.001);
-        assert!((r.h - 0.108).abs() < 0.001);
+        assert!((r.w - 0.111).abs() < 0.001);
+        assert!((r.h - 0.115).abs() < 0.001);
         let mut mid = crate::shm::Rect {
             x: 0.43,
             y: 0.86,
@@ -2571,7 +2695,7 @@ mod tests {
             h: 0.12,
         };
         super::migrate_default_dash(&mut mid);
-        assert!((mid.h - 0.108).abs() < 0.001);
+        assert!((mid.h - 0.115).abs() < 0.001);
         let mut tiny = crate::shm::Rect {
             x: 0.43,
             y: 0.90,
@@ -2579,7 +2703,16 @@ mod tests {
             h: 0.08,
         };
         super::migrate_default_dash(&mut tiny);
-        assert!((tiny.h - 0.108).abs() < 0.001);
+        assert!((tiny.h - 0.115).abs() < 0.001);
+        let mut compact = crate::shm::Rect {
+            x: 0.442,
+            y: 0.872,
+            w: 0.115,
+            h: 0.108,
+        };
+        super::migrate_default_dash(&mut compact);
+        assert!((compact.w - 0.111).abs() < 0.001);
+        assert!((compact.h - 0.115).abs() < 0.001);
         let mut slot = crate::shm::Rect {
             x: 0.4536885,
             y: 0.6840987,
@@ -2587,7 +2720,7 @@ mod tests {
             h: 0.10811812,
         };
         super::migrate_default_dash(&mut slot);
-        assert!((slot.w - 0.115).abs() < 0.001);
+        assert!((slot.w - 0.111).abs() < 0.001);
         assert!((slot.y - 0.6840987).abs() < 0.0001);
         let mut custom = crate::shm::Rect {
             x: 0.50,
@@ -2631,6 +2764,44 @@ mod tests {
     }
 
     #[test]
+    fn migrate_default_flag_widens_portrait_cloth() {
+        let mut old = crate::shm::Rect {
+            x: 0.442,
+            y: 0.032,
+            w: 0.116,
+            h: 0.155,
+        };
+        super::migrate_default_flag(&mut old);
+        assert!((old.w - 0.107).abs() < 0.001);
+        assert!((old.h - 0.019).abs() < 0.001);
+        let mut wide = crate::shm::Rect {
+            x: 0.34,
+            y: 0.032,
+            w: 0.32,
+            h: 0.072,
+        };
+        super::migrate_default_flag(&mut wide);
+        assert!((wide.w - 0.107).abs() < 0.001);
+        assert!((wide.h - 0.019).abs() < 0.001);
+        let mut mock = crate::shm::Rect {
+            x: 0.414,
+            y: 0.032,
+            w: 0.172,
+            h: 0.030,
+        };
+        super::migrate_default_flag(&mut mock);
+        assert!((mock.w - 0.107).abs() < 0.001);
+        let mut custom = crate::shm::Rect {
+            x: 0.10,
+            y: 0.20,
+            w: 0.20,
+            h: 0.12,
+        };
+        super::migrate_default_flag(&mut custom);
+        assert!((custom.w - 0.20).abs() < 0.001);
+    }
+
+    #[test]
     fn units_format_speed_and_temp() {
         assert_eq!(Units::parse("imperial").format_speed(10.0), "22");
         assert_eq!(Units::Metric.format_speed(10.0), "36");
@@ -2639,6 +2810,11 @@ mod tests {
         assert_eq!(Units::Imperial.format_temp(21.0), "70°F");
         assert_eq!(Units::Metric.speed_label(), "KPH");
         assert_eq!(Units::Imperial.speed_label(), "MPH");
+        assert_eq!(Units::Metric.format_fuel(5.6, 7.0), "5.6 L");
+        assert_eq!(Units::Imperial.format_fuel(5.6, 7.0), "1.5 gal");
+        assert_eq!(Units::Metric.format_fuel(0.0, 0.0), "-- L");
+        assert_eq!(Units::Imperial.format_fuel(0.0, 0.0), "-- gal");
+        assert_eq!(Units::Metric.format_fuel(0.0, 7.0), "0.0 L");
     }
 
     #[test]

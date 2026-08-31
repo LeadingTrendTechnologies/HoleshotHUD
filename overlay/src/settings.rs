@@ -235,6 +235,7 @@ enum Tab {
     Sector,
     Delta,
     Stance,
+    Flag,
 }
 
 impl Tab {
@@ -263,6 +264,7 @@ enum Hit {
     TabSector,
     TabDelta,
     TabStance,
+    TabFlag,
     StShow,
     RelShow,
     MapShow,
@@ -279,6 +281,9 @@ enum Hit {
     TrackPbClear,
     StanceShow,
     StanceShowSit,
+    FlagShow,
+    FlagYellow,
+    FlagBlue,
     FeatureSector,
     TickerTitle,
     TickerAutoscroll,
@@ -329,6 +334,7 @@ enum Hit {
     MiniDotPos,
     RadarSides,
     RadarRear,
+    RadarRings,
     StBg,
     StHl,
     StStripe,
@@ -351,6 +357,7 @@ enum Hit {
     SectorBg,
     DeltaBg,
     StanceBg,
+    FlagBg,
     StDec,
     StInc,
     RelDec,
@@ -991,6 +998,7 @@ fn is_slider(hit: Hit) -> bool {
             | Hit::SectorBg
             | Hit::DeltaBg
             | Hit::StanceBg
+            | Hit::FlagBg
             | Hit::StW(_)
             | Hit::RelW(_)
             | Hit::Font(_)
@@ -1072,6 +1080,7 @@ fn apply_slide(hit: Hit, mx: f32, x: f32, w: f32, min: i32, max: i32) {
         Hit::SectorBg => c.sector_bg = v,
         Hit::DeltaBg => c.delta_bg = v,
         Hit::StanceBg => c.stance_bg = v,
+        Hit::FlagBg => c.flag_bg = v,
         Hit::StW(i) => {
             if let Some(f) = c.st_order.get(i as usize).copied() {
                 f.set_width(c, v);
@@ -1245,6 +1254,10 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         }
         Hit::TabStance => {
             set_tab(Tab::Stance);
+            return;
+        }
+        Hit::TabFlag => {
+            set_tab(Tab::Flag);
             return;
         }
         Hit::MapDotOpen => {
@@ -1499,6 +1512,9 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::SectorLive => c.sector_live = !c.sector_live,
         Hit::DeltaShow => c.show_delta = !c.show_delta,
         Hit::StanceShow => c.show_stance = !c.show_stance,
+        Hit::FlagShow => c.show_flag = !c.show_flag,
+        Hit::FlagYellow => c.flag_yellow = !c.flag_yellow,
+        Hit::FlagBlue => c.flag_blue = !c.flag_blue,
         Hit::StanceShowSit => c.stance_show_sit = !c.stance_show_sit,
         Hit::FeatureSector => {
             c.experimental = !c.experimental;
@@ -1556,6 +1572,7 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::MiniDotPos => c.mini_dot = DotLabel::Position,
         Hit::RadarSides => c.radar_sides = !c.radar_sides,
         Hit::RadarRear => c.radar_rear = !c.radar_rear,
+        Hit::RadarRings => c.radar_rings = !c.radar_rings,
         Hit::Bold(id) => {
             let on = !c.bold(id);
             c.set_bold(id, on);
@@ -1597,7 +1614,7 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::TickerDec => c.ticker_count = (c.ticker_count - 1).max(3),
         Hit::TickerInc => c.ticker_count = (c.ticker_count + 1).min(15),
         Hit::TabWidgets | Hit::TabApp | Hit::TabFeedback | Hit::TabSt | Hit::TabRel | Hit::TabMap | Hit::TabMini | Hit::TabRadar | Hit::TabDash
-        | Hit::TabTicker | Hit::TabSys | Hit::TabSector | Hit::TabDelta | Hit::TabStance
+        | Hit::TabTicker | Hit::TabSys | Hit::TabSector | Hit::TabDelta | Hit::TabStance | Hit::TabFlag
         | Hit::MapDotOpen | Hit::MiniDotOpen | Hit::FontOpen | Hit::UnitsOpen | Hit::StTextOpen | Hit::RelTextOpen
         | Hit::SettingsKeyOpen
         | Hit::StanceBindOpen
@@ -1614,7 +1631,7 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::AutoUpdateOnLaunch | Hit::QuitApp | Hit::Uninstall | Hit::GameFolder
         | Hit::FbRate | Hit::FbBug | Hit::FbFeature | Hit::FbStar(_) | Hit::FbText | Hit::FbAttach | Hit::FbSend
         | Hit::StDrag(_) | Hit::RelDrag(_)
-        | Hit::StBg | Hit::StHl | Hit::RelBg | Hit::RelHl | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg
+        | Hit::StBg | Hit::StHl | Hit::RelBg | Hit::RelHl | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg | Hit::FlagBg
         | Hit::StW(_) | Hit::RelW(_) | Hit::Font(_) | Hit::StanceReset | Hit::TrackPbClear => {}
     });
     if id == Hit::FeatureSector && !with_config(|c| c.experimental_unlocked()) {
@@ -1694,13 +1711,14 @@ fn hit_label(hit: Hit) -> String {
         Hit::TabSector => "Sectors".into(),
         Hit::TabDelta => "Delta Bar".into(),
         Hit::TabStance => "Stance".into(),
+        Hit::TabFlag => "Flags".into(),
         Hit::StShow | Hit::RelShow | Hit::MapShow | Hit::MiniShow | Hit::RadarShow | Hit::DashShow
-        | Hit::TickerShow | Hit::SysShow | Hit::SectorShow | Hit::DeltaShow | Hit::StanceShow => "Show on overlay".into(),
+        | Hit::TickerShow | Hit::SysShow | Hit::SectorShow | Hit::DeltaShow | Hit::StanceShow | Hit::FlagShow => "Show on overlay".into(),
         Hit::QuitApp => "Quit overlay".into(),
         Hit::Font(_) => "Font size".into(),
         Hit::Bold(_) => "Bold text".into(),
         Hit::StBg | Hit::RelBg | Hit::MapBg | Hit::MiniBg => "Background".into(),
-        Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg => "Panel opacity".into(),
+        Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg | Hit::FlagBg => "Panel opacity".into(),
         Hit::StHl | Hit::RelHl => "Row highlight".into(),
         Hit::StStripe | Hit::RelStripe => "Alternating rows".into(),
         Hit::StDec | Hit::StInc => "Rows".into(),
@@ -1722,6 +1740,11 @@ fn hit_label(hit: Hit) -> String {
         Hit::StanceModeOpen => "Sit mode".into(),
         Hit::StanceStyleOpen => "Look".into(),
         Hit::StanceShowSit => "Show sitting".into(),
+        Hit::FlagYellow => "Yellow flag".into(),
+        Hit::FlagBlue => "Blue flag".into(),
+        Hit::RadarSides => "Side proximity".into(),
+        Hit::RadarRear => "Rear proximity".into(),
+        Hit::RadarRings => "Range rings".into(),
         Hit::DashRev => "Rev indicator".into(),
         Hit::DashSimple => "Simple dash".into(),
         Hit::MapSectors => "Sector lines".into(),
@@ -1947,6 +1970,7 @@ fn nudge_slider(hit: Hit, delta: i32) {
         Hit::SectorBg => c.sector_bg,
         Hit::DeltaBg => c.delta_bg,
         Hit::StanceBg => c.stance_bg,
+        Hit::FlagBg => c.flag_bg,
         Hit::StW(i) => c.st_order.get(i as usize).map(|f| f.width(c)).unwrap_or(min),
         Hit::RelW(i) => c.rel_order.get(i as usize).map(|f| f.width(c)).unwrap_or(min),
         Hit::Font(id) => c.font_pct(id),
@@ -1968,6 +1992,7 @@ fn nudge_slider(hit: Hit, delta: i32) {
         Hit::SectorBg => c.sector_bg = v,
         Hit::DeltaBg => c.delta_bg = v,
         Hit::StanceBg => c.stance_bg = v,
+        Hit::FlagBg => c.flag_bg = v,
         Hit::StW(i) => {
             if let Some(f) = c.st_order.get(i as usize).copied() {
                 f.set_width(c, v);
@@ -2129,6 +2154,7 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
         Tab::Sector => pane_sector(px, fonts, &cfg, hover, &mut hits, x, py, cw),
         Tab::Delta => pane_delta(px, fonts, &cfg, hover, &mut hits, x, py, cw),
         Tab::Stance => pane_stance(px, fonts, &cfg, hover, open_drop, bind_listen, &mut hits, x, py, cw),
+        Tab::Flag => pane_flag(px, fonts, &cfg, hover, &mut hits, x, py, cw),
     };
     draw_top_bar(px, fonts, w, top_y, tab, cfg.settings_key.label(), hover, &mut hits);
 
@@ -2213,6 +2239,7 @@ fn widget_short_name(id: WidgetId) -> &'static str {
         WidgetId::Sector => "Sectors",
         WidgetId::Delta => "Delta Bar",
         WidgetId::Stance => "Stance",
+        WidgetId::Flag => "Flags",
     }
 }
 
@@ -2358,6 +2385,7 @@ fn paint_focus(px: &mut Pixmap, hits: &[HitBox], focus: Option<Hit>) {
 fn widget_groups(cfg: &HudConfig) -> Vec<(&'static str, Vec<(Tab, Hit, &'static str, bool)>)> {
     let cockpit = vec![
         (Tab::Dash, Hit::TabDash, "Dash", cfg.show_dash),
+        (Tab::Flag, Hit::TabFlag, "Flags", cfg.show_flag),
         (Tab::Sys, Hit::TabSys, "Systems", cfg.show_sys),
         (Tab::Stance, Hit::TabStance, "Stance", cfg.show_stance),
     ];
@@ -3123,6 +3151,18 @@ fn nav_icon(px: &mut Pixmap, hit: Hit, cx: f32, cy: f32, c: Color) {
         Hit::TabStance => {
             fill_round(px, cx - 5.4, cy + 1.4, 4.4, 4.2, 1.0, c);
             fill_round(px, cx + 1.0, cy - 5.2, 4.4, 10.8, 1.0, c);
+        }
+        Hit::TabFlag => {
+            icon_stroke_line(px, cx - 5.6, cy - 6.2, cx - 5.6, cy + 6.2, c, 1.6);
+            let mut pb = PathBuilder::new();
+            pb.move_to(cx - 5.0, cy - 5.8);
+            pb.line_to(cx + 6.2, cy - 3.4);
+            pb.line_to(cx + 4.4, cy + 0.6);
+            pb.line_to(cx - 5.0, cy - 1.2);
+            pb.close();
+            if let Some(path) = pb.finish() {
+                icon_stroke(px, &path, c, 1.4);
+            }
         }
         Hit::QuitApp => {
             icon_stroke_circle(px, cx, cy, 6.2, c);
@@ -4193,6 +4233,7 @@ fn pane_radar(
     y = section(px, fonts, x, y, "On the radar");
     y = toggle_row(px, fonts, x, y, w, "Side proximity", cfg.radar_sides, Hit::RadarSides, hover, hits);
     y = toggle_row(px, fonts, x, y, w, "Rear proximity", cfg.radar_rear, Hit::RadarRear, hover, hits);
+    y = toggle_row(px, fonts, x, y, w, "Range rings", cfg.radar_rings, Hit::RadarRings, hover, hits);
     look_section(px, fonts, x, y, w, WidgetId::Radar, hover, hits)
 }
 
@@ -4338,7 +4379,7 @@ fn pane_sector(
         x,
         y,
         w,
-        "The wide cell is the sector you are in. Live sector ticks vs your best at this point; off waits until the split. Same tape as Delta Bar. Saved per track.",
+        "The wide cell is the sector you are in. Live sector ticks vs your best at this point; off waits until the split. Same tape as Delta Bar. Saved per track and class (250 vs 450).",
     );
     y = toggle_row(px, fonts, x, y, w, "Live sector", cfg.sector_live, Hit::SectorLive, hover, hits);
     action_btn(px, fonts, x, y, 168.0, 32.0, "Clear this track", Hit::TrackPbClear, hover, hits, false);
@@ -4378,7 +4419,7 @@ fn pane_delta(
         x,
         y,
         w,
-        "Compares this lap to a lap we recorded — not the in-game ghost. Saved per track. REC while the first lap fills if none is saved; it says to complete two full laps.",
+        "Compares this lap to a lap we recorded — not the in-game ghost. Saved per track and class (250 vs 450). REC while the first lap fills if none is saved; it says to complete two full laps.",
     );
     action_btn(px, fonts, x, y, 168.0, 32.0, "Clear this track", Hit::TrackPbClear, hover, hits, false);
     y += 40.0;
@@ -4495,6 +4536,37 @@ fn pane_stance(
     y += 40.0;
     y = style_controls(px, fonts, x, y, w, WidgetId::Stance, cfg, "Panel opacity", cfg.stance_bg, Hit::StanceBg, hover, hits);
     look_section(px, fonts, x, y, w, WidgetId::Stance, hover, hits)
+}
+
+fn pane_flag(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    cfg: &HudConfig,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+    x: f32,
+    y: f32,
+    w: f32,
+) -> f32 {
+    let mut y = heading(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        "Flags",
+        "White and checkered — same timing as Dash",
+        Some((cfg.show_flag, Hit::FlagShow)),
+        hover,
+        hits,
+    );
+    if !cfg.show_flag {
+        return y;
+    }
+    y = toggle_row(px, fonts, x, y, w, "Yellow flag", cfg.flag_yellow, Hit::FlagYellow, hover, hits);
+    y = toggle_row(px, fonts, x, y, w, "Blue flag", cfg.flag_blue, Hit::FlagBlue, hover, hits);
+    y = style_controls(px, fonts, x, y, w, WidgetId::Flag, cfg, "Panel opacity", cfg.flag_bg, Hit::FlagBg, hover, hits);
+    look_section(px, fonts, x, y, w, WidgetId::Flag, hover, hits)
 }
 
 fn ticker_field_row(

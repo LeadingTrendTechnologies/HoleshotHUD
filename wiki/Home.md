@@ -3,7 +3,7 @@
 Everything the PiBoSo plugin API can send this project, and whether we already keep it.
 
 Source of truth: `src/vendor/piboso/mxb_api.h` (data version **8**, interface **9**).  
-The game loads `Holeshot-HUD.dlo` and calls the exported functions below. The plugin may copy fields into `PluginState`, then into shared memory `Local\MXBOHudV9` for the Rust overlay.
+The game loads `Holeshot-HUD.dlo` and calls the exported functions below. The plugin may copy fields into `PluginState`, then into shared memory `Local\MXBOHudV10` for the Rust overlay.
 
 **Status**
 
@@ -40,6 +40,8 @@ To add a widget: if the field is **Overlay**, draw it. If **Cached** / **Receive
 ## Overlay widget wikis
 
 Per-widget behavior, pitfalls, and change history for agents: **[widgets.md](widgets.md)**.
+
+Rust overlay structure and possible refactors (suggestions only): **[rust-patterns.md](rust-patterns.md)**.
 
 ## What the overlay already shows
 
@@ -95,7 +97,7 @@ Local speed / yaw / crash / track pos are in SHM for the moving marker, not as t
 | `m_iShiftRPM` | int | Unused | Shift light |
 | `m_fEngineOptTemperature` | float | Unused | Temp target |
 | `m_afEngineTemperatureAlarm[2]` | float | Unused | Temp warning band |
-| `m_fMaxFuel` | float | Unused | Fuel % = telemetry fuel / this |
+| `m_fMaxFuel` | float | Overlay | Tank size in liters |
 | `m_afSuspMaxTravel[2]` | float | Unused | Suspension travel % |
 | `m_fSteerLock` | float | Unused | Steer gauge scale |
 | `m_szCategory` | char[100] | Unused | Class (MX, SX, …) |
@@ -136,7 +138,7 @@ This is the richest per-frame feed. **Only a handful of fields are kept.**
 | `m_fEngineTemperature` | float | Unused | Engine temp |
 | `m_fWaterTemperature` | float | Unused | Water temp |
 | `m_iGear` | int | Unused | Typically 0 = N, 1+ = gears (confirm in-game) |
-| `m_fFuel` | float | Unused | Fuel amount; pair with `m_fMaxFuel` |
+| `m_fFuel` | float | Overlay | Liters. Header/footer: L or US gal from Units |
 | `m_fSpeedometer` | float | Overlay | Speed (game units; treated as speedometer) |
 | `m_fPosX/Y/Z` | float | Overlay (X,Z) | World position. Y unused. Map marker |
 | `m_fVelocityX/Y/Z` | float | Overlay (X,Z) | Used to interpolate the local marker |
@@ -226,7 +228,7 @@ If centerline is missing, the plugin records a local XZ **trail** as a fallback 
 | `m_iRaceNum` | int | Overlay | Bike number / id used everywhere |
 | `m_szName` | char[100] | Overlay | Display name (truncated to 32 in SHM) |
 | `m_szBikeName` | char[100] | Unused | Full bike name |
-| `m_szBikeShortName` | char[100] | Cached | Not in SHM |
+| `m_szBikeShortName` | char[100] | Overlay | Standings / Relative bike column; Delta / Sectors class key (250 / 450) |
 | `m_szCategory` | char[100] | Unused | Class |
 | `m_iUnactive` | int | Cached | Inactive / not racing |
 | `m_iNumberOfGears` | int | Unused | That rider’s gearbox |
@@ -412,11 +414,12 @@ Already published (version **1**):
 - Riders: race num, XZ, yaw, track pos, crashed, name
 - Standings: race num, position, state, best lap, laps, gap ms/laps, pit, name
 - Session: length, laps, remaining clock, **kind** (`m_iSession`), **state** (`m_iSessionState`) — SHM version **9**
+- Fuel: `fuel` / `maxFuel` — SHM version **10**
 - Layout: map / standings / relative rects + show flags + row counts
 
 Command mapping `Local\MXBOHudCmdV1` (`MxboShmCmd`): overlay writes `spectateRaceNum`; plugin writes `spectating` while `SpectateVehicles` is live. Not part of the snapshot seqlock.
 
-**Not published yet** (but available in the API or `PluginState`): penalty, bike names, laps/splits, holeshot, comms, RPM/gear/inputs/temps/fuel/suspension, per-rider `VehicleLive`, pitch/roll, spectate camera list.
+**Not published yet** (but available in the API or `PluginState`): penalty, bike names, laps/splits, holeshot, comms, RPM/gear/inputs/temps/suspension, per-rider `VehicleLive`, pitch/roll, spectate camera list.
 
 Bump `MXBO_SHM_VERSION` when you add fields; keep C and Rust `#[repr(C)]` layouts identical.
 
@@ -452,7 +455,7 @@ Existing overlay widgets: [widgets.md](widgets.md) (behavior + change logs). Fie
 | Shift light | `m_iRPM` vs `m_iShiftRPM` | Need SHM |
 | Throttle / brakes / clutch | telemetry inputs | Need SHM |
 | Lean / pitch | `m_fRoll` / `m_fPitch` or `m_fLean` | Need SHM |
-| Fuel | `m_fFuel` / `m_fMaxFuel` | Need SHM |
+| Fuel | `m_fFuel` / `m_fMaxFuel` | Overlay (dash / standings / relative / ticker) |
 | Temps | engine/water + alarm band | Need SHM |
 | Suspension | length / velocity / max travel | Need SHM |
 | G-meter | acceleration XYZ | Need SHM |

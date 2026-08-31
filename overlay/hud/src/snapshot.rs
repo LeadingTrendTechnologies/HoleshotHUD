@@ -1,5 +1,5 @@
 pub const MAGIC: u32 = 0x4F42584D;
-pub const VERSION: u32 = 9;
+pub const VERSION: u32 = 10;
 pub const MAX_POLY: usize = 1024;
 pub const MAX_RIDERS: usize = 64;
 pub const MAX_STANDINGS: usize = 40;
@@ -148,6 +148,8 @@ pub struct Snapshot {
     pub sector_delta_valid: i32,
     pub session_kind: i32,
     pub session_state: i32,
+    pub fuel: f32,
+    pub max_fuel: f32,
 }
 
 impl Default for Snapshot {
@@ -224,7 +226,26 @@ impl Default for Snapshot {
             sector_delta_valid: 0,
             session_kind: -1,
             session_state: -1,
+            fuel: 0.0,
+            max_fuel: 0.0,
         }
+    }
+}
+
+impl Snapshot {
+    /// Short name of the bike you are on (standings row for `local_race_num`).
+    pub fn local_bike(&self) -> String {
+        let num = self.local_race_num;
+        if num < 0 {
+            return String::new();
+        }
+        let n = self.standing_count.clamp(0, MAX_STANDINGS as i32) as usize;
+        self.standings[..n]
+            .iter()
+            .find(|r| r.race_num == num)
+            .map(|r| cstr(&r.bike))
+            .filter(|b| !b.is_empty())
+            .unwrap_or_default()
     }
 }
 
@@ -364,8 +385,8 @@ impl Snapshot {
         );
         let _ = writeln!(
             o,
-            "gear={} rpm={} max_rpm={} shift_rpm={} engine_temp={:.1} air_temp={:.1}",
-            self.local_gear, self.local_rpm, self.max_rpm, self.shift_rpm, self.engine_temp, self.air_temp
+            "gear={} rpm={} max_rpm={} shift_rpm={} engine_temp={:.1} air_temp={:.1} fuel={:.2}/{:.2}",
+            self.local_gear, self.local_rpm, self.max_rpm, self.shift_rpm, self.engine_temp, self.air_temp, self.fuel, self.max_fuel
         );
         let _ = writeln!(
             o,
@@ -385,7 +406,7 @@ impl Snapshot {
         if self.version > 0 && self.version < VERSION {
             let _ = writeln!(
                 o,
-                "(session_kind/state stay -1 until Holeshot-HUD.dlo is rebuilt and MX Bikes is restarted)"
+                "(newer SHM fields stay at defaults until Holeshot-HUD.dlo is rebuilt and MX Bikes is restarted)"
             );
         }
         let _ = writeln!(
@@ -460,6 +481,19 @@ impl Snapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn local_bike_reads_standings_row() {
+        let mut s = Snapshot::default();
+        assert_eq!(s.local_bike(), "");
+        s.local_race_num = 7;
+        s.standing_count = 2;
+        s.standings[0].race_num = 3;
+        write_name(&mut s.standings[0].bike, "YZ250F");
+        s.standings[1].race_num = 7;
+        write_name(&mut s.standings[1].bike, "YZ450F");
+        assert_eq!(s.local_bike(), "YZ450F");
+    }
 
     #[test]
     fn write_and_read_cstr() {

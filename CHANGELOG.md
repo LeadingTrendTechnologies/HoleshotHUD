@@ -2,13 +2,76 @@
 
 ## Unreleased
 
-The browser demo can try Sectors and Delta Bar under Experimental.
+## 0.3.0
+
+Range rings on radar so close vs far is a glance.
+
+### Delta Bar
+
+- Best lap tape is saved per class on that track. Every 250 shares one time; a 450 is separate. Yamaha 250 and Honda 250 use the same tape.
+
+### Sectors
+
+- Split times vs your best are per class on that track (all 250s together, all 450s together). **Clear this track** still wipes every class on that file.
+
+### Systems
+
+- Twin columns: CPU left, MEM right, process rows under each, FPS and NET in a footer. Gold heat tracks (red when hot). No green bars.
+- Game FPS follows the game's draw rate instead of bouncing with the overlay loop.
+
+### Radar
+
+- Hairline 3 / 6 / 12 m circles centered on your bike, with dim **6** and **12** at the bottom. Rings lighten when the panel is solid so they still read at 100% background. **Range rings** can be turned off. Blips are larger, orange close / cream farther out. No wedges.
+
+### Dash
+
+- Default size is the compact in-game lockup (~11.1%×11.5%).
+- Fuel is a footer option: liters/gallons, or percent.
+- 8:00+1 that publishes extras late and resets standings no longer sticks on `1/1` or waves the checkered three laps early. After the clock: `0/1` until you start the extra, `1/1` on that lap.
+
+### Standings
+
+- Fuel is a header and footer option: liters/gallons, or percent.
+
+### Map / Minimap
+
+- Sector lines mark where each sector **starts**: **S1** at the start/finish line, **S2** / **S3** at the learned splits. They used to sit on the split that ended S1 / S2.
+
+### Map / Minimap / Relative
+
+- Getting lapped a second time no longer paints the leader red. Blue/red uses laps behind the leader, not a completed-lap count that can sit on the race lap.
+
+### Relative
+
+- Fuel is a header and footer option: liters/gallons, or percent.
+
+### H-Standings
+
+- Fuel is a side-slot option: liters/gallons, or percent.
+
+### Website
+
+- Radar in the demo has **Range rings** (on by default) and the new rings/blips.
+- Systems in the demo is twin columns with gold heat.
+- Fuel and Fuel % are in the board and dash field pickers.
+
+## 0.2.0
+
+White and checkered flags as their own overlay widget.
+
+### Flags
+
+- New **Flags** widget. A skew plaque — white stripes or checkers, same timing as the Dash wrap. When no flag is up, it draws nothing. Dash wrap stays on.
+- Optional **Yellow flag** and **Blue flag** (each off by default). Yellow when a rider has crashed ahead of you and close; blue when someone a lap up is close behind. Dash wrap stays white and checkered only.
+- Default size is a slim top-center strip (~11%×2%). Caption white matches the Dash wrap fade, with extra pad beside the text. Cloth shows above and below the white band.
+- Place it anywhere (default top-center). Hold Ctrl and drag. Hidden until **Show on overlay**.
 
 ### Website
 
 - Widget rail has an **Experimental** group for Sectors and Delta Bar.
 - Sectors in the demo keep ticking through S2 and S3.
 - Dash starts a bit wider so **~Lapped** stays on the plaque. Simple dash uses a compact size.
+- Cockpit rail includes **Flags**. The demo cycles checkered, white, and hidden. Turn on **Yellow flag** or **Blue flag** to see those too.
 
 ## 0.1.20
 

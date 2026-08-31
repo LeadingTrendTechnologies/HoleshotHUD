@@ -65,6 +65,7 @@ void PluginState::clearEvent()
     m_inRun = false;
     m_maxRpm = 0;
     m_shiftRpm = 0;
+    m_maxFuel = 0.0f;
     clearRace();
 }
 
@@ -80,6 +81,7 @@ void PluginState::clearRace()
     m_localRpm = 0;
     m_engineTemp = 0.0f;
     m_airTemp = 0.0f;
+    m_fuel = 0.0f;
     m_sessionTime = 0.0f;
     m_lastLapEndTime = 0.0f;
     m_lastLapMs = 0;
@@ -127,6 +129,10 @@ void PluginState::setEvent(const SPluginsBikeEvent_t& ev)
     else if (ev.m_iLimiter > 0)
     {
         m_shiftRpm = ev.m_iLimiter;
+    }
+    if (ev.m_fMaxFuel > 0.0f)
+    {
+        m_maxFuel = ev.m_fMaxFuel;
     }
     resolveLocalRaceNum();
 }
@@ -769,6 +775,7 @@ void PluginState::setTelemetry(const SPluginsBikeData_t& data, float time, float
     m_localGear = data.m_iGear;
     m_localRpm = data.m_iRPM;
     m_engineTemp = data.m_fWaterTemperature > 1.0f ? data.m_fWaterTemperature : data.m_fEngineTemperature;
+    m_fuel = data.m_fFuel;
     m_localSpeed = data.m_fSpeedometer;
     m_localTrackPos = pos;
     m_localX = data.m_fPosX;

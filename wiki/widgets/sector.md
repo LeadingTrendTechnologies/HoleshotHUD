@@ -8,7 +8,7 @@ This widget is **behind the Labs flag**. Settings → Labs → **Experimental wi
 
 - Draw: `draw_sector` in `overlay/hud/src/render.rs`
 - Live/freeze: `overlay/hud/src/sector.rs` — current sector ticks; completed splits freeze
-- Persist: `overlay/hud/src/track_pb.rs` — same JSON as Delta Bar, field `s` is S1/S2/S3 durations, `p` is S1/S2 split positions, `used` is unix seconds last ridden/written
+- Persist: `overlay/hud/src/track_pb.rs` — same JSON as Delta Bar, `bikes.<class>.s` is S1/S2/S3 durations for that displacement (`250`, `450`, …), `p` is S1/S2 split positions (track-level), `used` is unix seconds last ridden/written
 - Plugin: `RunSplit` / `RaceSplit` → `PluginState::recordSector` in `src/state.cpp`
 - SHM: `sectorCur` / `sectorLastLap` / `sectorBest` / `sectorDelta` / `sectorDeltaValid` (version 8)
 - Settings: `pane_sector` in `overlay/src/settings.rs`
@@ -30,7 +30,7 @@ Three columns: **S1**, **S2**, **S3**. The **current** sector is the **hero** (~
 - Green: faster. Red: slower. Dim `--` until there is a comparison. Caption: **vs. your best**.
 - No purple on this widget (standings still uses violet for session-best lap).
 
-No column picker; show, **Live sector**, opacity, font, bold, snap. **Clear this track** deletes the shared PB file (sectors + delta tape).
+No column picker; show, **Live sector**, opacity, font, bold, snap. **Clear this track** deletes the shared PB file (every class, sectors + delta tape).
 
 ## Do not regress
 
@@ -39,7 +39,8 @@ No column picker; show, **Live sector**, opacity, font, bold, snap. **Clear this
 - Hero is the sector you are in, not last completed.
 - Live delta is time vs location in **this** sector (tape at `local_track_pos` minus tape at the sector start). Do not compare live elapsed to the full sector duration — that always looks too fast mid-sector.
 - **Live sector** off still records and freezes on leave; the current cell stays `--` until the split. Default on (`sector_live=1`).
-- Freeze on leave. Do not write the PB file every live frame — only when a frozen duration is faster than saved, or when visiting a track whose file is missing/stale `used` (at most hourly). Do not create a file just to stamp a date.
+- Freeze on leave. Do not write the PB file every live frame — only when a frozen duration is faster than saved **for this class**, or when visiting a track whose file is missing/stale `used` (at most hourly). Do not create a file just to stamp a date.
+- Do not compare a 250 split to a 450 saved best. Yamaha 250 and Honda 250 share. Same per-class tape as Delta Bar.
 - Do not treat a missing S3 as a live estimate while the lap is open. When the lap completes, fill S3 from lap time minus S1/S2 (durations or cumulative). If the plugin left S3 empty, the overlay infers it from last lap time so the S3 cell can still go orange.
 - After `finishLapSectors`, keep last-lap times and deltas on screen until the next lap clock is running. Completing S1 of the new lap overwrites S1 and S2/S3 go pending until those splits.
 - `RunLap` and `RaceLap` can both fire for you. Finish S3 once per `lapNum` so a following split is not folded into last-lap.
@@ -49,6 +50,7 @@ No column picker; show, **Live sector**, opacity, font, bold, snap. **Clear this
 
 ## Change log
 
+- 2026-08-30 — Sector PBs are per class (`250` / `450`) in the shared track JSON. Yamaha 250 and Honda 250 share. Switching 450 → 250 starts a fresh comparison.
 - 2026-08-28 — Demo lap clock follows track position so S2/S3 live time keeps ticking (clock was stuck at ~18s, so S2 elapsed went to 0).
 - 2026-08-28 — Website demo lists Sectors under **Experimental**. WASM turns the labs flag on only while that widget is selected.
 - 2026-08-28 — Shared track JSON stores `used` (unix seconds). Stamped on sector PB write and when you visit a track that already has a file (at most hourly). Old files without it still load.
