@@ -301,6 +301,9 @@ void ShmWriter::publish(const PluginState& state, const PluginConfig& config)
     local.airTemp = state.airTemp();
     local.fuel = state.fuel();
     local.maxFuel = state.maxFuel();
+    copyBounded(local.guid, MXBO_GUID, state.guid().c_str());
+    copyBounded(local.serverName, MXBO_SERVER_NAME, state.serverName().c_str());
+    local.serverType = state.serverType();
     local.lastLapMs = state.lastLapMs();
     local.bestLapMs = state.bestLapMs();
     local.currentLapMs = state.currentLapMs();

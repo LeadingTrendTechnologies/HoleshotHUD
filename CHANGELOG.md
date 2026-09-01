@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+Opt-in marks for others in this MX Bikes session who also run Holeshot HUD.
+
+### Settings
+
+- App has **Show overlay users**. Off until you turn it on. Marks others in this session who also run Holeshot.
+
+### Overlay
+
+- Holeshot HUD marks other riders on Standings, Relative, Map, and Minimap when they also run it. Restart MX Bikes after this update so the session id is live.
+
 ## 0.3.1
 
 ### Internals

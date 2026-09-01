@@ -1119,6 +1119,39 @@ fn col_text(
     text(px, fonts, &t, size, tx, y, color, false);
 }
 
+fn draw_name_presence_mark(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    name: &str,
+    x: f32,
+    w: f32,
+    y: f32,
+    row_h: f32,
+    race_num: i32,
+) {
+    if !crate::presence::presence_has(race_num) {
+        return;
+    }
+    let t = ellipsize(fonts, name, 12.0, (w - 10.0).max(8.0));
+    let tw = measure(fonts, &t, 12.0);
+    let mx = x + tw + 6.0;
+    if mx + 3.5 > x + w {
+        return;
+    }
+    fill_circle(px, mx, y + row_h * 0.28, 3.0, accent());
+}
+
+fn draw_presence_ring(px: &mut Pixmap, x: f32, y: f32, r: f32, race_num: i32) {
+    if !crate::presence::presence_has(race_num) {
+        return;
+    }
+    let mut pb = PathBuilder::new();
+    pb.push_circle(x, y, r + 2.4);
+    if let Some(path) = pb.finish() {
+        stroke_path(px, &path, accent(), 1.5);
+    }
+}
+
 fn draw_count_track(px: &mut Pixmap, fonts: &Fonts, x: f32, cy: f32, n: usize, track: &str) {
     let count = format!("{n}");
     let track_col = accent();
@@ -2346,9 +2379,10 @@ impl<C: BoardCol> TableRow<'_, C> {
         fonts: &Fonts,
         accent: Color,
         click: Option<i32>,
+        follow: bool,
         mut cell: impl FnMut(C) -> (String, Color, bool),
     ) {
-        paint_table_row(px, fonts, self, accent, click, &mut cell);
+        paint_table_row(px, fonts, self, accent, click, follow, &mut cell);
     }
 }
 
@@ -2358,6 +2392,7 @@ fn paint_table_row<C: BoardCol>(
     row: &TableRow<'_, C>,
     accent: Color,
     click: Option<i32>,
+    follow: bool,
     cell: &mut impl FnMut(C) -> (String, Color, bool),
 ) {
     let mut named = false;
@@ -2369,19 +2404,29 @@ fn paint_table_row<C: BoardCol>(
         let pad = if kind.is_name() { name_left_pad(*cx, row.bar_end) } else { 0.0 };
         if kind.is_name() {
             named = true;
-            if let Some(num) = click {
-                push_click_rider(num, *cx + pad, row.cy, (*cw - pad).max(8.0), row.row_h);
+            if follow {
+                if let Some(num) = click {
+                    push_click_rider(num, *cx + pad, row.cy, (*cw - pad).max(8.0), row.row_h);
+                }
             }
         }
         if kind.is_bike() && !val.is_empty() {
             draw_bike_pill(px, fonts, &val, *cx, row.cy, *cw, row.row_h, accent);
         } else {
-            col_text(px, fonts, &val, 12.0, *cx + pad, (*cw - pad).max(8.0), row.cy + 4.0, color, right);
+            let text_w = (*cw - pad).max(8.0);
+            col_text(px, fonts, &val, 12.0, *cx + pad, text_w, row.cy + 4.0, color, right);
+            if kind.is_name() {
+                if let Some(num) = click {
+                    draw_name_presence_mark(px, fonts, &val, *cx + pad, text_w, row.cy + 4.0, row.row_h, num);
+                }
+            }
         }
     }
     if !named {
-        if let Some(num) = click {
-            push_click_rider(num, row.x, row.cy, row.w, row.row_h);
+        if follow {
+            if let Some(num) = click {
+                push_click_rider(num, row.x, row.cy, row.w, row.row_h);
+            }
         }
     }
 }
@@ -2453,7 +2498,7 @@ fn draw_standings(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig,
                     let name_c = if out { row.out_c } else { row.ink };
                     let dim = if out { row.out_c } else { row.ink_dim };
                     let status = standing_status(standing);
-                    row.paint(px, fonts, accent_c, Some(standing.race_num), |kind| match kind {
+                    row.paint(px, fonts, accent_c, Some(standing.race_num), true, |kind| match kind {
                         StField::Pos => (format!("{}", standing.position.max(0)), name_c, true),
                         StField::Num => (format!("{}", standing.race_num), dim, true),
                         StField::Name => (cstr(&standing.name).to_string(), name_c, false),
@@ -5008,7 +5053,7 @@ fn draw_relative(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, 
                     } else {
                         0
                     };
-                    row.paint(px, fonts, accent_c, None, |kind| match kind {
+                    row.paint(px, fonts, accent_c, Some(rider.race_num), false, |kind| match kind {
                         RelField::Pos => (
                             if pos > 0 { format!("{pos}") } else { String::new() },
                             name_c,
@@ -5194,6 +5239,7 @@ fn draw_map(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f
                 cfg.map_numbers,
                 false,
             );
+            draw_presence_ring(px, hx, hy, other_r, rider.race_num);
             let (fwx, fwz) = yaw_forward(rider.yaw);
             let (sdx, sdy) = screen_dir(&to_px, rider.x, rider.z, fwx, fwz);
             draw_dot_chevron(px, hx, hy, other_r, sdx, sdy, fill, false);
@@ -5376,6 +5422,7 @@ fn draw_minimap(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, s
                 cfg.mini_numbers,
                 false,
             );
+            draw_presence_ring(mini, hx, hy, other_r, rider.race_num);
             let (fwx, fwz) = yaw_forward(rider.yaw);
             let (sdx, sdy) = screen_dir(&to_px, rider.x, rider.z, fwx, fwz);
             draw_dot_chevron(mini, hx, hy, other_r, sdx, sdy, fill, false);

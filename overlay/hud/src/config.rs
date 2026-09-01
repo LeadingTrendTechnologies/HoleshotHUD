@@ -978,6 +978,10 @@ pub struct HudConfig {
     pub flag_blue: bool,
     /// Off by default. Labs widgets stay hidden until this is on.
     pub experimental: bool,
+    /// Opt-in: publish that you run Holeshot and mark others in this session who do.
+    pub show_presence: bool,
+    /// Stable per-install id for presence upserts. Generated on first use.
+    pub presence_id: String,
     /// Plugin-only: when true the in-game HUD draws. Overlay still saves this key.
     pub ingame_hud: bool,
     pub standings_rows: i32,
@@ -1104,6 +1108,8 @@ impl HudConfig {
             flag_yellow: false,
             flag_blue: false,
             experimental: false,
+            show_presence: false,
+            presence_id: String::new(),
             ingame_hud: false,
             standings_rows: 12,
             relative_count: 3,
@@ -1257,6 +1263,8 @@ impl HudConfig {
                 "flag_yellow" => cfg.flag_yellow = b,
                 "flag_blue" => cfg.flag_blue = b,
                 "experimental" | "feature_experimental" | "feature_sector" => cfg.experimental = b,
+                "show_presence" => cfg.show_presence = b,
+                "presence_id" => cfg.presence_id = val.trim().to_string(),
                 "ingame_hud" => cfg.ingame_hud = b,
                 "standings_rows" => cfg.standings_rows = val.parse().unwrap_or(12).max(3),
                 "relative_count" => cfg.relative_count = val.parse().unwrap_or(3).max(1),
@@ -1479,7 +1487,7 @@ impl HudConfig {
              \n[Flag]\n\
              flag_bg={}\nflag_yellow={}\nflag_blue={}\nflag_font={}\nflag_bold={}\n\
              \n[App]\n\
-             font_family={}\nunits={}\nsettings_key={}\nstart_with_windows={}\nminimize_on_close={}\nclose_with_game={}\nopen_with_game={}\nauto_update_on_launch={}\nwhats_new_seen={}\nfirst_install_version={}\nexperimental={}\n",
+             font_family={}\nunits={}\nsettings_key={}\nstart_with_windows={}\nminimize_on_close={}\nclose_with_game={}\nopen_with_game={}\nauto_update_on_launch={}\nwhats_new_seen={}\nfirst_install_version={}\nexperimental={}\nshow_presence={}\npresence_id={}\n",
             st.rect.x,
             st.rect.y,
             st.rect.w,
@@ -1690,6 +1698,8 @@ impl HudConfig {
             self.whats_new_seen,
             self.first_install_version,
             b(self.experimental),
+            b(self.show_presence),
+            self.presence_id,
         );
         let _ = fs::write(&path, body);
         self.loaded_mtime = fs::metadata(&path).and_then(|m| m.modified()).ok();

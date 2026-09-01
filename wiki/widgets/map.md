@@ -38,7 +38,11 @@ Toggles: other riders, start/finish, sector lines, track arrows, leader crown, n
 - Leaving spectate / going back on the bike must put the orange marker on you. Live telemetry wins over a stale `focus_race_num`.
 - Sector lines are thin best-lap-violet dashes at the **start** of S1 / S2 / S3, not orange. They span only the track stroke — do not stick out into the grass. Orange stays the S/F bar and the you-dot. S1 sits on the line; S2 / S3 wait for learned splits. Do not invent equal-third gates when splits are unknown.
 
+- Presence rings on other dots are opt-in (`show_presence`) and must not wrap the you-dot.
+
 ## Change log
+
+- 2026-08-31 — Thin orange ring on other dots when **Show overlay users** is on and that rider is in the session presence list.
 
 - 2026-08-30 — Sector lines mark where each sector starts (S1 at S/F, S2 / S3 at the learned splits). The old S1 / S2 labels sat on the split that *ended* that sector.
 - 2026-08-29 — Second time the leader laps you no longer paints them red. Lap-down color prefers `gap_laps` over completed-lap counts.

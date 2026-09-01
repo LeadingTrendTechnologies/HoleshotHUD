@@ -79,6 +79,7 @@ fn snapshot_dump_skips_empty_arrays() {
     assert!(dump.contains("session_laps=0"));
     assert!(dump.contains("session_kind=-1"));
     assert!(dump.contains("session_state=-1"));
+    assert!(dump.contains("guid="));
     assert!(dump.contains("poly_count=8"));
     assert!(dump.contains("poly[0]="));
     assert!(dump.contains("poly[7]="));

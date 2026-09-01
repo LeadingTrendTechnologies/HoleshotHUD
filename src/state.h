@@ -122,6 +122,9 @@ public:
     bool spectating() const;
     void clearSpectateSelection();
     const std::string& localName() const { return m_localName; }
+    const std::string& guid() const { return m_guid; }
+    const std::string& serverName() const { return m_serverName; }
+    int serverType() const { return m_serverType; }
 
     bool hasTelemetry() const { return m_hasTelemetry; }
     float localSpeed() const { return m_localSpeed; }
@@ -188,6 +191,9 @@ private:
     bool m_trailStarted = false;
 
     std::string m_localName;
+    std::string m_guid;
+    std::string m_serverName;
+    int m_serverType = 0;
     std::string m_trackName;
     float m_trackLength = 0.0f;
     float m_sfMeters = 0.0f;

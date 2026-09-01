@@ -285,6 +285,7 @@ enum Hit {
     FlagYellow,
     FlagBlue,
     FeatureSector,
+    ShowPresence,
     TickerTitle,
     TickerAutoscroll,
     StPos,
@@ -1526,6 +1527,7 @@ fn dispatch(id: Hit, p: (f32, f32)) {
                 c[WidgetId::Delta].show = false;
             }
         },
+        Hit::ShowPresence => c.show_presence = !c.show_presence,
         Hit::TickerTitle => c.ticker_title = !c.ticker_title,
         Hit::TickerAutoscroll => c.ticker_autoscroll = !c.ticker_autoscroll,
         Hit::StStripe => c.st_stripe = !c.st_stripe,
@@ -1733,6 +1735,7 @@ fn hit_label(hit: Hit) -> String {
         Hit::UnitsOpen => "Units".into(),
         Hit::SettingsKeyOpen => "Settings key".into(),
         Hit::FeatureSector => "Experimental widgets".into(),
+        Hit::ShowPresence => "Show overlay users".into(),
         Hit::StanceBindOpen => {
             if UI.lock().unwrap().as_ref().is_some_and(|u| u.bind_listen) {
                 "Press a pad button, key, or mouse button now. Escape cancels.".into()
@@ -3442,6 +3445,10 @@ fn pane_app(
         text(px, fonts, "Starts the overlay in the tray when MX Bikes launches, including after you close the game. F8 or the HUD mark opens settings.", 11.0, x + 4.0, y + 2.0, dim(), false);
         y += 22.0;
     }
+    y = section(px, fonts, x, y, "Session");
+    y = toggle_row(px, fonts, x, y, w, "Show overlay users", cfg.show_presence, Hit::ShowPresence, hover, hits);
+    text(px, fonts, "Marks riders in this session who also run Holeshot. Names are already on the board; this only adds that they use it. Off until you turn it on.", 11.0, x + 4.0, y + 2.0, dim(), false);
+    y += 36.0;
     y = section(px, fonts, x, y, "Labs");
     y = toggle_row(px, fonts, x, y, w, "Experimental widgets", cfg.experimental, Hit::FeatureSector, hover, hits);
     text(px, fonts, "Adds Sectors and Delta Bar. Off until you turn this on.", 11.0, x + 4.0, y + 2.0, dim(), false);

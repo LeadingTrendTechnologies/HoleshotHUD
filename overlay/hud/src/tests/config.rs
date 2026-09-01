@@ -74,6 +74,8 @@ fn default_hud_hides_every_widget() {
     assert_eq!(cfg.stance_style, StanceStyle::Text);
     assert!(!cfg.stance_show_sit);
     assert!(!cfg.experimental);
+    assert!(!cfg.show_presence);
+    assert!(cfg.presence_id.is_empty());
     assert!(cfg.whats_new_seen.is_empty());
     assert!(cfg.first_install_version.is_empty());
     assert!(cfg.ticker_title);

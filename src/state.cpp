@@ -49,6 +49,9 @@ namespace
 void PluginState::clearEvent()
 {
     m_localName.clear();
+    m_guid.clear();
+    m_serverName.clear();
+    m_serverType = 0;
     m_trackName.clear();
     m_trackLength = 0.0f;
     m_hasTelemetry = false;
@@ -111,6 +114,9 @@ void PluginState::clearRace()
 void PluginState::setEvent(const SPluginsBikeEvent_t& ev)
 {
     m_localName = copyCString(ev.m_szRiderName, sizeof(ev.m_szRiderName));
+    m_guid = copyCString(ev.m_szGUID, sizeof(ev.m_szGUID));
+    m_serverName = copyCString(ev.m_szServerName, sizeof(ev.m_szServerName));
+    m_serverType = ev.m_iServerType;
     if (ev.m_szTrackName[0])
     {
         m_trackName = copyCString(ev.m_szTrackName, sizeof(ev.m_szTrackName));

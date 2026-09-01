@@ -158,10 +158,10 @@ fn shipped_changelog_has_current_or_unreleased_notes() {
 }
 
 #[test]
-fn internals_only_version_has_no_whats_new_modal() {
+fn current_notes_include_presence() {
     assert!(
-        current_notes().is_none(),
-        "0.3.1 is internals-only; What's new should not open"
+        current_notes().is_some(),
+        "0.4.0 presence notes should open What's new"
     );
 }
 
@@ -280,8 +280,13 @@ fn shipped_notes_are_grouped_by_widget() {
         !titles.contains(&"Website"),
         "website notes stay out of What's new: {titles:?}"
     );
-    assert!(
-        !titles.iter().any(|t| t.eq_ignore_ascii_case("overlay")),
-        "0.2.0 overlay notes are internals: {titles:?}"
-    );
+    for sec in &n.sections {
+        if sec.title.eq_ignore_ascii_case("overlay") {
+            assert!(
+                sec.bullets.iter().all(|b| overlay_wide(b)),
+                "leftover Overlay notes must be HUD-wide: {:?}",
+                sec.bullets
+            );
+        }
+    }
 }

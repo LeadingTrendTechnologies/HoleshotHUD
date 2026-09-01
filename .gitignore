@@ -24,3 +24,5 @@ announce-shots/whats-new.txt
 wiki/tests/*
 .impeccable/questions/*
 node_modules/
+.wrangler/
+presence/node_modules/

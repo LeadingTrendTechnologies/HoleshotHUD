@@ -3,7 +3,7 @@
 Everything the PiBoSo plugin API can send this project, and whether we already keep it.
 
 Source of truth: `src/vendor/piboso/mxb_api.h` (data version **8**, interface **9**).  
-The game loads `Holeshot-HUD.dlo` and calls the exported functions below. The plugin may copy fields into `PluginState`, then into shared memory `Local\MXBOHudV10` for the Rust overlay.
+The game loads `Holeshot-HUD.dlo` and calls the exported functions below. The plugin may copy fields into `PluginState`, then into shared memory `Local\MXBOHudV11` for the Rust overlay.
 
 **Status**
 
@@ -105,9 +105,9 @@ Local speed / yaw / crash / track pos are in SHM for the moving marker, not as t
 | `m_szTrackName` | char[100] | Overlay | Map header (also from race event) |
 | `m_fTrackLength` | float | Overlay | Length (meters). Relative wrap |
 | `m_iType` | int | Unused | Event type; **enum not in header** |
-| `m_szServerName` | char[64] | Unused | Online server name |
-| `m_iServerType` | int | Unused | Online/offline style flag |
-| `m_szGUID` | char[100] | Unused | Event/session id |
+| `m_szServerName` | char[64] | Overlay | Online server name (presence fallback key) |
+| `m_iServerType` | int | Overlay | Online/offline style flag |
+| `m_szGUID` | char[100] | Overlay | Event/session id (presence join key; F9 dump) |
 
 ---
 
@@ -415,6 +415,7 @@ Already published (version **1**):
 - Standings: race num, position, state, best lap, laps, gap ms/laps, pit, name
 - Session: length, laps, remaining clock, **kind** (`m_iSession`), **state** (`m_iSessionState`) — SHM version **9**
 - Fuel: `fuel` / `maxFuel` — SHM version **10**
+- Presence: `guid`, `serverName`, `serverType` — SHM version **11**
 - Layout: map / standings / relative rects + show flags + row counts
 
 Command mapping `Local\MXBOHudCmdV1` (`MxboShmCmd`): overlay writes `spectateRaceNum`; plugin writes `spectating` while `SpectateVehicles` is live. Not part of the snapshot seqlock.

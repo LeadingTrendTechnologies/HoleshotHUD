@@ -1,11 +1,13 @@
 pub const MAGIC: u32 = 0x4F42584D;
-pub const VERSION: u32 = 10;
+pub const VERSION: u32 = 11;
 pub const MAX_POLY: usize = 1024;
 pub const MAX_RIDERS: usize = 64;
 pub const MAX_STANDINGS: usize = 40;
 pub const MAX_SECTORS: usize = 3;
 pub const NAME: usize = 32;
 pub const TRACK_NAME: usize = 64;
+pub const GUID: usize = 100;
+pub const SERVER_NAME: usize = 64;
 
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
@@ -150,6 +152,9 @@ pub struct Snapshot {
     pub session_state: i32,
     pub fuel: f32,
     pub max_fuel: f32,
+    pub guid: [u8; GUID],
+    pub server_name: [u8; SERVER_NAME],
+    pub server_type: i32,
 }
 
 impl Default for Snapshot {
@@ -228,6 +233,9 @@ impl Default for Snapshot {
             session_state: -1,
             fuel: 0.0,
             max_fuel: 0.0,
+            guid: [0; GUID],
+            server_name: [0; SERVER_NAME],
+            server_type: 0,
         }
     }
 }
@@ -402,6 +410,13 @@ impl Snapshot {
             o,
             "session_kind={} session_state={} session_time_ms={} session_length={}",
             self.session_kind, self.session_state, self.session_time_ms, self.session_length
+        );
+        let _ = writeln!(
+            o,
+            "guid={:?} server_name={:?} server_type={}",
+            cstr(&self.guid),
+            cstr(&self.server_name),
+            self.server_type
         );
         if self.version > 0 && self.version < VERSION {
             let _ = writeln!(

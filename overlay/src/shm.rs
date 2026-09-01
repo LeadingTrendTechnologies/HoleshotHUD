@@ -20,7 +20,7 @@ impl Shm {
     pub fn open() -> Option<Self> {
         unsafe {
             // Must match MXBO_SHM_NAME in src/shm/mxbo_shm.h (versioned with SHM layout).
-            let map = OpenFileMappingW(FILE_MAP_READ.0, false, w!("Local\\MXBOHudV10")).ok()?;
+            let map = OpenFileMappingW(FILE_MAP_READ.0, false, w!("Local\\MXBOHudV11")).ok()?;
             let view = MapViewOfFile(map, FILE_MAP_READ, 0, 0, mem::size_of::<Snapshot>());
             if view.Value.is_null() {
                 return None;
@@ -61,6 +61,11 @@ impl Shm {
                     if version < 9 {
                         copy.session_kind = -1;
                         copy.session_state = -1;
+                    }
+                    if version < 11 {
+                        copy.guid = [0; GUID];
+                        copy.server_name = [0; SERVER_NAME];
+                        copy.server_type = 0;
                     }
                     return Some(copy);
                 }

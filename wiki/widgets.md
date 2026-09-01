@@ -32,6 +32,7 @@ When you change a widget, append a dated entry to that widget’s **Change log**
 - Minimap / radar / dash / ticker / sys / stance / flag read `cfg.show_*` directly. Sector and Delta Bar also require `experimental_unlocked()`.
 - All widgets draw when session data is present (`on_track`, telemetry, standings, or riders) — including replay / spectate, which never set `RunInit`. They hide when the snapshot is empty (menus, lobby, garage) and when MX Bikes is not running. A hitch that pauses plugin publish still keeps the last session HUD for 15s (`overlay/src/main.rs`); do not blank at the 2.5s live cutoff. Hold Ctrl for layout boxes; that still forces a draw. The Holeshot HUD icon stays in the top-right whenever the overlay window is on the game (proof it is compositing); a click opens settings even while Ctrl is down. The settings key toggles settings closed if it is already open. A top plaque explains a blank HUD: no widget on (F8 → Show on overlay) or no live plugin data (fully quit MX Bikes and start it again).
 - Optional in-game HUD (`ingame_hud`) still draws a simpler standings + relative in C++ (`src/hud/widgets.cpp`). Overlay work does not go there.
+- **Show overlay users** (Settings → App, off by default) adds an orange mark after the name on Standings / Relative and a thin orange ring on map / minimap dots for other riders in this session who also have the overlay. You are not marked. Presence is not a widget.
 
 ## Shared rider colors (map, minimap, relative rows)
 

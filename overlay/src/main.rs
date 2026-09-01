@@ -7,6 +7,7 @@ mod feedback;
 mod layout;
 mod record;
 mod render;
+mod presence;
 mod settings;
 mod plugin;
 mod shm;
@@ -70,6 +71,7 @@ pub(crate) fn quit_app() {
         return;
     }
     crate::compat::restore_taskbars();
+    crate::presence::leave_now();
     if !crate::config::with_config(|c| c.open_with_game) {
         crate::startup::kill_other_hud_processes();
     }
@@ -118,7 +120,7 @@ fn f9_dump_text(shm: Option<&Shm>, snap: Option<&Snapshot>) -> String {
     let mut o = String::from("No live Snapshot (overlay SHM version mismatch or plugin not publishing).\n");
     o.push_str(&format!("overlay VERSION={VERSION} rust_size={}\n", std::mem::size_of::<Snapshot>()));
     match shm {
-        None => o.push_str("OpenFileMapping Local\\MXBOHudV10 failed. Start MX Bikes with Holeshot-HUD.dlo loaded.\n"),
+        None => o.push_str("OpenFileMapping Local\\MXBOHudV11 failed. Start MX Bikes with Holeshot-HUD.dlo loaded.\n"),
         Some(s) => match s.header() {
             Some((magic, version, seq, size)) => {
                 o.push_str(&format!(
@@ -530,6 +532,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         let live = raw_age < 2.5;
         let settings_open = crate::settings::is_open();
         crate::feedback::tick(settings_open);
+        crate::config::with_config(|cfg| crate::presence::tick(cfg, last_snap.as_ref()));
         if live {
             if let Some(s) = last_snap.as_ref() {
                 crate::record::tick(s);
