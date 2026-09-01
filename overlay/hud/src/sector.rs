@@ -7,6 +7,8 @@ use std::sync::Mutex;
 
 const CLOCK_ON: i32 = 200;
 const SMOOTH: f32 = 0.12;
+const HIST_MAX: usize = 5;
+const HIST_LABELS: [&str; HIST_MAX] = ["LAST", "-2", "-3", "-4", "-5"];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SectorRow {
@@ -26,15 +28,22 @@ struct SectorEngine {
     saved: [i32; 3],
     bins: [i32; BINS],
     has_tape: bool,
+    session_saved: [i32; 3],
+    session_bins: [i32; BINS],
+    session_has_tape: bool,
     split_end: [f32; 2],
     freeze_time: [i32; 3],
     freeze_delta: [i32; 3],
     freeze_ok: u8,
     freeze_delta_ok: u8,
+    session_freeze_delta: [i32; 3],
+    session_freeze_delta_ok: u8,
     last_cur: [i32; 3],
     last_clock: bool,
     smooth_ms: f32,
     smooth_i: i8,
+    /// Completed laps, newest first: LAST, -2 … -5.
+    hist: [[i32; 3]; HIST_MAX],
 }
 
 impl SectorEngine {
@@ -45,15 +54,21 @@ impl SectorEngine {
             saved: [0; 3],
             bins: [0; BINS],
             has_tape: false,
+            session_saved: [0; 3],
+            session_bins: [0; BINS],
+            session_has_tape: false,
             split_end: [0.0; 2],
             freeze_time: [0; 3],
             freeze_delta: [0; 3],
             freeze_ok: 0,
             freeze_delta_ok: 0,
+            session_freeze_delta: [0; 3],
+            session_freeze_delta_ok: 0,
             last_cur: [0; 3],
             last_clock: false,
             smooth_ms: 0.0,
             smooth_i: -1,
+            hist: [[0; 3]; HIST_MAX],
         }
     }
 }
@@ -65,6 +80,9 @@ fn live() -> std::sync::MutexGuard<'static, SectorEngine> {
 }
 
 pub fn tick(s: &Snapshot) {
+    if s.has_telemetry == 0 {
+        return;
+    }
     let track = cstr(&s.track_name).to_string();
     let mut g = live();
     if !track.is_empty() {
@@ -84,9 +102,15 @@ pub fn tick(s: &Snapshot) {
                 g.freeze_delta = [0; 3];
                 g.freeze_ok = 0;
                 g.freeze_delta_ok = 0;
+                g.session_saved = [0; 3];
+                g.session_bins = [0; BINS];
+                g.session_has_tape = false;
+                g.session_freeze_delta = [0; 3];
+                g.session_freeze_delta_ok = 0;
                 g.last_cur = [0; 3];
                 g.last_clock = false;
                 g.smooth_i = -1;
+                g.hist = [[0; 3]; HIST_MAX];
             }
             g.split_end = [
                 pb.split_milli[0] as f32 / 1000.0,
@@ -97,6 +121,10 @@ pub fn tick(s: &Snapshot) {
         g.bins = pb.bins;
         g.has_tape = pb.has_tape();
         infer_split_ends(&mut g);
+    }
+    if let Some((bins, _)) = delta::session_tape() {
+        g.session_bins = bins;
+        g.session_has_tape = true;
     }
 
     let clock = s.current_lap_ms > CLOCK_ON;
@@ -110,12 +138,24 @@ pub fn tick(s: &Snapshot) {
         g.freeze_delta = [0; 3];
         g.freeze_ok = 0;
         g.freeze_delta_ok = 0;
+        g.session_freeze_delta = [0; 3];
+        g.session_freeze_delta_ok = 0;
         g.smooth_i = -1;
     }
     for i in 0..3 {
         if cur[i] > 0 && g.last_cur[i] <= 0 {
             freeze_split(&mut g, s, i, cur);
         }
+    }
+    if g.last_clock && !clock {
+        push_hist(
+            &mut g,
+            [
+                last_lap_time(s, 0),
+                last_lap_time(s, 1),
+                last_lap_time(s, 2),
+            ],
+        );
     }
     g.last_cur = cur;
     g.last_clock = clock;
@@ -147,6 +187,9 @@ pub fn reload() {
     if g.track.is_empty() {
         g.saved = [0; 3];
         g.has_tape = false;
+        g.session_saved = [0; 3];
+        g.session_has_tape = false;
+        g.hist = [[0; 3]; HIST_MAX];
         return;
     }
     let pb = track_pb::bind(&g.track, &g.bike);
@@ -162,7 +205,13 @@ pub fn reload() {
     g.freeze_delta = [0; 3];
     g.freeze_ok = 0;
     g.freeze_delta_ok = 0;
+    g.session_saved = [0; 3];
+    g.session_bins = [0; BINS];
+    g.session_has_tape = false;
+    g.session_freeze_delta = [0; 3];
+    g.session_freeze_delta_ok = 0;
     g.smooth_i = -1;
+    g.hist = [[0; 3]; HIST_MAX];
 }
 
 /// Which cell is wide: the sector you are in (or S3 after the line).
@@ -187,6 +236,10 @@ pub fn hero_index(s: &Snapshot) -> i32 {
 }
 
 pub fn row(s: &Snapshot, i: usize, live_on: bool) -> SectorRow {
+    row_vs(s, i, live_on, false)
+}
+
+pub fn row_vs(s: &Snapshot, i: usize, live_on: bool, session: bool) -> SectorRow {
     const LABELS: [&str; 3] = ["S1", "S2", "S3"];
     let label = LABELS.get(i).copied().unwrap_or("S?");
     let hero = hero_index(s) == i as i32;
@@ -207,7 +260,7 @@ pub fn row(s: &Snapshot, i: usize, live_on: bool) -> SectorRow {
         } else {
             let t = live_elapsed(s, i);
             let pos = delta::lap_pos(s);
-            match vs_location(&g, s, i, t, pos) {
+            match vs_location(&g, s, i, t, pos, session) {
                 Some(raw) => {
                     let d = smooth_live(&mut g, i, raw);
                     (t, d, t > CLOCK_ON, true)
@@ -217,23 +270,30 @@ pub fn row(s: &Snapshot, i: usize, live_on: bool) -> SectorRow {
         }
     } else if frozen {
         let t = g.freeze_time[i];
-        let has_d = (g.freeze_delta_ok & (1 << i)) != 0;
-        (t, g.freeze_delta[i], has_d, false)
+        let (d, has_d) = if session {
+            (
+                g.session_freeze_delta[i],
+                (g.session_freeze_delta_ok & (1 << i)) != 0,
+            )
+        } else {
+            (g.freeze_delta[i], (g.freeze_delta_ok & (1 << i)) != 0)
+        };
+        (t, d, has_d, false)
     } else if cur > 0 {
         let t = split_duration(i, cur_all, s.last_lap_ms);
-        if plugin_has_delta(s, i) {
+        if !session && plugin_has_delta(s, i) {
             (t, plugin_delta(s, i), true, false)
         } else {
-            let best = compare_best(&g, s, i);
+            let best = compare_best(&g, s, i, session);
             let has = t > 0 && best > 0;
             (t, if has { t - best } else { 0 }, has, false)
         }
     } else if !clock {
         let t = last_lap_time(s, i);
-        if plugin_has_delta(s, i) {
+        if !session && plugin_has_delta(s, i) {
             (t, plugin_delta(s, i), t > 0, false)
         } else {
-            let best = compare_best(&g, s, i);
+            let best = compare_best(&g, s, i, session);
             let has = t > 0 && best > 0;
             (t, if has { t - best } else { 0 }, has, false)
         }
@@ -255,6 +315,90 @@ pub fn row(s: &Snapshot, i: usize, live_on: bool) -> SectorRow {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HistoryCell {
+    pub time_ms: i32,
+    pub has_compare: bool,
+    pub slower: bool,
+    pub faster: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HistoryRow {
+    pub label: &'static str,
+    pub cells: [HistoryCell; 3],
+    /// You-row gold: this lap's total is the fastest in the log (and vs saved/session best).
+    pub fastest: bool,
+}
+
+/// Demo / tests: pin LAST … -5 completed laps.
+pub fn set_history(laps: [[i32; 3]; HIST_MAX]) {
+    live().hist = laps;
+}
+
+pub fn history_times() -> [[i32; 3]; HIST_MAX] {
+    live().hist
+}
+
+/// Newest completed laps vs the same comparison as the live strip. `n` is 1..=5.
+pub fn history_board(s: &Snapshot, session: bool, n: usize) -> Vec<HistoryRow> {
+    let n = n.clamp(1, HIST_MAX);
+    let g = live();
+    let mut laps = g.hist;
+    if laps[0].iter().all(|&t| t <= 0) {
+        laps[0] = [
+            last_lap_time(s, 0),
+            last_lap_time(s, 1),
+            last_lap_time(s, 2),
+        ];
+    }
+    let best = [
+        compare_best(&g, s, 0, session),
+        compare_best(&g, s, 1, session),
+        compare_best(&g, s, 2, session),
+    ];
+    let totals: Vec<i32> = laps.iter().map(|lap| lap_total(*lap)).collect();
+    let best_lap = totals.iter().copied().filter(|&t| t > 0).min().unwrap_or(0);
+    (0..n)
+        .map(|row| {
+            let cells = std::array::from_fn(|i| {
+                let t = laps[row][i];
+                let has = t > 0 && best[i] > 0;
+                HistoryCell {
+                    time_ms: t,
+                    has_compare: has,
+                    slower: has && t > best[i],
+                    faster: has && t < best[i],
+                }
+            });
+            HistoryRow {
+                label: HIST_LABELS[row],
+                cells,
+                fastest: best_lap > 0 && totals[row] == best_lap,
+            }
+        })
+        .collect()
+}
+
+fn lap_total(lap: [i32; 3]) -> i32 {
+    if lap.iter().any(|&t| t <= 0) {
+        0
+    } else {
+        lap[0].saturating_add(lap[1]).saturating_add(lap[2])
+    }
+}
+
+fn push_hist(g: &mut SectorEngine, lap: [i32; 3]) {
+    if lap.iter().any(|&t| t <= 0) {
+        return;
+    }
+    if g.hist[0] == lap {
+        return;
+    }
+    g.hist.copy_within(0..HIST_MAX - 1, 1);
+    g.hist[0] = lap;
+}
+
 fn freeze_split(g: &mut SectorEngine, s: &Snapshot, i: usize, cur: [i32; 3]) {
     let dur = split_duration(i, cur, s.last_lap_ms);
     if dur <= 0 {
@@ -270,26 +414,52 @@ fn freeze_split(g: &mut SectorEngine, s: &Snapshot, i: usize, cur: [i32; 3]) {
     g.freeze_time[i] = dur;
     g.freeze_ok |= 1 << i;
     g.smooth_i = -1;
-    if let Some(d) = vs_location(g, s, i, dur, pos) {
-        g.freeze_delta[i] = d;
-        g.freeze_delta_ok |= 1 << i;
-    } else {
-        let best = compare_best(g, s, i);
-        if best > 0 {
-            g.freeze_delta[i] = dur - best;
-            g.freeze_delta_ok |= 1 << i;
-        } else {
-            g.freeze_delta[i] = 0;
-            g.freeze_delta_ok &= !(1 << i);
-        }
-    }
+    write_freeze_delta(g, s, i, dur, pos, false);
+    write_freeze_delta(g, s, i, dur, pos, true);
     if !g.track.is_empty() && track_pb::commit_sector(&g.track, &g.bike, i, dur) {
         g.saved[i] = dur;
     }
+    if g.session_saved[i] <= 0 || dur < g.session_saved[i] {
+        g.session_saved[i] = dur;
+    }
+    if i == 2 && g.freeze_time.iter().all(|&t| t > 0) {
+        push_hist(g, g.freeze_time);
+    }
 }
 
-fn compare_best(g: &SectorEngine, s: &Snapshot, i: usize) -> i32 {
-    if g.saved[i] > 0 {
+fn write_freeze_delta(
+    g: &mut SectorEngine,
+    s: &Snapshot,
+    i: usize,
+    dur: i32,
+    pos: f32,
+    session: bool,
+) {
+    let d = vs_location(g, s, i, dur, pos, session).or_else(|| {
+        let best = compare_best(g, s, i, session);
+        (best > 0).then_some(dur - best)
+    });
+    if session {
+        if let Some(d) = d {
+            g.session_freeze_delta[i] = d;
+            g.session_freeze_delta_ok |= 1 << i;
+        } else {
+            g.session_freeze_delta[i] = 0;
+            g.session_freeze_delta_ok &= !(1 << i);
+        }
+    } else if let Some(d) = d {
+        g.freeze_delta[i] = d;
+        g.freeze_delta_ok |= 1 << i;
+    } else {
+        g.freeze_delta[i] = 0;
+        g.freeze_delta_ok &= !(1 << i);
+    }
+}
+
+fn compare_best(g: &SectorEngine, s: &Snapshot, i: usize, session: bool) -> i32 {
+    if session {
+        g.session_saved[i]
+    } else if g.saved[i] > 0 {
         g.saved[i]
     } else {
         s.sector_best.get(i).copied().unwrap_or(0)
@@ -320,43 +490,65 @@ fn enter_pos(g: &SectorEngine, i: usize) -> f32 {
     }
 }
 
-fn vs_location(g: &SectorEngine, s: &Snapshot, i: usize, elapsed: i32, pos: f32) -> Option<i32> {
+fn vs_location(
+    g: &SectorEngine,
+    s: &Snapshot,
+    i: usize,
+    elapsed: i32,
+    pos: f32,
+    session: bool,
+) -> Option<i32> {
     if elapsed <= CLOCK_ON || pos < 0.0 {
         return None;
     }
-    if g.has_tape {
-        let now = track_pb::time_at(&g.bins, pos)?;
+    let (has_tape, bins) = if session {
+        (g.session_has_tape, &g.session_bins)
+    } else {
+        (g.has_tape, &g.bins)
+    };
+    if has_tape {
+        let now = track_pb::time_at(bins, pos)?;
         let p0 = enter_pos(g, i);
         let ref0 = if p0 <= 0.001 {
             0
         } else {
-            track_pb::time_at(&g.bins, p0).unwrap_or(0)
+            track_pb::time_at(bins, p0).unwrap_or(0)
         };
         return Some(elapsed - (now - ref0));
     }
-    vs_linear(g, s, i, elapsed, pos)
+    vs_linear(g, s, i, elapsed, pos, session)
 }
 
-fn vs_linear(g: &SectorEngine, s: &Snapshot, i: usize, elapsed: i32, pos: f32) -> Option<i32> {
-    let best = compare_best(g, s, i);
+fn vs_linear(
+    g: &SectorEngine,
+    s: &Snapshot,
+    i: usize,
+    elapsed: i32,
+    pos: f32,
+    session: bool,
+) -> Option<i32> {
+    let best = compare_best(g, s, i, session);
     if best <= 0 {
         return None;
     }
     let (p0, p1) = match i {
         0 if g.split_end[0] > 0.05 => (0.0, g.split_end[0]),
-        1 if g.split_end[0] > 0.05 && g.split_end[1] > g.split_end[0] + 0.05 => {
-            (g.split_end[0], g.split_end[1])
-        }
-        2 if g.split_end[1] > 0.05 && g.split_end[1] < 0.95 => (g.split_end[1], 1.0),
+        1 if g.split_end[0] > 0.05 && g.split_end[1] > 0.05 => (g.split_end[0], g.split_end[1]),
+        2 if g.split_end[1] > 0.05 => (g.split_end[1], 1.0),
         _ => return None,
     };
-    let span = p1 - p0;
+    let span = lap_along(p0, p1);
     if span < 0.04 {
         return None;
     }
-    let frac = ((pos - p0) / span).clamp(0.02, 1.2);
+    let frac = (lap_along(p0, pos) / span).clamp(0.02, 1.2);
     let expected = (best as f32 * frac).round() as i32;
     Some(elapsed - expected)
+}
+
+/// Forward distance along the lap, wrapping at the centerline origin.
+fn lap_along(from: f32, to: f32) -> f32 {
+    (to - from).rem_euclid(1.0)
 }
 
 fn smooth_live(g: &mut SectorEngine, i: usize, raw: i32) -> i32 {

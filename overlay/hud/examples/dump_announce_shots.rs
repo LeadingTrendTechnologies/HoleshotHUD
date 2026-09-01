@@ -55,14 +55,19 @@ fn main() {
         ("ticker.png", W, H, |c| size_show(c, "ticker", 0.90, 0.10)),
         ("sys.png", W, H, |c| size_show(c, "sys", 0.34, 0.38)),
         ("sector.png", W, H, |c| {
-            size_show(c, "sector", 0.42, 0.18);
-            c.experimental = true;
+            size_show(c, "sector", 0.42, 0.28);
             c[WidgetId::Sector].show = true;
             c.sector_live = true;
+            mxbo_hud::sector::set_history([
+                [24_180, 25_640, 20_147],
+                [24_410, 25_890, 20_400],
+                [24_250, 25_710, 20_220],
+                [24_500, 26_010, 20_550],
+                [24_330, 25_800, 20_310],
+            ]);
         }),
         ("delta.png", W, H, |c| {
             size_show(c, "delta", 0.42, 0.12);
-            c.experimental = true;
             c[WidgetId::Delta].show = true;
             c[WidgetId::Delta].bg = 0;
             mxbo_hud::delta::set_preview(Some(mxbo_hud::delta::DeltaView {
@@ -148,7 +153,6 @@ fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg[WidgetId::Sector].show = name == "sector";
     cfg[WidgetId::Delta].show = name == "delta";
     cfg[WidgetId::Flag].show = name == "flag";
-    cfg.experimental = name == "sector" || name == "delta";
 }
 
 fn size_show(cfg: &mut HudConfig, name: &str, w: f32, h: f32) {

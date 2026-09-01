@@ -431,7 +431,7 @@ fn draw_widgets(
     flag: DashFlag,
     flag_grow: f32,
 ) {
-    let delta = crate::delta::view();
+    let delta = crate::delta::view_for(cfg.delta_session);
     if s.show_standings != 0 {
         let _g = push_style(fonts, cfg[WidgetId::Standings].bold, cfg[WidgetId::Standings].font);
         draw_standings(px, fonts, s, cfg, sw, sh);
@@ -2593,11 +2593,11 @@ fn sector_hero_index(s: &Snapshot) -> i32 {
 }
 
 fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) {
-    // THESIS: the sector you are in owns the board — live delta vs your best at this point, freeze when you leave.
-    // OWN-WORLD: night-ink 6px plaque, hairline columns, ExtraBold Italic deltas, orange skew S# plaque on the current cell.
-    // STORY: rider glances at this stretch, reads up/down vs their best, keeps eyes on the track.
-    // FIRST VIEWPORT: three columns; current ~56% wide with huge live delta and orange S#. Flanks stay quiet. Pending is "--".
-    // FORM: sector-comp-fresh, user-locked; PB is Ahead Green instead of Best Lap Violet. No glow.
+    // THESIS: live delta stays the glance; last completed laps hang as a split board under the same S1–S3 columns.
+    // OWN-WORLD: night-ink 6px plaque, orange skew S# on the current cell, you-row gold on the fastest log lap, green/red times vs best. No purple, no glow.
+    // STORY: rider reads up/down vs best on top, drops their eyes for LAST / -2 / -3 times.
+    // FIRST VIEWPORT: live strip on top (hero ~56%); hairline; LAST / -2 / -3 aligned under the columns. Short boxes stay live-only.
+    // FORM: Underboard · approved .impeccable/mocks/sector-history-underboard.png
     // FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
     let r = cfg[WidgetId::Sector].rect;
     let x = r.x * sw;
@@ -2610,7 +2610,7 @@ fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
     let a = bg_a(cfg[WidgetId::Sector].bg);
     let n = 3usize;
     let pad_x = (w * 0.03).clamp(6.0, 12.0);
-    let pad_y = (h * 0.08).clamp(5.0, 10.0);
+    let pad_y = (h * 0.06).clamp(5.0, 10.0);
     if a > 0 {
         fill_round(px, x, y, w, h, 6.0, Color::from_rgba8(10, 10, 10, a));
         let rad = 6.0f32.min(w * 0.5).min(h * 0.5);
@@ -2631,12 +2631,16 @@ fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
         }
     }
     let inner_w = (w - pad_x * 2.0).max(60.0);
-    let cap_fs = (h * 0.16).clamp(13.0, 20.0);
+    let cap_fs = (h * 0.11).clamp(11.0, 16.0);
     let cap_y = y + (pad_y * 0.25).max(2.0);
     text(
         px,
         fonts,
-        "vs. your best",
+        if cfg.sector_session {
+            "vs. session best"
+        } else {
+            "vs. your best"
+        },
         cap_fs,
         x + w * 0.5,
         cap_y,
@@ -2644,6 +2648,34 @@ fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
         true,
     );
     let body_y = cap_y + cap_fs + 4.0;
+    let want = if cfg.sector_hist {
+        cfg.sector_hist_count()
+    } else {
+        0
+    };
+    let hist = if want > 0 {
+        crate::sector::history_board(s, cfg.sector_session, want)
+    } else {
+        Vec::new()
+    };
+    let has_hist = hist.first().is_some_and(|r| r.cells.iter().any(|c| c.time_ms > 0));
+    let hist_row_h = (h * 0.095).clamp(14.0, 20.0);
+    let live_min = 52.0;
+    let avail = (y + h - pad_y - body_y - live_min).max(0.0);
+    let fit = (avail / hist_row_h).floor() as usize;
+    let n_hist = if has_hist { want.min(fit).min(hist.len()) } else { 0 };
+    let show_hist = n_hist >= 1;
+    let hist_band = if show_hist {
+        hist_row_h * n_hist as f32 + 5.0
+    } else {
+        0.0
+    };
+    let live_bottom = if show_hist {
+        y + h - pad_y - hist_band
+    } else {
+        y + h - pad_y
+    };
+    let live_h = (live_bottom - body_y).max(8.0);
     let fracs = sector_col_fracs(sector_hero_index(s));
     let mut col_x = [0.0; 3];
     let mut col_w = [0.0; 3];
@@ -2654,18 +2686,18 @@ fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
         acc += col_w[i];
     }
     for i in 1..n {
-        if let Some(line) = rr(col_x[i], body_y, 1.0, (y + h - pad_y - body_y).max(8.0)) {
+        if let Some(line) = rr(col_x[i], body_y, 1.0, live_h) {
             fill_rect(px, line, Color::from_rgba8(42, 42, 46, a.max(90)));
         }
     }
     let ink = Color::from_rgba8(12, 12, 14, 255);
     for i in 0..n {
-        let row = sector_row(s, i, cfg.sector_live);
+        let row = sector_row(s, i, cfg.sector_live, cfg.sector_session);
         let cx = col_x[i];
         let cw = col_w[i];
         let hero = row.fresh;
         if hero {
-            if let Some(wash) = rr(cx + 1.0, body_y, (cw - 2.0).max(4.0), (y + h - pad_y - body_y).max(8.0)) {
+            if let Some(wash) = rr(cx + 1.0, body_y, (cw - 2.0).max(4.0), live_h) {
                 fill_rect(px, wash, Color::from_rgba8(255, 148, 48, 28));
             }
         }
@@ -2678,24 +2710,24 @@ fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
         };
         let time_c = if hero { text_col() } else { text_dim() };
         let label_fs = if hero {
-            (h * 0.13).clamp(10.0, 14.0)
+            (live_h * 0.18).clamp(10.0, 14.0)
         } else {
-            (h * 0.12).clamp(9.0, 12.0)
+            (live_h * 0.16).clamp(9.0, 12.0)
         };
         let delta_fs = if hero {
-            (h * 0.38).max(18.0)
+            (live_h * 0.42).max(16.0)
         } else {
-            (h * 0.22).max(12.0)
+            (live_h * 0.28).max(12.0)
         };
         let time_fs = if hero {
-            (h * 0.14).clamp(10.0, 15.0)
+            (live_h * 0.16).clamp(10.0, 15.0)
         } else {
-            (h * 0.12).clamp(9.0, 12.0)
+            (live_h * 0.14).clamp(9.0, 12.0)
         };
         let mid = cx + cw * 0.5;
         let label_y = body_y;
         if hero {
-            let plaque_h = (label_fs + 8.0).min(h * 0.28);
+            let plaque_h = (label_fs + 8.0).min(live_h * 0.32);
             let plaque_w = (measure(fonts, row.label, label_fs) + 16.0).min(cw - 12.0);
             let skew = (plaque_h * 0.18).clamp(3.0, 6.0);
             let px0 = cx + 8.0;
@@ -2713,9 +2745,9 @@ fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
         } else {
             text(px, fonts, row.label, label_fs, mid, label_y, text_dim(), true);
         }
-        let delta_y = y + (h - delta_fs) * 0.42;
+        let delta_y = body_y + (live_h - delta_fs) * 0.38;
         text(px, fonts, &row.delta, delta_fs, mid, delta_y, delta_c, true);
-        let time_y = y + h - pad_y - time_fs - 2.0;
+        let time_y = live_bottom - time_fs - 3.0;
         let tw = measure(fonts, &row.time, time_fs);
         let chip_x = 7.0;
         let chip_y = 3.0;
@@ -2727,6 +2759,59 @@ fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
             time_fs + chip_y * 2.0,
         );
         text(px, fonts, &row.time, time_fs, mid, time_y, time_c, true);
+    }
+    if !show_hist {
+        return;
+    }
+    if let Some(rule) = rr(x + pad_x, live_bottom, inner_w, 1.0) {
+        fill_rect(px, rule, Color::from_rgba8(42, 42, 46, a.max(90)));
+    }
+    let hist_fs = (hist_row_h * 0.72).clamp(10.0, 14.0);
+    let hist_label_fs = (hist_row_h * 0.62).clamp(8.0, 11.0);
+    for (ri, row) in hist.iter().take(n_hist).enumerate() {
+        let ry = live_bottom + 4.0 + ri as f32 * hist_row_h;
+        if row.fastest {
+            if let Some(wash) = rr(x + pad_x, ry, inner_w, hist_row_h - 1.0) {
+                fill_rect(px, wash, you_row_bg(72));
+            }
+        }
+        text(
+            px,
+            fonts,
+            row.label,
+            hist_label_fs,
+            x + pad_x + 2.0,
+            ry + (hist_row_h - hist_label_fs) * 0.35,
+            if row.fastest { text_col() } else { text_dim() },
+            false,
+        );
+        for i in 0..n {
+            let cell = row.cells[i];
+            let label = if cell.time_ms > 0 {
+                format_lap(cell.time_ms)
+            } else {
+                "--".into()
+            };
+            let col = if cell.faster {
+                ahead_col()
+            } else if cell.slower {
+                behind_col()
+            } else if row.fastest {
+                text_col()
+            } else {
+                text_dim()
+            };
+            text(
+                px,
+                fonts,
+                &label,
+                hist_fs,
+                col_x[i] + col_w[i] * 0.5,
+                ry + (hist_row_h - hist_fs) * 0.32,
+                col,
+                true,
+            );
+        }
     }
 }
 
@@ -2740,8 +2825,8 @@ struct SectorRowView {
     fresh: bool,
 }
 
-fn sector_row(s: &Snapshot, i: usize, live: bool) -> SectorRowView {
-    let src = crate::sector::row(s, i, live);
+fn sector_row(s: &Snapshot, i: usize, live: bool, session: bool) -> SectorRowView {
+    let src = crate::sector::row_vs(s, i, live, session);
     let showing = src.time_ms > 0;
     SectorRowView {
         label: src.label,
@@ -2875,7 +2960,7 @@ fn draw_delta(
     let cap_y = times_y + (times_fs - cap_fs) * 0.45;
     let pills = cfg[WidgetId::Delta].bg < 40;
     if view.recording {
-        let hint = "complete two full laps";
+        let hint = "complete a flying lap";
         let hw = measure(fonts, hint, times_fs);
         let hx = mid - hw * 0.5;
         if pills {
@@ -2892,7 +2977,7 @@ fn draw_delta(
         if view.ref_lap_ms > 0 {
             let best = format_lap(view.ref_lap_ms);
             draw_delta_lap_chip(
-                px, fonts, "BEST", &best, line_x, cap_y, times_y, cap_fs, times_fs, pills,
+                px, fonts, if cfg.delta_session { "SESSION" } else { "BEST" }, &best, line_x, cap_y, times_y, cap_fs, times_fs, pills,
                 text_dim(), text_col(),
             );
         }

@@ -68,5 +68,35 @@ None.
 | Process rows | type + thin grey tracks | HUD / MX Bikes / MXB App / ReShade; `—` when missing |
 | Type | existing HUD face | ExtraBold Italic via push_style |
 
-## Sectors (prior)
-Split board + skew plaques. Night-ink 6px panel, three stacked rows like standings. Last completed sector is you-row gold. See prior brief; approved comp `.impeccable/mocks/sector-comp-approved.png`.
+## Sectors
+
+## Scope
+Operate · overlay HUD widget `draw_sector` in `overlay/hud/src/render.rs`.
+
+## Audience / job
+MX Bikes racer mid-session. Glance: am I up or down vs my best in this sector. Drop eyes for LAST / -2 / -3 times.
+
+## Direction
+Underboard. Night-ink 6px plaque. Live three-column strip on top (current sector ~56% hero, orange skew S#). Hairline. LAST / -2 / -3 completed laps aligned under the same columns. You-row gold on the fastest log lap. History times green/red vs best. Short boxes stay live-only.
+
+## Memorable moment
+LAST S2 in green sitting under this-lap's red +0.120 — the sector you just lost, you had last lap.
+
+## Approved comp
+`.impeccable/mocks/sector-history-underboard.png`
+
+## Unresolved
+None.
+
+## Inventory
+| Region | Medium | Notes |
+| --- | --- | --- |
+| Panel | tiny-skia fill_round | night-ink #0A0A0A @ sector_bg, 6px |
+| Frame | 1px stroke round_rect | hairline #2A2A2E, alpha from panel |
+| Live columns | fill_rect splits | S1/S2/S3; current ~56% |
+| Hero wash | fill_rect | orange #FF9430 @ 28 |
+| S# plaque | fill_skew | Holeshot Orange parallelogram |
+| Live delta | Exo 2 ExtraBold Italic | green / red / dim -- |
+| Split pills | fill_night_pill | this-lap times |
+| History rows | type + you-row wash | LAST / -2 / -3; LAST @ 72% you-row |
+| Type | existing HUD face | ExtraBold Italic via push_style |

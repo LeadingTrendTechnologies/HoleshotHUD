@@ -1,6 +1,34 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
+
+Delta Bar and Sectors are regular widgets — time vs your best on this track, with last laps under the sector strip.
+
+### Delta Bar
+
+- Turn it on with **Show on overlay**. It no longer needs Experimental widgets.
+- Replay leftover telemetry is not recorded. Sitting in the pits near the start/finish does not become the first tape.
+- A hitch that skips the line still saves a decent lap.
+- A cut or shortcut does not become your best. Skipping a stretch of track faster than a bike can ride it is ignored; a hitch that still covers the ground still counts.
+- A jump (about a second in the air over ~100–200 m of centerline) still saves the first flying lap. That used to dump the orange REC fill at the line.
+- The bar keeps moving in sector 3 when the centerline origin is not the start/finish line.
+- The first flying lap is not thrown away at that origin wrap. Crossing the real line saves it.
+- **Compare to session best** uses this visit's fastest decent lap instead of the saved tape.
+- REC becomes your tape when last-lap arrives after the clock already restarted, and after a lap clock that had collapsed at 3:20.
+- The first flying lap after an untimed out-lap saves when the clock drops at the line (MX already has that lap). REC says **complete a flying lap**.
+- A faster live lap becomes BEST even when the plugin republishes the old last-lap, or zeros it at the line.
+
+### Sectors
+
+- Turn it on with **Show on overlay**. Same tape as Delta Bar. It no longer needs Experimental widgets.
+- Live S3 keeps ticking when the centerline origin is not the start/finish line.
+- **Compare to session best** uses this visit's fastest splits instead of the saved tape.
+- LAST, -2, and further laps sit under the live strip when **Lap log** is on (default). **Laps back** is 1–5. A short box stays live-only. You-row gold is only on the fastest lap in that log.
+
+### Overlay
+
+- **Quit overlay** fully exits. **Open when MX Bikes opens** does not leave a background copy running.
+- Widgets hide in the garage. A results board left over after you leave the track is not a session.
 
 ## 0.3.3
 

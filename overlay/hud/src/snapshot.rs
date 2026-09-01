@@ -320,11 +320,11 @@ pub fn write_name(dest: &mut [u8], src: &str) {
 
 impl Snapshot {
     /// Race / replay payload is present. Menus with an empty snapshot are not.
+    ///
+    /// Standings alone are leftover after `RunDeinit` (garage / lobby). Replay and
+    /// spectate still stream rider positions; riding still has telemetry.
     pub fn has_session_data(&self) -> bool {
-        self.on_track != 0
-            || self.has_telemetry != 0
-            || self.standing_count > 0
-            || self.rider_count > 0
+        self.has_telemetry != 0 || self.rider_count > 0
     }
 
     /// Human dump of SHM scalars plus occupied riders / standings / poly samples.

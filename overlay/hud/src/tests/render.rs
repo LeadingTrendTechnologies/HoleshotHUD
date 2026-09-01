@@ -2746,8 +2746,8 @@ fn sector_row_formats_plugin_deltas() {
     sector.sector_best = [24_180, 25_640, 22_910];
     sector.sector_delta = [-87, 120, 0];
     sector.sector_delta_valid = 0b011;
-    let mid_s1 = super::sector_row(&sector, 0, true);
-    let mid_s3 = super::sector_row(&sector, 2, true);
+    let mid_s1 = super::sector_row(&sector, 0, true, false);
+    let mid_s3 = super::sector_row(&sector, 2, true, false);
     assert!(!mid_s1.pending);
     assert!(!mid_s1.fresh);
     assert_eq!(mid_s1.delta, "-0.087");
@@ -2757,7 +2757,7 @@ fn sector_row_formats_plugin_deltas() {
     pb.sector_best = [24_093, 25_640, 22_910];
     pb.sector_delta = [-87, 120, 0];
     pb.sector_delta_valid = 0b011;
-    let pb_s1 = super::sector_row(&pb, 0, true);
+    let pb_s1 = super::sector_row(&pb, 0, true, false);
     assert_eq!(pb_s1.delta, "-0.087");
     assert_ne!(pb_s1.delta, "0.000");
     let mut held = sector;
@@ -2767,7 +2767,7 @@ fn sector_row_formats_plugin_deltas() {
     held.sector_last_lap = [24_093, 25_760, 23_090];
     held.sector_delta = [-87, 120, -40];
     held.sector_delta_valid = 0b111;
-    let held_s3 = super::sector_row(&held, 2, true);
+    let held_s3 = super::sector_row(&held, 2, true, false);
     assert!(!held_s3.pending);
     assert_eq!(held_s3.time, "23.090");
     assert_eq!(held_s3.delta, "-0.040");
@@ -2777,7 +2777,7 @@ fn sector_row_formats_plugin_deltas() {
     inferred.sector_last_lap = [24_093, 25_760, 0];
     inferred.sector_delta_valid = 0b011;
     inferred.last_lap_ms = 24_093 + 25_760 + 23_090;
-    let inf_s3 = super::sector_row(&inferred, 2, true);
+    let inf_s3 = super::sector_row(&inferred, 2, true, false);
     assert!(!inf_s3.pending);
     assert_eq!(inf_s3.time, "23.090");
     assert!(inf_s3.fresh);
@@ -2788,9 +2788,9 @@ fn sector_row_formats_plugin_deltas() {
     next_s1.sector_last_lap = [24_093, 0, 0];
     next_s1.sector_delta = [20, 0, 0];
     next_s1.sector_delta_valid = 0b001;
-    let frozen_s1 = super::sector_row(&next_s1, 0, true);
-    let next_s2 = super::sector_row(&next_s1, 1, true);
-    let next_s3 = super::sector_row(&next_s1, 2, true);
+    let frozen_s1 = super::sector_row(&next_s1, 0, true, false);
+    let next_s2 = super::sector_row(&next_s1, 1, true, false);
+    let next_s3 = super::sector_row(&next_s1, 2, true, false);
     assert_eq!(frozen_s1.delta, "+0.020");
     assert!(!frozen_s1.fresh);
     assert!(next_s2.fresh);
@@ -3391,6 +3391,30 @@ fn live_mark_paints_in_the_top_right() {
 }
 
 #[test]
+fn garage_leftover_standings_hide_race_widgets() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.on_track = 1;
+    s.has_telemetry = 0;
+    s.rider_count = 0;
+    s.show_relative = 0;
+    s.show_map = 0;
+    let mut cfg = HudConfig::new();
+    cfg[WidgetId::Minimap].show = false;
+    cfg[WidgetId::Radar].show = false;
+    cfg[WidgetId::Dash].show = false;
+    cfg[WidgetId::Ticker].show = false;
+    cfg[WidgetId::Sys].show = true;
+    cfg[WidgetId::Stance].show = true;
+    draw_ok(&s, &cfg);
+    assert!(
+        click_rider_hits().is_empty(),
+        "garage leftover standings must not keep race widgets up"
+    );
+}
+
+#[test]
 fn empty_session_hides_race_widgets() {
     let _g = session_lock();
     reset_session();
@@ -3581,13 +3605,19 @@ fn widget_goldens_pin_paint() {
     draw_widget_golden("sys", &s, &cfg, cfg[WidgetId::Sys].rect);
 
     hide_widgets(&mut cfg);
-    cfg.experimental = true;
     cfg[WidgetId::Sector].show = true;
+    crate::sector::reset_engine();
+    crate::sector::set_history([
+        [24_180, 25_640, 20_147],
+        [24_410, 25_890, 20_400],
+        [24_250, 25_710, 20_220],
+        [24_500, 26_010, 20_550],
+        [24_330, 25_800, 20_310],
+    ]);
     let s = golden_snap(&sector_snap(base), &cfg);
     draw_widget_golden("sector", &s, &cfg, cfg[WidgetId::Sector].rect);
 
     hide_widgets(&mut cfg);
-    cfg.experimental = true;
     cfg[WidgetId::Delta].show = true;
     crate::delta::set_preview(Some(crate::delta::DeltaView {
         ready: true,

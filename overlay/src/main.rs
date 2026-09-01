@@ -70,9 +70,7 @@ pub(crate) fn quit_app() {
         return;
     }
     crate::compat::restore_taskbars();
-    if !crate::config::with_config(|c| c.open_with_game) {
-        crate::startup::kill_other_hud_processes();
-    }
+    crate::startup::kill_other_hud_processes();
     crate::tray::remove();
     crate::compat::stop_background_threads();
     unsafe {
@@ -546,22 +544,17 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
                 crate::record::tick(s);
             }
         }
+        // Replay never sets plugin on_track. Telemetry / rider positions are the session.
         if last_snap.as_ref().is_some_and(|s| s.has_session_data()) {
             if let Some(s) = last_snap.as_mut() {
                 s.on_track = 1;
-            }
-        }
-        if live {
-            if let Some(s) = last_snap.as_ref() {
-                mxbo_hud::delta::tick(s);
-                mxbo_hud::sector::tick(s);
             }
         }
         if let Some(s) = last_snap.as_mut() {
             let spectating = cmd.as_ref().is_some_and(|c| c.spectating());
             if spectating {
                 // Replay still publishes leftover bike data. Drop it so the map follows
-                // the camera subject; riding turns this back on the next live tick.
+                // the camera subject, and so Delta / Sectors do not tape a replay.
                 s.has_telemetry = 0;
             } else if s.has_telemetry != 0 || s.local_race_num > 0 {
                 s.focus_race_num = s.local_race_num;
@@ -572,6 +565,12 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         // session HUD instead of blanking at 2.5s; drop after 15s so garage/menus
         // still hide if SHM stops.
         let hitch_hold = in_session && raw_age < 15.0;
+        if live || hitch_hold {
+            if let Some(s) = last_snap.as_ref() {
+                mxbo_hud::delta::tick(s);
+                mxbo_hud::sector::tick(s);
+            }
+        }
         let hud = if overlay_on && (live || hitch_hold || layout_on || (settings_open && in_session))
         {
             last_snap.as_ref()

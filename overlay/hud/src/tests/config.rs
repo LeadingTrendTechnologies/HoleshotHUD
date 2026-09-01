@@ -65,6 +65,10 @@ fn default_hud_hides_every_widget() {
     assert!(!cfg[WidgetId::Sys].show);
     assert!(!cfg[WidgetId::Sector].show);
     assert!(cfg.sector_live);
+    assert!(cfg.sector_hist);
+    assert_eq!(cfg.sector_hist_laps, 3);
+    assert!(!cfg.sector_session);
+    assert!(!cfg.delta_session);
     assert!(!cfg[WidgetId::Delta].show);
     assert!(!cfg[WidgetId::Stance].show);
     assert!(!cfg[WidgetId::Flag].show);
@@ -186,8 +190,17 @@ fn migrate_default_sector_restores_tall_strip() {
         h: 0.085,
     };
     super::migrate_default_sector(&mut factory);
-    assert!((factory.h - 0.14).abs() < 0.001);
-    assert!((factory.y - 0.78).abs() < 0.001);
+    assert!((factory.h - 0.22).abs() < 0.001);
+    assert!((factory.y - 0.70).abs() < 0.001);
+    let mut mid = crate::shm::Rect {
+        x: 0.66,
+        y: 0.78,
+        w: 0.32,
+        h: 0.14,
+    };
+    super::migrate_default_sector(&mut mid);
+    assert!((mid.h - 0.22).abs() < 0.001);
+    assert!((mid.y - 0.70).abs() < 0.001);
     let mut wide = crate::shm::Rect {
         x: 0.60,
         y: 0.8275,
@@ -195,7 +208,7 @@ fn migrate_default_sector_restores_tall_strip() {
         h: 0.085,
     };
     super::migrate_default_sector(&mut wide);
-    assert!((wide.h - 0.14).abs() < 0.001);
+    assert!((wide.h - 0.22).abs() < 0.001);
     assert!((wide.w - 0.32).abs() < 0.001);
     let mut custom = crate::shm::Rect {
         x: 0.50,
@@ -280,15 +293,15 @@ fn disabled_columns_drop_from_widget_layout() {
 }
 
 #[test]
-fn experimental_gates_labs_widgets() {
+fn experimental_no_longer_gates_sectors() {
     let mut cfg = HudConfig::new();
     assert!(!cfg.experimental);
     assert!(!cfg.experimental_unlocked());
     cfg[WidgetId::Sector].show = true;
     cfg[WidgetId::Delta].show = true;
     cfg[WidgetId::Stance].show = true;
-    assert!(!cfg.sector_visible());
-    assert!(!cfg.delta_visible());
+    assert!(cfg.sector_visible());
+    assert!(cfg.delta_visible());
     assert!(cfg.stance_visible());
     cfg.experimental = true;
     assert!(cfg.sector_visible());
@@ -321,6 +334,47 @@ fn ini_round_trip_enables_delta_and_sector() {
     assert!(cfg[WidgetId::Sector].show);
     assert!(cfg.experimental);
     assert!(cfg.delta_visible());
+    assert!(cfg.sector_visible());
+}
+
+#[test]
+fn delta_show_does_not_need_experimental() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-delta-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    std::fs::write(
+        &path,
+        "show_delta=1\nfirst_install_version=0.1.0\nst_last=1\nrel_last=1\n",
+    )
+    .unwrap();
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let cfg = HudConfig::load_file();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(cfg[WidgetId::Delta].show);
+    assert!(!cfg.experimental);
+    assert!(cfg.delta_visible());
+    assert!(!cfg.sector_visible());
+}
+
+#[test]
+fn sector_show_does_not_need_experimental() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-sector-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    std::fs::write(
+        &path,
+        "show_sector=1\nfirst_install_version=0.1.0\nst_last=1\nrel_last=1\n",
+    )
+    .unwrap();
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let cfg = HudConfig::load_file();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(cfg[WidgetId::Sector].show);
+    assert!(!cfg.experimental);
     assert!(cfg.sector_visible());
 }
 

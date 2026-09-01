@@ -321,8 +321,6 @@ fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg[WidgetId::Sector].show = name == "sector";
     cfg[WidgetId::Delta].show = name == "delta";
     cfg[WidgetId::Flag].show = name == "flag";
-    // Overlay Labs stays off unless this demo is showing a labs widget.
-    cfg.experimental = name == "sector" || name == "delta";
 }
 
 fn widget_id(name: &str) -> Option<WidgetId> {
@@ -439,6 +437,9 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "ticker_bold" => cfg[WidgetId::Ticker].bold,
         "sys_bold" => cfg[WidgetId::Sys].bold,
         "sector_live" => cfg.sector_live,
+        "sector_session" => cfg.sector_session,
+        "sector_hist" => cfg.sector_hist,
+        "delta_session" => cfg.delta_session,
         "sector_bold" => cfg[WidgetId::Sector].bold,
         "delta_bold" => cfg[WidgetId::Delta].bold,
         "flag_bold" => cfg[WidgetId::Flag].bold,
@@ -507,6 +508,9 @@ fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
         "ticker_bold" => cfg[WidgetId::Ticker].bold = on,
         "sys_bold" => cfg[WidgetId::Sys].bold = on,
         "sector_live" => cfg.sector_live = on,
+        "sector_session" => cfg.sector_session = on,
+        "sector_hist" => cfg.sector_hist = on,
+        "delta_session" => cfg.delta_session = on,
         "sector_bold" => cfg[WidgetId::Sector].bold = on,
         "delta_bold" => cfg[WidgetId::Delta].bold = on,
         "flag_bold" => cfg[WidgetId::Flag].bold = on,
@@ -535,6 +539,7 @@ fn int_val(cfg: &HudConfig, key: &str) -> Option<i32> {
         "sys_bg" => cfg[WidgetId::Sys].bg,
         "sector_bg" => cfg[WidgetId::Sector].bg,
         "ticker_count" => cfg.ticker_count,
+        "sector_hist_laps" => cfg.sector_hist_count() as i32,
         "st_font" => cfg[WidgetId::Standings].font,
         "rel_font" => cfg[WidgetId::Relative].font,
         "map_font" => cfg[WidgetId::Map].font,
@@ -571,6 +576,7 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "delta_bg" => cfg[WidgetId::Delta].bg = value.clamp(0, 100),
         "flag_bg" => cfg[WidgetId::Flag].bg = value.clamp(0, 100),
         "ticker_count" => cfg.ticker_count = value.clamp(3, 15),
+        "sector_hist_laps" => cfg.sector_hist_laps = value.clamp(1, 5),
         "st_font" => cfg.set_font_pct(WidgetId::Standings, value),
         "rel_font" => cfg.set_font_pct(WidgetId::Relative, value),
         "map_font" => cfg.set_font_pct(WidgetId::Map, value),
@@ -718,6 +724,13 @@ fn demo_snapshot() -> Snapshot {
     s.track_length = length;
     s.sf_meters = sf;
     mxbo_hud::sector::set_split_fracs([DEMO_S1_END, DEMO_S2_END]);
+    mxbo_hud::sector::set_history([
+        [24_180, 25_640, 20_147],
+        [24_410, 25_890, 20_400],
+        [24_250, 25_710, 20_220],
+        [24_500, 26_010, 20_550],
+        [24_330, 25_800, 20_310],
+    ]);
 
     s.rider_count = RIDERS.len() as i32;
     for (i, (name, _, _)) in RIDERS.iter().enumerate() {
@@ -896,6 +909,13 @@ fn animate(s: &mut Snapshot, t: f32, dt: f32) {
 /// Lap clock follows track pos so S2/S3 live time is clock minus completed splits.
 fn animate_sectors(s: &mut Snapshot) {
     mxbo_hud::sector::set_split_fracs([DEMO_S1_END, DEMO_S2_END]);
+    mxbo_hud::sector::set_history([
+        [24_180, 25_640, 20_147],
+        [24_410, 25_890, 20_400],
+        [24_250, 25_710, 20_220],
+        [24_500, 26_010, 20_550],
+        [24_330, 25_800, 20_310],
+    ]);
     s.sector_count = 3;
     s.sector_best = [24_180, 25_640, 22_910];
     s.sector_last_lap = [DEMO_S1_MS, DEMO_S2_MS, DEMO_S3_MS];

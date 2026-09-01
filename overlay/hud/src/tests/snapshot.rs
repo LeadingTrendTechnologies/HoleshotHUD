@@ -60,6 +60,12 @@ fn snapshot_default_layout_is_sane() {
     assert_eq!(s.on_track, 0);
     assert!(!s.has_session_data());
     s.standing_count = 2;
+    s.on_track = 1;
+    assert!(
+        !s.has_session_data(),
+        "garage leftover standings are not a session"
+    );
+    s.rider_count = 1;
     assert!(s.has_session_data());
 }
 

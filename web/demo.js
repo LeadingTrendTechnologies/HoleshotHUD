@@ -260,8 +260,12 @@ function renderSettings() {
     html += styleControls("sys", "Panel opacity");
   } else if (w === "sector") {
     html += toggleRow("sector_live", "Live sector");
+    html += toggleRow("sector_session", "Compare to session best");
+    html += toggleRow("sector_hist", "Lap log");
+    html += stepperRow("sector_hist_laps", "Laps back", 1, 5);
     html += styleControls("sector", "Panel opacity");
   } else if (w === "delta") {
+    html += toggleRow("delta_session", "Compare to session best");
     html += styleControls("delta", "Panel opacity");
   } else if (w === "flag") {
     html += toggleRow("flag_yellow", "Yellow flag");

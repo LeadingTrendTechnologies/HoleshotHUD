@@ -174,7 +174,7 @@ components:
 
 Holeshot HUD is a TV race overlay sitting on the game: dark plaques, skewed hardware bars, and a hot orange that always means *you*. It is broadcast-hot — stronger bars, louder flags, denser tables — not a quiet utility panel and not a consumer app shell. The rider glances; the graphic has to punch.
 
-Type is Exo 2 ExtraBold Italic at table scale. Corners stay modest. Chrome is opt-in: a fresh install draws nothing. Settings is the same family in opaque charcoal, including a Center Plaque that can stack on the dimmed host. The website is not a second identity and not a marketing landing: it is an F8 Twin pit-box — settings pane, F8 widget rail, live HUD stage, Download as one orange clip-path plaque in a thin top bar. Sectors (labs) is the same family as Standings: a three-row split board, you-row on the last completed sector, delta in a content-sized meaning-colored skew plaque.
+Type is Exo 2 ExtraBold Italic at table scale. Corners stay modest. Chrome is opt-in: a fresh install draws nothing. Settings is the same family in opaque charcoal, including a Center Plaque that can stack on the dimmed host. The website is not a second identity and not a marketing landing: it is an F8 Twin pit-box — settings pane, F8 widget rail, live HUD stage, Download as one orange clip-path plaque in a thin top bar. Sectors is the same family as Standings: a three-row split board, you-row on the last completed sector, delta in a content-sized meaning-colored skew plaque.
 
 Do not drift toward generic sim-HUD blues, glassmorphism blobs, or light “esports dashboard” kits. Manufacturer bike colors stay on pills only.
 
@@ -205,7 +205,7 @@ One brand accent. Everything else is either charcoal, race meaning, or a manufac
 - **Stage Warm / Stage Deep**: Full-bleed web stage gradient (warm vignette over deep ink). Not a card fill.
 - **Field Slate**: Every other rider until lapping rules fire.
 - **Track Line**: Centerline and dash outlines.
-- **You Row**: Gold-brown highlight behind the local rider in standings/relative (opacity is a user slider, default 50%). Sectors uses the same fill at 72% on the last completed split.
+- **You Row**: Gold-brown highlight behind the local rider in standings/relative (opacity is a user slider, default 50%). Sectors uses the same fill at 72% on a lap-log row that is the fastest lap in the log.
 
 ### Race meaning (not a second brand)
 - **Lapping Blue / Lapped Red**: Other rows and dots only when a lap apart *and* closing. Off in warmup.
@@ -244,7 +244,7 @@ Widgets are free-floating rectangles on the game, placed by the rider (Ctrl-drag
 
 Settings is a left-rail tool inside F8: sidebar tabs (~48px rows, 8px gaps), opaque charcoal, 8–10px corners. A Center Plaque (What’s new) dims that host and centers a Panel board (~520px, 10px corners).
 
-The website is an **F8 Twin pit-box**, not a boxed canvas. Thin top bar (56px, Charcoal Side): 40px mark (8px corners) + wordmark left, Download plaque right. Below: CSS grid `clamp(260px, 24vw, 340px) 204px 1fr` — settings pane, widget nav (F8 rail: Boards / Track / Cockpit / Experimental), then live HUD stage. Stage is full-bleed (no inner card). Twin is Pane with a hairline right edge. Widget nav is Charcoal Side, 204px like F8 `SIDE_W`. Under 960px wide or 620px tall the pit stacks HUD, then a sticky chip rail, then settings (wordmark hides under 540px; Download shortens to “Download”). Short landscape (max 520px tall, min 700px wide) splits HUD left and rail + settings right. Canvas is 1280×720 contained. Safe-area insets pad the top bar and stacked chrome.
+The website is an **F8 Twin pit-box**, not a boxed canvas. Thin top bar (56px, Charcoal Side): 40px mark (8px corners) + wordmark left, Download plaque right. Below: CSS grid `clamp(260px, 24vw, 340px) 204px 1fr` — settings pane, widget nav (F8 rail: Boards / Track / Cockpit), then live HUD stage. Stage is full-bleed (no inner card). Twin is Pane with a hairline right edge. Widget nav is Charcoal Side, 204px like F8 `SIDE_W`. Under 960px wide or 620px tall the pit stacks HUD, then a sticky chip rail, then settings (wordmark hides under 540px; Download shortens to “Download”). Short landscape (max 520px tall, min 700px wide) splits HUD left and rail + settings right. Canvas is 1280×720 contained. Safe-area insets pad the top bar and stacked chrome.
 
 Map default fill is transparent. Radar keeps a solid square panel (opacity default 86). Fresh install: every widget off.
 
@@ -312,10 +312,10 @@ Settings left rail and the web twin rail share one grammar: 8px rounded row, 4px
 Tight classification boards. Alternating near-black rows. Your row = You Row tint. Session-best time = Best Lap Violet. Position is followed by a manufacturer skew bar. Headers uppercase dim. Rows slide when live order changes.
 
 ### Sectors (signature)
-Labs-only until Experimental widgets is on. Night Ink 6px plaque, three columns. The last completed split is the wide hero (~56%) with a Holeshot Orange skew **S#** plaque and a large ExtraBold Italic delta. Flanks stay quiet. Green (`ahead-green`) is faster / personal best. Red is slower. Dim `--` is pending. Orange is you (the fresh cell), never a second meaning color. No Best Lap Violet on this widget. No drop-shadow glow.
+Regular Cockpit widget. Night Ink 6px plaque, three columns. The current sector is the wide hero (~56%) with a Holeshot Orange skew **S#** plaque and a large ExtraBold Italic delta. Flanks stay quiet. Under a hairline, LAST / -2 / -3 completed laps share those columns; the fastest of those laps has the You Row gold wash. Green (`ahead-green`) is faster / personal best. Red is slower. Dim `--` is pending. Orange is you (the live cell), never a second meaning color. No Best Lap Violet. No drop-shadow glow. A short box stays live-only.
 
 ### Delta Bar (signature)
-Labs-only until Experimental widgets is on. Hair lockup: no plaque, no border. Orange Δ as a letter, huge ExtraBold Italic signed time, a 2px center-zero hairline, BEST and LAST capping the ends. When panel opacity is under 40%, those captions sit on night-ink pills. Green fill left of the tick is faster; red right is slower. Saturates at ±2.0 s. New installs start with panel opacity 0.
+Hair lockup: no plaque, no border. Orange Δ as a letter, huge ExtraBold Italic signed time, a 2px center-zero hairline, BEST and LAST capping the ends. When panel opacity is under 40%, those captions sit on night-ink pills. Green fill left of the tick is faster; red right is slower. Saturates at ±2.0 s. New installs start with panel opacity 0.
 
 ### Dash (signature)
 Horizontal plaque: gear box, RPM/speed stack, large italic orange P#, flag wrap on checkered/white. Shift lights are a green → yellow → red capsule row.
@@ -341,7 +341,7 @@ Web-only CTA in the top bar. Clip-path orange parallelogram, Windows four-square
 - **Do** start every widget hidden on a fresh install.
 - **Do** treat map fill as transparent unless the rider raises opacity.
 - **Do** size Settings heading plaques to the label (text + 36px), left-aligned.
-- **Do** draw Sectors as a three-column strip whose last completed split is the wide hero; green = faster / PB, red = slower.
+- **Do** draw Sectors as a three-column strip whose current sector is the wide hero, with LAST / -2 / -3 under it when the box is tall; green = faster / PB, red = slower.
 - **Do** mark that hero with a Holeshot Orange skew S# plaque.
 - **Do** draw Delta Bar as Hair: Δ letter, signed time, 2px center-zero line, BEST/LAST on the ends.
 - **Do** treat the website as an F8 Twin pit-box: settings, widget rail (204px), live stage, Download in the top bar.
@@ -356,6 +356,6 @@ Web-only CTA in the top bar. Clip-path orange parallelogram, Windows four-square
 - **Don't** draw overlay work into the in-game C++ HUD (`ingame_hud`).
 - **Don't** stretch heading plaques into full-width orange bars.
 - **Don't** paint Sectors personal bests in Best Lap Violet — that violet stays on standings/relative lap times.
-- **Don't** ship Sectors or Delta Bar when Experimental widgets is off.
+- **Don't** ship Sectors until **Show on overlay** is on.
 - **Don't** draw Delta Bar as an orange Δ plaque or a fat capsule bar — Hair is type plus a 2px line.
 - **Don't** wrap the live HUD in a boxed canvas inside a left-rail dashboard.

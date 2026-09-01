@@ -561,7 +561,7 @@ impl WidgetId {
             Self::Dash => Rect { x: 0.445, y: 0.865, w: 0.111, h: 0.115 },
             Self::Ticker => Rect { x: 0.06, y: 0.012, w: 0.88, h: 0.055 },
             Self::Sys => Rect { x: 0.012, y: 0.36, w: 0.086, h: 0.186 },
-            Self::Sector => Rect { x: 0.66, y: 0.78, w: 0.32, h: 0.14 },
+            Self::Sector => Rect { x: 0.66, y: 0.70, w: 0.32, h: 0.22 },
             Self::Delta => Rect { x: 0.36, y: 0.76, w: 0.28, h: 0.09 },
             Self::Stance => Rect { x: 0.445, y: 0.705, w: 0.11, h: 0.065 },
             Self::Flag => Rect { x: 0.447, y: 0.026, w: 0.107, h: 0.019 },
@@ -972,11 +972,19 @@ pub struct HudConfig {
     widgets: [WidgetPrefs; WidgetId::COUNT],
     /// Tick the current sector live. Off: times only after the split.
     pub sector_live: bool,
+    /// Compare Sectors to this session's best splits instead of the saved tape.
+    pub sector_session: bool,
+    /// Draw LAST / -2 / … under the live strip.
+    pub sector_hist: bool,
+    /// How many completed laps the underboard shows (1–5).
+    pub sector_hist_laps: i32,
+    /// Compare Delta Bar to this session's fastest decent lap instead of the saved tape.
+    pub delta_session: bool,
     /// Nearby crash. Flags widget only. Off by default.
     pub flag_yellow: bool,
     /// Someone a lap up closing from behind. Flags widget only. Off by default.
     pub flag_blue: bool,
-    /// Off by default. Labs widgets stay hidden until this is on.
+    /// Kept in the ini for older builds. No widget is gated on this anymore.
     pub experimental: bool,
     /// Plugin-only: when true the in-game HUD draws. Overlay still saves this key.
     pub ingame_hud: bool,
@@ -1101,6 +1109,10 @@ impl HudConfig {
         Self {
             widgets: std::array::from_fn(|i| WidgetId::ALL[i].default_prefs()),
             sector_live: true,
+            sector_session: false,
+            sector_hist: true,
+            sector_hist_laps: 3,
+            delta_session: false,
             flag_yellow: false,
             flag_blue: false,
             experimental: false,
@@ -1250,6 +1262,10 @@ impl HudConfig {
             }
             match key {
                 "sector_live" => cfg.sector_live = b,
+                "sector_session" => cfg.sector_session = b,
+                "sector_hist" => cfg.sector_hist = b,
+                "sector_hist_laps" => cfg.sector_hist_laps = val.parse().unwrap_or(3).clamp(1, 5),
+                "delta_session" => cfg.delta_session = b,
                 "flag_caution" => {
                     cfg.flag_yellow = b;
                     cfg.flag_blue = b;
@@ -1470,9 +1486,9 @@ impl HudConfig {
              \n[Sys]\n\
              sys_bg={}\nsys_font={}\nsys_bold={}\n\
              \n[Sector]\n\
-             sector_live={}\nsector_bg={}\nsector_font={}\nsector_bold={}\n\
+             sector_live={}\nsector_session={}\nsector_hist={}\nsector_hist_laps={}\nsector_bg={}\nsector_font={}\nsector_bold={}\n\
              \n[Delta]\n\
-             delta_bg={}\ndelta_font={}\ndelta_bold={}\n\
+             delta_session={}\ndelta_bg={}\ndelta_font={}\ndelta_bold={}\n\
              \n[Stance]\n\
              stance_bind={}\nstance_mode={}\nstance_style={}\nstance_show_sit={}\n\
              stance_bg={}\nstance_font={}\nstance_bold={}\n\
@@ -1661,9 +1677,13 @@ impl HudConfig {
             sys.font,
             b(sys.bold),
             b(self.sector_live),
+            b(self.sector_session),
+            b(self.sector_hist),
+            self.sector_hist_laps.clamp(1, 5),
             sector.bg,
             sector.font,
             b(sector.bold),
+            b(self.delta_session),
             delta.bg,
             delta.font,
             b(delta.bold),
@@ -1772,21 +1792,21 @@ impl HudConfig {
         cols
     }
 
-    /// Settings → Labs → Experimental widgets. Labs widgets stay hidden until this is on.
+    /// Older Settings → Labs toggle. Unused for draw; still round-trips in the ini.
     pub fn experimental_unlocked(&self) -> bool {
         self.experimental
     }
 
-    pub fn sector_unlocked(&self) -> bool {
-        self.experimental_unlocked()
+    pub fn sector_visible(&self) -> bool {
+        self[WidgetId::Sector].show
     }
 
-    pub fn sector_visible(&self) -> bool {
-        self.experimental_unlocked() && self[WidgetId::Sector].show
+    pub fn sector_hist_count(&self) -> usize {
+        self.sector_hist_laps.clamp(1, 5) as usize
     }
 
     pub fn delta_visible(&self) -> bool {
-        self.experimental_unlocked() && self[WidgetId::Delta].show
+        self[WidgetId::Delta].show
     }
 
     pub fn stance_visible(&self) -> bool {
@@ -2318,9 +2338,9 @@ fn migrate_default_flag(r: &mut Rect) {
 fn migrate_default_sector(r: &mut Rect) {
     let factory = Rect {
         x: 0.66,
-        y: 0.78,
+        y: 0.70,
         w: 0.32,
-        h: 0.14,
+        h: 0.22,
     };
     let untouched = |x: f32, y: f32, w: f32, h: f32| {
         (r.x - x).abs() < 0.001
@@ -2328,13 +2348,13 @@ fn migrate_default_sector(r: &mut Rect) {
             && (r.w - w).abs() < 0.001
             && (r.h - h).abs() < 0.001
     };
-    if untouched(0.66, 0.84, 0.32, 0.085) {
+    if untouched(0.66, 0.84, 0.32, 0.085) || untouched(0.66, 0.78, 0.32, 0.14) {
         *r = factory;
         return;
     }
-    if r.w >= 0.28 && (r.h - 0.085).abs() < 0.002 {
+    if r.w >= 0.28 && ((r.h - 0.085).abs() < 0.002 || (r.h - 0.14).abs() < 0.002) {
         let cy = r.y + r.h * 0.5;
-        r.h = 0.14;
+        r.h = 0.22;
         r.y = (cy - r.h * 0.5).clamp(0.0, 1.0 - r.h);
     }
 }

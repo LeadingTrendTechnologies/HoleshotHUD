@@ -39,7 +39,7 @@ To add a widget: if the field is **Overlay**, draw it. If **Cached** / **Receive
 
 ## Overlay widget wikis
 
-Per-widget behavior, pitfalls, and change history for agents: **[widgets.md](widgets.md)**.
+Per-widget behavior, pitfalls, and change history for agents: **[widgets.md](widgets.md)**. Wishlist (not shipped): **[future.md](widgets/future.md)**.
 
 Rust overlay structure and possible refactors (suggestions only): **[rust-patterns.md](rust-patterns.md)**.
 
@@ -53,7 +53,7 @@ Rust overlay structure and possible refactors (suggestions only): **[rust-patter
 - [Radar](widgets/radar.md): side / rear proximity
 - [Dash](widgets/dash.md): gear, speed, session clock, flags (optional simple gear+speed lockup)
 - [Sectors](widgets/sector.md): S1–S3 times (labs flag)
-- [Delta Bar](widgets/delta-bar.md): time vs your best at this track position (labs flag; recorded lap, not the ghost)
+- [Delta Bar](widgets/delta-bar.md): time vs your best at this track position (recorded lap, not the ghost)
 - [Systems](widgets/systems.md): CPU / mem / FPS
 - [Stance](widgets/stance.md): sit / stand from a local bind (not plugin telemetry)
 
@@ -73,7 +73,7 @@ Local speed / yaw / crash / track pos are in SHM for the moving marker, not as t
 | `EventInit` | `SPluginsBikeEvent_t` | Received | Rider/bike/track constants for **your** bike |
 | `EventDeinit` | — | Cached | Clears event + race |
 | `RunInit` | `SPluginsBikeSession_t` | Unused | Session at run start |
-| `RunDeinit` | — | Unused | |
+| `RunDeinit` | — | Overlay | Clears the run (telemetry, positions). Leftover standings are not `onTrack`. |
 | `RunStart` / `RunStop` | — | Unused | Green flag / pause style events |
 | `DrawInit` | sprite/font names | Draw-only | We request **0** sprites/fonts |
 | `Draw` | — | Draw-only | Publishes SHM every frame; in-game HUD optional |
@@ -452,6 +452,7 @@ Existing overlay widgets: [widgets.md](widgets.md) (behavior + change logs). Fie
 | Speed / gear / RPM | telemetry + event max/shift RPM | Overlay (dash) |
 | [Systems](widgets/systems.md) | host meters | Overlay |
 | [Sectors](widgets/sector.md) | `RunSplit` / `RaceSplit` | Overlay (labs flag) |
+| [Delta Bar](widgets/delta-bar.md) | overlay tape at `local_track_pos` | Overlay |
 | Shift light | `m_iRPM` vs `m_iShiftRPM` | Need SHM |
 | Throttle / brakes / clutch | telemetry inputs | Need SHM |
 | Lean / pitch | `m_fRoll` / `m_fPitch` or `m_fLean` | Need SHM |

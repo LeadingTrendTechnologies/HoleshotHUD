@@ -242,10 +242,6 @@ impl Tab {
     fn is_widget(self) -> bool {
         !matches!(self, Tab::App | Tab::Feedback)
     }
-
-    fn is_labs(self) -> bool {
-        matches!(self, Tab::Sector | Tab::Delta)
-    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -277,14 +273,18 @@ enum Hit {
     SysShow,
     SectorShow,
     SectorLive,
+    SectorSession,
+    SectorHist,
+    SectorHistDec,
+    SectorHistInc,
     DeltaShow,
+    DeltaSession,
     TrackPbClear,
     StanceShow,
     StanceShowSit,
     FlagShow,
     FlagYellow,
     FlagBlue,
-    FeatureSector,
     TickerTitle,
     TickerAutoscroll,
     StPos,
@@ -1196,11 +1196,6 @@ fn dispatch(id: Hit, p: (f32, f32)) {
     match id {
         Hit::TabWidgets => {
             let last = UI.lock().unwrap().as_ref().map(|u| u.last_widget).unwrap_or(Tab::Standings);
-            let last = if last.is_labs() && !with_config(|c| c.experimental_unlocked()) {
-                Tab::Standings
-            } else {
-                last
-            };
             set_tab(last);
             return;
         }
@@ -1436,9 +1431,6 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::QuitApp => {
             close_drop();
             crate::config::update_config(|_| {});
-            if crate::config::with_config(|c| c.open_with_game) {
-                crate::startup::spawn_game_waiter();
-            }
             crate::quit_app();
             return;
         }
@@ -1513,19 +1505,15 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::SysShow => c[WidgetId::Sys].show ^= true,
         Hit::SectorShow => c[WidgetId::Sector].show ^= true,
         Hit::SectorLive => c.sector_live = !c.sector_live,
+        Hit::SectorSession => c.sector_session = !c.sector_session,
+        Hit::SectorHist => c.sector_hist = !c.sector_hist,
         Hit::DeltaShow => c[WidgetId::Delta].show ^= true,
+        Hit::DeltaSession => c.delta_session = !c.delta_session,
         Hit::StanceShow => c[WidgetId::Stance].show ^= true,
         Hit::FlagShow => c[WidgetId::Flag].show ^= true,
         Hit::FlagYellow => c.flag_yellow = !c.flag_yellow,
         Hit::FlagBlue => c.flag_blue = !c.flag_blue,
         Hit::StanceShowSit => c.stance_show_sit = !c.stance_show_sit,
-        Hit::FeatureSector => {
-            c.experimental = !c.experimental;
-            if !c.experimental {
-                c[WidgetId::Sector].show = false;
-                c[WidgetId::Delta].show = false;
-            }
-        },
         Hit::TickerTitle => c.ticker_title = !c.ticker_title,
         Hit::TickerAutoscroll => c.ticker_autoscroll = !c.ticker_autoscroll,
         Hit::StStripe => c.st_stripe = !c.st_stripe,
@@ -1616,6 +1604,8 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::RelInc => c.relative_count = (c.relative_count + 1).min(8),
         Hit::TickerDec => c.ticker_count = (c.ticker_count - 1).max(3),
         Hit::TickerInc => c.ticker_count = (c.ticker_count + 1).min(15),
+        Hit::SectorHistDec => c.sector_hist_laps = (c.sector_hist_laps - 1).max(1),
+        Hit::SectorHistInc => c.sector_hist_laps = (c.sector_hist_laps + 1).min(5),
         Hit::TabWidgets | Hit::TabApp | Hit::TabFeedback | Hit::TabSt | Hit::TabRel | Hit::TabMap | Hit::TabMini | Hit::TabRadar | Hit::TabDash
         | Hit::TabTicker | Hit::TabSys | Hit::TabSector | Hit::TabDelta | Hit::TabStance | Hit::TabFlag
         | Hit::MapDotOpen | Hit::MiniDotOpen | Hit::FontOpen | Hit::UnitsOpen | Hit::StTextOpen | Hit::RelTextOpen
@@ -1637,12 +1627,6 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::StBg | Hit::StHl | Hit::RelBg | Hit::RelHl | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg | Hit::FlagBg
         | Hit::StW(_) | Hit::RelW(_) | Hit::Font(_) | Hit::StanceReset | Hit::TrackPbClear => {}
     });
-    if id == Hit::FeatureSector && !with_config(|c| c.experimental_unlocked()) {
-        let on_labs = UI.lock().unwrap().as_ref().is_some_and(|u| u.tab.is_labs());
-        if on_labs {
-            set_tab(Tab::App);
-        }
-    }
 }
 
 fn is_drop_pick(hit: Hit) -> bool {
@@ -1732,7 +1716,6 @@ fn hit_label(hit: Hit) -> String {
         Hit::FontOpen => "Font".into(),
         Hit::UnitsOpen => "Units".into(),
         Hit::SettingsKeyOpen => "Settings key".into(),
-        Hit::FeatureSector => "Experimental widgets".into(),
         Hit::StanceBindOpen => {
             if UI.lock().unwrap().as_ref().is_some_and(|u| u.bind_listen) {
                 "Press a pad button, key, or mouse button now. Escape cancels.".into()
@@ -1753,6 +1736,9 @@ fn hit_label(hit: Hit) -> String {
         Hit::MapSectors => "Sector lines".into(),
         Hit::MiniSectors => "Sector lines".into(),
         Hit::SectorLive => "Live sector".into(),
+        Hit::SectorSession | Hit::DeltaSession => "Compare to session best".into(),
+        Hit::SectorHist => "Lap log".into(),
+        Hit::SectorHistDec | Hit::SectorHistInc => "Laps back".into(),
         Hit::StanceReset => "Reset to standing".into(),
         Hit::TrackPbClear => "Clear this track".into(),
         Hit::FbText => "Feedback message".into(),
@@ -2095,11 +2081,6 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
             ui.and_then(|u| u.reply_id.clone()),
         )
     };
-    let tab = if tab.is_labs() && !cfg.experimental_unlocked() {
-        Tab::App
-    } else {
-        tab
-    };
     let banner = crate::update::manual_banner(cfg.auto_update_on_launch, banner_dismissed, &crate::update::state());
     let banner_h = if banner.is_some() {
         if crate::update::update_may_need_admin() {
@@ -2390,11 +2371,13 @@ fn paint_focus(px: &mut Pixmap, hits: &[HitBox], focus: Option<Hit>) {
 fn widget_groups(cfg: &HudConfig) -> Vec<(&'static str, Vec<(Tab, Hit, &'static str, bool)>)> {
     let cockpit = vec![
         (Tab::Dash, Hit::TabDash, "Dash", cfg[WidgetId::Dash].show),
+        (Tab::Delta, Hit::TabDelta, "Delta Bar", cfg[WidgetId::Delta].show),
+        (Tab::Sector, Hit::TabSector, "Sectors", cfg[WidgetId::Sector].show),
         (Tab::Flag, Hit::TabFlag, "Flags", cfg[WidgetId::Flag].show),
         (Tab::Sys, Hit::TabSys, "Systems", cfg[WidgetId::Sys].show),
         (Tab::Stance, Hit::TabStance, "Stance", cfg[WidgetId::Stance].show),
     ];
-    let mut groups = vec![
+    vec![
         (
             "Boards",
             vec![
@@ -2412,17 +2395,7 @@ fn widget_groups(cfg: &HudConfig) -> Vec<(&'static str, Vec<(Tab, Hit, &'static 
             ],
         ),
         ("Cockpit", cockpit),
-    ];
-    if cfg.experimental_unlocked() {
-        groups.push((
-            "Labs",
-            vec![
-                (Tab::Sector, Hit::TabSector, "Sectors", cfg[WidgetId::Sector].show),
-                (Tab::Delta, Hit::TabDelta, "Delta Bar", cfg[WidgetId::Delta].show),
-            ],
-        ));
-    }
-    groups
+    ]
 }
 
 fn widget_rail_height(cfg: &HudConfig) -> f32 {
@@ -3462,10 +3435,6 @@ fn pane_app(
         text(px, fonts, "Starts the overlay in the tray when MX Bikes launches, including after you close the game. F8 or the HUD mark opens settings.", 11.0, x + 4.0, y + 2.0, dim(), false);
         y += 22.0;
     }
-    y = section(px, fonts, x, y, "Labs");
-    y = toggle_row(px, fonts, x, y, w, "Experimental widgets", cfg.experimental, Hit::FeatureSector, hover, hits);
-    text(px, fonts, "Adds Sectors and Delta Bar. Off until you turn this on.", 11.0, x + 4.0, y + 2.0, dim(), false);
-    y += 22.0;
     y = section(px, fonts, x, y, "Updates");
     let need_admin = crate::update::update_may_need_admin();
     y = toggle_row(px, fonts, x, y, w, "Update automatically on launch", cfg.auto_update_on_launch, Hit::AutoUpdateOnLaunch, hover, hits);
@@ -4027,7 +3996,7 @@ fn widget_pane_spec(id: WidgetId) -> WidgetPaneSpec {
         WidgetId::Sector => WidgetPaneSpec {
             id,
             title: "Sectors",
-            subtitle: "Split times vs your best at this point in the sector",
+            subtitle: "Split times vs your best, plus a lap log under the strip",
             show: Hit::SectorShow,
             bg: Hit::SectorBg,
             bg_label: "Panel opacity",
@@ -4585,9 +4554,24 @@ fn pane_sector(
             x,
             y,
             w,
-            "The wide cell is the sector you are in. Live sector ticks vs your best at this point; off waits until the split. Same tape as Delta Bar. Saved per track and class (250 vs 450).",
+            "The wide cell is the sector you are in. Live sector ticks vs your best at this point; off waits until the split. Lap log puts LAST / -2 / … under the strip when the box is tall enough; gold is the fastest of those laps. Same tape as Delta Bar. Saved per track and class (250 vs 450). Session best is this visit only.",
         );
         y = toggle_row(px, fonts, x, y, w, "Live sector", cfg.sector_live, Hit::SectorLive, hover, hits);
+        y = toggle_row(px, fonts, x, y, w, "Compare to session best", cfg.sector_session, Hit::SectorSession, hover, hits);
+        y = toggle_row(px, fonts, x, y, w, "Lap log", cfg.sector_hist, Hit::SectorHist, hover, hits);
+        y = stepper_row(
+            px,
+            fonts,
+            x,
+            y,
+            w,
+            "Laps back",
+            &cfg.sector_hist_count().to_string(),
+            Hit::SectorHistDec,
+            Hit::SectorHistInc,
+            hover,
+            hits,
+        );
         action_btn(px, fonts, x, y, 168.0, 32.0, "Clear this track", Hit::TrackPbClear, hover, hits, false);
         y += 40.0;
         if !shown {
@@ -4615,8 +4599,9 @@ fn pane_delta(
             x,
             y,
             w,
-            "Compares this lap to a lap we recorded — not the in-game ghost. Saved per track and class (250 vs 450). REC while the first lap fills if none is saved; it says to complete two full laps.",
+            "Compares this lap to a lap we recorded — not the in-game ghost. Saved per track and class (250 vs 450). REC while the first flying lap fills if none is saved. Session best is this visit only.",
         );
+        y = toggle_row(px, fonts, x, y, w, "Compare to session best", cfg.delta_session, Hit::DeltaSession, hover, hits);
         action_btn(px, fonts, x, y, 168.0, 32.0, "Clear this track", Hit::TrackPbClear, hover, hits, false);
         y += 40.0;
         if !shown {

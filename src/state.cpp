@@ -175,8 +175,9 @@ void PluginState::endRun()
 
 bool PluginState::onTrack() const
 {
-    // Replay / spectate never call RunInit, but classification and positions still stream.
-    return m_inRun || m_hasTelemetry || !m_standings.empty() || !m_trackPos.empty();
+    // Replay / spectate never call RunInit, but telemetry and positions still stream.
+    // Standings stay after RunDeinit (garage / lobby) and must not keep the HUD up.
+    return m_inRun || m_hasTelemetry || !m_trackPos.empty();
 }
 
 namespace
@@ -641,10 +642,12 @@ int PluginState::currentLapMs() const
     if (m_lastLapEndTime > 0.0f && m_sessionTime >= m_lastLapEndTime)
     {
         const float dt = m_sessionTime - m_lastLapEndTime;
-        if (dt > 200.0f)
+        if (dt < 0.0f)
         {
-            return static_cast<int>(dt);
+            return 0;
         }
+        // RunTelemetry `_fTime` is seconds. Treating dt>200 as already-ms
+        // collapsed the lap clock at 3:20 and left Delta Bar on REC.
         return static_cast<int>(dt * 1000.0f);
     }
     return m_lastLapMs;

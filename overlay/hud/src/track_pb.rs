@@ -315,16 +315,19 @@ fn apply_bike(g: &mut Store, bike: String) -> bool {
     adopted
 }
 
-fn sync_track(g: &mut Store, track: &str, bike: &str) -> bool {
-    let bike = resolve_bike(bike, &g.bike);
+fn sync_class(g: &mut Store, track: &str, class: String) -> bool {
     if track != g.track {
         let folded = load_track(g, track);
-        apply_bike(g, bike) || folded
-    } else if bike != g.bike {
-        apply_bike(g, bike)
+        apply_bike(g, class) || folded
+    } else if class != g.bike {
+        apply_bike(g, class)
     } else {
         false
     }
+}
+
+fn sync_track(g: &mut Store, track: &str, bike: &str) -> bool {
+    sync_class(g, track, resolve_bike(bike, &g.bike))
 }
 
 /// Switch to this track and bike. Empty track keeps the current cache.
@@ -347,6 +350,32 @@ pub fn bind(track: &str, bike: &str) -> TrackPb {
         .as_ref()
         .is_some_and(|dir| path_for(dir, track).is_file());
     let adopted = sync_track(&mut g, track, &bike);
+    if adopted || (on_disk && should_touch(g.file.used)) {
+        persist(&mut g);
+    }
+    g.pb.clone()
+}
+
+/// Bind this track to an exact class key. Empty bike stays empty — does not
+/// reuse the last named class (standings lag must not load a 250 onto a 450).
+pub fn bind_exact(track: &str, bike: &str) -> TrackPb {
+    if track.is_empty() || !thread_persist() {
+        return if thread_persist() {
+            live().pb.clone()
+        } else {
+            TrackPb::empty()
+        };
+    }
+    let mut g = live();
+    let bike = bike_class(bike);
+    if track == g.track && bike == g.bike {
+        return g.pb.clone();
+    }
+    let on_disk = g
+        .dir
+        .as_ref()
+        .is_some_and(|dir| path_for(dir, track).is_file());
+    let adopted = sync_class(&mut g, track, bike);
     if adopted || (on_disk && should_touch(g.file.used)) {
         persist(&mut g);
     }
