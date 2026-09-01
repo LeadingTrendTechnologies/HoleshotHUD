@@ -181,7 +181,7 @@ fn main() {
     }
     if std::env::args().any(|a| a == "--wait-for-game") {
         crate::startup::wait_for_mx_bikes();
-    } else if !crate::startup::claim_hud_instance() {
+    } else if !crate::startup::take_hud_instance() {
         return;
     }
     let loaded = crate::config::HudConfig::load_file();
@@ -307,6 +307,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
     let mut placed = false;
     let mut saw_game = crate::startup::mx_bikes_pid().is_some();
     let mut game_gone_at: Option<Instant> = None;
+    let mut shm_miss_since: Option<Instant> = None;
 
     let mut msg = MSG::default();
     loop {
@@ -355,6 +356,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
                     restart_hint = false;
                     shm = None;
                     cmd = None;
+                    last_snap = None;
                 }
             }
             if !game_on {
@@ -473,6 +475,13 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         }
         if let Some(s) = shm.as_ref().and_then(|s| s.read()) {
             last_snap = Some(s);
+        }
+        if shm.is_some() && last_snap.is_some() {
+            shm_miss_since = None;
+        } else if overlay_on {
+            shm_miss_since.get_or_insert_with(Instant::now);
+        } else {
+            shm_miss_since = None;
         }
         if f9_hit {
             crate::record::rotate();
@@ -607,7 +616,9 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
                 h as u32,
                 age,
                 overlay_on && restart_hint,
-                overlay_on && crate::plugin::needs_restart(),
+                overlay_on
+                    && (crate::plugin::needs_restart()
+                        || shm_miss_since.is_some_and(|t| t.elapsed() >= Duration::from_secs(2))),
                 layout_on,
             );
         };

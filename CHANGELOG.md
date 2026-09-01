@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.3.2
+
+Widgets show after an update.
+
+### Overlay
+
+- After an update, a blank HUD with only the top-right mark now explains itself: widgets appear on track, or MX Bikes needs a full restart so the plugin can load.
+- Running the app again replaces a leftover tray instance, so a rebuild or update actually starts.
+- The plugin baked into the overlay wins over a leftover file next to the exe, so an update cannot keep an old MX Bikes plugin.
+
 ## 0.3.1
 
 ### Internals

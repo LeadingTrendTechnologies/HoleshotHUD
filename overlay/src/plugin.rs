@@ -100,6 +100,7 @@ fn browse_folder(host: windows::Win32::Foundation::HWND) -> Option<PathBuf> {
 
 fn install_once() -> Result<bool, ()> {
     let bytes = plugin_bytes().ok_or(())?;
+    refresh_sidecar(&bytes);
     let dest = plugin_dest().ok_or(())?;
     if dest.is_file() {
         if let Ok(existing) = fs::read(&dest) {
@@ -132,17 +133,31 @@ fn remove_legacy_plugin(game: &Path) {
 }
 
 fn plugin_bytes() -> Option<Vec<u8>> {
-    if let Some(path) = sidecar_plugin() {
-        if let Ok(bytes) = fs::read(path) {
-            if bytes.len() > 1024 {
-                return Some(bytes);
-            }
-        }
+    let sidecar = sidecar_plugin().and_then(|p| fs::read(p).ok());
+    pick_plugin_bytes(EMBEDDED, sidecar.as_deref())
+}
+
+/// Prefer the plugin baked into this exe. A leftover sidecar from an older install
+/// used to win after an update, so MX Bikes kept publishing into the wrong SHM name.
+fn pick_plugin_bytes(embedded: &[u8], sidecar: Option<&[u8]>) -> Option<Vec<u8>> {
+    if embedded.len() > 1024 {
+        return Some(embedded.to_vec());
     }
-    if EMBEDDED.len() > 1024 {
-        return Some(EMBEDDED.to_vec());
+    sidecar.filter(|b| b.len() > 1024).map(|b| b.to_vec())
+}
+
+fn refresh_sidecar(bytes: &[u8]) {
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    let Some(dir) = exe.parent() else {
+        return;
+    };
+    let path = dir.join(PLUGIN_FILE);
+    if fs::read(&path).ok().as_deref() == Some(bytes) {
+        return;
     }
-    None
+    let _ = fs::write(&path, bytes);
 }
 
 fn sidecar_plugin() -> Option<PathBuf> {
@@ -299,5 +314,24 @@ fn reg_install_path(hive: windows::Win32::System::Registry::HKEY, subkey: PCWSTR
         } else {
             Some(PathBuf::from(s))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pick_plugin_bytes;
+
+    #[test]
+    fn embedded_plugin_wins_over_sidecar() {
+        let embedded = vec![1u8; 2000];
+        let sidecar = vec![2u8; 2000];
+        assert_eq!(pick_plugin_bytes(&embedded, Some(&sidecar)).unwrap()[0], 1);
+    }
+
+    #[test]
+    fn sidecar_used_when_embed_is_placeholder() {
+        let sidecar = vec![3u8; 2000];
+        assert_eq!(pick_plugin_bytes(&[], Some(&sidecar)).unwrap()[0], 3);
+        assert!(pick_plugin_bytes(&[], Some(&[1, 2, 3])).is_none());
     }
 }

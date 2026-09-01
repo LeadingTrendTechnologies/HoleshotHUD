@@ -160,7 +160,7 @@ fn shipped_changelog_has_current_or_unreleased_notes() {
 #[test]
 fn internals_only_version_has_no_whats_new_modal() {
     assert!(
-        current_notes().is_none(),
+        notes_for(CHANGELOG, "0.3.1").is_none(),
         "0.3.1 is internals-only; What's new should not open"
     );
 }

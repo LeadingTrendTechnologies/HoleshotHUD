@@ -376,6 +376,13 @@ pub fn draw(px: &mut Pixmap, fonts: &Fonts, snap: Option<&Snapshot>, cfg: &HudCo
                 w,
                 "Press F8 — turn on Show on overlay. Widgets appear on track.",
             );
+        } else {
+            top_banner(
+                px,
+                fonts,
+                w,
+                "Widgets appear on track. If you are racing, fully quit MX Bikes and start it again.",
+            );
         }
         return;
     }

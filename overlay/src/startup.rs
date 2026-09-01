@@ -127,6 +127,19 @@ pub fn claim_hud_instance() -> bool {
     claim_named(w!("Local\\HoleshotHUD"), &HUD_MUTEX)
 }
 
+/// Quit a leftover tray instance, then take the single-instance mutex.
+/// Running the exe after a rebuild must not silently exit because 0.3.1 stayed in the tray.
+pub fn take_hud_instance() -> bool {
+    kill_other_hud_processes();
+    for _ in 0..20 {
+        if claim_hud_instance() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    false
+}
+
 pub fn mx_bikes_pid() -> Option<u32> {
     unsafe {
         let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;

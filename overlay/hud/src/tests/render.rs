@@ -3363,6 +3363,24 @@ fn blank_hud_paints_enable_hint_when_no_widget_is_on() {
 }
 
 #[test]
+fn blank_hud_explains_on_track_when_widgets_are_on() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.on_track = 0;
+    s.has_telemetry = 0;
+    s.standing_count = 0;
+    s.rider_count = 0;
+    let mut cfg = HudConfig::new();
+    cfg[WidgetId::Dash].show = true;
+    let mut px = Pixmap::new(1280, 720).expect("pixmap");
+    draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
+    let crop = crop_px(&px, 1280.0 * 0.5 - 340.0, 8.0, 680.0, 40.0, 4.0);
+    let opaque = crop.pixels().iter().filter(|p| p.alpha() > 20).count();
+    assert!(opaque > 50, "widgets-on garage / no plugin data must still show a plaque");
+}
+
+#[test]
 fn live_mark_paints_in_the_top_right() {
     let mut px = Pixmap::new(1280, 720).expect("pixmap");
     px.fill(Color::TRANSPARENT);

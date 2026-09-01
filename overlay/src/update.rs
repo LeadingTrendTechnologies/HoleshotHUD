@@ -220,6 +220,7 @@ try {{ Wait-Process -Id $pidToWait -Timeout 40 -ErrorAction SilentlyContinue }} 
 Start-Sleep -Milliseconds 800
 Copy-Item -LiteralPath $srcExe -Destination $dstExe -Force
 if ($srcDlo -and (Test-Path -LiteralPath $srcDlo)) {{
+  Copy-Item -LiteralPath $srcDlo -Destination (Join-Path (Split-Path -Parent $dstExe) 'Holeshot-HUD.dlo') -Force
   $pluginsDir = $null
   foreach ($key in @('HKCU:\Software\Valve\Steam','HKLM:\SOFTWARE\WOW6432Node\Valve\Steam','HKLM:\SOFTWARE\Valve\Steam')) {{
     try {{ $steam = (Get-ItemProperty -Path $key -ErrorAction Stop).InstallPath }} catch {{ $steam = $null }}
