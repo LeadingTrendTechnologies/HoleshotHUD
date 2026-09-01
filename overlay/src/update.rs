@@ -210,6 +210,8 @@ fn apply(version: &str, url: &str) -> Result<(), String> {
         .as_ref()
         .map(|p| p.display().to_string())
         .unwrap_or_default();
+    let plugin_changed = src_dlo.as_ref().is_some_and(|p| zip_plugin_differs_from_installed(p));
+    let relaunch = relaunch_args(plugin_changed);
     let body = format!(
         r#"$ErrorActionPreference = 'Continue'
 $pidToWait = {pid}
@@ -241,7 +243,7 @@ if ($srcDlo -and (Test-Path -LiteralPath $srcDlo)) {{
   }}
 }}
 $env:HOLESHOT_SKIP_UPDATE = '1'
-Start-Process -FilePath $dstExe -ArgumentList '--skip-update','--whats-new'
+Start-Process -FilePath $dstExe -ArgumentList {relaunch}
 "#,
         src_exe.display(),
         exe.display(),
@@ -361,6 +363,32 @@ fn parse_ver(s: &str) -> [u32; 3] {
         out[i] = digits.parse().unwrap_or(0);
     }
     out
+}
+
+fn zip_plugin_differs_from_installed(src_dlo: &Path) -> bool {
+    let Ok(new) = fs::read(src_dlo) else {
+        return false;
+    };
+    match crate::plugin::dest_path() {
+        Some(dest) if dest.is_file() => fs::read(&dest).map(|old| old != new).unwrap_or(true),
+        Some(_) => true,
+        None => false,
+    }
+}
+
+fn dlo_differs(new_bytes: &[u8], existing: Option<&[u8]>) -> bool {
+    match existing {
+        Some(old) => old != new_bytes,
+        None => true,
+    }
+}
+
+fn relaunch_args(plugin_changed: bool) -> &'static str {
+    if plugin_changed {
+        "'--skip-update','--whats-new','--plugin-changed'"
+    } else {
+        "'--skip-update','--whats-new'"
+    }
 }
 
 #[cfg(test)]

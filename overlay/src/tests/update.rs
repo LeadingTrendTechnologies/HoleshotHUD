@@ -84,3 +84,19 @@ fn json_download_url_prefers_windows_x64_zip() {
         Some("https://example.test/Holeshot-windows-x64.zip")
     );
 }
+
+#[test]
+fn overlay_only_relaunch_skips_plugin_changed() {
+    assert_eq!(relaunch_args(false), "'--skip-update','--whats-new'");
+    assert!(!dlo_differs(b"plugin", Some(b"plugin")));
+}
+
+#[test]
+fn plugin_byte_diff_relaunch_passes_plugin_changed() {
+    assert_eq!(
+        relaunch_args(true),
+        "'--skip-update','--whats-new','--plugin-changed'"
+    );
+    assert!(dlo_differs(b"new", Some(b"old")));
+    assert!(dlo_differs(b"new", None));
+}

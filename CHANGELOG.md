@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.3.3
+
+Fully quit MX Bikes after a plugin update if the game was already open.
+
+### Overlay
+
+- If an update changes the MX Bikes plugin while the game is still running, What's new and the HUD ask you to fully quit MX Bikes so the new plugin can load. Overlay-only updates do not.
+
 ## 0.3.2
 
 Widgets show after an update.

@@ -3424,6 +3424,23 @@ fn no_snapshot_does_not_ask_to_restart() {
 }
 
 #[test]
+fn plugin_hint_wins_over_fullscreen_restart() {
+    let cfg = HudConfig::new();
+    let mut both = Pixmap::new(1280, 720).expect("pixmap");
+    draw(&mut both, &fonts(), None, &cfg, 1280, 720, 0.0, true, true, false);
+    let mut plugin = Pixmap::new(1280, 720).expect("pixmap");
+    draw(&mut plugin, &fonts(), None, &cfg, 1280, 720, 0.0, false, true, false);
+    let mut fso = Pixmap::new(1280, 720).expect("pixmap");
+    draw(&mut fso, &fonts(), None, &cfg, 1280, 720, 0.0, true, false, false);
+    assert_eq!(
+        both.data(),
+        plugin.data(),
+        "plugin restart plaque wins when both hints are on"
+    );
+    assert_ne!(both.data(), fso.data());
+}
+
+#[test]
 fn map_subject_pose_follows_spectated_rider_without_telemetry() {
     let mut s = live_snap();
     s.has_telemetry = 0;

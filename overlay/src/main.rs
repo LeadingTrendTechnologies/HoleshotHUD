@@ -202,6 +202,7 @@ fn main() {
         None => mxbo_hud::set_status_hint("Clock log failed — see AppData\\Local\\Holeshot HUD\\logs\\boot.txt"),
     }
     crate::plugin::sync();
+    crate::plugin::apply_updater_plugin_flag();
     let family = loaded.font_family;
     *crate::config::CONFIG.lock().unwrap_or_else(|e| e.into_inner()) = loaded;
     let fonts = Fonts::for_family(family)
@@ -361,6 +362,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
             }
             if !game_on {
                 crate::plugin::retry_if_needed();
+                crate::plugin::clear_game_restart();
             }
             if game_on {
                 if !saw_game && crate::config::with_config(|c| c.minimize_on_close) {

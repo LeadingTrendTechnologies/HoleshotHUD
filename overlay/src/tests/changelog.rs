@@ -280,8 +280,14 @@ fn shipped_notes_are_grouped_by_widget() {
         !titles.contains(&"Website"),
         "website notes stay out of What's new: {titles:?}"
     );
-    assert!(
-        !titles.iter().any(|t| t.eq_ignore_ascii_case("overlay")),
-        "0.2.0 overlay notes are internals: {titles:?}"
-    );
+    if let Some(overlay) = n.sections.iter().find(|s| s.title.eq_ignore_ascii_case("overlay")) {
+        assert!(
+            overlay
+                .bullets
+                .iter()
+                .all(|b| super::overlay_wide(b) || !super::internal_bullet(b)),
+            "Overlay leftovers must be rider-facing HUD notes: {:?}",
+            overlay.bullets
+        );
+    }
 }

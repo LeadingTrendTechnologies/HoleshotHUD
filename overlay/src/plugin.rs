@@ -14,11 +14,38 @@ const LEGACY_PLUGIN_FILE: &str = "mxbo.dlo";
 const EMBEDDED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/Holeshot-HUD.dlo"));
 
 static NEED_RETRY: AtomicBool = AtomicBool::new(false);
+static NEED_GAME_RESTART: AtomicBool = AtomicBool::new(false);
+
+pub const RESTART_PLUGIN: &str =
+    "Fully quit MX Bikes and start it again so the plugin can load";
+pub const RESTART_PLUGIN_STILL_RUNNING: &str =
+    "MX Bikes is still running. Fully quit the game (not just the session) so the new plugin can load.";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum InstallOutcome {
+    AlreadyCurrent,
+    Wrote,
+    Locked,
+}
 
 pub fn sync() {
+    apply_sync(crate::startup::mx_bikes_pid().is_some());
+}
+
+fn apply_sync(game_on: bool) {
     match install_once() {
-        Ok(true) | Err(_) => NEED_RETRY.store(true, Ordering::Relaxed),
-        Ok(false) => NEED_RETRY.store(false, Ordering::Relaxed),
+        Ok(outcome) => {
+            NEED_RETRY.store(should_retry(outcome), Ordering::Relaxed);
+            if should_mark_game_restart(outcome, game_on) {
+                NEED_GAME_RESTART.store(true, Ordering::Relaxed);
+            }
+        }
+        Err(_) => {
+            NEED_RETRY.store(true, Ordering::Relaxed);
+            if game_on {
+                NEED_GAME_RESTART.store(true, Ordering::Relaxed);
+            }
+        }
     }
 }
 
@@ -28,9 +55,38 @@ pub fn retry_if_needed() {
     }
 }
 
-/// True when the plugin file could not be replaced (usually because MX Bikes still has it open).
+/// Relaunch arg from the updater when the zip `.dlo` differed from the installed plugin.
+pub fn apply_updater_plugin_flag() {
+    if should_mark_from_updater_flag(plugin_changed_arg(), crate::startup::mx_bikes_pid().is_some())
+    {
+        NEED_GAME_RESTART.store(true, Ordering::Relaxed);
+    }
+}
+
+pub fn clear_game_restart() {
+    NEED_GAME_RESTART.store(false, Ordering::Relaxed);
+}
+
+fn plugin_changed_arg() -> bool {
+    std::env::args().any(|a| a == "--plugin-changed")
+}
+
+fn should_retry(outcome: InstallOutcome) -> bool {
+    matches!(outcome, InstallOutcome::Locked)
+}
+
+fn should_mark_game_restart(outcome: InstallOutcome, game_on: bool) -> bool {
+    game_on && !matches!(outcome, InstallOutcome::AlreadyCurrent)
+}
+
+fn should_mark_from_updater_flag(plugin_changed_arg: bool, game_on: bool) -> bool {
+    plugin_changed_arg && game_on
+}
+
+/// True when the plugin file could not be replaced, or this build's plugin is
+/// new and MX Bikes is still running the old one.
 pub fn needs_restart() -> bool {
-    NEED_RETRY.load(Ordering::Relaxed)
+    NEED_RETRY.load(Ordering::Relaxed) || NEED_GAME_RESTART.load(Ordering::Relaxed)
 }
 
 pub fn game_exe() -> Option<String> {
@@ -98,7 +154,7 @@ fn browse_folder(host: windows::Win32::Foundation::HWND) -> Option<PathBuf> {
     }
 }
 
-fn install_once() -> Result<bool, ()> {
+fn install_once() -> Result<InstallOutcome, ()> {
     let bytes = plugin_bytes().ok_or(())?;
     refresh_sidecar(&bytes);
     let dest = plugin_dest().ok_or(())?;
@@ -109,7 +165,7 @@ fn install_once() -> Result<bool, ()> {
                     save_game_dir(game);
                     remove_legacy_plugin(game);
                 }
-                return Ok(false);
+                return Ok(InstallOutcome::AlreadyCurrent);
             }
         }
     }
@@ -122,9 +178,9 @@ fn install_once() -> Result<bool, ()> {
                 save_game_dir(game);
                 remove_legacy_plugin(game);
             }
-            Ok(false)
+            Ok(InstallOutcome::Wrote)
         }
-        Err(_) => Ok(true),
+        Err(_) => Ok(InstallOutcome::Locked),
     }
 }
 
@@ -318,20 +374,5 @@ fn reg_install_path(hive: windows::Win32::System::Registry::HKEY, subkey: PCWSTR
 }
 
 #[cfg(test)]
-mod tests {
-    use super::pick_plugin_bytes;
-
-    #[test]
-    fn embedded_plugin_wins_over_sidecar() {
-        let embedded = vec![1u8; 2000];
-        let sidecar = vec![2u8; 2000];
-        assert_eq!(pick_plugin_bytes(&embedded, Some(&sidecar)).unwrap()[0], 1);
-    }
-
-    #[test]
-    fn sidecar_used_when_embed_is_placeholder() {
-        let sidecar = vec![3u8; 2000];
-        assert_eq!(pick_plugin_bytes(&[], Some(&sidecar)).unwrap()[0], 3);
-        assert!(pick_plugin_bytes(&[], Some(&[1, 2, 3])).is_none());
-    }
-}
+#[path = "tests/plugin.rs"]
+mod tests;

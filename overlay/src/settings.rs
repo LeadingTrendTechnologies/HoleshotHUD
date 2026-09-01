@@ -2653,8 +2653,17 @@ fn draw_whats_new(
     let body_size = 12.0;
     let line_h = 18.0;
 
+    let warn = crate::plugin::needs_restart();
+    let warn_lines = if warn {
+        wrap_fb(fonts, crate::plugin::RESTART_PLUGIN_STILL_RUNNING, inner_w, body_size)
+    } else {
+        Vec::new()
+    };
     let heads = wrap_fb(fonts, &notes.headline, inner_w, head_size);
     let mut body_h = 0.0;
+    if !warn_lines.is_empty() {
+        body_h += warn_lines.len() as f32 * line_h + 14.0;
+    }
     if !notes.headline.is_empty() {
         body_h += heads.len() as f32 * 22.0 + 10.0;
     }
@@ -2718,6 +2727,15 @@ fn draw_whats_new(
         if let Some(mut body) = Pixmap::new(inner_w.ceil() as u32, view_h.ceil() as u32) {
             body.fill(board);
             let mut y = -scroll;
+            if !warn_lines.is_empty() {
+                for line in &warn_lines {
+                    if y + line_h > 0.0 && y < view_h {
+                        text(&mut body, fonts, line, body_size, 0.0, y, accent(), false);
+                    }
+                    y += line_h;
+                }
+                y += 14.0;
+            }
             if !notes.headline.is_empty() {
                 for line in &heads {
                     if y + 22.0 > 0.0 && y < view_h {
@@ -3314,15 +3332,17 @@ fn pane_app(
     text(px, fonts, &game, 13.0, x + 4.0, y, text_col(), false);
     action_btn(px, fonts, x + w - 132.0, y - 6.0, 132.0, 28.0, "Change folder", Hit::GameFolder, hover, hits, false);
     y += 28.0;
-    let plugin_line = if crate::plugin::plugin_installed() {
+    let plugin_line = if crate::plugin::needs_restart() {
+        crate::plugin::RESTART_PLUGIN
+    } else if crate::plugin::plugin_installed() {
         "Plugin is in the game plugins folder."
     } else {
         "Plugin is missing. Fully quit MX Bikes, then Change folder or restart the overlay."
     };
-    let plugin_col = if crate::plugin::plugin_installed() {
-        muted()
-    } else {
+    let plugin_col = if crate::plugin::needs_restart() || !crate::plugin::plugin_installed() {
         accent()
+    } else {
+        muted()
     };
     text(px, fonts, plugin_line, 11.0, x + 4.0, y, plugin_col, false);
     y += 22.0;

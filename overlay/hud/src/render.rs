@@ -355,15 +355,15 @@ pub fn draw(px: &mut Pixmap, fonts: &Fonts, snap: Option<&Snapshot>, cfg: &HudCo
     } else {
         Color::TRANSPARENT
     });
-    if restart_hint {
-        top_banner(px, fonts, w, "Restart MX Bikes once so the HUD stays on top while you ride");
-    } else if plugin_hint && !settings_hint {
+    if plugin_hint && !settings_hint {
         top_banner(
             px,
             fonts,
             w,
             "Fully quit MX Bikes and start it again so the plugin can load",
         );
+    } else if restart_hint {
+        top_banner(px, fonts, w, "Restart MX Bikes once so the HUD stays on top while you ride");
     }
     let Some(s) = snap else {
         return;
