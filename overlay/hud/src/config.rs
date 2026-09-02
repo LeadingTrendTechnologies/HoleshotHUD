@@ -505,6 +505,35 @@ impl StanceStyle {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum LeanStyle {
+    Figure,
+    Minimal,
+}
+
+impl LeanStyle {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Figure => "Figure",
+            Self::Minimal => "Minimal",
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Figure => "figure",
+            Self::Minimal => "minimal",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "minimal" | "attitude" => Self::Minimal,
+            _ => Self::Figure,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum WidgetId {
     Standings,
     Relative,
@@ -518,10 +547,11 @@ pub enum WidgetId {
     Delta,
     Stance,
     Flag,
+    Lean,
 }
 
 impl WidgetId {
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 13] = [
         Self::Standings,
         Self::Relative,
         Self::Map,
@@ -534,8 +564,9 @@ impl WidgetId {
         Self::Delta,
         Self::Stance,
         Self::Flag,
+        Self::Lean,
     ];
-    pub const COUNT: usize = 12;
+    pub const COUNT: usize = 13;
 
     pub fn idx(self) -> usize {
         self as usize
@@ -560,11 +591,12 @@ impl WidgetId {
             Self::Radar => Rect { x: 0.438, y: 0.755, w: 0.124, h: 0.22 },
             Self::Dash => Rect { x: 0.445, y: 0.865, w: 0.111, h: 0.115 },
             Self::Ticker => Rect { x: 0.06, y: 0.012, w: 0.88, h: 0.055 },
-            Self::Sys => Rect { x: 0.012, y: 0.36, w: 0.086, h: 0.186 },
+            Self::Sys => Rect { x: 0.012, y: 0.36, w: 0.086, h: 0.25 },
             Self::Sector => Rect { x: 0.66, y: 0.70, w: 0.32, h: 0.22 },
             Self::Delta => Rect { x: 0.36, y: 0.76, w: 0.28, h: 0.09 },
             Self::Stance => Rect { x: 0.445, y: 0.705, w: 0.11, h: 0.065 },
             Self::Flag => Rect { x: 0.447, y: 0.026, w: 0.107, h: 0.019 },
+            Self::Lean => Rect { x: 0.318, y: 0.755, w: 0.11, h: 0.20 },
         }
     }
 
@@ -572,7 +604,7 @@ impl WidgetId {
         match self {
             Self::Standings | Self::Relative => 78,
             Self::Map | Self::Minimap | Self::Delta => 0,
-            Self::Radar | Self::Ticker | Self::Stance => 86,
+            Self::Radar | Self::Ticker | Self::Stance | Self::Lean => 86,
             Self::Dash | Self::Sys | Self::Sector => 82,
             Self::Flag => 100,
         }
@@ -593,6 +625,7 @@ impl WidgetId {
             Self::Delta => WidgetIni { rect: "delta", show: "show_delta", font: "delta_font", bold: "delta_bold", bg: "delta_bg" },
             Self::Stance => WidgetIni { rect: "stance", show: "show_stance", font: "stance_font", bold: "stance_bold", bg: "stance_bg" },
             Self::Flag => WidgetIni { rect: "flag", show: "show_flag", font: "flag_font", bold: "flag_bold", bg: "flag_bg" },
+            Self::Lean => WidgetIni { rect: "lean", show: "show_lean", font: "lean_font", bold: "lean_bold", bg: "lean_bg" },
         }
     }
 }
@@ -967,6 +1000,181 @@ impl RelField {
     }
 }
 
+/// Overlay Systems widget: how many process rows to paint.
+pub const SYS_PROC_MAX: usize = 8;
+/// Settings list cap (shown or hidden).
+pub const SYS_APP_MAX: usize = 16;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SysAppKind {
+    Hud,
+    Mxbikes,
+    MxbApp,
+    Reshade,
+    Exe,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct SysPreset {
+    pub key: &'static str,
+    pub label: &'static str,
+    pub names: &'static [&'static str],
+    pub kind: SysAppKind,
+}
+
+impl SysPreset {
+    pub fn builtin(self) -> bool {
+        matches!(self.key, "hud" | "mxbikes" | "mxbapp" | "reshade" | "obs")
+    }
+
+    pub fn addable(self) -> bool {
+        matches!(self.kind, SysAppKind::Exe) && !self.builtin()
+    }
+}
+
+pub const SYS_PRESETS: &[SysPreset] = &[
+    SysPreset { key: "hud", label: "HUD", names: &[], kind: SysAppKind::Hud },
+    SysPreset { key: "mxbikes", label: "MX Bikes", names: &["mxbikes.exe"], kind: SysAppKind::Mxbikes },
+    SysPreset {
+        key: "mxbapp",
+        label: "MXB App",
+        names: &["frost.exe", "mxb app.exe", "mxb-app.exe", "mxbapp.exe", "frostmod.exe"],
+        kind: SysAppKind::MxbApp,
+    },
+    SysPreset { key: "reshade", label: "ReShade", names: &[], kind: SysAppKind::Reshade },
+    SysPreset { key: "obs", label: "OBS", names: &["obs64.exe", "obs32.exe"], kind: SysAppKind::Exe },
+    SysPreset { key: "discord", label: "Discord", names: &["discord.exe"], kind: SysAppKind::Exe },
+    SysPreset { key: "steam", label: "Steam", names: &["steam.exe"], kind: SysAppKind::Exe },
+    SysPreset {
+        key: "nvidia",
+        label: "NVIDIA",
+        names: &["nvidia overlay.exe", "nvidia app.exe", "nvidia share.exe"],
+        kind: SysAppKind::Exe,
+    },
+    SysPreset { key: "afterburner", label: "Afterburner", names: &["msiafterburner.exe"], kind: SysAppKind::Exe },
+    SysPreset { key: "rtss", label: "RTSS", names: &["rtss.exe"], kind: SysAppKind::Exe },
+    SysPreset { key: "medal", label: "Medal", names: &["medal.exe"], kind: SysAppKind::Exe },
+    SysPreset { key: "spotify", label: "Spotify", names: &["spotify.exe"], kind: SysAppKind::Exe },
+    SysPreset { key: "gamebar", label: "Game Bar", names: &["gamebar.exe"], kind: SysAppKind::Exe },
+];
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SysApp {
+    pub key: String,
+    pub label: String,
+    pub names: Vec<String>,
+    pub kind: SysAppKind,
+    pub show: bool,
+}
+
+impl SysApp {
+    pub fn from_preset(p: &SysPreset, show: bool) -> Self {
+        Self {
+            key: p.key.into(),
+            label: p.label.into(),
+            names: p.names.iter().map(|n| (*n).to_string()).collect(),
+            kind: p.kind,
+            show,
+        }
+    }
+
+    pub fn removable(&self) -> bool {
+        !SYS_PRESETS.iter().any(|p| p.key == self.key && p.builtin())
+    }
+}
+
+pub fn default_sys_apps() -> Vec<SysApp> {
+    SYS_PRESETS
+        .iter()
+        .filter(|p| p.builtin())
+        .map(|p| SysApp::from_preset(p, true))
+        .collect()
+}
+
+fn sanitize_sys_token(s: &str) -> String {
+    s.chars()
+        .filter(|c| *c != ',' && *c != '|' && *c != '\n' && *c != '\r')
+        .take(24)
+        .collect::<String>()
+        .trim()
+        .to_string()
+}
+
+pub fn encode_sys_apps(apps: &[SysApp]) -> String {
+    apps.iter()
+        .map(|a| {
+            if a.key.starts_with("exe:") {
+                let name = a.names.first().map(|s| s.as_str()).unwrap_or("app.exe");
+                format!(
+                    "exe|{}|{}|{}",
+                    sanitize_sys_token(&a.label),
+                    sanitize_sys_token(name),
+                    if a.show { 1 } else { 0 }
+                )
+            } else {
+                format!("{}:{}", a.key, if a.show { 1 } else { 0 })
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+pub fn parse_sys_apps(val: &str) -> Vec<SysApp> {
+    let mut apps = Vec::new();
+    for token in val.split(',') {
+        let token = token.trim();
+        if token.is_empty() {
+            continue;
+        }
+        if let Some(app) = parse_sys_app_token(token) {
+            if apps.iter().any(|a: &SysApp| a.key == app.key) {
+                continue;
+            }
+            apps.push(app);
+        }
+    }
+    ensure_sys_builtins(&mut apps);
+    apps
+}
+
+fn parse_sys_app_token(token: &str) -> Option<SysApp> {
+    if let Some(rest) = token.strip_prefix("exe|") {
+        let mut parts = rest.split('|');
+        let label = sanitize_sys_token(parts.next().unwrap_or(""));
+        let name = parts.next().unwrap_or("").trim().to_ascii_lowercase();
+        let show = parts.next().is_some_and(|s| s == "1");
+        if label.is_empty() || !name.ends_with(".exe") || name.contains('\\') || name.contains('/') {
+            return None;
+        }
+        if let Some(p) = SYS_PRESETS.iter().find(|p| p.names.iter().any(|n| *n == name)) {
+            return Some(SysApp::from_preset(p, show));
+        }
+        return Some(SysApp {
+            key: format!("exe:{name}"),
+            label,
+            names: vec![name],
+            kind: SysAppKind::Exe,
+            show,
+        });
+    }
+    let (key, show) = token.split_once(':')?;
+    let key = key.trim();
+    let show = show.trim() == "1";
+    SYS_PRESETS
+        .iter()
+        .find(|p| p.key == key)
+        .map(|p| SysApp::from_preset(p, show))
+}
+
+fn ensure_sys_builtins(apps: &mut Vec<SysApp>) {
+    for (i, p) in SYS_PRESETS.iter().filter(|p| p.builtin()).enumerate() {
+        if !apps.iter().any(|a| a.key == p.key) {
+            apps.insert(i.min(apps.len()), SysApp::from_preset(p, true));
+        }
+    }
+    apps.truncate(SYS_APP_MAX);
+}
+
 #[derive(Clone)]
 pub struct HudConfig {
     widgets: [WidgetPrefs; WidgetId::COUNT],
@@ -1074,6 +1282,9 @@ pub struct HudConfig {
     pub stance_mode: StanceMode,
     pub stance_style: StanceStyle,
     pub stance_show_sit: bool,
+    pub lean_style: LeanStyle,
+    /// Process rows on Systems. Built-ins stay; extras can be added and removed.
+    pub sys_apps: Vec<SysApp>,
     pub st_order: Vec<StField>,
     pub rel_order: Vec<RelField>,
     pub st_w_pos: i32,
@@ -1199,6 +1410,8 @@ impl HudConfig {
             stance_mode: StanceMode::Toggle,
             stance_style: StanceStyle::Text,
             stance_show_sit: false,
+            lean_style: LeanStyle::Figure,
+            sys_apps: default_sys_apps(),
             st_order: StField::ALL.to_vec(),
             rel_order: RelField::ALL.to_vec(),
             st_w_pos: 26,
@@ -1361,6 +1574,8 @@ impl HudConfig {
                 "stance_bind" => cfg.stance_bind = StanceBind::parse(val),
                 "stance_mode" => cfg.stance_mode = StanceMode::parse(val),
                 "stance_style" => cfg.stance_style = StanceStyle::parse(val),
+                "lean_style" => cfg.lean_style = LeanStyle::parse(val),
+                "sys_apps" => cfg.sys_apps = parse_sys_apps(val),
                 "stance_show_sit" => cfg.stance_show_sit = b,
                 "stance_icon" => {
                     if b {
@@ -1413,6 +1628,72 @@ impl HudConfig {
         cfg
     }
 
+    pub fn add_sys_preset(&mut self, key: &str) {
+        if self.sys_apps.len() >= SYS_APP_MAX {
+            return;
+        }
+        if self.sys_apps.iter().any(|a| a.key == key) {
+            return;
+        }
+        if let Some(p) = SYS_PRESETS.iter().find(|p| p.key == key && p.addable()) {
+            self.sys_apps.push(SysApp::from_preset(p, true));
+        }
+    }
+
+    pub fn add_sys_exe(&mut self, exe_name: &str) {
+        let name = exe_name.trim().to_ascii_lowercase();
+        if !name.ends_with(".exe") || name.contains('\\') || name.contains('/') || name.contains('|') {
+            return;
+        }
+        if let Some(p) = SYS_PRESETS.iter().find(|p| p.names.iter().any(|n| *n == name)) {
+            if let Some(a) = self.sys_apps.iter_mut().find(|a| a.key == p.key) {
+                a.show = true;
+                return;
+            }
+            self.add_sys_preset(p.key);
+            return;
+        }
+        if self.sys_apps.iter().any(|a| a.names.iter().any(|n| n == &name)) {
+            if let Some(a) = self.sys_apps.iter_mut().find(|a| a.names.iter().any(|n| n == &name)) {
+                a.show = true;
+            }
+            return;
+        }
+        if self.sys_apps.len() >= SYS_APP_MAX {
+            return;
+        }
+        let stem = exe_name
+            .trim()
+            .rsplit_once('.')
+            .map(|(s, _)| s)
+            .unwrap_or(exe_name.trim());
+        let label = sanitize_sys_token(stem);
+        let label = if label.is_empty() {
+            "App".into()
+        } else {
+            label
+        };
+        self.sys_apps.push(SysApp {
+            key: format!("exe:{name}"),
+            label,
+            names: vec![name],
+            kind: SysAppKind::Exe,
+            show: true,
+        });
+    }
+
+    pub fn toggle_sys_app(&mut self, i: usize) {
+        if let Some(a) = self.sys_apps.get_mut(i) {
+            a.show = !a.show;
+        }
+    }
+
+    pub fn remove_sys_app(&mut self, i: usize) {
+        if self.sys_apps.get(i).is_some_and(|a| a.removable()) {
+            self.sys_apps.remove(i);
+        }
+    }
+
     pub fn save(&mut self) {
         let path = ini_path();
         if let Some(dir) = path.parent() {
@@ -1430,6 +1711,7 @@ impl HudConfig {
         let delta = self[WidgetId::Delta];
         let stance = self[WidgetId::Stance];
         let flag = self[WidgetId::Flag];
+        let lean = self[WidgetId::Lean];
         let body = format!(
             "# Holeshot HUD layout (normalized 0..1, origin top-left)\n\
              [Layout]\n\
@@ -1445,8 +1727,9 @@ impl HudConfig {
              delta_x={}\ndelta_y={}\ndelta_w={}\ndelta_h={}\n\
              stance_x={}\nstance_y={}\nstance_w={}\nstance_h={}\n\
              flag_x={}\nflag_y={}\nflag_w={}\nflag_h={}\n\
+             lean_x={}\nlean_y={}\nlean_w={}\nlean_h={}\n\
              \n[Widgets]\n\
-             show_standings={}\nshow_relative={}\nshow_map={}\nshow_minimap={}\nshow_radar={}\nshow_dash={}\nshow_ticker={}\nshow_sys={}\nshow_sector={}\nshow_delta={}\nshow_stance={}\nshow_flag={}\n\
+             show_standings={}\nshow_relative={}\nshow_map={}\nshow_minimap={}\nshow_radar={}\nshow_dash={}\nshow_ticker={}\nshow_sys={}\nshow_sector={}\nshow_delta={}\nshow_stance={}\nshow_flag={}\nshow_lean={}\n\
              ingame_hud={}\nstandings_rows={}\nrelative_count={}\nticker_count={}\n\
              \n[Standings]\n\
              st_pos={}\nst_num={}\nst_name={}\nst_gap={}\nst_interval={}\nst_laps={}\nst_current={}\nst_best={}\nst_last={}\nst_status={}\n\
@@ -1484,7 +1767,7 @@ impl HudConfig {
              ticker_autoscroll={}\n\
              ticker_bg={}\nticker_font={}\nticker_bold={}\n\
              \n[Sys]\n\
-             sys_bg={}\nsys_font={}\nsys_bold={}\n\
+             sys_bg={}\nsys_font={}\nsys_bold={}\nsys_apps={}\n\
              \n[Sector]\n\
              sector_live={}\nsector_session={}\nsector_hist={}\nsector_hist_laps={}\nsector_bg={}\nsector_font={}\nsector_bold={}\n\
              \n[Delta]\n\
@@ -1494,6 +1777,9 @@ impl HudConfig {
              stance_bg={}\nstance_font={}\nstance_bold={}\n\
              \n[Flag]\n\
              flag_bg={}\nflag_yellow={}\nflag_blue={}\nflag_font={}\nflag_bold={}\n\
+             \n[Lean]\n\
+             lean_style={}\n\
+             lean_bg={}\nlean_font={}\nlean_bold={}\n\
              \n[App]\n\
              font_family={}\nunits={}\nsettings_key={}\nstart_with_windows={}\nminimize_on_close={}\nclose_with_game={}\nopen_with_game={}\nauto_update_on_launch={}\nwhats_new_seen={}\nfirst_install_version={}\nexperimental={}\n",
             st.rect.x,
@@ -1544,6 +1830,10 @@ impl HudConfig {
             flag.rect.y,
             flag.rect.w,
             flag.rect.h,
+            lean.rect.x,
+            lean.rect.y,
+            lean.rect.w,
+            lean.rect.h,
             b(st.show),
             b(rel.show),
             b(map.show),
@@ -1556,6 +1846,7 @@ impl HudConfig {
             b(delta.show),
             b(stance.show),
             b(flag.show),
+            b(lean.show),
             b(self.ingame_hud),
             self.standings_rows,
             self.relative_count,
@@ -1676,6 +1967,7 @@ impl HudConfig {
             sys.bg,
             sys.font,
             b(sys.bold),
+            encode_sys_apps(&self.sys_apps),
             b(self.sector_live),
             b(self.sector_session),
             b(self.sector_hist),
@@ -1699,6 +1991,10 @@ impl HudConfig {
             b(self.flag_blue),
             flag.font,
             b(flag.bold),
+            self.lean_style.key(),
+            lean.bg,
+            lean.font,
+            b(lean.bold),
             self.font_family.key(),
             self.units.key(),
             self.settings_key.key(),

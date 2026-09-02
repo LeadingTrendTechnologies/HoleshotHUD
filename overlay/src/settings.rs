@@ -35,7 +35,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use crate::config::{
     update_config, with_config, BoardField, DashField, DotLabel, FontFamily, HudConfig, RelField,
-    SettingsKey, SnapAlign, StField, StanceBind, StanceMode, StanceStyle, TableText, Units, WidgetId, COL_W_MAX,
+    SettingsKey, SnapAlign, StField, StanceBind, StanceMode, StanceStyle, LeanStyle, SYS_PRESETS, SYS_PROC_MAX, TableText, Units, WidgetId, COL_W_MAX,
     COL_W_MIN,
 };
 use crate::render::{fill_rect, icon, measure, text, Fonts};
@@ -236,6 +236,7 @@ enum Tab {
     Delta,
     Stance,
     Flag,
+    Lean,
 }
 
 impl Tab {
@@ -261,6 +262,7 @@ enum Hit {
     TabDelta,
     TabStance,
     TabFlag,
+    TabLean,
     StShow,
     RelShow,
     MapShow,
@@ -271,6 +273,11 @@ enum Hit {
     DashSimple,
     TickerShow,
     SysShow,
+    SysAppShow(u8),
+    SysAppRemove(u8),
+    SysAddOpen,
+    SysAddPick(u8),
+    SysAppBrowse,
     SectorShow,
     SectorLive,
     SectorSession,
@@ -283,6 +290,7 @@ enum Hit {
     StanceShow,
     StanceShowSit,
     FlagShow,
+    LeanShow,
     FlagYellow,
     FlagBlue,
     TickerTitle,
@@ -358,6 +366,7 @@ enum Hit {
     DeltaBg,
     StanceBg,
     FlagBg,
+    LeanBg,
     StDec,
     StInc,
     RelDec,
@@ -390,6 +399,8 @@ enum Hit {
     StanceModePick(StanceMode),
     StanceStyleOpen,
     StanceStylePick(StanceStyle),
+    LeanStyleOpen,
+    LeanStylePick(LeanStyle),
     StanceReset,
     DashFootOpen(u8),
     DashFootPick(u8, DashField),
@@ -453,6 +464,8 @@ enum Drop {
     SettingsKey,
     StanceMode,
     StanceStyle,
+    LeanStyle,
+    SysAdd,
     StText,
     RelText,
     DashFoot(u8),
@@ -999,6 +1012,7 @@ fn is_slider(hit: Hit) -> bool {
             | Hit::DeltaBg
             | Hit::StanceBg
             | Hit::FlagBg
+            | Hit::LeanBg
             | Hit::StW(_)
             | Hit::RelW(_)
             | Hit::Font(_)
@@ -1081,6 +1095,7 @@ fn apply_slide(hit: Hit, mx: f32, x: f32, w: f32, min: i32, max: i32) {
         Hit::DeltaBg => c[WidgetId::Delta].bg = v,
         Hit::StanceBg => c[WidgetId::Stance].bg = v,
         Hit::FlagBg => c[WidgetId::Flag].bg = v,
+        Hit::LeanBg => c[WidgetId::Lean].bg = v,
         Hit::StW(i) => {
             if let Some(f) = c.st_order.get(i as usize).copied() {
                 f.set_width(c, v);
@@ -1255,6 +1270,10 @@ fn dispatch(id: Hit, p: (f32, f32)) {
             set_tab(Tab::Flag);
             return;
         }
+        Hit::TabLean => {
+            set_tab(Tab::Lean);
+            return;
+        }
         Hit::MapDotOpen => {
             toggle_drop(Drop::MapDot);
             return;
@@ -1309,6 +1328,14 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         }
         Hit::StanceStyleOpen => {
             toggle_drop(Drop::StanceStyle);
+            return;
+        }
+        Hit::LeanStyleOpen => {
+            toggle_drop(Drop::LeanStyle);
+            return;
+        }
+        Hit::SysAddOpen => {
+            toggle_drop(Drop::SysAdd);
             return;
         }
         Hit::StanceReset => {
@@ -1455,6 +1482,17 @@ fn dispatch(id: Hit, p: (f32, f32)) {
             crate::plugin::pick_game_folder(host);
             return;
         }
+        Hit::SysAppBrowse => {
+            close_drop();
+            let host = UI.lock().unwrap().as_ref().map(|u| u.host);
+            let Some(host) = host else {
+                return;
+            };
+            if let Some(exe) = browse_exe(host) {
+                update_config(|c| c.add_sys_exe(&exe));
+            }
+            return;
+        }
         Hit::FbRate => {
             close_drop();
             crate::feedback::set_kind(crate::feedback::Kind::Rate);
@@ -1503,6 +1541,13 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::DashSimple => c.dash_simple = !c.dash_simple,
         Hit::TickerShow => c[WidgetId::Ticker].show ^= true,
         Hit::SysShow => c[WidgetId::Sys].show ^= true,
+        Hit::SysAppShow(i) => c.toggle_sys_app(i as usize),
+        Hit::SysAppRemove(i) => c.remove_sys_app(i as usize),
+        Hit::SysAddPick(i) => {
+            if let Some(p) = SYS_PRESETS.get(i as usize) {
+                c.add_sys_preset(p.key);
+            }
+        },
         Hit::SectorShow => c[WidgetId::Sector].show ^= true,
         Hit::SectorLive => c.sector_live = !c.sector_live,
         Hit::SectorSession => c.sector_session = !c.sector_session,
@@ -1511,6 +1556,7 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::DeltaSession => c.delta_session = !c.delta_session,
         Hit::StanceShow => c[WidgetId::Stance].show ^= true,
         Hit::FlagShow => c[WidgetId::Flag].show ^= true,
+        Hit::LeanShow => c[WidgetId::Lean].show ^= true,
         Hit::FlagYellow => c.flag_yellow = !c.flag_yellow,
         Hit::FlagBlue => c.flag_blue = !c.flag_blue,
         Hit::StanceShowSit => c.stance_show_sit = !c.stance_show_sit,
@@ -1586,6 +1632,7 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::SettingsKeyPick(key) => c.settings_key = key,
         Hit::StanceModePick(mode) => c.stance_mode = mode,
         Hit::StanceStylePick(style) => c.stance_style = style,
+        Hit::LeanStylePick(style) => c.lean_style = style,
         Hit::DashFootPick(slot, field) => match slot {
             0 => c.dash_left = field,
             1 => c.dash_mid = field,
@@ -1607,12 +1654,14 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::SectorHistDec => c.sector_hist_laps = (c.sector_hist_laps - 1).max(1),
         Hit::SectorHistInc => c.sector_hist_laps = (c.sector_hist_laps + 1).min(5),
         Hit::TabWidgets | Hit::TabApp | Hit::TabFeedback | Hit::TabSt | Hit::TabRel | Hit::TabMap | Hit::TabMini | Hit::TabRadar | Hit::TabDash
-        | Hit::TabTicker | Hit::TabSys | Hit::TabSector | Hit::TabDelta | Hit::TabStance | Hit::TabFlag
+        | Hit::TabTicker | Hit::TabSys | Hit::TabSector | Hit::TabDelta | Hit::TabStance | Hit::TabFlag | Hit::TabLean
         | Hit::MapDotOpen | Hit::MiniDotOpen | Hit::FontOpen | Hit::UnitsOpen | Hit::StTextOpen | Hit::RelTextOpen
         | Hit::SettingsKeyOpen
         | Hit::StanceBindOpen
         | Hit::StanceModeOpen
         | Hit::StanceStyleOpen
+        | Hit::LeanStyleOpen
+        | Hit::SysAddOpen
         | Hit::DashFootOpen(_)
         | Hit::TickerFootOpen(_)
         | Hit::InfoOpen(_, _)
@@ -1621,10 +1670,10 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::ReplyDismiss | Hit::ReplySend | Hit::ReplyText | Hit::ReplyScrim | Hit::ReplyPanel
         | Hit::StartWithWindows | Hit::MinimizeOnClose
         | Hit::CloseWithGame | Hit::OpenWithGame
-        | Hit::AutoUpdateOnLaunch | Hit::QuitApp | Hit::Uninstall | Hit::GameFolder
+        | Hit::AutoUpdateOnLaunch | Hit::QuitApp | Hit::Uninstall | Hit::GameFolder | Hit::SysAppBrowse
         | Hit::FbRate | Hit::FbBug | Hit::FbFeature | Hit::FbStar(_) | Hit::FbText | Hit::FbAttach | Hit::FbSend
         | Hit::StDrag(_) | Hit::RelDrag(_)
-        | Hit::StBg | Hit::StHl | Hit::RelBg | Hit::RelHl | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg | Hit::FlagBg
+        | Hit::StBg | Hit::StHl | Hit::RelBg | Hit::RelHl | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg | Hit::FlagBg | Hit::LeanBg
         | Hit::StW(_) | Hit::RelW(_) | Hit::Font(_) | Hit::StanceReset | Hit::TrackPbClear => {}
     });
 }
@@ -1653,6 +1702,8 @@ fn is_drop_pick(hit: Hit) -> bool {
             | Hit::SettingsKeyPick(_)
             | Hit::StanceModePick(_)
             | Hit::StanceStylePick(_)
+            | Hit::LeanStylePick(_)
+            | Hit::SysAddPick(_)
             | Hit::DashFootPick(_, _)
             | Hit::TickerFootPick(_, _)
             | Hit::InfoPick(_, _, _)
@@ -1699,13 +1750,14 @@ fn hit_label(hit: Hit) -> String {
         Hit::TabDelta => "Delta Bar".into(),
         Hit::TabStance => "Stance".into(),
         Hit::TabFlag => "Flags".into(),
+        Hit::TabLean => "Lean".into(),
         Hit::StShow | Hit::RelShow | Hit::MapShow | Hit::MiniShow | Hit::RadarShow | Hit::DashShow
-        | Hit::TickerShow | Hit::SysShow | Hit::SectorShow | Hit::DeltaShow | Hit::StanceShow | Hit::FlagShow => "Show on overlay".into(),
+        | Hit::TickerShow | Hit::SysShow | Hit::SectorShow | Hit::DeltaShow | Hit::StanceShow | Hit::FlagShow | Hit::LeanShow => "Show on overlay".into(),
         Hit::QuitApp => "Quit overlay".into(),
         Hit::Font(_) => "Font size".into(),
         Hit::Bold(_) => "Bold text".into(),
         Hit::StBg | Hit::RelBg | Hit::MapBg | Hit::MiniBg => "Background".into(),
-        Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg | Hit::FlagBg => "Panel opacity".into(),
+        Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg | Hit::FlagBg | Hit::LeanBg => "Panel opacity".into(),
         Hit::StHl | Hit::RelHl => "Row highlight".into(),
         Hit::StStripe | Hit::RelStripe => "Alternating rows".into(),
         Hit::StDec | Hit::StInc => "Rows".into(),
@@ -1724,7 +1776,12 @@ fn hit_label(hit: Hit) -> String {
             }
         }
         Hit::StanceModeOpen => "Sit mode".into(),
-        Hit::StanceStyleOpen => "Look".into(),
+        Hit::StanceStyleOpen | Hit::LeanStyleOpen => "Look".into(),
+        Hit::SysAddOpen => "Add app".into(),
+        Hit::SysAppBrowse => "Browse .exe".into(),
+        Hit::SysAppShow(_) => "Show on Systems".into(),
+        Hit::SysAppRemove(_) => "Remove app".into(),
+        Hit::SysAddPick(_) => "Add app".into(),
         Hit::StanceShowSit => "Show sitting".into(),
         Hit::FlagYellow => "Yellow flag".into(),
         Hit::FlagBlue => "Blue flag".into(),
@@ -1960,6 +2017,7 @@ fn nudge_slider(hit: Hit, delta: i32) {
         Hit::DeltaBg => c[WidgetId::Delta].bg,
         Hit::StanceBg => c[WidgetId::Stance].bg,
         Hit::FlagBg => c[WidgetId::Flag].bg,
+        Hit::LeanBg => c[WidgetId::Lean].bg,
         Hit::StW(i) => c.st_order.get(i as usize).map(|f| f.width(c)).unwrap_or(min),
         Hit::RelW(i) => c.rel_order.get(i as usize).map(|f| f.width(c)).unwrap_or(min),
         Hit::Font(id) => c.font_pct(id),
@@ -1982,6 +2040,7 @@ fn nudge_slider(hit: Hit, delta: i32) {
         Hit::DeltaBg => c[WidgetId::Delta].bg = v,
         Hit::StanceBg => c[WidgetId::Stance].bg = v,
         Hit::FlagBg => c[WidgetId::Flag].bg = v,
+        Hit::LeanBg => c[WidgetId::Lean].bg = v,
         Hit::StW(i) => {
             if let Some(f) = c.st_order.get(i as usize).copied() {
                 f.set_width(c, v);
@@ -2136,11 +2195,12 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
         Tab::Radar => pane_radar(px, fonts, &cfg, hover, &mut hits, x, py, cw),
         Tab::Dash => pane_dash(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
         Tab::Ticker => pane_ticker(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
-        Tab::Sys => pane_sys(px, fonts, &cfg, hover, &mut hits, x, py, cw),
+        Tab::Sys => pane_sys(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
         Tab::Sector => pane_sector(px, fonts, &cfg, hover, &mut hits, x, py, cw),
         Tab::Delta => pane_delta(px, fonts, &cfg, hover, &mut hits, x, py, cw),
         Tab::Stance => pane_stance(px, fonts, &cfg, hover, open_drop, bind_listen, &mut hits, x, py, cw),
         Tab::Flag => pane_flag(px, fonts, &cfg, hover, &mut hits, x, py, cw),
+        Tab::Lean => pane_lean(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
     };
     draw_top_bar(px, fonts, w, top_y, tab, cfg.settings_key.label(), hover, &mut hits);
 
@@ -2226,6 +2286,7 @@ fn widget_short_name(id: WidgetId) -> &'static str {
         WidgetId::Delta => "Delta Bar",
         WidgetId::Stance => "Stance",
         WidgetId::Flag => "Flags",
+        WidgetId::Lean => "Lean",
     }
 }
 
@@ -2371,6 +2432,7 @@ fn paint_focus(px: &mut Pixmap, hits: &[HitBox], focus: Option<Hit>) {
 fn widget_groups(cfg: &HudConfig) -> Vec<(&'static str, Vec<(Tab, Hit, &'static str, bool)>)> {
     let cockpit = vec![
         (Tab::Dash, Hit::TabDash, "Dash", cfg[WidgetId::Dash].show),
+        (Tab::Lean, Hit::TabLean, "Lean", cfg[WidgetId::Lean].show),
         (Tab::Delta, Hit::TabDelta, "Delta Bar", cfg[WidgetId::Delta].show),
         (Tab::Sector, Hit::TabSector, "Sectors", cfg[WidgetId::Sector].show),
         (Tab::Flag, Hit::TabFlag, "Flags", cfg[WidgetId::Flag].show),
@@ -3159,6 +3221,16 @@ fn nav_icon(px: &mut Pixmap, hit: Hit, cx: f32, cy: f32, c: Color) {
             if let Some(path) = pb.finish() {
                 icon_stroke(px, &path, c, 1.4);
             }
+        }
+        Hit::TabLean => {
+            let mut pb = PathBuilder::new();
+            pb.move_to(cx - 6.4, cy + 4.2);
+            pb.quad_to(cx - 6.0, cy - 6.0, cx, cy - 6.2);
+            pb.quad_to(cx + 6.0, cy - 6.0, cx + 6.4, cy + 4.2);
+            if let Some(path) = pb.finish() {
+                icon_stroke(px, &path, c, 1.5);
+            }
+            fill_round(px, cx - 1.0, cy - 3.4, 2.0, 8.0, 0.8, c);
         }
         Hit::QuitApp => {
             icon_stroke_circle(px, cx, cy, 6.2, c);
@@ -3988,7 +4060,7 @@ fn widget_pane_spec(id: WidgetId) -> WidgetPaneSpec {
         WidgetId::Sys => WidgetPaneSpec {
             id,
             title: "Systems",
-            subtitle: "CPU, memory, FPS, network, and per-app load",
+            subtitle: "CPU, memory, FPS, ping, GPU, and per-app load",
             show: Hit::SysShow,
             bg: Hit::SysBg,
             bg_label: "Panel opacity",
@@ -4023,6 +4095,14 @@ fn widget_pane_spec(id: WidgetId) -> WidgetPaneSpec {
             subtitle: "White and checkered — same timing as Dash",
             show: Hit::FlagShow,
             bg: Hit::FlagBg,
+            bg_label: "Panel opacity",
+        },
+        WidgetId::Lean => WidgetPaneSpec {
+            id,
+            title: "Lean",
+            subtitle: "Bike roll, pitch, and steering — follows the camera",
+            show: Hit::LeanShow,
+            bg: Hit::LeanBg,
             bg_label: "Panel opacity",
         },
     }
@@ -4522,6 +4602,7 @@ fn pane_sys(
     fonts: &Fonts,
     cfg: &HudConfig,
     hover: Option<Hit>,
+    open_drop: Option<Drop>,
     hits: &mut Vec<HitBox>,
     x: f32,
     y: f32,
@@ -4532,7 +4613,56 @@ fn pane_sys(
         if !shown {
             return y;
         }
-        pane_style(px, fonts, spec, cfg, hover, hits, x, y, w)
+        let mut y = pane_style(px, fonts, spec, cfg, hover, hits, x, y, w);
+        y = note_lines(
+            px,
+            fonts,
+            x,
+            y,
+            w,
+            &format!("Up to {SYS_PROC_MAX} on the overlay. Matched by .exe name, not install folder. Hide a row with the switch; extras can be removed."),
+        );
+        for (i, app) in cfg.sys_apps.iter().enumerate() {
+            let i = i as u8;
+            y = sys_app_row(
+                px,
+                fonts,
+                x,
+                y,
+                w,
+                &app.label,
+                app.show,
+                app.removable(),
+                Hit::SysAppShow(i),
+                Hit::SysAppRemove(i),
+                hover,
+                hits,
+            );
+        }
+        let add: Vec<(Hit, &'static str, bool)> = SYS_PRESETS
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.addable() && !cfg.sys_apps.iter().any(|a| a.key == p.key))
+            .map(|(i, p)| (Hit::SysAddPick(i as u8), p.label, false))
+            .collect();
+        if !add.is_empty() {
+            y = dropdown_row(
+                px,
+                fonts,
+                x,
+                y,
+                w,
+                "Add app",
+                "Choose",
+                open_drop == Some(Drop::SysAdd),
+                Hit::SysAddOpen,
+                &add,
+                hover,
+                hits,
+            );
+        }
+        action_btn(px, fonts, x, y, 140.0, 32.0, "Browse .exe", Hit::SysAppBrowse, hover, hits, false);
+        y + 40.0
     })
 }
 
@@ -4705,6 +4835,51 @@ fn pane_stance(
         y += 24.0;
         action_btn(px, fonts, x, y, 168.0, 32.0, "Reset to standing", Hit::StanceReset, hover, hits, false);
         y += 40.0;
+        pane_style(px, fonts, spec, cfg, hover, hits, x, y, w)
+    })
+}
+
+fn pane_lean(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    cfg: &HudConfig,
+    hover: Option<Hit>,
+    open_drop: Option<Drop>,
+    hits: &mut Vec<HitBox>,
+    x: f32,
+    y: f32,
+    w: f32,
+) -> f32 {
+    let spec = widget_pane_spec(WidgetId::Lean);
+    open_widget_pane(px, fonts, cfg, hover, hits, x, y, w, spec, |px, fonts, y, shown, hits| {
+        let mut y = note_lines(
+            px,
+            fonts,
+            x,
+            y,
+            w,
+            "Bike roll, pitch, and bar angle for the rider the camera is on. Riding uses your telemetry. Spectate follows that rider’s lean; steer and pitch hide because other bikes do not send them. This is not sit / stand.",
+        );
+        if !shown {
+            return y;
+        }
+        y = dropdown_row(
+            px,
+            fonts,
+            x,
+            y,
+            w,
+            "Look",
+            cfg.lean_style.label(),
+            open_drop == Some(Drop::LeanStyle),
+            Hit::LeanStyleOpen,
+            &[
+                (Hit::LeanStylePick(LeanStyle::Figure), "Figure", cfg.lean_style == LeanStyle::Figure),
+                (Hit::LeanStylePick(LeanStyle::Minimal), "Minimal", cfg.lean_style == LeanStyle::Minimal),
+            ],
+            hover,
+            hits,
+        );
         pane_style(px, fonts, spec, cfg, hover, hits, x, y, w)
     })
 }
@@ -5249,6 +5424,76 @@ fn toggle_row(
     text(px, fonts, label, 13.0, x + 16.0, y + 16.0, text_col(), false);
     switch(px, x + w - 52.0, y + 14.0, on, hit, hover, hits);
     y + h + ROW_GAP
+}
+
+fn sys_app_row(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    x: f32,
+    y: f32,
+    w: f32,
+    label: &str,
+    on: bool,
+    removable: bool,
+    show_hit: Hit,
+    remove_hit: Hit,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+) -> f32 {
+    let h = ROW_H;
+    let remove_w = if removable { 72.0 } else { 0.0 };
+    let row_w = (w - remove_w).max(80.0);
+    hits.push(HitBox { id: show_hit, x, y, w: row_w, h });
+    let hot = hover == Some(show_hit) || hover == Some(remove_hit);
+    row_card(px, x, y, w, h, hot);
+    text(px, fonts, label, 13.0, x + 16.0, y + 16.0, text_col(), false);
+    if removable {
+        let bx = x + w - 52.0 - 8.0 - 64.0;
+        hits.push(HitBox { id: remove_hit, x: bx, y: y + 10.0, w: 64.0, h: 28.0 });
+        let fill = if hover == Some(remove_hit) { chip_hover() } else { btn_bg() };
+        outlined(px, bx, y + 10.0, 64.0, 28.0, 7.0, fill);
+        text(px, fonts, "Remove", 11.0, bx + 32.0, y + 16.0, text_col(), true);
+    }
+    switch(px, x + w - 52.0, y + 14.0, on, show_hit, hover, hits);
+    y + h + ROW_GAP
+}
+
+fn browse_exe(host: HWND) -> Option<String> {
+    use windows::core::w;
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoTaskMemFree, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
+    };
+    use windows::Win32::UI::Shell::{
+        FileOpenDialog, IFileOpenDialog, FOS_FILEMUSTEXIST, FOS_FORCEFILESYSTEM, FOS_PATHMUSTEXIST,
+        SIGDN_FILESYSPATH,
+    };
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let dlg: IFileOpenDialog = CoCreateInstance(&FileOpenDialog, None, CLSCTX_ALL).ok()?;
+        dlg.SetOptions(FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST | FOS_FORCEFILESYSTEM).ok()?;
+        dlg.SetTitle(w!("Select an app to watch")).ok()?;
+        dlg.Show(host).ok()?;
+        let item = dlg.GetResult().ok()?;
+        let name = item.GetDisplayName(SIGDN_FILESYSPATH).ok()?;
+        let path = name.to_string().ok().filter(|s| !s.is_empty());
+        CoTaskMemFree(Some(name.0 as _));
+        let path = path?;
+        let file = std::path::Path::new(&path)
+            .file_name()?
+            .to_string_lossy()
+            .into_owned();
+        if !file.to_ascii_lowercase().ends_with(".exe") {
+            let _ = windows::Win32::UI::WindowsAndMessaging::MessageBoxW(
+                host,
+                w!("Pick an .exe file."),
+                w!("Holeshot HUD"),
+                windows::Win32::UI::WindowsAndMessaging::MB_OK
+                    | windows::Win32::UI::WindowsAndMessaging::MB_ICONWARNING,
+            );
+            return None;
+        }
+        Some(file)
+    }
 }
 
 fn slider_row(

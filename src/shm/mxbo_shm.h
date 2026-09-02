@@ -7,10 +7,10 @@ extern "C" {
 #endif
 
 #define MXBO_SHM_MAGIC 0x4F42584Du /* 'MXBO' */
-#define MXBO_SHM_VERSION 10
+#define MXBO_SHM_VERSION 12
 /* Versioned name so a leftover smaller mapping cannot be remapped and overrun. */
-#define MXBO_SHM_NAME L"Local\\MXBOHudV10"
-#define MXBO_SHM_NAME_A "Local\\MXBOHudV10"
+#define MXBO_SHM_NAME L"Local\\MXBOHudV12"
+#define MXBO_SHM_NAME_A "Local\\MXBOHudV12"
 #define MXBO_CMD_MAGIC 0x4342584Du /* 'MXBC' */
 #define MXBO_CMD_NAME L"Local\\MXBOHudCmdV1"
 #define MXBO_CMD_NAME_A "Local\\MXBOHudCmdV1"
@@ -36,6 +36,7 @@ typedef struct MxboShmRider
     float trackPos;
     int32_t crashed;
     char name[MXBO_NAME];
+    float lean;
 } MxboShmRider;
 
 typedef struct MxboShmStanding
@@ -134,6 +135,11 @@ typedef struct MxboShmSnapshot
 
     float fuel;
     float maxFuel;
+
+    float localRoll;
+    float localPitch;
+    float localSteer;
+    float steerLock;
 } MxboShmSnapshot;
 
 /* Overlay → plugin. Separate mapping so the snapshot seqlock is not mixed with writes. */

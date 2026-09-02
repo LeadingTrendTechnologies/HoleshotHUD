@@ -49,6 +49,10 @@ fn field_keys_round_trip() {
     assert_eq!(StanceMode::parse("toggle"), StanceMode::Toggle);
     assert_eq!(StanceStyle::parse("icon"), StanceStyle::Icon);
     assert_eq!(StanceStyle::parse("text"), StanceStyle::Text);
+    assert_eq!(LeanStyle::parse("figure"), LeanStyle::Figure);
+    assert_eq!(LeanStyle::parse("minimal"), LeanStyle::Minimal);
+    assert_eq!(LeanStyle::parse("attitude"), LeanStyle::Minimal);
+    assert_eq!(LeanStyle::parse(""), LeanStyle::Figure);
 }
 
 #[test]
@@ -72,10 +76,12 @@ fn default_hud_hides_every_widget() {
     assert!(!cfg[WidgetId::Delta].show);
     assert!(!cfg[WidgetId::Stance].show);
     assert!(!cfg[WidgetId::Flag].show);
+    assert!(!cfg[WidgetId::Lean].show);
     assert!(!cfg.flag_yellow);
     assert!(!cfg.flag_blue);
     assert!(!cfg.any_overlay_widget());
     assert_eq!(cfg.stance_style, StanceStyle::Text);
+    assert_eq!(cfg.lean_style, LeanStyle::Figure);
     assert!(!cfg.stance_show_sit);
     assert!(!cfg.experimental);
     assert!(cfg.whats_new_seen.is_empty());
@@ -451,4 +457,51 @@ fn widget_prefs_round_trip_keeps_legacy_keys() {
     assert!(loaded[WidgetId::Map].show);
     assert_eq!(loaded[WidgetId::Map].bg, 55);
     assert!(!loaded[WidgetId::Standings].show);
+}
+
+#[test]
+fn sys_apps_default_includes_obs() {
+    let cfg = HudConfig::new();
+    let keys: Vec<&str> = cfg.sys_apps.iter().map(|a| a.key.as_str()).collect();
+    assert_eq!(keys, ["hud", "mxbikes", "mxbapp", "reshade", "obs"]);
+    assert!(cfg.sys_apps.iter().all(|a| a.show && !a.removable()));
+}
+
+#[test]
+fn sys_apps_encode_round_trip_and_custom_exe() {
+    let mut cfg = HudConfig::new();
+    cfg.add_sys_preset("discord");
+    cfg.add_sys_exe("MyCapture.exe");
+    cfg.toggle_sys_app(1);
+    assert!(!cfg.sys_apps[1].show);
+    assert!(cfg.sys_apps.iter().any(|a| a.key == "discord" && a.show));
+    let custom = cfg.sys_apps.iter().find(|a| a.key == "exe:mycapture.exe").expect("custom");
+    assert_eq!(custom.label, "MyCapture");
+    assert!(custom.removable());
+
+    cfg.add_sys_exe("obs64.exe");
+    assert_eq!(cfg.sys_apps.iter().filter(|a| a.key == "obs").count(), 1);
+    assert!(cfg.sys_apps.iter().find(|a| a.key == "obs").unwrap().show);
+
+    let encoded = encode_sys_apps(&cfg.sys_apps);
+    let parsed = parse_sys_apps(&encoded);
+    assert_eq!(parsed, cfg.sys_apps);
+
+    cfg.remove_sys_app(0);
+    assert_eq!(cfg.sys_apps[0].key, "hud");
+    let obs_i = cfg.sys_apps.iter().position(|a| a.key == "obs").unwrap();
+    cfg.remove_sys_app(obs_i);
+    assert!(cfg.sys_apps.iter().any(|a| a.key == "obs"));
+    let discord_i = cfg.sys_apps.iter().position(|a| a.key == "discord").unwrap();
+    cfg.remove_sys_app(discord_i);
+    assert!(cfg.sys_apps.iter().all(|a| a.key != "discord"));
+}
+
+#[test]
+fn sys_apps_missing_ini_keeps_defaults_and_empty_restores_builtins() {
+    assert_eq!(parse_sys_apps(""), default_sys_apps());
+    let parsed = parse_sys_apps("discord:1");
+    let keys: Vec<&str> = parsed.iter().map(|a| a.key.as_str()).collect();
+    assert_eq!(keys[..5], ["hud", "mxbikes", "mxbapp", "reshade", "obs"]);
+    assert!(parsed.iter().any(|a| a.key == "discord" && a.show));
 }

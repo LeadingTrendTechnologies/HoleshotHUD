@@ -20,9 +20,9 @@ impl Shm {
     pub fn open() -> Option<Self> {
         unsafe {
             // Must match MXBO_SHM_NAME in src/shm/mxbo_shm.h (versioned with SHM layout).
-            let map = OpenFileMappingW(FILE_MAP_READ.0, false, w!("Local\\MXBOHudV10")).ok()?;
+            let map = OpenFileMappingW(FILE_MAP_READ.0, false, w!("Local\\MXBOHudV12")).ok()?;
             // Map the whole section. Requesting sizeof(Snapshot) fails when a leftover
-            // V10 mapping is smaller, which leaves the overlay compositing with no HUD.
+            // V11 mapping is smaller, which leaves the overlay compositing with no HUD.
             let view = MapViewOfFile(map, FILE_MAP_READ, 0, 0, 0);
             if view.Value.is_null() {
                 let _ = CloseHandle(map);

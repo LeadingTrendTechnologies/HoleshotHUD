@@ -2,7 +2,7 @@ mod demo_track;
 mod edit;
 
 use mxbo_hud::config::{
-    BoardField, DashField, DotLabel, FontFamily, HudConfig, SnapAlign, TableText, Units, WidgetId,
+    BoardField, DashField, DotLabel, FontFamily, HudConfig, LeanStyle, SnapAlign, TableText, Units, WidgetId,
 };
 use mxbo_hud::render::{draw, Fonts};
 use mxbo_hud::snapshot::{
@@ -233,29 +233,38 @@ impl Preview {
                 42.0 + (t * 0.7).sin() * 8.0,
                 61.0 + (t * 0.25).sin() * 3.0,
                 89.0 + (t * 1.4).sin() * 6.0,
-                14.0 + (t * 0.9).sin() * 7.0,
+                38.0 + (t * 0.9).sin() * 7.0,
+                (22.0 + (t * 0.5).sin() * 6.0).round() as i32,
             );
-            mxbo_hud::set_sys_procs([
+            mxbo_hud::set_sys_procs(vec![
                 mxbo_hud::SysProc {
+                    label: "HUD".into(),
                     cpu: 3.0 + (t * 0.9).sin() * 1.2,
+                    gpu: 2.0 + (t * 0.6).sin() * 1.0,
                     mem_mb: 92.0 + (t * 0.4).sin() * 6.0,
                     mem_pct: 0.6,
                     on: true,
                 },
                 mxbo_hud::SysProc {
+                    label: "MX Bikes".into(),
                     cpu: 18.0 + (t * 0.55).sin() * 4.0,
+                    gpu: 32.0 + (t * 0.45).sin() * 8.0,
                     mem_mb: 2100.0 + (t * 0.2).sin() * 80.0,
                     mem_pct: 13.0,
                     on: true,
                 },
                 mxbo_hud::SysProc {
+                    label: "MXB App".into(),
                     cpu: 6.0 + (t * 0.8).sin() * 2.0,
+                    gpu: 1.0 + (t * 0.7).sin() * 0.8,
                     mem_mb: 190.0 + (t * 0.35).sin() * 12.0,
                     mem_pct: 1.2,
                     on: true,
                 },
                 mxbo_hud::SysProc {
+                    label: "ReShade".into(),
                     cpu: -1.0,
+                    gpu: -1.0,
                     mem_mb: 48.0 + (t * 0.3).sin() * 4.0,
                     mem_pct: 0.3,
                     on: true,
@@ -321,6 +330,7 @@ fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg[WidgetId::Sector].show = name == "sector";
     cfg[WidgetId::Delta].show = name == "delta";
     cfg[WidgetId::Flag].show = name == "flag";
+    cfg[WidgetId::Lean].show = name == "lean";
 }
 
 fn widget_id(name: &str) -> Option<WidgetId> {
@@ -336,6 +346,7 @@ fn widget_id(name: &str) -> Option<WidgetId> {
         "sector" => WidgetId::Sector,
         "delta" => WidgetId::Delta,
         "flag" => WidgetId::Flag,
+        "lean" => WidgetId::Lean,
         _ => return None,
     })
 }
@@ -443,6 +454,7 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "sector_bold" => cfg[WidgetId::Sector].bold,
         "delta_bold" => cfg[WidgetId::Delta].bold,
         "flag_bold" => cfg[WidgetId::Flag].bold,
+        "lean_bold" => cfg[WidgetId::Lean].bold,
         "flag_yellow" => cfg.flag_yellow,
         "flag_blue" => cfg.flag_blue,
         "ticker_title" => cfg.ticker_title,
@@ -514,6 +526,7 @@ fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
         "sector_bold" => cfg[WidgetId::Sector].bold = on,
         "delta_bold" => cfg[WidgetId::Delta].bold = on,
         "flag_bold" => cfg[WidgetId::Flag].bold = on,
+        "lean_bold" => cfg[WidgetId::Lean].bold = on,
         "flag_yellow" => cfg.flag_yellow = on,
         "flag_blue" => cfg.flag_blue = on,
         "ticker_title" => cfg.ticker_title = on,
@@ -553,6 +566,8 @@ fn int_val(cfg: &HudConfig, key: &str) -> Option<i32> {
         "delta_bg" => cfg[WidgetId::Delta].bg,
         "flag_font" => cfg[WidgetId::Flag].font,
         "flag_bg" => cfg[WidgetId::Flag].bg,
+        "lean_font" => cfg[WidgetId::Lean].font,
+        "lean_bg" => cfg[WidgetId::Lean].bg,
         _ => return None,
     })
 }
@@ -575,6 +590,7 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "sector_bg" => cfg[WidgetId::Sector].bg = value.clamp(0, 100),
         "delta_bg" => cfg[WidgetId::Delta].bg = value.clamp(0, 100),
         "flag_bg" => cfg[WidgetId::Flag].bg = value.clamp(0, 100),
+        "lean_bg" => cfg[WidgetId::Lean].bg = value.clamp(0, 100),
         "ticker_count" => cfg.ticker_count = value.clamp(3, 15),
         "sector_hist_laps" => cfg.sector_hist_laps = value.clamp(1, 5),
         "st_font" => cfg.set_font_pct(WidgetId::Standings, value),
@@ -588,6 +604,7 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "sector_font" => cfg.set_font_pct(WidgetId::Sector, value),
         "delta_font" => cfg.set_font_pct(WidgetId::Delta, value),
         "flag_font" => cfg.set_font_pct(WidgetId::Flag, value),
+        "lean_font" => cfg.set_font_pct(WidgetId::Lean, value),
         _ => {}
     }
 }
@@ -615,6 +632,7 @@ fn field_val(cfg: &HudConfig, key: &str) -> Option<String> {
         "mini_dot" => cfg.mini_dot.key().into(),
         "st_text" => cfg.st_text.key().into(),
         "rel_text" => cfg.rel_text.key().into(),
+        "lean_style" => cfg.lean_style.key().into(),
         _ => return None,
     })
 }
@@ -642,6 +660,7 @@ fn set_field(cfg: &mut HudConfig, key: &str, value: &str) {
         "mini_dot" => cfg.mini_dot = DotLabel::parse(value),
         "st_text" => cfg.st_text = TableText::parse(value),
         "rel_text" => cfg.rel_text = TableText::parse(value),
+        "lean_style" => cfg.lean_style = LeanStyle::parse(value),
         _ => {}
     }
 }
@@ -715,6 +734,10 @@ fn demo_snapshot() -> Snapshot {
     s.sector_delta = [-87, 0, 0];
     s.sector_delta_valid = 0b001;
     s.local_speed = 18.0;
+    s.local_roll = -28.0;
+    s.local_pitch = -18.0;
+    s.local_steer = -0.10;
+    s.steer_lock = 0.40;
     let (poly, length, sf, name) = captured_track();
     write_name(&mut s.track_name, &name);
     s.poly_count = poly.len() as i32;
@@ -744,6 +767,7 @@ fn demo_snapshot() -> Snapshot {
             track_pos: pos,
             crashed: 0,
             name: [0; 32],
+            lean: 0.0,
         };
         write_name(&mut s.riders[i].name, name);
     }
@@ -899,6 +923,10 @@ fn animate(s: &mut Snapshot, t: f32, dt: f32) {
             s.local_track_pos = s.riders[i].track_pos;
             s.local_vel_x = yaw.sin() * s.local_speed;
             s.local_vel_z = yaw.cos() * s.local_speed;
+            s.local_roll = -(28.0 + 10.0 * (t * 1.35).sin());
+            s.local_pitch = -(12.0 + 16.0 * (t * 0.9).sin());
+            s.local_steer = -0.18 * (t * 1.1).sin();
+            s.steer_lock = 0.40;
         }
     }
     apply_radar_pack(s, t);

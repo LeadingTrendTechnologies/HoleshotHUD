@@ -14,6 +14,7 @@ pub enum Target {
     Sector,
     Delta,
     Flag,
+    Lean,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -63,6 +64,7 @@ pub fn parse_target(name: &str) -> Option<Target> {
         "sector" => Target::Sector,
         "delta" => Target::Delta,
         "flag" => Target::Flag,
+        "lean" => Target::Lean,
         _ => return None,
     })
 }
@@ -80,6 +82,7 @@ pub fn rect_of(cfg: &HudConfig, t: Target) -> Rect {
         Target::Sector => cfg[WidgetId::Sector].rect,
         Target::Delta => cfg[WidgetId::Delta].rect,
         Target::Flag => cfg[WidgetId::Flag].rect,
+        Target::Lean => cfg[WidgetId::Lean].rect,
     }
 }
 
@@ -100,6 +103,7 @@ pub fn set_rect(cfg: &mut HudConfig, t: Target, r: Rect) {
         Target::Sector => cfg[WidgetId::Sector].rect = r,
         Target::Delta => cfg[WidgetId::Delta].rect = r,
         Target::Flag => cfg[WidgetId::Flag].rect = r,
+        Target::Lean => cfg[WidgetId::Lean].rect = r,
     }
 }
 
@@ -207,6 +211,7 @@ pub fn resize(orig: Rect, handle: Handle, nx: f32, ny: f32, grab_x: f32, grab_y:
         Target::Sector => (88.0, 44.0),
         Target::Delta => (96.0, 48.0),
         Target::Flag => (72.0, 12.0),
+        Target::Lean => (88.0, 72.0),
     };
     let min_w = min_w_px / ow;
     let min_h = min_h_px / oh;

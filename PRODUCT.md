@@ -30,10 +30,10 @@ A broadcast-style race HUD MX Bikes does not ship: standings, relative, map/mini
 
 ## Capabilities and Constraints
 
-- Widgets: Standings, Relative, Horizontal Standings, Map, Minimap, Radar, Dash, Flags, Systems, Stance, Delta Bar, Sectors. Delta Bar and Sectors compare vs your best on this track and class (250 vs 450, saved). A cut or shortcut does not become that best. Sectors can show last laps under the live strip.
+- Widgets: Standings, Relative, Horizontal Standings, Map, Minimap, Radar, Dash, Flags, Systems, Stance, Delta Bar, Sectors, Lean. Delta Bar and Sectors compare vs your best on this track and class (250 vs 450, saved). A cut or shortcut does not become that best. Sectors can show last laps under the live strip. Lean follows the camera: your roll, pitch, and steer on the bike, the spectated rider's lean in replay. Figure (rider) or Minimal (numbers). Systems defaults include OBS, and can watch extra apps (Discord, a picked `.exe`) besides HUD / MX Bikes / MXB App / ReShade.
 - Fresh install: every **Show on overlay** toggle starts off. Nothing draws until the rider turns it on. Widgets only draw during a session (not in the garage, lobby, or menus). Stance follows a local bind, not rider animation.
 - Optional simpler in-game HUD (`ingame_hud`) draws inside the game; overlay work does not go there.
-- Architecture: `Holeshot-HUD.dlo` → shared memory `Local\MXBOHudV10` → Rust overlay. Field availability is gated by the PiBoSo plugin API (see `wiki/Home.md`). Bump `MXBO_SHM_VERSION` when the snapshot layout changes.
+- Architecture: `Holeshot-HUD.dlo` → shared memory `Local\MXBOHudV12` → Rust overlay. Field availability is gated by the PiBoSo plugin API (see `wiki/Home.md`). Bump `MXBO_SHM_VERSION` when the snapshot layout changes.
 - Auto-update from GitHub releases; after an in-app update, Settings shows a What's new board for this version. In-app feedback (F8 → Feedback) posts private gists; a reply from the inbox pops up in settings on that PC, and they can write back.
 - MX Bikes only. Not a general sim HUD.
 

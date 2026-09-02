@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.6.0
+
+Lean is a new Cockpit widget for bike roll, pitch, and steering. Systems shows GPU instead of network.
+
+### Lean
+
+- Turn it on with **Show on overlay**. It starts hidden. This is not sit / stand — that is still Stance.
+- **Look** in settings: Figure (default, rear-view rider) or Minimal (huge orange lean degrees, cream pitch, steer hairline).
+- Riding uses your chassis roll, pitch, and bar. Right lean / right steer are `+`. Pitch follows the nose: up is `+`, down is `−`.
+- Spectate / replay follow that rider's lean. Steer and pitch hide — other bikes do not send them.
+- Fully quit MX Bikes after this update so Lean can load.
+
+### Systems
+
+- Footer meter is GPU load instead of network. NVIDIA and AMD both report, including when only Windows GPU Engine counters are available.
+- GPU lists the same apps as CPU and memory. ReShade injected as a DLL has no separate GPU figure.
+- GPU percent follows Task Manager's 3D engine, not a Compute engine that can sit at 100%.
+- FPS is a number with no bar. Ping sits under it.
+- Settings can show or hide each app, add common MX Bikes tools (Discord, Steam, …), or pick an `.exe` to watch. OBS is on by default. The overlay shows up to 8 at once. Apps are matched by exe name, not install folder.
+- With panel opacity under 40%, those bars keep a night-ink halo and percent pills so they read on the game.
+
+### Overlay
+
+- Quit overlay while the game is running keeps the taskbar hidden so you can still click the bottom of the screen. Closing MX Bikes still brings the taskbar back.
+
 ## 0.4.0
 
 Delta Bar and Sectors are regular widgets — time vs your best on this track, with last laps under the sector strip.

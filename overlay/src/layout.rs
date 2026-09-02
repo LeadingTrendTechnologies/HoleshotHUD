@@ -19,6 +19,7 @@ enum Target {
     Delta,
     Stance,
     Flag,
+    Lean,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -69,6 +70,7 @@ pub struct Editor {
     delta: Option<Rect>,
     stance: Option<Rect>,
     flag: Option<Rect>,
+    lean: Option<Rect>,
     st_w_name: Option<i32>,
     rel_w_name: Option<i32>,
     standings_rows: Option<i32>,
@@ -111,6 +113,7 @@ impl Editor {
             || self.delta.is_some()
             || self.stance.is_some()
             || self.flag.is_some()
+            || self.lean.is_some()
             || self.st_w_name.is_some()
             || self.rel_w_name.is_some()
             || self.standings_rows.is_some()
@@ -144,6 +147,9 @@ impl Editor {
         }
         if let Some(s) = self.flag {
             cfg[WidgetId::Flag].rect = s;
+        }
+        if let Some(s) = self.lean {
+            cfg[WidgetId::Lean].rect = s;
         }
         if let Some(r) = self.standings {
             cfg[WidgetId::Standings].rect = r;
@@ -232,6 +238,7 @@ impl Editor {
                 Target::Delta => self.delta = Some(r),
                 Target::Stance => self.stance = Some(r),
                 Target::Flag => self.flag = Some(r),
+                Target::Lean => self.lean = Some(r),
             }
             apply_table_resize(self, cfg, d, r, ow, oh);
             let _ = overlay;
@@ -258,6 +265,7 @@ impl Editor {
         self.delta = None;
         self.stance = None;
         self.flag = None;
+        self.lean = None;
         self.st_w_name = None;
         self.rel_w_name = None;
         self.standings_rows = None;
@@ -280,6 +288,7 @@ impl Editor {
         let delta = self.delta;
         let stance = self.stance;
         let flag = self.flag;
+        let lean = self.lean;
         crate::config::update_config(|cfg| {
             cfg[WidgetId::Map].rect = map;
             cfg[WidgetId::Standings].rect = standings;
@@ -310,6 +319,9 @@ impl Editor {
             }
             if let Some(s) = flag {
                 cfg[WidgetId::Flag].rect = s;
+            }
+            if let Some(s) = lean {
+                cfg[WidgetId::Lean].rect = s;
             }
             if let Some(w) = self.st_w_name {
                 cfg.st_w_name = w;
@@ -393,6 +405,7 @@ fn rect_of(s: &Snapshot, ed: &Editor, cfg: &HudConfig, t: Target) -> Rect {
         Target::Delta => ed.delta.unwrap_or(cfg[WidgetId::Delta].rect),
         Target::Stance => ed.stance.unwrap_or(cfg[WidgetId::Stance].rect),
         Target::Flag => ed.flag.unwrap_or(cfg[WidgetId::Flag].rect),
+        Target::Lean => ed.lean.unwrap_or(cfg[WidgetId::Lean].rect),
     }
 }
 
@@ -410,11 +423,12 @@ fn shown(s: &Snapshot, cfg: &HudConfig, t: Target) -> bool {
         Target::Delta => cfg.delta_visible(),
         Target::Stance => cfg.stance_visible(),
         Target::Flag => cfg[WidgetId::Flag].show,
+        Target::Lean => cfg[WidgetId::Lean].show,
     }
 }
 
 fn hit(s: &Snapshot, ed: &Editor, cfg: &HudConfig, x: f32, y: f32, ow: i32, oh: i32) -> Option<(Target, Handle)> {
-    const ORDER: [Target; 12] = [
+    const ORDER: [Target; 13] = [
         Target::Dash,
         Target::Ticker,
         Target::Sys,
@@ -422,6 +436,7 @@ fn hit(s: &Snapshot, ed: &Editor, cfg: &HudConfig, x: f32, y: f32, ow: i32, oh: 
         Target::Delta,
         Target::Stance,
         Target::Flag,
+        Target::Lean,
         Target::Minimap,
         Target::Radar,
         Target::Map,
@@ -551,6 +566,7 @@ fn min_px(t: Target) -> (f32, f32) {
         Target::Delta => (220.0, 48.0),
         Target::Stance => (72.0, 36.0),
         Target::Flag => (72.0, 12.0),
+        Target::Lean => (100.0, 72.0),
     }
 }
 

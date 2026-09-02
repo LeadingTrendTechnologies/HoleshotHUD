@@ -67,6 +67,10 @@ void PluginState::clearEvent()
     m_maxRpm = 0;
     m_shiftRpm = 0;
     m_maxFuel = 0.0f;
+    m_steerLock = 0.0f;
+    m_localRoll = 0.0f;
+    m_localPitch = 0.0f;
+    m_localSteer = 0.0f;
     clearRace();
 }
 
@@ -80,6 +84,9 @@ void PluginState::clearRace()
     m_lastSpectate = 0.0;
     m_localGear = 0;
     m_localRpm = 0;
+    m_localRoll = 0.0f;
+    m_localPitch = 0.0f;
+    m_localSteer = 0.0f;
     m_engineTemp = 0.0f;
     m_airTemp = 0.0f;
     m_fuel = 0.0f;
@@ -134,6 +141,10 @@ void PluginState::setEvent(const SPluginsBikeEvent_t& ev)
     if (ev.m_fMaxFuel > 0.0f)
     {
         m_maxFuel = ev.m_fMaxFuel;
+    }
+    if (ev.m_fSteerLock > 0.0f)
+    {
+        m_steerLock = ev.m_fSteerLock;
     }
     resolveLocalRaceNum();
 }
@@ -789,6 +800,9 @@ void PluginState::setTelemetry(const SPluginsBikeData_t& data, float time, float
     m_localVelX = data.m_fVelocityX;
     m_localVelZ = data.m_fVelocityZ;
     m_localYaw = data.m_fYaw;
+    m_localRoll = data.m_fRoll;
+    m_localPitch = data.m_fPitch;
+    m_localSteer = data.m_fSteer;
     m_localCrashed = data.m_iCrashed;
     m_telemetryStamp = pluginNowSeconds();
     resolveLocalRaceNum();

@@ -324,7 +324,7 @@ Horizontal plaque: gear box, RPM/speed stack, large italic orange P#, flag wrap 
 You = larger Holeshot Orange dot. Others = Field Slate unless lapping/closing. Leader crown and ahead/behind rings are overlays, not recodes of the whole field. Radar: no blind-spot wedges — panel, bike, optional 3/6/12 m circles (lighter on a solid plaque), blips.
 
 ### Systems (signature)
-Twin-column night-ink 6px plaque. CPU left, MEM right, four process rows under each, FPS and NET in a footer. Huge ExtraBold Italic numbers. Heat tracks are gold, red when hot; FPS cream when the frame rate is healthy. No green task-manager bars. Orange is not used here.
+Twin-column night-ink 6px plaque. CPU left, MEM right, watched-app rows under each, FPS (number only) and ping under it, GPU in the footer with the same apps. Huge ExtraBold Italic numbers. Heat tracks are gold, red when hot. No green task-manager bars. Orange is not used here.
 
 ### Center Plaque (signature)
 Blocking note on Settings (What’s new after an in-app update). Charcoal Side scrim; centered Panel board. Content-sized heading plaque names the version. Headline in text ink, uppercase dim section labels, orange dots + 12px body. One primary fill: **Got it**. Re-open from App → Updates via secondary **What’s new**.
@@ -344,6 +344,7 @@ Web-only CTA in the top bar. Clip-path orange parallelogram, Windows four-square
 - **Do** draw Sectors as a three-column strip whose current sector is the wide hero, with LAST / -2 / -3 under it when the box is tall; green = faster / PB, red = slower.
 - **Do** mark that hero with a Holeshot Orange skew S# plaque.
 - **Do** draw Delta Bar as Hair: Δ letter, signed time, 2px center-zero line, BEST/LAST on the ends.
+- **Do** draw Lean as Figure (rear-view white rider, orange skew 32° bug, 2px steer under the boots, 2px pitch on the right) or Minimal (huge orange signed lean, cream pitch degrees, steer hairline). Steer and pitch only while riding.
 - **Do** treat the website as an F8 Twin pit-box: settings, widget rail (204px), live stage, Download in the top bar.
 
 ### Don't:
@@ -358,4 +359,5 @@ Web-only CTA in the top bar. Clip-path orange parallelogram, Windows four-square
 - **Don't** paint Sectors personal bests in Best Lap Violet — that violet stays on standings/relative lap times.
 - **Don't** ship Sectors until **Show on overlay** is on.
 - **Don't** draw Delta Bar as an orange Δ plaque or a fat capsule bar — Hair is type plus a 2px line.
+- **Don't** infer sit / stand from Lean — that is Stance. Steer and pitch hide in spectate. Do not leave those hairlines as 2px charcoal on the game; under 40% opacity they get a night-ink halo and percent pills. Do not draw Minimal as a gyro.
 - **Don't** wrap the live HUD in a boxed canvas inside a left-rail dashboard.

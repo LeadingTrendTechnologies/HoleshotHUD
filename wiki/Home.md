@@ -3,7 +3,7 @@
 Everything the PiBoSo plugin API can send this project, and whether we already keep it.
 
 Source of truth: `src/vendor/piboso/mxb_api.h` (data version **8**, interface **9**).  
-The game loads `Holeshot-HUD.dlo` and calls the exported functions below. The plugin may copy fields into `PluginState`, then into shared memory `Local\MXBOHudV10` for the Rust overlay.
+The game loads `Holeshot-HUD.dlo` and calls the exported functions below. The plugin may copy fields into `PluginState`, then into shared memory `Local\MXBOHudV12` for the Rust overlay.
 
 **Status**
 
@@ -54,8 +54,9 @@ Rust overlay structure and possible refactors (suggestions only): **[rust-patter
 - [Dash](widgets/dash.md): gear, speed, session clock, flags (optional simple gear+speed lockup)
 - [Sectors](widgets/sector.md): S1–S3 times (labs flag)
 - [Delta Bar](widgets/delta-bar.md): time vs your best at this track position (recorded lap, not the ghost)
-- [Systems](widgets/systems.md): CPU / mem / FPS
+- [Systems](widgets/systems.md): CPU / mem / FPS / ping / GPU, plus apps you pick
 - [Stance](widgets/stance.md): sit / stand from a local bind (not plugin telemetry)
+- [Lean](widgets/lean.md): bike roll, pitch, and steer on the bike; spectate follows camera lean. Figure or Minimal (numbers).
 
 Local speed / yaw / crash / track pos are in SHM for the moving marker, not as their own widgets yet.
 
@@ -99,7 +100,7 @@ Local speed / yaw / crash / track pos are in SHM for the moving marker, not as t
 | `m_afEngineTemperatureAlarm[2]` | float | Unused | Temp warning band |
 | `m_fMaxFuel` | float | Overlay | Tank size in liters |
 | `m_afSuspMaxTravel[2]` | float | Unused | Suspension travel % |
-| `m_fSteerLock` | float | Unused | Steer gauge scale |
+| `m_fSteerLock` | float | Overlay | Steer gauge scale ([Lean](widgets/lean.md)) |
 | `m_szCategory` | char[100] | Unused | Class (MX, SX, …) |
 | `m_szTrackID` | char[100] | Unused | Track id |
 | `m_szTrackName` | char[100] | Overlay | Map header (also from race event) |
@@ -145,15 +146,15 @@ This is the richest per-frame feed. **Only a handful of fields are kept.**
 | `m_fAccelerationX/Y/Z` | float | Unused | G-meter |
 | `m_aafRot[3][3]` | float | Unused | Rotation matrix |
 | `m_fYaw` | float | Overlay | Heading |
-| `m_fPitch` | float | Unused | Wheelie / nose |
-| `m_fRoll` | float | Unused | Lean (also on `RaceVehicleData.m_fLean`) |
+| `m_fPitch` | float | Overlay | Chassis pitch / nose. Plugin `+` is nose down; HUD flips so nose up is `+` ([Lean](widgets/lean.md)) |
+| `m_fRoll` | float | Overlay | Lean ([Lean](widgets/lean.md); also on `RaceVehicleData.m_fLean`) |
 | `m_fYawVelocity` | float | Unused | Spin rates |
 | `m_fPitchVelocity` | float | Unused | |
 | `m_fRollVelocity` | float | Unused | |
 | `m_afSuspLength[2]` | float | Unused | Fork / shock length |
 | `m_afSuspVelocity[2]` | float | Unused | Compression speed |
 | `m_iCrashed` | int | Overlay | Crash flag on local marker |
-| `m_fSteer` | float | Unused | Steer input |
+| `m_fSteer` | float | Overlay | Steer input ([Lean](widgets/lean.md)) |
 | `m_fThrottle` | float | Unused | 0–1 style input bar |
 | `m_fFrontBrake` | float | Unused | Front brake input |
 | `m_fRearBrake` | float | Unused | Rear brake input |
@@ -364,7 +365,7 @@ Name is joined from the entry list, not this struct.
 
 ## 11. Everyone’s slim live data (`RaceVehicleData`)
 
-`SPluginsRaceVehicleData_t` — **Cached** per race number, **not in SHM**.
+`SPluginsRaceVehicleData_t` — **Cached** per race number. `m_fLean` is **Overlay** on each SHM rider (v11). Pitch is local-only (v12).
 
 | Field | Type | Widget ideas |
 | --- | --- | --- |
@@ -375,7 +376,7 @@ Name is joined from the entry list, not this struct.
 | `m_fSpeedometer` | float | Relative “+3 mph vs #12” |
 | `m_fThrottle` | float | |
 | `m_fFrontBrake` | float | |
-| `m_fLean` | float | Lean of any rider |
+| `m_fLean` | float | Overlay — lean of any rider ([Lean](widgets/lean.md)) |
 
 This is **not** full telemetry. Other players do not get temps, fuel, clutch, suspension, etc.
 
@@ -411,15 +412,16 @@ Already published (version **1**):
 - Clock: `tickQpc` (for interpolation)
 - Local: race num, focus num, crashed, XZ, vel XZ, yaw, speed, track pos
 - Track: name, length, S/F meters, polyline
-- Riders: race num, XZ, yaw, track pos, crashed, name
+- Riders: race num, XZ, yaw, track pos, crashed, name, lean
 - Standings: race num, position, state, best lap, laps, gap ms/laps, pit, name
 - Session: length, laps, remaining clock, **kind** (`m_iSession`), **state** (`m_iSessionState`) — SHM version **9**
 - Fuel: `fuel` / `maxFuel` — SHM version **10**
+- Lean: `localRoll` / `localPitch` / `localSteer` / `steerLock`; per-rider `lean` — SHM version **12** (`Local\MXBOHudV12`)
 - Layout: map / standings / relative rects + show flags + row counts
 
 Command mapping `Local\MXBOHudCmdV1` (`MxboShmCmd`): overlay writes `spectateRaceNum`; plugin writes `spectating` while `SpectateVehicles` is live. Not part of the snapshot seqlock.
 
-**Not published yet** (but available in the API or `PluginState`): penalty, bike names, laps/splits, holeshot, comms, RPM/gear/inputs/temps/suspension, per-rider `VehicleLive`, pitch/roll, spectate camera list.
+**Not published yet** (but available in the API or `PluginState`): penalty, bike names, laps/splits, holeshot, comms, RPM/gear/inputs/temps/suspension, per-rider throttle/brake (lean is Overlay), spectate camera list.
 
 Bump `MXBO_SHM_VERSION` when you add fields; keep C and Rust `#[repr(C)]` layouts identical.
 
@@ -455,7 +457,7 @@ Existing overlay widgets: [widgets.md](widgets.md) (behavior + change logs). Fie
 | [Delta Bar](widgets/delta-bar.md) | overlay tape at `local_track_pos` | Overlay |
 | Shift light | `m_iRPM` vs `m_iShiftRPM` | Need SHM |
 | Throttle / brakes / clutch | telemetry inputs | Need SHM |
-| Lean / pitch | `m_fRoll` / `m_fPitch` or `m_fLean` | Need SHM |
+| [Lean](widgets/lean.md) | `m_fRoll` / `m_fPitch` / `m_fSteer` / `m_fSteerLock` + `m_fLean` | Overlay |
 | Fuel | `m_fFuel` / `m_fMaxFuel` | Overlay (dash / standings / relative / ticker) |
 | Temps | engine/water + alarm band | Need SHM |
 | Suspension | length / velocity / max travel | Need SHM |

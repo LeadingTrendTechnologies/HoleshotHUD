@@ -142,7 +142,7 @@ Priority is **value vs risk**, not “how textbook.” Skip anything in [Do not 
 
 **Why.** Widgets scatter `s.show_map != 0` and `standing_count.max(0) as usize`. An adapter is the typed boundary; it does not replace SHM.
 
-**Break logic?** **Critical** if you change `Snapshot` field order, `MAGIC`, `VERSION`, or `Local\MXBOHudV10`. The adapter must not invent fields the plugin did not publish.
+**Break logic?** **Critical** if you change `Snapshot` field order, `MAGIC`, `VERSION`, or `Local\MXBOHudV12`. The adapter must not invent fields the plugin did not publish.
 
 **Need to know.** Version &lt; 9 backfill in `Shm::read` must remain. Spectate still clears `has_telemetry` on the **copy** in `main.rs` before draw.
 

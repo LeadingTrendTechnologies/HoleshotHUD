@@ -4,7 +4,7 @@ use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Mutex, OnceLock};
 
-use crate::config::{BoardField, DashField, DotLabel, FontFamily, HudConfig, RelField, StField, StanceStyle, TableText, WidgetId};
+use crate::config::{BoardField, DashField, DotLabel, FontFamily, HudConfig, LeanStyle, RelField, StField, StanceStyle, SYS_PROC_MAX, TableText, WidgetId};
 use crate::shm::{cstr, Snapshot, MAX_STANDINGS};
 pub use crate::race_store::{ClockSample, clock_sample};
 // Re-export clock / field helpers for `render_tests` (`use super::*`).
@@ -481,6 +481,10 @@ fn draw_widgets(
         let _g = push_style(fonts, cfg[WidgetId::Stance].bold, cfg[WidgetId::Stance].font);
         draw_stance(px, fonts, cfg, sw, sh);
     }
+    if cfg[WidgetId::Lean].show {
+        let _g = push_style(fonts, cfg[WidgetId::Lean].bold, cfg[WidgetId::Lean].font);
+        draw_lean(px, fonts, s, cfg, sw, sh);
+    }
 }
 
 fn rr(x: f32, y: f32, w: f32, h: f32) -> Option<Rect> {
@@ -582,6 +586,9 @@ fn draw_layout(px: &mut Pixmap, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32)
     }
     if cfg.stance_visible() {
         layout_box(px, cfg[WidgetId::Stance].rect.x * sw, cfg[WidgetId::Stance].rect.y * sh, cfg[WidgetId::Stance].rect.w * sw, cfg[WidgetId::Stance].rect.h * sh, false);
+    }
+    if cfg[WidgetId::Lean].show {
+        layout_box(px, cfg[WidgetId::Lean].rect.x * sw, cfg[WidgetId::Lean].rect.y * sh, cfg[WidgetId::Lean].rect.w * sw, cfg[WidgetId::Lean].rect.h * sh, false);
     }
     if cfg[WidgetId::Flag].show {
         layout_box(px, cfg[WidgetId::Flag].rect.x * sw, cfg[WidgetId::Flag].rect.y * sh, cfg[WidgetId::Flag].rect.w * sw, cfg[WidgetId::Flag].rect.h * sh, false);
@@ -1382,60 +1389,32 @@ pub fn set_status_hint(s: impl Into<String>) {
 static SYS_CPU: AtomicI32 = AtomicI32::new(0);
 static SYS_MEM: AtomicI32 = AtomicI32::new(0);
 static SYS_FPS: AtomicI32 = AtomicI32::new(0);
-static SYS_NET: AtomicI32 = AtomicI32::new(0);
-const SYS_PROC_N: usize = 4;
-const SYS_PROC_LABELS: [&str; SYS_PROC_N] = ["HUD", "MX Bikes", "MXB App", "ReShade"];
-static SYS_PROC_CPU: [AtomicI32; SYS_PROC_N] = [
-    AtomicI32::new(i32::MIN),
-    AtomicI32::new(i32::MIN),
-    AtomicI32::new(i32::MIN),
-    AtomicI32::new(i32::MIN),
-];
-static SYS_PROC_MEM: [AtomicI32; SYS_PROC_N] = [
-    AtomicI32::new(0),
-    AtomicI32::new(0),
-    AtomicI32::new(0),
-    AtomicI32::new(0),
-];
-static SYS_PROC_MEMP: [AtomicI32; SYS_PROC_N] = [
-    AtomicI32::new(0),
-    AtomicI32::new(0),
-    AtomicI32::new(0),
-    AtomicI32::new(0),
-];
-static SYS_PROC_ON: [AtomicI32; SYS_PROC_N] = [
-    AtomicI32::new(0),
-    AtomicI32::new(0),
-    AtomicI32::new(0),
-    AtomicI32::new(0),
-];
+static SYS_GPU: AtomicI32 = AtomicI32::new(0);
+static SYS_PING: AtomicI32 = AtomicI32::new(-1);
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Default)]
 pub struct SysProc {
+    pub label: String,
     pub cpu: f32,
+    pub gpu: f32,
     pub mem_mb: f32,
     pub mem_pct: f32,
     pub on: bool,
 }
 
-pub fn set_sys_stats(cpu: f32, mem: f32, fps: f32, net: f32) {
+pub fn set_sys_stats(cpu: f32, mem: f32, fps: f32, gpu: f32, ping_ms: i32) {
     SYS_CPU.store((cpu.clamp(0.0, 100.0) * 10.0).round() as i32, Ordering::Relaxed);
     SYS_MEM.store((mem.clamp(0.0, 100.0) * 10.0).round() as i32, Ordering::Relaxed);
     SYS_FPS.store((fps.clamp(0.0, 999.0) * 10.0).round() as i32, Ordering::Relaxed);
-    SYS_NET.store((net.clamp(0.0, 100.0) * 10.0).round() as i32, Ordering::Relaxed);
+    SYS_GPU.store((gpu.clamp(0.0, 100.0) * 10.0).round() as i32, Ordering::Relaxed);
+    SYS_PING.store(if ping_ms < 0 { -1 } else { ping_ms.clamp(0, 9999) }, Ordering::Relaxed);
 }
 
-pub fn set_sys_procs(procs: [SysProc; SYS_PROC_N]) {
-    for (i, p) in procs.iter().enumerate() {
-        let cpu = if !p.on || p.cpu < 0.0 {
-            i32::MIN
-        } else {
-            (p.cpu.clamp(0.0, 100.0) * 10.0).round() as i32
-        };
-        SYS_PROC_CPU[i].store(cpu, Ordering::Relaxed);
-        SYS_PROC_MEM[i].store((p.mem_mb.clamp(0.0, 1_000_000.0) * 10.0).round() as i32, Ordering::Relaxed);
-        SYS_PROC_MEMP[i].store((p.mem_pct.clamp(0.0, 100.0) * 10.0).round() as i32, Ordering::Relaxed);
-        SYS_PROC_ON[i].store(i32::from(p.on), Ordering::Relaxed);
+pub fn set_sys_procs(procs: Vec<SysProc>) {
+    let mut procs = procs;
+    procs.truncate(SYS_PROC_MAX);
+    if let Ok(mut g) = sys_procs_lock().lock() {
+        *g = procs;
     }
 }
 
@@ -1449,29 +1428,36 @@ pub fn stance_sitting() -> bool {
     STANCE_SIT.load(Ordering::Relaxed) != 0
 }
 
-fn sys_stats() -> (f32, f32, f32, f32) {
+fn sys_stats() -> (f32, f32, f32, f32, i32) {
     (
         SYS_CPU.load(Ordering::Relaxed) as f32 / 10.0,
         SYS_MEM.load(Ordering::Relaxed) as f32 / 10.0,
         SYS_FPS.load(Ordering::Relaxed) as f32 / 10.0,
-        SYS_NET.load(Ordering::Relaxed) as f32 / 10.0,
+        SYS_GPU.load(Ordering::Relaxed) as f32 / 10.0,
+        SYS_PING.load(Ordering::Relaxed),
     )
 }
 
-fn sys_procs() -> [SysProc; SYS_PROC_N] {
-    std::array::from_fn(|i| {
-        let cpu_raw = SYS_PROC_CPU[i].load(Ordering::Relaxed);
-        SysProc {
-            cpu: if cpu_raw == i32::MIN {
-                -1.0
-            } else {
-                cpu_raw as f32 / 10.0
-            },
-            mem_mb: SYS_PROC_MEM[i].load(Ordering::Relaxed) as f32 / 10.0,
-            mem_pct: SYS_PROC_MEMP[i].load(Ordering::Relaxed) as f32 / 10.0,
-            on: SYS_PROC_ON[i].load(Ordering::Relaxed) != 0,
-        }
+fn sys_procs_lock() -> &'static Mutex<Vec<SysProc>> {
+    static SLOT: OnceLock<Mutex<Vec<SysProc>>> = OnceLock::new();
+    SLOT.get_or_init(|| {
+        Mutex::new(
+            ["HUD", "MX Bikes", "MXB App", "ReShade"]
+                .into_iter()
+                .map(|label| SysProc {
+                    label: label.into(),
+                    ..Default::default()
+                })
+                .collect(),
+        )
     })
+}
+
+fn sys_procs() -> Vec<SysProc> {
+    sys_procs_lock()
+        .lock()
+        .map(|g| g.clone())
+        .unwrap_or_default()
 }
 
 
@@ -3062,14 +3048,6 @@ fn sys_heat(hot: f32) -> Color {
     }
 }
 
-fn sys_fps_fill(fill: f32) -> Color {
-    if fill >= 70.0 {
-        Color::from_rgba8(232, 228, 214, 230)
-    } else {
-        sys_heat(100.0 - fill)
-    }
-}
-
 fn draw_sys_track(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, fill: f32, col: Color) {
     let w = w.max(8.0);
     let h = h.clamp(2.0, 6.0);
@@ -3098,8 +3076,19 @@ fn draw_sys_meter(
     let vy = y + label_fs * 1.12;
     text(px, fonts, value, value_fs, x, vy, Color::from_rgba8(248, 248, 252, 255), false);
     let ty = vy + value_fs * 1.08;
-    draw_sys_track(px, x, ty, w, track_h, fill, col);
-    ty + track_h
+    if track_h > 0.5 {
+        draw_sys_track(px, x, ty, w, track_h, fill, col);
+        ty + track_h
+    } else {
+        vy + value_fs
+    }
+}
+
+#[derive(Clone, Copy)]
+enum SysProcKind {
+    Cpu,
+    Mem,
+    Gpu,
 }
 
 fn draw_sys_procs(
@@ -3111,8 +3100,8 @@ fn draw_sys_procs(
     row_h: f32,
     fs: f32,
     label_w: f32,
-    procs: &[SysProc; SYS_PROC_N],
-    mem: bool,
+    procs: &[SysProc],
+    kind: SysProcKind,
     mem_scale: f32,
 ) {
     let mute = Color::from_rgba8(132, 132, 138, 255);
@@ -3120,22 +3109,29 @@ fn draw_sys_procs(
     let bar_dim = Color::from_rgba8(150, 150, 158, 40);
     for (i, p) in procs.iter().enumerate() {
         let ry = y + row_h * i as f32;
-        let (value, fill, dim) = if mem {
-            if p.on {
-                (fmt_sys_mem(p.mem_mb), (p.mem_mb / mem_scale * 100.0).clamp(0.0, 100.0), false)
-            } else {
-                ("—".into(), 0.0, true)
+        let (value, fill, dim) = match kind {
+            SysProcKind::Mem => {
+                if p.on {
+                    (fmt_sys_mem(p.mem_mb), (p.mem_mb / mem_scale * 100.0).clamp(0.0, 100.0), false)
+                } else {
+                    ("—".into(), 0.0, true)
+                }
             }
-        } else {
-            let known = p.on && p.cpu >= 0.0;
-            if known {
-                (format!("{:.0}%", p.cpu.round()), p.cpu.clamp(0.0, 100.0), false)
-            } else {
-                ("—".into(), 0.0, true)
+            SysProcKind::Cpu | SysProcKind::Gpu => {
+                let load = match kind {
+                    SysProcKind::Gpu => p.gpu,
+                    _ => p.cpu,
+                };
+                let known = p.on && load >= 0.0;
+                if known {
+                    (format!("{:.0}%", load.round()), load.clamp(0.0, 100.0), false)
+                } else {
+                    ("—".into(), 0.0, true)
+                }
             }
         };
         let ink = if dim { Color::from_rgba8(108, 108, 114, 220) } else { mute };
-        text(px, fonts, SYS_PROC_LABELS[i], fs, x, ry + (row_h - fs) * 0.22, ink, false);
+        text(px, fonts, &p.label, fs, x, ry + (row_h - fs) * 0.22, ink, false);
         let val_w = measure(fonts, &value, fs);
         let bx = x + label_w + 4.0;
         let bw = (x + w - val_w - 5.0 - bx).max(12.0);
@@ -3227,6 +3223,295 @@ fn draw_stance(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f32, sh: f32
     };
     let size = (h * 0.42).clamp(12.0, 28.0);
     text(px, fonts, word, size, x + w * 0.5, y + (h - size) * 0.42, ink, true);
+}
+
+fn lean_rider() -> Option<&'static Pixmap> {
+    static RIDER: OnceLock<Option<Pixmap>> = OnceLock::new();
+    RIDER
+        .get_or_init(|| Pixmap::decode_png(include_bytes!("../assets/lean-rider.png")).ok())
+        .as_ref()
+}
+
+fn draw_lean(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) {
+    // THESIS: the rider is the angle — a rear-view MX figure, not a tach and not a toy trapezoid.
+    // OWN-WORLD: night-ink 6px plaque, 1px hairline, white rider, orange skew 32° bug, 2px steer + pitch hairlines.
+    // STORY: glance roll, nose, and bar. Spectate follows the camera; steer and pitch hide for other bikes.
+    // FIRST VIEWPORT: white rider filling the glass, orange 32° TV bug on the hip, steer under the boots, pitch on the right while riding.
+    // FORM: Figure (rear). Seed: user-locked original Figure. Do not infer sit/stand.
+    // FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+    let r = cfg[WidgetId::Lean].rect;
+    let x = r.x * sw;
+    let y = r.y * sh;
+    let w = (r.w * sw).max(64.0);
+    let h = (r.h * sh).max(72.0);
+    let a = bg_a(cfg[WidgetId::Lean].bg);
+    if a > 0 {
+        fill_round(px, x, y, w, h, 6.0, Color::from_rgba8(10, 10, 10, a));
+        if let Some(frame) = round_rect_path(x + 0.5, y + 0.5, w - 1.0, h - 1.0, 5.5) {
+            let edge = ((a as u16 * 170) / 255).max(70) as u8;
+            stroke_path(px, &frame, Color::from_rgba8(42, 42, 46, edge), 1.0);
+        }
+    }
+
+    let view = crate::lean::view(s);
+    if cfg.lean_style == LeanStyle::Minimal {
+        draw_lean_minimal(px, fonts, cfg, x, y, w, h, a, view);
+        return;
+    }
+    let pad = (w.min(h) * 0.07).clamp(5.0, 10.0);
+    let steer_h = if view.steer.is_some() {
+        (h * 0.18).clamp(18.0, 30.0)
+    } else {
+        0.0
+    };
+    let pitch_w = if view.pitch.is_some() {
+        (w * 0.16).clamp(18.0, 28.0)
+    } else {
+        0.0
+    };
+    let fig_x = x + pad;
+    let fig_y = y + pad;
+    let fig_w = (w - pad * 2.0 - pitch_w).max(36.0);
+    let fig_h = (h - pad * 2.0 - steer_h).max(40.0);
+    let needle = view.deg.clamp(-70.0, 70.0);
+    draw_lean_rider(px, fig_x, fig_y, fig_w, fig_h, needle);
+
+    let deg_txt = format!("{:.0}°", view.deg.round());
+    let deg_fs = (w.min(h) * 0.11).clamp(11.0, 16.0);
+    let tw = measure(fonts, &deg_txt, deg_fs);
+    let bh = deg_fs + 7.0;
+    let bw = (tw + 12.0).max(28.0);
+    let skew = (bh * 0.28).clamp(3.0, 7.0);
+    let bx = fig_x + fig_w * 0.58;
+    let by = fig_y + fig_h * 0.38;
+    fill_skew(px, bx, by, bw, bh, skew, accent());
+    text(
+        px,
+        fonts,
+        &deg_txt,
+        deg_fs,
+        bx + (bw - tw) * 0.5 + skew * 0.35,
+        by + (bh - deg_fs) * 0.45,
+        ink_on(accent()),
+        false,
+    );
+
+    let over_game = cfg[WidgetId::Lean].bg < 40;
+    if let Some(frac) = view.steer {
+        let bx = fig_x;
+        let bw = fig_w;
+        let bar_y = y + h - pad - steer_h + steer_h * 0.28;
+        draw_lean_track_h(px, bx, bar_y, bw, over_game, a);
+        let mid = bx + bw * 0.5;
+        let fill_w = (frac.abs() * bw * 0.5).max(if frac.abs() > 0.01 { 3.0 } else { 0.0 });
+        if fill_w > 0.5 {
+            let fx = if frac >= 0.0 { mid } else { mid - fill_w };
+            fill_round(px, fx, bar_y - 1.0, fill_w, 4.0, 1.0, accent());
+        }
+        draw_lean_tick_v(px, mid, bar_y, over_game);
+        let pct = format!("{:.0}%", (frac.abs() * 100.0).round());
+        let fs = (steer_h * 0.42).clamp(9.0, 13.0);
+        draw_lean_pct(px, fonts, &pct, fs, mid, bar_y + 8.0, over_game);
+    }
+
+    if let Some(frac) = view.pitch {
+        let track_x = fig_x + fig_w + (pitch_w * 0.42).max(6.0);
+        let bar_y = fig_y;
+        let bar_h = fig_h;
+        draw_lean_track_v(px, track_x, bar_y, bar_h, over_game, a);
+        let mid = bar_y + bar_h * 0.5;
+        let fill_h = (frac.abs() * bar_h * 0.5).max(if frac.abs() > 0.01 { 3.0 } else { 0.0 });
+        if fill_h > 0.5 {
+            let fy = if frac >= 0.0 { mid - fill_h } else { mid };
+            fill_round(px, track_x - 1.0, fy, 4.0, fill_h, 1.0, accent());
+        }
+        draw_lean_tick_h(px, track_x, mid, over_game);
+        let pct = format!("{:.0}%", (frac.abs() * 100.0).round());
+        let fs = (pitch_w * 0.42).clamp(8.0, 12.0);
+        let pct_x = fig_x + fig_w + pitch_w * 0.5;
+        let pct_y = if view.steer.is_some() {
+            y + h - pad - steer_h + steer_h * 0.28 + 8.0
+        } else {
+            fig_y + fig_h - fs - 1.0
+        };
+        draw_lean_pct(px, fonts, &pct, fs, pct_x, pct_y, over_game);
+    }
+}
+
+fn signed_deg(deg: f32) -> String {
+    let n = deg.round();
+    if n == 0.0 {
+        "0°".into()
+    } else {
+        format!("{:+.0}°", n)
+    }
+}
+
+fn draw_lean_minimal(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    cfg: &HudConfig,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    a: u8,
+    view: crate::lean::LeanView,
+) {
+    // Numbers, not a gyro. Huge orange lean is you. Cream pitch degrees. Steer stays a hairline.
+    let over_game = cfg[WidgetId::Lean].bg < 40;
+    let pad = (w.min(h) * 0.08).clamp(6.0, 12.0);
+    let steer_h = if view.steer.is_some() {
+        (h * 0.20).clamp(18.0, 32.0)
+    } else {
+        0.0
+    };
+    let body_h = (h - pad * 2.0 - steer_h).max(28.0);
+    let has_pitch = view.pitch.is_some();
+    let hero = signed_deg(view.deg);
+    let hero_fs = (body_h * if has_pitch { 0.46 } else { 0.52 }).clamp(22.0, 64.0);
+    let cx = x + w * 0.5;
+    let hero_y = if has_pitch {
+        y + pad + body_h * 0.08
+    } else {
+        y + pad + (body_h - hero_fs) * 0.5
+    };
+    let cream = Color::from_rgba8(248, 248, 252, 255);
+    if over_game {
+        let tw = measure(fonts, &hero, hero_fs);
+        fill_night_pill(px, cx - tw * 0.5 - 10.0, hero_y - 5.0, tw + 20.0, hero_fs + 10.0);
+    }
+    text(px, fonts, &hero, hero_fs, cx, hero_y, accent(), true);
+
+    if let Some(frac) = view.pitch {
+        let pdeg = signed_deg(frac * 60.0);
+        let pfs = (body_h * 0.20).clamp(12.0, 22.0);
+        let py = hero_y + hero_fs + (body_h * 0.05).max(3.0);
+        if over_game {
+            let tw = measure(fonts, &pdeg, pfs);
+            fill_night_pill(px, cx - tw * 0.5 - 6.0, py - 3.0, tw + 12.0, pfs + 6.0);
+        }
+        text(px, fonts, &pdeg, pfs, cx, py, cream, true);
+    }
+
+    if let Some(frac) = view.steer {
+        let bw = (w - pad * 2.0).max(40.0);
+        let bx = x + pad;
+        let bar_y = y + h - pad - steer_h + steer_h * 0.22;
+        draw_lean_track_h(px, bx, bar_y, bw, over_game, a);
+        let mid = cx;
+        let fill_w = (frac.abs() * bw * 0.5).max(if frac.abs() > 0.01 { 3.0 } else { 0.0 });
+        if fill_w > 0.5 {
+            let fx = if frac >= 0.0 { mid } else { mid - fill_w };
+            fill_round(px, fx, bar_y - 1.0, fill_w, 4.0, 1.0, accent());
+        }
+        draw_lean_tick_v(px, mid, bar_y, over_game);
+        let pct = format!("{:.0}%", (frac.abs() * 100.0).round());
+        let fs = (steer_h * 0.42).clamp(9.0, 13.0);
+        draw_lean_pct(px, fonts, &pct, fs, mid, bar_y + 8.0, over_game);
+    }
+}
+
+fn lean_track_fill(over_game: bool, a: u8) -> Color {
+    if over_game {
+        Color::from_rgba8(236, 236, 240, 255)
+    } else {
+        Color::from_rgba8(58, 58, 62, a.max(200))
+    }
+}
+
+fn lean_halo() -> Color {
+    Color::from_rgba8(10, 10, 10, 230)
+}
+
+fn draw_lean_track_h(px: &mut Pixmap, x: f32, y: f32, w: f32, over_game: bool, a: u8) {
+    if over_game {
+        fill_round(px, x - 1.0, y - 2.0, w + 2.0, 6.0, 2.0, lean_halo());
+    }
+    fill_round(px, x, y, w, 2.0, 1.0, lean_track_fill(over_game, a));
+}
+
+fn draw_lean_track_v(px: &mut Pixmap, x: f32, y: f32, h: f32, over_game: bool, a: u8) {
+    if over_game {
+        fill_round(px, x - 2.0, y - 1.0, 6.0, h + 2.0, 2.0, lean_halo());
+    }
+    fill_round(px, x, y, 2.0, h, 1.0, lean_track_fill(over_game, a));
+}
+
+fn draw_lean_tick_v(px: &mut Pixmap, mid: f32, bar_y: f32, over_game: bool) {
+    if over_game {
+        fill_round(px, mid - 2.0, bar_y - 5.0, 4.0, 12.0, 1.0, lean_halo());
+    }
+    fill_round(
+        px,
+        mid - 1.0,
+        bar_y - 3.0,
+        2.0,
+        8.0,
+        0.8,
+        Color::from_rgba8(248, 248, 252, 255),
+    );
+}
+
+fn draw_lean_tick_h(px: &mut Pixmap, track_x: f32, mid: f32, over_game: bool) {
+    if over_game {
+        fill_round(px, track_x - 5.0, mid - 2.0, 12.0, 4.0, 1.0, lean_halo());
+    }
+    fill_round(
+        px,
+        track_x - 3.0,
+        mid - 1.0,
+        8.0,
+        2.0,
+        0.8,
+        Color::from_rgba8(248, 248, 252, 255),
+    );
+}
+
+fn draw_lean_pct(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    pct: &str,
+    fs: f32,
+    cx: f32,
+    y: f32,
+    over_game: bool,
+) {
+    if over_game {
+        let tw = measure(fonts, pct, fs);
+        fill_night_pill(px, cx - tw * 0.5 - 6.0, y - 3.0, tw + 12.0, fs + 6.0);
+    }
+    text(
+        px,
+        fonts,
+        pct,
+        fs,
+        cx,
+        y,
+        Color::from_rgba8(248, 248, 252, 255),
+        true,
+    );
+}
+
+fn draw_lean_rider(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, deg: f32) {
+    let Some(src) = lean_rider() else {
+        return;
+    };
+    let iw = src.width() as f32;
+    let ih = src.height() as f32;
+    if iw < 1.0 || ih < 1.0 {
+        return;
+    }
+    let scale = ((w * 0.92) / iw).min((h * 0.98) / ih).max(0.01);
+    let dest_x = x + w * 0.5;
+    let dest_y = y + h - 4.0;
+    let t = Transform::from_translate(dest_x, dest_y)
+        .pre_concat(Transform::from_rotate(deg))
+        .pre_concat(Transform::from_scale(scale, scale))
+        .pre_concat(Transform::from_translate(-iw * 0.5, -ih * 0.92));
+    let mut paint = PixmapPaint::default();
+    paint.quality = FilterQuality::Bilinear;
+    px.draw_pixmap(0, 0, src.as_ref(), &paint, t, None);
 }
 
 fn draw_flag(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f32, sh: f32, flag: DashFlag, grow: f32) {
@@ -3378,10 +3663,10 @@ fn draw_flag_caption_fade(
 }
 
 fn draw_sys(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f32, sh: f32) {
-    // THESIS: CPU and MEM are two boards so process load is a glance, not a 12-row scroll.
+    // THESIS: CPU and MEM are two boards so process load is a glance, not a 12-row scroll. GPU repeats that list in the footer.
     // OWN-WORLD: night-ink 6px plaque, hairline split, huge ExtraBold Italic numbers, gold heat tracks (red when hot). No green, no orange.
     // STORY: rider glances — is the machine the problem, and is it the HUD or the game.
-    // FIRST VIEWPORT: tall plaque, CPU left / MEM right, four process rows under each, FPS 91 and NET 11% in a footer.
+    // FIRST VIEWPORT: tall plaque, CPU left / MEM right, watched apps under each, FPS + ping and GPU in a footer, GPU with the same apps.
     // FORM: Twin Columns, user-locked sys-twin.png.
     // FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
     let r = cfg[WidgetId::Sys].rect;
@@ -3401,7 +3686,7 @@ fn draw_sys(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f32, sh: f32) {
         }
     }
 
-    let (cpu, mem, fps, net) = sys_stats();
+    let (cpu, mem, fps, gpu, ping) = sys_stats();
     let procs = sys_procs();
     let mem_scale = procs
         .iter()
@@ -3412,10 +3697,11 @@ fn draw_sys(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f32, sh: f32) {
 
     let pad = (w * 0.045).clamp(8.0, 12.0);
     let gap = 1.0;
+    let split_pad = (w * 0.055).clamp(10.0, 16.0);
     let inner_w = (w - pad * 2.0).max(40.0);
     let inner_h = (h - pad * 2.0).max(56.0);
     let col_w = ((inner_w - gap) * 0.5).max(36.0);
-    let foot_h = (inner_h * 0.30).clamp(36.0, 68.0).min(inner_h - 48.0);
+    let foot_h = (inner_h * 0.50).clamp(64.0, 120.0).min(inner_h - 52.0);
     let body_h = (inner_h - foot_h - 1.0).max(40.0);
     let mid = x + pad + col_w + gap * 0.5;
     let hair = Color::from_rgba8(42, 42, 46, a.max(90));
@@ -3434,18 +3720,24 @@ fn draw_sys(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f32, sh: f32) {
     let cpu_s = format!("{:.0}%", cpu.round());
     let mem_s = format!("{:.0}%", mem.round());
     let fps_s = format!("{:.0}", fps.round());
-    let net_s = format!("{:.0}%", net.round());
-    let fps_fill = (fps / 1.2).clamp(0.0, 100.0);
+    let gpu_s = format!("{:.0}%", gpu.round());
+    let ping_s = if ping < 0 {
+        "—".into()
+    } else {
+        format!("{ping} ms")
+    };
 
     let left_x = x + pad;
-    let right_x = mid + 1.0 + gap * 0.5;
+    let left_w = (col_w - split_pad).max(28.0);
+    let right_x = mid + 1.0 + split_pad;
+    let right_w = (x + pad + inner_w - right_x).max(28.0);
     let head_y = y + pad * 0.35 + 4.0;
     let after_l = draw_sys_meter(
         px,
         fonts,
         left_x,
         head_y,
-        col_w,
+        left_w,
         "CPU",
         &cpu_s,
         label_fs,
@@ -3459,7 +3751,7 @@ fn draw_sys(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f32, sh: f32) {
         fonts,
         right_x,
         head_y,
-        col_w,
+        right_w,
         "MEM",
         &mem_s,
         label_fs,
@@ -3471,51 +3763,93 @@ fn draw_sys(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f32, sh: f32) {
     let proc_top = after_l.max(after_r) + (body_h * 0.04).clamp(4.0, 8.0);
     let proc_bot = y + pad + body_h - 4.0;
     let proc_h = (proc_bot - proc_top).max(28.0);
-    let row_h = proc_h / SYS_PROC_N as f32;
-    let label_w = SYS_PROC_LABELS
+    let n = procs.len().max(1) as f32;
+    let row_h = proc_h / n;
+    let label_w = procs
         .iter()
-        .map(|s| measure(fonts, s, proc_fs))
+        .map(|p| measure(fonts, &p.label, proc_fs))
         .fold(0.0f32, f32::max)
         + 4.0;
-    draw_sys_procs(
-        px, fonts, left_x, proc_top, col_w, row_h, proc_fs, label_w, &procs, false, 1.0,
-    );
-    draw_sys_procs(
-        px, fonts, right_x, proc_top, col_w, row_h, proc_fs, label_w, &procs, true, mem_scale,
-    );
+    if !procs.is_empty() {
+        draw_sys_procs(
+            px, fonts, left_x, proc_top, left_w, row_h, proc_fs, label_w, &procs, SysProcKind::Cpu, 1.0,
+        );
+        draw_sys_procs(
+            px, fonts, right_x, proc_top, right_w, row_h, proc_fs, label_w, &procs, SysProcKind::Mem, mem_scale,
+        );
+    }
 
-    let foot_label = (foot_h * 0.18).clamp(8.0, 11.0);
-    let foot_value = (foot_h * 0.38).clamp(16.0, 28.0);
-    let foot_track = (foot_h * 0.06).clamp(3.0, 5.0);
-    let fy = foot_y + (foot_h * 0.12).clamp(4.0, 8.0);
-    draw_sys_meter(
+    let foot_label = (foot_h * 0.10).clamp(8.0, 10.0);
+    let foot_value = (foot_h * 0.16).clamp(13.0, 18.0);
+    let foot_track = 3.0;
+    let fy = foot_y + 3.0;
+    let after_fps = draw_sys_meter(
         px,
         fonts,
         left_x,
         fy,
-        col_w,
+        left_w,
         "FPS",
         &fps_s,
         foot_label,
         foot_value,
-        fps_fill,
-        sys_fps_fill(fps_fill),
-        foot_track,
+        0.0,
+        Color::TRANSPARENT,
+        0.0,
     );
     draw_sys_meter(
         px,
         fonts,
-        right_x,
-        fy,
-        col_w,
-        "NET",
-        &net_s,
+        left_x,
+        after_fps + 6.0,
+        left_w,
+        "PING",
+        &ping_s,
         foot_label,
         foot_value,
-        net.clamp(0.0, 100.0),
-        sys_heat(net),
+        0.0,
+        Color::TRANSPARENT,
+        0.0,
+    );
+    let after_g = draw_sys_meter(
+        px,
+        fonts,
+        right_x,
+        fy,
+        right_w,
+        "GPU",
+        &gpu_s,
+        foot_label,
+        foot_value,
+        gpu.clamp(0.0, 100.0),
+        sys_heat(gpu),
         foot_track,
     );
+    let gpu_proc_top = after_g + 4.0;
+    let gpu_proc_bot = y + pad + inner_h - 2.0;
+    let gpu_proc_h = gpu_proc_bot - gpu_proc_top;
+    if gpu_proc_h >= 32.0 && !procs.is_empty() {
+        let gpu_row = gpu_proc_h / procs.len() as f32;
+        let gpu_fs = (gpu_row * 0.55).clamp(8.0, proc_fs);
+        let gpu_label_w = procs
+            .iter()
+            .map(|p| measure(fonts, &p.label, gpu_fs))
+            .fold(0.0f32, f32::max)
+            + 4.0;
+        draw_sys_procs(
+            px,
+            fonts,
+            right_x,
+            gpu_proc_top,
+            right_w,
+            gpu_row,
+            gpu_fs,
+            gpu_label_w,
+            &procs,
+            SysProcKind::Gpu,
+            1.0,
+        );
+    }
 }
 
 fn draw_ticker(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) {
@@ -6635,6 +6969,10 @@ fn stroke_dashed(px: &mut Pixmap, path: &Path, color: Color, width: f32, dash: f
 }
 
 fn stroke_path(px: &mut Pixmap, path: &Path, color: Color, width: f32) {
+    stroke_path_clip(px, path, color, width, None);
+}
+
+fn stroke_path_clip(px: &mut Pixmap, path: &Path, color: Color, width: f32, clip: Option<&Mask>) {
     let mut paint = Paint::default();
     paint.set_color(color);
     paint.anti_alias = true;
@@ -6644,7 +6982,7 @@ fn stroke_path(px: &mut Pixmap, path: &Path, color: Color, width: f32) {
         line_join: LineJoin::Round,
         ..Stroke::default()
     };
-    px.stroke_path(path, &paint, &stroke, Transform::identity(), None);
+    px.stroke_path(path, &paint, &stroke, Transform::identity(), clip);
 }
 
 fn stroke_path_fast(px: &mut Pixmap, path: &Path, color: Color, width: f32) {

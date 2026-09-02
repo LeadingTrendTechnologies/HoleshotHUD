@@ -5,7 +5,7 @@
 #[path = "../../../web-preview/src/demo_track.rs"]
 mod demo_track;
 
-use mxbo_hud::config::{FontFamily, HudConfig, SnapAlign, Units, WidgetId};
+use mxbo_hud::config::{FontFamily, HudConfig, LeanStyle, SnapAlign, Units, WidgetId};
 use mxbo_hud::render::{draw, Fonts};
 use mxbo_hud::shm::{
     write_name, Point, Rider, Snapshot, Standing, MAGIC, VERSION,
@@ -81,10 +81,20 @@ fn main() {
                 new_best: false,
             }));
         }),
+        ("lean.png", W, H, |c| size_show(c, "lean", 0.16, 0.32)),
+        ("lean-min.png", W, H, |c| {
+            size_show(c, "lean", 0.16, 0.32);
+            c.lean_style = LeanStyle::Minimal;
+        }),
         ("hero.png", W, HERO_H, layout_hero),
     ];
 
+    let filter: Vec<String> = std::env::args().skip(1).collect();
+
     for &(name, w, h, setup) in shots {
+        if !filter.is_empty() && !filter.iter().any(|a| name.contains(a)) {
+            continue;
+        }
         mxbo_hud::delta::set_preview(None);
         mxbo_hud::set_flag_preview(-1);
         mxbo_hud::sector::reload();
@@ -101,12 +111,12 @@ fn main() {
             snap.sector_delta_valid = 0b011;
         }
         if name == "sys.png" {
-            set_sys_stats(48.0, 62.0, 91.0, 11.0);
-            set_sys_procs([
-                SysProc { cpu: 12.0, mem_mb: 420.0, mem_pct: 2.6, on: true },
-                SysProc { cpu: 41.0, mem_mb: 1800.0, mem_pct: 11.0, on: true },
-                SysProc { cpu: 8.0, mem_mb: 180.0, mem_pct: 1.1, on: true },
-                SysProc { cpu: -1.0, mem_mb: 44.0, mem_pct: 0.3, on: true },
+            set_sys_stats(48.0, 62.0, 91.0, 41.0, 24);
+            set_sys_procs(vec![
+                SysProc { label: "HUD".into(), cpu: 12.0, gpu: 3.0, mem_mb: 420.0, mem_pct: 2.6, on: true },
+                SysProc { label: "MX Bikes".into(), cpu: 41.0, gpu: 38.0, mem_mb: 1800.0, mem_pct: 11.0, on: true },
+                SysProc { label: "MXB App".into(), cpu: 8.0, gpu: 1.0, mem_mb: 180.0, mem_pct: 1.1, on: true },
+                SysProc { label: "ReShade".into(), cpu: -1.0, gpu: -1.0, mem_mb: 44.0, mem_pct: 0.3, on: true },
             ]);
         }
         cfg.apply_to_snapshot(&mut snap);
@@ -153,6 +163,7 @@ fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg[WidgetId::Sector].show = name == "sector";
     cfg[WidgetId::Delta].show = name == "delta";
     cfg[WidgetId::Flag].show = name == "flag";
+    cfg[WidgetId::Lean].show = name == "lean";
 }
 
 fn size_show(cfg: &mut HudConfig, name: &str, w: f32, h: f32) {
@@ -169,6 +180,7 @@ fn size_show(cfg: &mut HudConfig, name: &str, w: f32, h: f32) {
         "sector" => WidgetId::Sector,
         "delta" => WidgetId::Delta,
         "flag" => WidgetId::Flag,
+        "lean" => WidgetId::Lean,
         _ => return,
     };
     cfg[id].rect.w = w;
@@ -264,6 +276,10 @@ fn demo_snapshot() -> Snapshot {
     s.local_gear = 3;
     s.local_rpm = 9666;
     s.local_speed = 16.5;
+    s.local_roll = -32.0;
+    s.local_pitch = -18.0;
+    s.local_steer = -0.12;
+    s.steer_lock = 0.40;
     s.current_lap_ms = 12_000;
     s.sector_count = 3;
     s.sector_last = 2;
@@ -298,6 +314,7 @@ fn demo_snapshot() -> Snapshot {
             track_pos: pos,
             crashed: 0,
             name: [0; 32],
+            lean: 0.0,
         };
         write_name(&mut s.riders[i].name, name);
     }

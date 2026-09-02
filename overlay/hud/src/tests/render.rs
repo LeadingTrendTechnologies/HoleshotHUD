@@ -1,5 +1,5 @@
 use super::*;
-use crate::config::{BoardField, DashField, FontFamily, HudConfig, RelField, StField, StanceStyle, WidgetId};
+use crate::config::{BoardField, DashField, FontFamily, HudConfig, LeanStyle, RelField, StField, StanceStyle, WidgetId};
 use crate::race_store::{effective_extra_laps, effective_race_laps, ClockMode};
 use crate::shm::{write_name, Point, Rider, Snapshot, Standing, MAGIC, VERSION};
 use std::sync::{Mutex, OnceLock};
@@ -236,6 +236,7 @@ fn hide_widgets(cfg: &mut HudConfig) {
     cfg[WidgetId::Delta].show = false;
     cfg[WidgetId::Stance].show = false;
     cfg[WidgetId::Flag].show = false;
+    cfg[WidgetId::Lean].show = false;
 }
 
 fn golden_snap(s: &Snapshot, cfg: &HudConfig) -> Snapshot {
@@ -3503,28 +3504,36 @@ fn map_subject_pose_returns_to_me_when_riding_even_if_focus_is_stale() {
     assert_eq!(pose.z, 4.0);
 }
 
-fn sys_procs_fixture() -> [SysProc; 4] {
-    [
+fn sys_procs_fixture() -> Vec<SysProc> {
+    vec![
         SysProc {
+            label: "HUD".into(),
             cpu: 4.0,
+            gpu: 3.0,
             mem_mb: 88.0,
             mem_pct: 0.5,
             on: true,
         },
         SysProc {
+            label: "MX Bikes".into(),
             cpu: 22.0,
+            gpu: 38.0,
             mem_mb: 1800.0,
             mem_pct: 11.0,
             on: true,
         },
         SysProc {
+            label: "MXB App".into(),
             cpu: 8.0,
+            gpu: 1.0,
             mem_mb: 180.0,
             mem_pct: 1.1,
             on: true,
         },
         SysProc {
+            label: "ReShade".into(),
             cpu: -1.0,
+            gpu: -1.0,
             mem_mb: 44.0,
             mem_pct: 0.3,
             on: true,
@@ -3599,7 +3608,7 @@ fn widget_goldens_pin_paint() {
 
     hide_widgets(&mut cfg);
     cfg[WidgetId::Sys].show = true;
-    set_sys_stats(48.0, 62.0, 91.0, 11.0);
+    set_sys_stats(48.0, 62.0, 91.0, 41.0, 24);
     set_sys_procs(sys_procs_fixture());
     let s = golden_snap(&base, &cfg);
     draw_widget_golden("sys", &s, &cfg, cfg[WidgetId::Sys].rect);
@@ -3665,6 +3674,41 @@ fn widget_goldens_pin_paint() {
     draw_widget_golden("stance-stand", &s, &cfg, cfg[WidgetId::Stance].rect);
     set_stance(false);
     draw_widget_golden("stance-sit", &s, &cfg, cfg[WidgetId::Stance].rect);
+
+    hide_widgets(&mut cfg);
+    cfg[WidgetId::Lean].show = true;
+    cfg[WidgetId::Lean].bg = 0;
+    let mut lean = base;
+    lean.local_roll = -32.0;
+    lean.local_pitch = -18.0;
+    lean.local_steer = -0.12;
+    lean.steer_lock = 0.40;
+    let s = golden_snap(&lean, &cfg);
+    draw_widget_golden("lean", &s, &cfg, cfg[WidgetId::Lean].rect);
+    lean.has_telemetry = 0;
+    lean.focus_race_num = 1;
+    lean.riders[0].lean = -18.0;
+    let s = golden_snap(&lean, &cfg);
+    draw_widget_golden("lean-spectate", &s, &cfg, cfg[WidgetId::Lean].rect);
+}
+
+#[test]
+fn lean_min_golden() {
+    let _g = session_lock();
+    reset_session();
+    let base = live_snap();
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg[WidgetId::Lean].show = true;
+    cfg[WidgetId::Lean].bg = 0;
+    cfg.lean_style = LeanStyle::Minimal;
+    let mut lean = base;
+    lean.local_roll = -32.0;
+    lean.local_pitch = -18.0;
+    lean.local_steer = -0.12;
+    lean.steer_lock = 0.40;
+    let s = golden_snap(&lean, &cfg);
+    draw_widget_golden("lean-min", &s, &cfg, cfg[WidgetId::Lean].rect);
 }
 
 #[test]

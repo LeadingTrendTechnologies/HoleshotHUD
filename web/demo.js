@@ -108,6 +108,7 @@ const NAMES = {
   sector: "Sectors",
   delta: "Delta Bar",
   flag: "Flags",
+  lean: "Lean",
 };
 
 const canvas = document.getElementById("hud");
@@ -271,6 +272,12 @@ function renderSettings() {
     html += toggleRow("flag_yellow", "Yellow flag");
     html += toggleRow("flag_blue", "Blue flag");
     html += styleControls("flag", "Panel opacity");
+  } else if (w === "lean") {
+    html += fieldRow("lean_style", "Look", [
+      ["figure", "Figure"],
+      ["minimal", "Minimal"],
+    ]);
+    html += styleControls("lean", "Panel opacity");
   }
   html += snapGrid();
   settings.replaceChildren(el(html));

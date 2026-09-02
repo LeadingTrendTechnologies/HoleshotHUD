@@ -131,6 +131,10 @@ public:
     float localVelX() const { return m_localVelX; }
     float localVelZ() const { return m_localVelZ; }
     float localYaw() const { return m_localYaw; }
+    float localRoll() const { return m_localRoll; }
+    float localPitch() const { return m_localPitch; }
+    float localSteer() const { return m_localSteer; }
+    float steerLock() const { return m_steerLock; }
     int localCrashed() const { return m_localCrashed; }
     double telemetryStamp() const { return m_telemetryStamp; }
     int localGear() const { return m_localGear; }
@@ -204,6 +208,10 @@ private:
     float m_localVelX = 0.0f;
     float m_localVelZ = 0.0f;
     float m_localYaw = 0.0f;
+    float m_localRoll = 0.0f;
+    float m_localPitch = 0.0f;
+    float m_localSteer = 0.0f;
+    float m_steerLock = 0.0f;
     int m_localCrashed = 0;
     double m_telemetryStamp = 0.0;
     double m_trackPosStamp = 0.0;

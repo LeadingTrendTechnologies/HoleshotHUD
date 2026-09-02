@@ -126,13 +126,12 @@ pub fn should_auto_open(seen: &str, current: &str, just_updated: bool) -> bool {
 
 pub fn notes_for(changelog: &str, version: &str) -> Option<Notes> {
     let ver = version.trim().trim_start_matches('v');
-    let named = parse_section(changelog, ver).and_then(rider_facing);
-    if named.as_ref().is_some_and(|n| !n.is_empty()) {
-        return named;
+    if let Some(section) = parse_section(changelog, ver) {
+        return rider_facing(section).filter(|n| !n.is_empty());
     }
     parse_section(changelog, "Unreleased")
         .and_then(rider_facing)
-        .filter(|n| !n.is_empty() && named.is_none())
+        .filter(|n| !n.is_empty())
         .map(|mut n| {
             n.version = ver.to_string();
             n
@@ -178,6 +177,7 @@ const WIDGETS: &[(&str, &[&str])] = &[
     ("Minimap", &["minimap"]),
     ("Radar", &["radar"]),
     ("Dash", &["dash"]),
+    ("Lean", &["lean"]),
     ("Systems", &["systems"]),
     ("Stance", &["stance"]),
     ("Sectors", &["sectors", "sector"]),

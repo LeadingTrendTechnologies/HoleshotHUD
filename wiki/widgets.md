@@ -18,6 +18,7 @@ When you change a widget, append a dated entry to that widget’s **Change log**
 | Stance | Stance | `Stance` | [stance.md](widgets/stance.md) |
 | Delta Bar | Delta Bar | `Delta` | [delta-bar.md](widgets/delta-bar.md) |
 | Sectors | Sectors | `Sector` | [sector.md](widgets/sector.md) |
+| Lean | Lean | `Lean` | [lean.md](widgets/lean.md) |
 
 ## Shared rules
 
@@ -28,7 +29,7 @@ When you change a widget, append a dated entry to that widget’s **Change log**
 - All widgets start **hidden** on a fresh install (`show_* = false`). Turn on with **Show on overlay**.
 - Every widget has font size, bold, opacity, and snap-to-monitor. Hold **Ctrl** and drag to move or resize.
 - Overlay font families: default **Exo 2**. Also Segoe / Arial / Tahoma / Roboto, **Teko**, **Goldman**, **Montserrat**. Old ini keys `agency` / `industry` / `faster` map to Exo 2 / Teko / Goldman. `bebas` and `impact` map to Goldman and Montserrat.
-- Minimap / radar / dash / ticker / sys / stance / flag / delta / sector read `cfg.show_*` directly.
+- Minimap / radar / dash / ticker / sys / stance / flag / delta / sector / lean read `cfg.show_*` directly.
 - All widgets draw when telemetry or rider positions are present — including replay / spectate, which never set `RunInit`. Standings alone after `RunDeinit` are leftover garage / lobby data and must not keep the HUD up. They hide in the menus, lobby, and garage, and when MX Bikes is not running. A hitch that pauses plugin publish still keeps the last session HUD for 15s (`overlay/src/main.rs`); do not blank at the 2.5s live cutoff. Delta and Sectors keep ticking in that window so a wrap across S/F can still commit. Hold Ctrl for layout boxes; that still forces a draw. The Holeshot HUD icon stays in the top-right whenever the overlay window is on the game (proof it is compositing); a click opens settings even while Ctrl is down. The settings key toggles settings closed if it is already open. A top plaque explains a blank HUD: no widget on (F8 → Show on overlay), widgets on but you are in the garage/menus (appear on track), or no live plugin data for 2s (fully quit MX Bikes and start it again). That plugin restart plaque wins over the fullscreen-optimizations “stay on top” line when both apply. After an in-app update that changed the plugin while MX Bikes was open, What’s new and Settings → Install say the same until the game process is gone. Overlay SHM maps the whole `Local\\MXBOHudV10` section so a leftover smaller mapping still opens.
 - Overlay copies `Holeshot-HUD.dlo` into the game `plugins` folder from the plugin **baked into the running exe**. A leftover sidecar next to the exe must not win after an in-app update. Dev `cargo` builds with an empty embed still fall back to `out/Release`.
 

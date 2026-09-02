@@ -1,5 +1,6 @@
 pub mod config;
 pub mod delta;
+pub mod lean;
 pub mod race_store;
 pub mod render;
 pub mod sector;

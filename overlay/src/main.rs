@@ -12,6 +12,8 @@ mod plugin;
 mod shm;
 mod stance;
 mod startup;
+mod gpu;
+mod ping;
 mod sys;
 mod tray;
 mod uninstall;
@@ -25,7 +27,7 @@ use std::time::{Duration, Instant};
 
 use tiny_skia::Pixmap;
 use windows::core::w;
-use windows::Win32::Foundation::{BOOL, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     ClientToScreen, CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, SelectObject,
     AC_SRC_ALPHA, AC_SRC_OVER, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION, DIB_RGB_COLORS,
@@ -38,7 +40,7 @@ use windows::Win32::UI::HiDpi::{SetProcessDpiAwareness, PROCESS_PER_MONITOR_DPI_
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_F9, VK_LBUTTON};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateIconFromResourceEx, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
-    GetClassNameW, GetClientRect, GetSystemMetrics, GetWindowThreadProcessId, IsIconic, IsWindow,
+    GetClientRect, GetSystemMetrics, IsIconic, IsWindow,
     IsWindowVisible, LoadCursorW,
     LoadImageW, LookupIconIdFromDirectoryEx, PeekMessageW, PostQuitMessage, RegisterClassExW,
     SendMessageW, SetCursor, SetWindowPos, ShowWindow, TranslateMessage, UpdateLayeredWindow,
@@ -69,7 +71,6 @@ pub(crate) fn quit_app() {
     if QUITTING.swap(true, Ordering::SeqCst) {
         return;
     }
-    crate::compat::restore_taskbars();
     crate::startup::kill_other_hud_processes();
     crate::tray::remove();
     crate::compat::stop_background_threads();
@@ -81,6 +82,7 @@ pub(crate) fn quit_app() {
         set_host(HWND(null_mut()));
         PostQuitMessage(0);
     }
+    crate::compat::on_quit(find_game_hwnd(), crate::startup::mx_bikes_pid());
     std::process::exit(0);
 }
 
@@ -116,7 +118,7 @@ fn f9_dump_text(shm: Option<&Shm>, snap: Option<&Snapshot>) -> String {
     let mut o = String::from("No live Snapshot (overlay SHM version mismatch or plugin not publishing).\n");
     o.push_str(&format!("overlay VERSION={VERSION} rust_size={}\n", std::mem::size_of::<Snapshot>()));
     match shm {
-        None => o.push_str("OpenFileMapping Local\\MXBOHudV10 failed. Start MX Bikes with Holeshot-HUD.dlo loaded.\n"),
+        None => o.push_str("OpenFileMapping Local\\MXBOHudV12 failed. Start MX Bikes with Holeshot-HUD.dlo loaded.\n"),
         Some(s) => match s.header() {
             Some((magic, version, seq, size)) => {
                 o.push_str(&format!(
@@ -176,6 +178,10 @@ fn main() {
     }));
     if let Some(path) = dump_whats_new_path() {
         dump_whats_new_and_exit(&path);
+    }
+    if let Some(pid) = crate::compat::restore_taskbar_pid(std::env::args()) {
+        crate::compat::wait_then_restore_taskbar(pid);
+        return;
     }
     if std::env::args().any(|a| a == "--wait-for-game") {
         crate::startup::wait_for_mx_bikes();
@@ -579,9 +585,10 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         };
 
         let frame_start = Instant::now();
-        let (sys_show, stance_show, stance_bind, stance_mode) = match preview_cfg.as_ref() {
+        let (sys_show, sys_apps, stance_show, stance_bind, stance_mode) = match preview_cfg.as_ref() {
             Some(cfg) => (
                 cfg[crate::config::WidgetId::Sys].show,
+                cfg.sys_apps.clone(),
                 cfg[crate::config::WidgetId::Stance].show,
                 cfg.stance_bind,
                 cfg.stance_mode,
@@ -589,6 +596,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
             None => crate::config::with_config(|cfg| {
                 (
                     cfg[crate::config::WidgetId::Sys].show,
+                    cfg.sys_apps.clone(),
                     cfg[crate::config::WidgetId::Stance].show,
                     cfg.stance_bind,
                     cfg.stance_mode,
@@ -598,6 +606,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         sys.tick(
             last_snap.as_ref().map(|s| s.seq),
             overlay_on && in_session && sys_show,
+            &sys_apps,
         );
         if let Some(bind) = stance.tick(
             stance_bind,
@@ -789,56 +798,7 @@ unsafe fn create_overlay(
 }
 
 fn find_game_hwnd() -> Option<HWND> {
-    let pid = crate::startup::mx_bikes_pid()?;
-    struct St {
-        pid: u32,
-        best: HWND,
-        area: i32,
-    }
-    unsafe extern "system" fn cb(hwnd: HWND, lp: LPARAM) -> BOOL {
-        use windows::Win32::UI::WindowsAndMessaging::{GetWindowRect, IsWindowVisible};
-        let st = unsafe { &mut *(lp.0 as *mut St) };
-        if !IsWindowVisible(hwnd).as_bool() {
-            return true.into();
-        }
-        let mut wpid = 0u32;
-        GetWindowThreadProcessId(hwnd, Some(&mut wpid));
-        if wpid != st.pid {
-            return true.into();
-        }
-        let mut name = [0u16; 64];
-        let n = GetClassNameW(hwnd, &mut name);
-        if n > 0 {
-            let class = String::from_utf16_lossy(&name[..n as usize]);
-            if class == "MXBOOverlay" {
-                return true.into();
-            }
-        }
-        let mut r = RECT::default();
-        let _ = GetWindowRect(hwnd, &mut r);
-        let area = (r.right - r.left).saturating_mul(r.bottom - r.top);
-        if area > st.area && (r.right - r.left) > 64 && (r.bottom - r.top) > 64 {
-            st.area = area;
-            st.best = hwnd;
-        }
-        true.into()
-    }
-    let mut st = St {
-        pid,
-        best: HWND::default(),
-        area: 0,
-    };
-    unsafe {
-        let _ = windows::Win32::UI::WindowsAndMessaging::EnumWindows(
-            Some(cb),
-            LPARAM(&mut st as *mut St as isize),
-        );
-    }
-    if st.best.0.is_null() {
-        None
-    } else {
-        Some(st.best)
-    }
+    crate::compat::largest_visible_window(crate::startup::mx_bikes_pid()?)
 }
 
 fn client_screen_rect(hwnd: HWND) -> Option<(i32, i32, i32, i32)> {

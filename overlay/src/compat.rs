@@ -1,9 +1,10 @@
+use std::mem::size_of;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use windows::core::{w, PCSTR, PCWSTR, PWSTR};
-use windows::Win32::Foundation::{CloseHandle, HWND, RECT};
+use windows::Win32::Foundation::{BOOL, CloseHandle, HWND, LPARAM, RECT};
 use windows::Win32::Graphics::Gdi::{
     GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
 };
@@ -13,18 +14,21 @@ use windows::Win32::System::Registry::{
     KEY_WRITE, REG_SZ,
 };
 use windows::Win32::System::Threading::{
-    OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_FORMAT, PROCESS_QUERY_LIMITED_INFORMATION,
+    GetExitCodeProcess, OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_FORMAT,
+    PROCESS_QUERY_LIMITED_INFORMATION,
 };
 use windows::Win32::UI::Shell::{ABM_WINDOWPOSCHANGED, APPBARDATA, SHAppBarMessage};
 use windows::Win32::UI::WindowsAndMessaging::{
-    ClipCursor, FindWindowExW, FindWindowW, GetForegroundWindow, GetWindowLongPtrW, GetWindowRect,
-    GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, SetWindowLongPtrW, SetWindowPos,
-    ShowWindow, GWL_EXSTYLE, HWND_NOTOPMOST, HWND_TOPMOST, SWP_FRAMECHANGED, SWP_NOACTIVATE,
-    SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE, WS_EX_TRANSPARENT,
+    ClipCursor, EnumWindows, FindWindowExW, FindWindowW, GetClassNameW, GetForegroundWindow,
+    GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible,
+    SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_EXSTYLE, HWND_NOTOPMOST,
+    HWND_TOPMOST, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SW_HIDE,
+    SW_SHOW, SW_SHOWNOACTIVATE, WS_EX_TRANSPARENT,
 };
 
 const FLAG: &str = "DISABLEDXMAXIMIZEDWINDOWEDMODE";
 const ZBID_IMMERSIVE_NOTIFICATION: u32 = 4;
+const STILL_ACTIVE: u32 = 259;
 
 static UNCLIP: AtomicBool = AtomicBool::new(false);
 static BG_RUN: AtomicBool = AtomicBool::new(true);
@@ -50,9 +54,117 @@ pub fn stop_background_threads() {
     UNCLIP.store(false, Ordering::Relaxed);
 }
 
-/// `quit_app` uses `process::exit`, which skips Drop — call this before that.
-pub fn restore_taskbars() {
+pub fn restore_taskbar_pid(args: impl IntoIterator<Item = impl AsRef<str>>) -> Option<u32> {
+    let mut it = args.into_iter();
+    while let Some(a) = it.next() {
+        let a = a.as_ref();
+        if a == "--restore-taskbar" {
+            return it.next()?.as_ref().parse().ok();
+        }
+        if let Some(rest) = a.strip_prefix("--restore-taskbar=") {
+            return rest.parse().ok();
+        }
+    }
+    None
+}
+
+pub fn should_defer_taskbar_restore(taskbars_hidden: bool, game_running: bool) -> bool {
+    taskbars_hidden && game_running
+}
+
+pub fn is_one_px_shy(window: RECT, monitor: RECT) -> bool {
+    let w = monitor.right - monitor.left;
+    let h = monitor.bottom - monitor.top;
+    window.left == monitor.left
+        && window.top == monitor.top
+        && window.right - window.left == w
+        && window.bottom - window.top == h - 1
+}
+
+/// Undo the 1px shrink and keep the taskbar off the game until MX Bikes exits.
+pub fn on_quit(game: Option<HWND>, game_pid: Option<u32>) {
+    unsafe {
+        hide_hud_overlays();
+        if let Some(hwnd) = game {
+            restore_if_shy(hwnd);
+        }
+    }
+    if should_defer_taskbar_restore(TASKBARS_HIDDEN.load(Ordering::Relaxed), game_pid.is_some()) {
+        if let Some(pid) = game_pid {
+            if crate::startup::spawn_taskbar_restorer(pid) {
+                return;
+            }
+        }
+    }
     show_taskbars();
+}
+
+pub fn wait_then_restore_taskbar(pid: u32) {
+    if !crate::startup::claim_taskbar_restorer() {
+        return;
+    }
+    if let Some(hwnd) = largest_visible_window(pid) {
+        unsafe {
+            restore_if_shy(hwnd);
+        }
+    }
+    while process_alive(pid) {
+        if pid_is_foreground(pid) {
+            hide_taskbars();
+        } else {
+            show_taskbars();
+        }
+        thread::sleep(Duration::from_millis(200));
+    }
+    show_taskbars();
+}
+
+pub fn largest_visible_window(pid: u32) -> Option<HWND> {
+    struct St {
+        pid: u32,
+        best: HWND,
+        area: i32,
+    }
+    unsafe extern "system" fn cb(hwnd: HWND, lp: LPARAM) -> BOOL {
+        let st = unsafe { &mut *(lp.0 as *mut St) };
+        if !IsWindowVisible(hwnd).as_bool() {
+            return true.into();
+        }
+        let mut wpid = 0u32;
+        GetWindowThreadProcessId(hwnd, Some(&mut wpid));
+        if wpid != st.pid {
+            return true.into();
+        }
+        let mut name = [0u16; 64];
+        let n = GetClassNameW(hwnd, &mut name);
+        if n > 0 {
+            let class = String::from_utf16_lossy(&name[..n as usize]);
+            if class == "MXBOOverlay" {
+                return true.into();
+            }
+        }
+        let mut r = RECT::default();
+        let _ = GetWindowRect(hwnd, &mut r);
+        let area = (r.right - r.left).saturating_mul(r.bottom - r.top);
+        if area > st.area && (r.right - r.left) > 64 && (r.bottom - r.top) > 64 {
+            st.area = area;
+            st.best = hwnd;
+        }
+        true.into()
+    }
+    let mut st = St {
+        pid,
+        best: HWND::default(),
+        area: 0,
+    };
+    unsafe {
+        let _ = EnumWindows(Some(cb), LPARAM(&mut st as *mut St as isize));
+    }
+    if st.best.0.is_null() {
+        None
+    } else {
+        Some(st.best)
+    }
 }
 
 type CreateWindowInBandFn = unsafe extern "system" fn(
@@ -327,6 +439,68 @@ unsafe fn restore_desktop(overlay: HWND) {
     let _ = ShowWindow(overlay, SW_HIDE);
 }
 
+unsafe fn hide_hud_overlays() {
+    if let Ok(hwnd) = FindWindowW(w!("MXBOOverlay"), None) {
+        if !hwnd.is_invalid() && !hwnd.0.is_null() {
+            let _ = ShowWindow(hwnd, SW_HIDE);
+        }
+    }
+}
+
+unsafe fn restore_if_shy(game: HWND) {
+    if game.0.is_null() || !IsWindow(game).as_bool() || IsIconic(game).as_bool() {
+        return;
+    }
+    let mut wr = RECT::default();
+    let _ = GetWindowRect(game, &mut wr);
+    let Some(mr) = monitor_rect(game) else {
+        return;
+    };
+    if !is_one_px_shy(wr, mr) {
+        return;
+    }
+    let w = mr.right - mr.left;
+    let h = mr.bottom - mr.top;
+    let _ = SetWindowPos(game, HWND_NOTOPMOST, mr.left, mr.top, w, h, SWP_NOACTIVATE);
+    let _ = SetForegroundWindow(game);
+}
+
+unsafe fn monitor_rect(hwnd: HWND) -> Option<RECT> {
+    let mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+    let mut mi = MONITORINFO {
+        cbSize: size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    if !GetMonitorInfoW(mon, &mut mi).as_bool() {
+        return None;
+    }
+    Some(mi.rcMonitor)
+}
+
+fn process_alive(pid: u32) -> bool {
+    unsafe {
+        let Ok(proc) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else {
+            return false;
+        };
+        let mut code = 0u32;
+        let ok = GetExitCodeProcess(proc, &mut code).is_ok();
+        let _ = CloseHandle(proc);
+        ok && code == STILL_ACTIVE
+    }
+}
+
+fn pid_is_foreground(pid: u32) -> bool {
+    unsafe {
+        let fg = GetForegroundWindow();
+        if fg.0.is_null() {
+            return false;
+        }
+        let mut fg_pid = 0u32;
+        GetWindowThreadProcessId(fg, Some(&mut fg_pid));
+        fg_pid == pid
+    }
+}
+
 fn window_is_foreground(hwnd: HWND) -> bool {
     unsafe {
         if hwnd.0.is_null() || IsIconic(hwnd).as_bool() || !IsWindowVisible(hwnd).as_bool() {
@@ -456,15 +630,9 @@ unsafe fn set_click_through(hwnd: HWND, through: bool) {
 unsafe fn keep_just_shy_of_fullscreen(game: HWND) {
     let mut wr = RECT::default();
     let _ = GetWindowRect(game, &mut wr);
-    let mon = MonitorFromWindow(game, MONITOR_DEFAULTTONEAREST);
-    let mut mi = MONITORINFO {
-        cbSize: size_of::<MONITORINFO>() as u32,
-        ..Default::default()
-    };
-    if !GetMonitorInfoW(mon, &mut mi).as_bool() {
+    let Some(mr) = monitor_rect(game) else {
         return;
-    }
-    let mr = mi.rcMonitor;
+    };
     let w = mr.right - mr.left;
     let h = (mr.bottom - mr.top - 1).max(600);
     if wr.left != mr.left || wr.top != mr.top || wr.right - wr.left != w || wr.bottom - wr.top != h
@@ -472,3 +640,7 @@ unsafe fn keep_just_shy_of_fullscreen(game: HWND) {
         let _ = SetWindowPos(game, HWND_NOTOPMOST, mr.left, mr.top, w, h, SWP_NOACTIVATE);
     }
 }
+
+#[cfg(test)]
+#[path = "tests/compat.rs"]
+mod tests;

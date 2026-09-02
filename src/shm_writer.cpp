@@ -225,6 +225,10 @@ void ShmWriter::publish(const PluginState& state, const PluginConfig& config)
     local.localYaw = state.localYaw();
     local.localSpeed = state.localSpeed();
     local.localTrackPos = state.localTrackPos();
+    local.localRoll = state.localRoll();
+    local.localPitch = state.localPitch();
+    local.localSteer = state.localSteer();
+    local.steerLock = state.steerLock();
     copyBounded(local.trackName, MXBO_TRACK_NAME, state.trackName().c_str());
     local.trackLength = state.trackLength();
     local.sfMeters = state.startFinishMeters();
@@ -250,6 +254,8 @@ void ShmWriter::publish(const PluginState& state, const PluginConfig& config)
         d.crashed = p.crashed;
         const RaceEntry* e = state.findEntry(p.raceNum);
         copyBounded(d.name, MXBO_NAME, e ? e->name.c_str() : "");
+        const VehicleLive* live = state.findVehicle(p.raceNum);
+        d.lean = live ? live->lean : 0.0f;
     }
 
     const int nStand = std::min(static_cast<int>(state.standings().size()), MXBO_MAX_STANDINGS);

@@ -7,7 +7,6 @@ Plugin field status lives in [Home.md](../Home.md). **Overlay** = already in SHM
 | Widget | Closest we have | Data |
 | --- | --- | --- |
 | [G-Force](#g-force) | — | Need SHM (`m_fAccelerationX/Y/Z`) |
-| [Lean](#lean) | — | Need SHM (`m_fRoll` / `m_fSteer`; also `RaceVehicleData.m_fLean`) |
 | [Fuel calculator](#fuel-calculator) | Dash / table **Fuel** and **Fuel %** | Overlay (`fuel` / `maxFuel`) |
 | [Gamepad](#gamepad) | [Stance](stance.md) pad poll | Local XInput/HID, not plugin |
 | [Ideal Lap](#ideal-lap) | [Sectors](sector.md) | Overlay splits + `track_pb` |
@@ -25,14 +24,6 @@ Lat/long G-meter with a peak marker.
 - Plugin: `SPluginsBikeData_t.m_fAccelerationX/Y/Z` — **Unused**. World axes; confirm which pair is lateral vs longitudinal before drawing.
 - Not in SHM. Bump `MXBO_SHM_VERSION`.
 - Peak marker is overlay state (hold last max, decay or a reset). Do not persist across sessions unless we decide to.
-
-## Lean
-
-Lean arc plus a steering bar.
-
-- Local lean: `m_fRoll` (**Unused**). Per-rider lean: `RaceVehicleData.m_fLean` (**Cached**, not in SHM). Steering: `m_fSteer` / `m_fSteerLock` (**Unused**).
-- Need SHM for roll + steer. Event `m_fSteerLock` scales the bar.
-- Do not infer sit/stand from this — that is [Stance](stance.md).
 
 ## Fuel calculator
 
@@ -93,5 +84,6 @@ Timestamped race-event feed.
 
 ## Change log
 
+- 2026-09-01 — Lean shipped. Moved to [lean.md](lean.md).
 - 2026-09-01 — Added Lap consistency (session lap-time trend).
 - 2026-09-01 — First cut. Eight widgets only.

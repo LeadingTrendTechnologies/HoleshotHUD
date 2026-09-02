@@ -27,9 +27,11 @@ const DETACHED_PROCESS: u32 = 0x0000_0008;
 const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
 const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
 const WAIT_MUTEX_NAME: windows::core::PCWSTR = w!("Local\\HoleshotHUD-wait");
+const TASKBAR_MUTEX_NAME: windows::core::PCWSTR = w!("Local\\HoleshotHUD-taskbar");
 
 static HUD_MUTEX: AtomicIsize = AtomicIsize::new(0);
 static WAIT_MUTEX: AtomicIsize = AtomicIsize::new(0);
+static TASKBAR_MUTEX: AtomicIsize = AtomicIsize::new(0);
 
 pub fn set_enabled(on: bool) {
     if on {
@@ -80,6 +82,31 @@ pub fn spawn_game_waiter() {
             DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB,
         )
         .spawn();
+}
+
+/// Detached `--restore-taskbar` child. Survives this process exiting.
+pub fn spawn_taskbar_restorer(pid: u32) -> bool {
+    if mutex_held(TASKBAR_MUTEX_NAME) {
+        return true;
+    }
+    let Ok(exe) = std::env::current_exe() else {
+        return false;
+    };
+    Command::new(&exe)
+        .arg("--restore-taskbar")
+        .arg(pid.to_string())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(
+            DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB,
+        )
+        .spawn()
+        .is_ok()
+}
+
+pub fn claim_taskbar_restorer() -> bool {
+    claim_named(TASKBAR_MUTEX_NAME, &TASKBAR_MUTEX)
 }
 
 /// Kill leftover `Holeshot-HUD.exe` waiters / stray instances (not this PID).

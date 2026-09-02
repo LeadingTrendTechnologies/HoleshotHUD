@@ -1,5 +1,5 @@
 pub const MAGIC: u32 = 0x4F42584D;
-pub const VERSION: u32 = 10;
+pub const VERSION: u32 = 12;
 pub const MAX_POLY: usize = 1024;
 pub const MAX_RIDERS: usize = 64;
 pub const MAX_STANDINGS: usize = 40;
@@ -24,6 +24,7 @@ pub struct Rider {
     pub track_pos: f32,
     pub crashed: i32,
     pub name: [u8; NAME],
+    pub lean: f32,
 }
 
 impl Default for Rider {
@@ -36,6 +37,7 @@ impl Default for Rider {
             track_pos: 0.0,
             crashed: 0,
             name: [0; NAME],
+            lean: 0.0,
         }
     }
 }
@@ -150,6 +152,10 @@ pub struct Snapshot {
     pub session_state: i32,
     pub fuel: f32,
     pub max_fuel: f32,
+    pub local_roll: f32,
+    pub local_pitch: f32,
+    pub local_steer: f32,
+    pub steer_lock: f32,
 }
 
 impl Default for Snapshot {
@@ -228,6 +234,10 @@ impl Default for Snapshot {
             session_state: -1,
             fuel: 0.0,
             max_fuel: 0.0,
+            local_roll: 0.0,
+            local_pitch: 0.0,
+            local_steer: 0.0,
+            steer_lock: 0.0,
         }
     }
 }
@@ -363,6 +373,11 @@ impl Snapshot {
             self.local_yaw,
             self.local_speed,
             self.local_track_pos
+        );
+        let _ = writeln!(
+            o,
+            "roll={:.3} pitch={:.3} steer={:.3} steer_lock={:.3}",
+            self.local_roll, self.local_pitch, self.local_steer, self.steer_lock
         );
         let _ = writeln!(
             o,
