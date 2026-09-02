@@ -234,7 +234,7 @@ impl Preview {
                 61.0 + (t * 0.25).sin() * 3.0,
                 89.0 + (t * 1.4).sin() * 6.0,
                 38.0 + (t * 0.9).sin() * 7.0,
-                (22.0 + (t * 0.5).sin() * 6.0).round() as i32,
+                (24.0 + (t * 0.5).sin() * 4.0).round() as i32,
             );
             mxbo_hud::set_sys_procs(vec![
                 mxbo_hud::SysProc {
@@ -269,6 +269,14 @@ impl Preview {
                     mem_pct: 0.3,
                     on: true,
                 },
+                mxbo_hud::SysProc {
+                    label: "OBS".into(),
+                    cpu: 9.0 + (t * 0.65).sin() * 2.5,
+                    gpu: 14.0 + (t * 0.5).sin() * 4.0,
+                    mem_mb: 620.0 + (t * 0.25).sin() * 40.0,
+                    mem_pct: 3.8,
+                    on: true,
+                },
             ]);
         }
         draw(
@@ -301,6 +309,8 @@ impl Preview {
 fn center_widget(cfg: &mut HudConfig, name: &str) {
     if name == "dash" {
         size_demo_dash(cfg);
+    } else if name == "lean" {
+        size_demo_lean(cfg);
     } else if let Some(id) = widget_id(name) {
         cfg.snap(id, SnapAlign::Center);
     }
@@ -316,6 +326,13 @@ fn size_demo_dash(cfg: &mut HudConfig) {
         cfg[WidgetId::Dash].rect.h = 0.115;
     }
     cfg.snap(WidgetId::Dash, SnapAlign::Center);
+}
+
+/// Figure rider + pitch hairline need more height than the default overlay box.
+fn size_demo_lean(cfg: &mut HudConfig) {
+    cfg[WidgetId::Lean].rect.w = 0.16;
+    cfg[WidgetId::Lean].rect.h = 0.32;
+    cfg.snap(WidgetId::Lean, SnapAlign::Center);
 }
 
 fn show_only(cfg: &mut HudConfig, name: &str) {
@@ -767,7 +784,7 @@ fn demo_snapshot() -> Snapshot {
             track_pos: pos,
             crashed: 0,
             name: [0; 32],
-            lean: 0.0,
+            lean: if i as i32 + 1 == FOCUS { s.local_roll } else { 12.0 + i as f32 },
         };
         write_name(&mut s.riders[i].name, name);
     }
@@ -927,6 +944,7 @@ fn animate(s: &mut Snapshot, t: f32, dt: f32) {
             s.local_pitch = -(12.0 + 16.0 * (t * 0.9).sin());
             s.local_steer = -0.18 * (t * 1.1).sin();
             s.steer_lock = 0.40;
+            s.riders[i].lean = s.local_roll;
         }
     }
     apply_radar_pack(s, t);
