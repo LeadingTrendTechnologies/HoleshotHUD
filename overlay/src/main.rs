@@ -27,9 +27,9 @@ use std::time::{Duration, Instant};
 
 use tiny_skia::Pixmap;
 use windows::core::w;
-use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    ClientToScreen, CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, SelectObject,
+    CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, SelectObject,
     AC_SRC_ALPHA, AC_SRC_OVER, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION, DIB_RGB_COLORS,
     HBITMAP, HDC, HGDIOBJ,
 };
@@ -40,7 +40,7 @@ use windows::Win32::UI::HiDpi::{SetProcessDpiAwareness, PROCESS_PER_MONITOR_DPI_
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_F9, VK_LBUTTON};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateIconFromResourceEx, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
-    GetClientRect, GetSystemMetrics, IsIconic, IsWindow,
+    GetSystemMetrics, IsIconic, IsWindow,
     IsWindowVisible, LoadCursorW,
     LoadImageW, LookupIconIdFromDirectoryEx, PeekMessageW, PostQuitMessage, RegisterClassExW,
     SendMessageW, SetCursor, SetWindowPos, ShowWindow, TranslateMessage, UpdateLayeredWindow,
@@ -118,7 +118,7 @@ fn f9_dump_text(shm: Option<&Shm>, snap: Option<&Snapshot>) -> String {
     let mut o = String::from("No live Snapshot (overlay SHM version mismatch or plugin not publishing).\n");
     o.push_str(&format!("overlay VERSION={VERSION} rust_size={}\n", std::mem::size_of::<Snapshot>()));
     match shm {
-        None => o.push_str("OpenFileMapping Local\\MXBOHudV12 failed. Start MX Bikes with Holeshot-HUD.dlo loaded.\n"),
+        None => o.push_str("OpenFileMapping Local\\MXBOHudV13 failed. Start MX Bikes with Holeshot-HUD.dlo loaded.\n"),
         Some(s) => match s.header() {
             Some((magic, version, seq, size)) => {
                 o.push_str(&format!(
@@ -585,13 +585,14 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         };
 
         let frame_start = Instant::now();
-        let (sys_show, sys_apps, stance_show, stance_bind, stance_mode) = match preview_cfg.as_ref() {
+        let (sys_show, sys_apps, stance_show, stance_bind, stance_mode, gamepad_show) = match preview_cfg.as_ref() {
             Some(cfg) => (
                 cfg[crate::config::WidgetId::Sys].show,
                 cfg.sys_apps.clone(),
                 cfg[crate::config::WidgetId::Stance].show,
                 cfg.stance_bind,
                 cfg.stance_mode,
+                cfg[crate::config::WidgetId::Gamepad].show,
             ),
             None => crate::config::with_config(|cfg| {
                 (
@@ -600,6 +601,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
                     cfg[crate::config::WidgetId::Stance].show,
                     cfg.stance_bind,
                     cfg.stance_mode,
+                    cfg[crate::config::WidgetId::Gamepad].show,
                 )
             }),
         };
@@ -613,6 +615,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
             stance_mode,
             crate::settings::listening_bind(),
             overlay_on && in_session && stance_show,
+            overlay_on && in_session && gamepad_show,
         ) {
             crate::settings::apply_stance_bind(bind);
         }
@@ -802,18 +805,7 @@ fn find_game_hwnd() -> Option<HWND> {
 }
 
 fn client_screen_rect(hwnd: HWND) -> Option<(i32, i32, i32, i32)> {
-    unsafe {
-        let mut cr = RECT::default();
-        GetClientRect(hwnd, &mut cr).ok()?;
-        let mut pt = POINT { x: 0, y: 0 };
-        let _ = ClientToScreen(hwnd, &mut pt);
-        let w = cr.right - cr.left;
-        let h = cr.bottom - cr.top;
-        if w < 64 || h < 64 {
-            return None;
-        }
-        Some((pt.x, pt.y, w, h))
-    }
+    crate::compat::overlay_screen_rect(hwnd)
 }
 
 fn primary_screen() -> (i32, i32, i32, i32) {

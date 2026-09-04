@@ -14,7 +14,7 @@ Settings subtitle: “Your name is highlighted in the field”.
 
 - Height is clamped about 42–64 px. Settings layout handles are **east/west only** (`ew_only`).
 - Optional title: `WARMUP` / `LAP RACE` / `TIMED` / `EXTRA` / `SESSION` plus track name. Warmup is 10:00 (or 12/15/20 / 30+ min practice) with no extras; not a leftover 8-minute race.
-- Side slots (`ticker_left` / `ticker_right`) are `BoardField` (default Lap, Air). **Fuel** and **Fuel %** are options.
+- Side slots (`ticker_left` / `ticker_right`) are `BoardField` (default Lap, Air). **Fuel**, **Fuel %**, and **Setup** are options.
 - Cards show position, name, gap vs you (`ticker_delta` = signed gap difference), last/best. Session-best lap is purple.
 - In replay / spectate, clicking a card follows that rider (same camera path as standings names).
 - **Riders shown** (`ticker_count`, 3–15) is a target; `hstand_layout` shrinks to what fits at a minimum card width.
@@ -28,9 +28,11 @@ Settings subtitle: “Your name is highlighted in the field”.
 - Gap on a card is vs **you**, not vs the leader (except you / P1 edge cases via `format_signed_delta`).
 - Cards iterate `RaceField::board()` (live order), not `s.standings`. Scroll index and the focus card follow that order.
 - Click-to-follow only while spectating / replay. Do not capture overlay clicks while riding.
+- Setup side-slot is the loaded bike setup filename stem. `--` when `RunInit` has not sent it.
 
 ## Change log
 
+- 2026-09-03 — **Setup** is a side-slot option (`BoardField::Setup`). Restart MX Bikes after this plugin so SHM `Local\MXBOHudV13` loads.
 - 2026-08-29 — **Fuel %** is a separate side-slot option from volume.
 
 - 2026-08-29 — Fuel reads as liters or US gallons from Units, not percent.

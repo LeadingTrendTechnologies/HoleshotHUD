@@ -3,7 +3,7 @@
 Everything the PiBoSo plugin API can send this project, and whether we already keep it.
 
 Source of truth: `src/vendor/piboso/mxb_api.h` (data version **8**, interface **9**).  
-The game loads `Holeshot-HUD.dlo` and calls the exported functions below. The plugin may copy fields into `PluginState`, then into shared memory `Local\MXBOHudV12` for the Rust overlay.
+The game loads `Holeshot-HUD.dlo` and calls the exported functions below. The plugin may copy fields into `PluginState`, then into shared memory `Local\MXBOHudV13` for the Rust overlay.
 
 **Status**
 
@@ -57,6 +57,7 @@ Rust overlay structure and possible refactors (suggestions only): **[rust-patter
 - [Systems](widgets/systems.md): CPU / mem / FPS / ping / GPU, plus apps you pick
 - [Stance](widgets/stance.md): sit / stand from a local bind (not plugin telemetry)
 - [Lean](widgets/lean.md): bike roll, pitch, and steer on the bike; spectate follows camera lean. Figure or Minimal (numbers).
+- [Gamepad](widgets/gamepad.md): live local pad (sticks, analog triggers, bumpers, buttons). Not plugin telemetry.
 
 Local speed / yaw / crash / track pos are in SHM for the moving marker, not as their own widgets yet.
 
@@ -73,7 +74,7 @@ Local speed / yaw / crash / track pos are in SHM for the moving marker, not as t
 | `Shutdown` | — | — | Saves ini, closes SHM |
 | `EventInit` | `SPluginsBikeEvent_t` | Received | Rider/bike/track constants for **your** bike |
 | `EventDeinit` | — | Cached | Clears event + race |
-| `RunInit` | `SPluginsBikeSession_t` | Unused | Session at run start |
+| `RunInit` | `SPluginsBikeSession_t` | Overlay | Session at run start. Copies setup filename |
 | `RunDeinit` | — | Overlay | Clears the run (telemetry, positions). Leftover standings are not `onTrack`. |
 | `RunStart` / `RunStop` | — | Unused | Green flag / pause style events |
 | `DrawInit` | sprite/font names | Draw-only | We request **0** sprites/fonts |
@@ -114,16 +115,16 @@ Local speed / yaw / crash / track pos are in SHM for the moving marker, not as t
 
 ## 2. Your bike — session (`RunInit`)
 
-`SPluginsBikeSession_t` — **Unused** (callback does not copy).
+`SPluginsBikeSession_t` — **Received** (`RunInit` copies the setup name). Replay / spectate never call this.
 
-| Field | Type | Widget ideas |
-| --- | --- | --- |
-| `m_iSession` | int | Practice / qual / race (game-defined int) |
-| `m_iConditions` | int | Weather/conditions |
-| `m_fAirTemperature` | float | Air temp |
-| `m_szSetupFileName` | char[100] | Setup name |
+| Field | Type | Status | Notes / widgets |
+| --- | --- | --- | --- |
+| `m_iSession` | int | Unused | Practice / qual / race (game-defined int). Race session kind is Overlay |
+| `m_iConditions` | int | Unused | Weather/conditions |
+| `m_fAirTemperature` | float | Unused here | Air temp comes from `RaceSession` (Overlay) |
+| `m_szSetupFileName` | char[100] | Overlay | Setup filename. Header/footer **Setup** (`BoardField` / `DashField`). Path and `.xml` / `.mxb` stripped for display |
 
-Same session fields also arrive on `RaceSession` (also not stored).
+`RaceSession` does **not** include the setup filename.
 
 ---
 
@@ -245,7 +246,7 @@ If centerline is missing, the plugin records a local XZ **trail** as a fallback 
 
 | Field | Type | Status | Notes |
 | --- | --- | --- | --- |
-| `m_iSession` | int | Overlay | Session kind (`session_kind`). Logged: **warmup = 5**, **race 2 = 7**. Kind is **which moto**, not lap vs timed: race 2 was `7` for both **8:00 +1** and a **4-lap** moto. Race 1 not dumped yet (likely **6**). Kind does **not** change when you leave the gate. |
+| `m_iSession` | int | Overlay | Session kind (`session_kind`). Logged: **warmup = 5**, **race 2 = 7**. Kind is **which moto**, not lap vs timed: race 2 was `7` for both **8:00 +1** and a **4-lap** moto. Race 1 not dumped yet (likely **6**). Kind does **not** change when you leave the gate. Dash treats `kind >= 6` as a race so a 15:00 +1 with unpublished extras is not warmup. |
 | `m_iSessionState` | int | Overlay | Session state (`session_state`). **16** = running (warmup and race 2 on track). **256** = race 2 on the start gate. |
 | `m_iSessionLength` | int | Overlay | Time-limited session (minutes, seconds, or ms — plugin normalizes). Plugin cache is **`-1` until this session writes a length**; **`0` means the game sent 0** (lap moto). Kind change clears the cache so leftover warmup minutes are not locked. |
 | `m_iSessionNumLaps` | int | Overlay | Lap moto length, or extras on a timed set |
@@ -416,7 +417,8 @@ Already published (version **1**):
 - Standings: race num, position, state, best lap, laps, gap ms/laps, pit, name
 - Session: length, laps, remaining clock, **kind** (`m_iSession`), **state** (`m_iSessionState`) — SHM version **9**
 - Fuel: `fuel` / `maxFuel` — SHM version **10**
-- Lean: `localRoll` / `localPitch` / `localSteer` / `steerLock`; per-rider `lean` — SHM version **12** (`Local\MXBOHudV12`)
+- Lean: `localRoll` / `localPitch` / `localSteer` / `steerLock`; per-rider `lean` — SHM version **12**
+- Setup: `setupName` — SHM version **13** (`Local\MXBOHudV13`). Filename from `RunInit`
 - Layout: map / standings / relative rects + show flags + row counts
 
 Command mapping `Local\MXBOHudCmdV1` (`MxboShmCmd`): overlay writes `spectateRaceNum`; plugin writes `spectating` while `SpectateVehicles` is live. Not part of the snapshot seqlock.
@@ -458,7 +460,9 @@ Existing overlay widgets: [widgets.md](widgets.md) (behavior + change logs). Fie
 | Shift light | `m_iRPM` vs `m_iShiftRPM` | Need SHM |
 | Throttle / brakes / clutch | telemetry inputs | Need SHM |
 | [Lean](widgets/lean.md) | `m_fRoll` / `m_fPitch` / `m_fSteer` / `m_fSteerLock` + `m_fLean` | Overlay |
+| [Gamepad](widgets/gamepad.md) | local XInput / DualShock HID | Overlay (not plugin) |
 | Fuel | `m_fFuel` / `m_fMaxFuel` | Overlay (dash / standings / relative / ticker) |
+| Setup | `m_szSetupFileName` | Overlay (dash / standings / relative / ticker) |
 | Temps | engine/water + alarm band | Need SHM |
 | Suspension | length / velocity / max travel | Need SHM |
 | G-meter | acceleration XYZ | Need SHM |

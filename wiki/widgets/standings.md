@@ -27,7 +27,7 @@ Status labels: `1` DNS, `3` OUT, `4` DSQ, else PIT if `pit != 0`.
 - In replay / spectate, clicking a rider's **name** moves the game camera to them (`SpectateVehicles`). The overlay only captures that click while hovering a name; riding is not affected.
 - Best lap in the field is purple.
 - Bike column is a colored badge (`bike_color` from bike name + category). A skew bar after **Position** uses the same accent.
-- Header / footer are three `BoardField` slots each (session time, riders, fuel, etc.).
+- Header / footer are three `BoardField` slots each (session time, riders, fuel, setup, etc.).
 - Name column uses its configured width (and only shrinks when the table is too narrow); other columns keep configured widths. The plaque hugs that column pack, so leftover widget width is not empty glass. Ctrl+resize width grows the Name column so the plaque actually gets bigger; height grows **Rows** (3–40).
 - Rows slide when order changes (`ST_SLIDE`).
 
@@ -44,10 +44,12 @@ Default columns on: Position, Number, Name, Gap, Fastest, Last lap.
 - Missing `st_stripe` in the ini keeps alternating rows on.
 - Alternating rows must still read at **Background** 100% (lift, not extra black on night-ink).
 - Fuel header/footer is liters/US gallons (`Fuel`) or tank percent (`Fuel %`). Empty volume is `0.0`; `--` / `--%` only when tank size is missing.
+- Setup header/footer is the loaded bike setup filename stem. `--` when `RunInit` has not sent it. Restart MX Bikes after the V13 plugin.
 - Ctrl+resize chrome is the hugged plaque (column pack × row stack), not leftover widget glass. Dragging it larger still grows Name / Rows — do not leave the orange box as a no-op hug.
 
 ## Change log
 
+- 2026-09-03 — **Setup** is a header/footer option (`BoardField::Setup`). Same `RunInit` filename as Dash / Relative / H-Standings. Restart MX Bikes after this plugin so SHM `Local\MXBOHudV13` loads.
 - 2026-08-31 — Ctrl+resize of the hugged plaque grows Name width and **Rows**, so the table can get larger instead of the orange box being a no-op.
 - 2026-08-31 — Ctrl+resize orange box (and grab handles) follow the hugged plaque, not leftover widget glass.
 - 2026-08-31 — Plaque, header/footer, stripes, bike pill, and row slide share `draw_table_board` with Relative. Windowing and cell text stay here.

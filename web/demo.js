@@ -17,6 +17,7 @@ const BOARD = [
   ["stype", "Session type"],
   ["fuel", "Fuel"],
   ["fuelpct", "Fuel %"],
+  ["setup", "Setup"],
 ];
 
 const DASH = [
@@ -43,6 +44,7 @@ const DASH = [
   ["class", "Class"],
   ["fuel", "Fuel"],
   ["fuelpct", "Fuel %"],
+  ["setup", "Setup"],
 ];
 
 const ST_COLS = [
@@ -109,6 +111,7 @@ const NAMES = {
   delta: "Delta Bar",
   flag: "Flags",
   lean: "Lean",
+  gamepad: "Gamepad",
 };
 
 const canvas = document.getElementById("hud");
@@ -121,7 +124,7 @@ stageStatus.hidden = false;
 
 let preview;
 try {
-  await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=0.6.0", import.meta.url) });
+  await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=0.7.0", import.meta.url) });
   preview = new Preview();
   stageStatus.hidden = true;
 } catch (err) {
@@ -269,6 +272,7 @@ function renderSettings() {
     html += toggleRow("delta_session", "Compare to session best");
     html += styleControls("delta", "Panel opacity");
   } else if (w === "flag") {
+    html += toggleRow("flag_text", "Text");
     html += toggleRow("flag_yellow", "Yellow flag");
     html += toggleRow("flag_blue", "Blue flag");
     html += styleControls("flag", "Panel opacity");
@@ -278,6 +282,13 @@ function renderSettings() {
       ["minimal", "Minimal"],
     ]);
     html += styleControls("lean", "Panel opacity");
+  } else if (w === "gamepad") {
+    html += fieldRow("gamepad_style", "Pad", [
+      ["auto", "Auto"],
+      ["playstation", "PlayStation"],
+      ["xbox", "Xbox"],
+    ]);
+    html += styleControls("gamepad", "Panel opacity");
   }
   html += snapGrid();
   settings.replaceChildren(el(html));

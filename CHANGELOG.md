@@ -1,5 +1,50 @@
 # Changelog
 
+## 0.7.0
+
+Gamepad is a new Cockpit widget for live controller inputs. Delta Bar and Sectors snap live time to the game's official splits.
+
+### Gamepad
+
+- Turn it on with **Show on overlay**. It starts hidden. This is your local pad, not plugin telemetry.
+- DualShock / DualSense HID draws the PlayStation pad. Steam Xbox mapping draws an Xbox Series pad (A/B/X/Y, offset sticks), not DualShock with Xbox labels.
+- Analog sticks leave their wells. Triggers (L2/R2 or LT/RT) fill from the curved bottom lip. Bumpers (L1/R1 or LB/RB) light orange while held.
+- Face buttons and D-pad fill out to that pad’s outline. Bumpers fill the rounded shoulder. Pressed labels stay the drawing’s cream strokes. No pad shows **No controller**.
+- The pad sits on the game with no plaque (`gamepad_bg = 0`). Panel opacity in settings still adds glass if you want it. Stick wells stay opaque.
+
+### Delta Bar
+
+- Live clock and tape snap to official S1 and S2 so the hairline matches the game. Plugin `_fTime` still runs until that first split. Crossing the line does not snap to full lap time.
+
+### Sectors
+
+- Frozen cells show the official split vs your saved (or session) best. The live pill is that target time; the large number stays time vs location in the sector.
+
+### Dash
+
+- **Setup** is a footer option — the bike setup you loaded. Restart MX Bikes after this update so the name can load.
+- 15:00+1 (and 10/12/20/25/30) no longer treats late-published extras as a new session. The dash was sitting on `0/1` with the checkered while you still had laps to run.
+
+### Standings
+
+- **Setup** is a header/footer option. Same name as Dash, Relative, and H-Standings.
+
+### Relative
+
+- **Setup** is a header/footer option.
+
+### H-Standings
+
+- **Setup** is a side-slot option.
+
+### Flags
+
+- **Text** is a toggle and starts on. Turn it off to hide the WHITE FLAG / YELLOW FLAG caption.
+
+### Overlay
+
+- Extra monitors keep Start and the taskbar. Only the screen MX Bikes is on hides them. The HUD icon stays on that screen. Clicking another screen no longer freezes the HUD.
+
 ## 0.6.0
 
 Lean is a new Cockpit widget for bike roll, pitch, and steering. Systems shows GPU instead of network.

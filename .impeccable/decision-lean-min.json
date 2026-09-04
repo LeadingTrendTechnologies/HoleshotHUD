@@ -1,0 +1,51 @@
+{
+  "title": "Choose Lean Minimal",
+  "question": "Figure stays as Look default. Minimal is the airplane instrument: roll, pitch, and steer while riding. Spectate keeps bank and hides pitch and steer.",
+  "options": [
+    {
+      "id": "ladder",
+      "label": "Ladder",
+      "kicker": "THE ROLL",
+      "thesis": "A fighter HUD pitch ladder. Pitch is the tape you fly; a bank chevron rolls with the bike; steer is a 2px hairline under it.",
+      "palette": ["#0A0A0A", "#FF9430", "#E4E4E6", "#ECECF0", "#2A2A2E"],
+      "materials": ["night-ink 6px plaque", "1px hairline", "white pitch ticks", "orange bank chevron", "Exo 2 ExtraBold Italic"],
+      "viewport": "Portrait plaque. Vertical white pitch ladder, 0 as a horizon hairline at mid. Orange inverted-V chevron banked 32° with a skew 32° bug. Steer hairline and 30% along the bottom.",
+      "risk": "Can look like a military HUD bolted onto a moto overlay if the ticks get dense.",
+      "raised": [
+        {
+          "from": "cyclorama-dawn",
+          "raise": "Zero pitch is a horizon hairline through the ladder, not just another tick."
+        }
+      ],
+      "comp": ".impeccable/mocks/decision/lean-min-ladder.png"
+    },
+    {
+      "id": "tape",
+      "label": "Tape",
+      "thesis": "Two aircraft tapes. Roll on the left, pitch on the right, steer as the third hairline that already lives on Figure.",
+      "palette": ["#0A0A0A", "#FF9430", "#F8F8FC", "#84848A", "#2A2A2E"],
+      "materials": ["night-ink 6px plaque", "1px split", "white tapes", "4px orange fill", "Exo 2 ExtraBold Italic"],
+      "viewport": "Square plaque, vertical hairline. Left: dim ROLL, orange 32° bug, white tick tape. Right: dim PITCH, orange fill up 30%. Bottom spanning both: 2px steer hairline and 30%.",
+      "risk": "Three instruments in one box can force reading instead of a glance.",
+      "comp": ".impeccable/mocks/decision/lean-min-tape.png"
+    },
+    {
+      "id": "attitude",
+      "label": "Attitude",
+      "thesis": "The airplane bar: a circular attitude indicator. The world tilts. Steer stays a 2px hairline under the gyro.",
+      "palette": ["#0A0A0A", "#FF9430", "#ECECF0", "#18191D", "#2A2A2E"],
+      "materials": ["night-ink 6px plaque", "circular gyro", "light/dark split", "white 2px horizon", "Exo 2 ExtraBold Italic"],
+      "viewport": "Square plaque. Circle: pale sky over night-ink ground, white horizon, bank ticks on the rim, orange wing bar banked 32° and pitched up, skew 32° bug. Steer hairline and 30% under the circle.",
+      "risk": "The round gyro can eat the small overlay box and leave steer as an afterthought.",
+      "comp": ".impeccable/mocks/decision/lean-min-attitude.png"
+    }
+  ],
+  "reroll": {
+    "registers": ["safer", "bolder"]
+  },
+  "steer": true,
+  "buildPath": {
+    "value": "comp",
+    "toggle": true
+  }
+}

@@ -50,6 +50,7 @@ void PluginState::clearEvent()
 {
     m_localName.clear();
     m_trackName.clear();
+    m_setupName.clear();
     m_trackLength = 0.0f;
     m_hasTelemetry = false;
     m_localVelX = 0.0f;
@@ -158,6 +159,14 @@ void PluginState::setRaceEvent(const SPluginsRaceEvent_t& ev)
     if (ev.m_fTrackLength > 0.0f)
     {
         m_trackLength = ev.m_fTrackLength;
+    }
+}
+
+void PluginState::setBikeSession(const SPluginsBikeSession_t& s)
+{
+    if (s.m_szSetupFileName[0])
+    {
+        m_setupName = copyCString(s.m_szSetupFileName, sizeof(s.m_szSetupFileName));
     }
 }
 

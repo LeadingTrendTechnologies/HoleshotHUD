@@ -15,6 +15,7 @@ pub enum Target {
     Delta,
     Flag,
     Lean,
+    Gamepad,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -65,6 +66,7 @@ pub fn parse_target(name: &str) -> Option<Target> {
         "delta" => Target::Delta,
         "flag" => Target::Flag,
         "lean" => Target::Lean,
+        "gamepad" => Target::Gamepad,
         _ => return None,
     })
 }
@@ -83,6 +85,7 @@ pub fn rect_of(cfg: &HudConfig, t: Target) -> Rect {
         Target::Delta => cfg[WidgetId::Delta].rect,
         Target::Flag => cfg[WidgetId::Flag].rect,
         Target::Lean => cfg[WidgetId::Lean].rect,
+        Target::Gamepad => cfg[WidgetId::Gamepad].rect,
     }
 }
 
@@ -104,6 +107,7 @@ pub fn set_rect(cfg: &mut HudConfig, t: Target, r: Rect) {
         Target::Delta => cfg[WidgetId::Delta].rect = r,
         Target::Flag => cfg[WidgetId::Flag].rect = r,
         Target::Lean => cfg[WidgetId::Lean].rect = r,
+        Target::Gamepad => cfg[WidgetId::Gamepad].rect = r,
     }
 }
 
@@ -212,6 +216,7 @@ pub fn resize(orig: Rect, handle: Handle, nx: f32, ny: f32, grab_x: f32, grab_y:
         Target::Delta => (96.0, 48.0),
         Target::Flag => (72.0, 12.0),
         Target::Lean => (88.0, 72.0),
+        Target::Gamepad => (160.0, 96.0),
     };
     let min_w = min_w_px / ow;
     let min_h = min_h_px / oh;

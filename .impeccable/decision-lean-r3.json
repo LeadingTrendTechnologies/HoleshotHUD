@@ -1,0 +1,41 @@
+{
+  "title": "Choose Lean — round 3",
+  "question": "More creative, and the rider is the graphic. Still Broadcast Booth Glass: night-ink plaque, orange is you, Exo 2 ExtraBold Italic. Flat HUD silhouette, not a photo.",
+  "options": [
+    {
+      "id": "figure",
+      "label": "Figure",
+      "kicker": "REAR",
+      "thesis": "A real MX rider from behind is the needle. The body leans 32°. Orange degrees sit as a TV bug on the figure.",
+      "palette": ["#0A0A0A", "#FF9430", "#F8F8FC", "#84848A", "#2A2A2E"],
+      "materials": ["night-ink 6px plaque", "white rider silhouette", "orange TV-bug 32°", "2px steer hairline"],
+      "viewport": "Square plaque. White rear-view rider+bike (helmet, bars, boots) leaned 32° right, filling the glass. Orange 32° as a small skew bug on the rider. Steer 30% as a thin hairline under the boots.",
+      "risk": "If the silhouette is crude it becomes the toy bike again.",
+      "comp": ".impeccable/mocks/decision/lean-figure.png"
+    },
+    {
+      "id": "ghost",
+      "label": "Ghost",
+      "kicker": "DOUBLE",
+      "thesis": "Two riders, one hub. Dim upright ghost, white leaned body. The gap is the lean.",
+      "palette": ["#0A0A0A", "#FF9430", "#F8F8FC", "#84848A", "#2A2A2E"],
+      "materials": ["night-ink 6px plaque", "dim ghost rider", "white leaned rider", "orange 32°"],
+      "viewport": "Square plaque. Dim upright rider in the center. White rider rotated 32° on the same hub. Orange 32° between them. Steer as orange handlebar on the white rider only.",
+      "risk": "Two figures can muddy the glance at race speed.",
+      "comp": ".impeccable/mocks/decision/lean-ghost.png"
+    },
+    {
+      "id": "bars",
+      "label": "Bar + body",
+      "kicker": "LAYERS",
+      "thesis": "One rear-view: the rider leans, the bars turn on their own. Lean and steer are two layers of the same drawing.",
+      "palette": ["#0A0A0A", "#FF9430", "#F8F8FC", "#84848A", "#2A2A2E"],
+      "materials": ["night-ink 6px plaque", "white rider body", "orange handlebar", "orange 32° / white 30%"],
+      "viewport": "Square plaque. White rider torso+bike leaned 32°. Orange handlebar rotated independently 30% right. Huge orange 32° left of the figure, small white 30% right. Spectate drops the orange bar.",
+      "risk": "Two angles on one figure can fight if the bar isn’t clearly orange.",
+      "comp": ".impeccable/mocks/decision/lean-bars.png"
+    }
+  ],
+  "steer": true,
+  "buildPath": { "value": "comp", "toggle": true }
+}

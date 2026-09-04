@@ -14,6 +14,21 @@ fn local_bike_reads_standings_row() {
 }
 
 #[test]
+fn setup_label_strips_path_and_extension() {
+    assert_eq!(format_setup_name(""), "");
+    assert_eq!(format_setup_name("  "), "");
+    assert_eq!(format_setup_name("Washougal Soft"), "Washougal Soft");
+    assert_eq!(format_setup_name("Washougal Soft.xml"), "Washougal Soft");
+    assert_eq!(format_setup_name("Washougal Soft.XML"), "Washougal Soft");
+    assert_eq!(format_setup_name("Main.mxb"), "Main");
+    assert_eq!(format_setup_name(r"C:\Setups\Washougal Soft.xml"), "Washougal Soft");
+    assert_eq!(format_setup_name("/home/user/setups/factory.mxb"), "factory");
+    let mut s = Snapshot::default();
+    write_name(&mut s.setup_name, r"docs\PiBoSo\MX Bikes\setups\450 Main.xml");
+    assert_eq!(s.setup_label(), "450 Main");
+}
+
+#[test]
 fn write_and_read_cstr() {
     let mut buf = [0u8; NAME];
     write_name(&mut buf, "Troy");

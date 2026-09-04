@@ -36,3 +36,43 @@ fn restore_taskbar_pid_reads_flag_and_value() {
     assert_eq!(restore_taskbar_pid(["--wait-for-game"]), None);
     assert_eq!(restore_taskbar_pid(["--restore-taskbar", "nope"]), None);
 }
+
+#[test]
+fn only_the_game_monitor_taskbar_hides() {
+    assert!(should_hide_taskbar(true));
+    assert!(!should_hide_taskbar(false));
+}
+
+#[test]
+fn overlay_stays_when_another_monitor_or_taskbar_is_in_front() {
+    assert!(overlay_stays_up(true, false, false, false));
+    assert!(overlay_stays_up(false, true, false, false));
+    assert!(overlay_stays_up(false, false, true, false));
+    assert!(overlay_stays_up(false, false, false, true));
+    assert!(!overlay_stays_up(false, false, false, false));
+}
+
+#[test]
+fn overlay_stays_on_the_game_monitor() {
+    let game = rect(0, 0, 1920, 1080);
+    assert_eq!(
+        overlay_rect_on_monitor(rect(0, 0, 1920, 1080), game),
+        Some((0, 0, 1920, 1080))
+    );
+    assert_eq!(
+        overlay_rect_on_monitor(rect(100, 80, 1380, 900), game),
+        Some((100, 80, 1280, 820))
+    );
+    assert_eq!(
+        overlay_rect_on_monitor(rect(-1920, 0, 1920, 1080), game),
+        Some((0, 0, 1920, 1080))
+    );
+    assert_eq!(
+        overlay_rect_on_monitor(rect(-1920, 0, 1920, 1080), rect(-1920, 0, 0, 1080)),
+        Some((-1920, 0, 1920, 1080))
+    );
+    assert_eq!(
+        overlay_rect_on_monitor(rect(0, 0, 50, 50), game),
+        None
+    );
+}

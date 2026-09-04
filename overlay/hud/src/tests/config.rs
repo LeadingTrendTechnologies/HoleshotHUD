@@ -77,11 +77,14 @@ fn default_hud_hides_every_widget() {
     assert!(!cfg[WidgetId::Stance].show);
     assert!(!cfg[WidgetId::Flag].show);
     assert!(!cfg[WidgetId::Lean].show);
+    assert!(!cfg[WidgetId::Gamepad].show);
     assert!(!cfg.flag_yellow);
     assert!(!cfg.flag_blue);
+    assert!(cfg.flag_text);
     assert!(!cfg.any_overlay_widget());
     assert_eq!(cfg.stance_style, StanceStyle::Text);
     assert_eq!(cfg.lean_style, LeanStyle::Figure);
+    assert_eq!(cfg.gamepad_style, GamepadStyle::Auto);
     assert!(!cfg.stance_show_sit);
     assert!(!cfg.experimental);
     assert!(cfg.whats_new_seen.is_empty());
@@ -382,6 +385,27 @@ fn sector_show_does_not_need_experimental() {
     assert!(cfg[WidgetId::Sector].show);
     assert!(!cfg.experimental);
     assert!(cfg.sector_visible());
+}
+
+#[test]
+fn flag_text_defaults_on_and_ini_can_turn_it_off() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-flag-text-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    std::fs::write(&path, "first_install_version=0.1.0\nst_last=1\nrel_last=1\n").unwrap();
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let cfg = HudConfig::load_file();
+    assert!(cfg.flag_text, "old ini without flag_text keeps the caption on");
+    std::fs::write(
+        &path,
+        "flag_text=0\nfirst_install_version=0.1.0\nst_last=1\nrel_last=1\n",
+    )
+    .unwrap();
+    let cfg = HudConfig::load_file();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(!cfg.flag_text);
 }
 
 #[test]

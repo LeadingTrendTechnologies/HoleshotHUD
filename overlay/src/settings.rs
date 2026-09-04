@@ -35,7 +35,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use crate::config::{
     update_config, with_config, BoardField, DashField, DotLabel, FontFamily, HudConfig, RelField,
-    SettingsKey, SnapAlign, StField, StanceBind, StanceMode, StanceStyle, LeanStyle, SYS_PRESETS, SYS_PROC_MAX, TableText, Units, WidgetId, COL_W_MAX,
+    SettingsKey, SnapAlign, StField, StanceBind, StanceMode, StanceStyle, GamepadStyle, LeanStyle, SYS_PRESETS, SYS_PROC_MAX, TableText, Units, WidgetId, COL_W_MAX,
     COL_W_MIN,
 };
 use crate::render::{fill_rect, icon, measure, text, Fonts};
@@ -237,6 +237,7 @@ enum Tab {
     Stance,
     Flag,
     Lean,
+    Gamepad,
 }
 
 impl Tab {
@@ -263,6 +264,7 @@ enum Hit {
     TabStance,
     TabFlag,
     TabLean,
+    TabGamepad,
     StShow,
     RelShow,
     MapShow,
@@ -291,8 +293,10 @@ enum Hit {
     StanceShowSit,
     FlagShow,
     LeanShow,
+    GamepadShow,
     FlagYellow,
     FlagBlue,
+    FlagText,
     TickerTitle,
     TickerAutoscroll,
     StPos,
@@ -367,6 +371,7 @@ enum Hit {
     StanceBg,
     FlagBg,
     LeanBg,
+    GamepadBg,
     StDec,
     StInc,
     RelDec,
@@ -401,6 +406,8 @@ enum Hit {
     StanceStylePick(StanceStyle),
     LeanStyleOpen,
     LeanStylePick(LeanStyle),
+    GamepadStyleOpen,
+    GamepadStylePick(GamepadStyle),
     StanceReset,
     DashFootOpen(u8),
     DashFootPick(u8, DashField),
@@ -465,6 +472,7 @@ enum Drop {
     StanceMode,
     StanceStyle,
     LeanStyle,
+    GamepadStyle,
     SysAdd,
     StText,
     RelText,
@@ -1013,6 +1021,7 @@ fn is_slider(hit: Hit) -> bool {
             | Hit::StanceBg
             | Hit::FlagBg
             | Hit::LeanBg
+            | Hit::GamepadBg
             | Hit::StW(_)
             | Hit::RelW(_)
             | Hit::Font(_)
@@ -1096,6 +1105,7 @@ fn apply_slide(hit: Hit, mx: f32, x: f32, w: f32, min: i32, max: i32) {
         Hit::StanceBg => c[WidgetId::Stance].bg = v,
         Hit::FlagBg => c[WidgetId::Flag].bg = v,
         Hit::LeanBg => c[WidgetId::Lean].bg = v,
+        Hit::GamepadBg => c[WidgetId::Gamepad].bg = v,
         Hit::StW(i) => {
             if let Some(f) = c.st_order.get(i as usize).copied() {
                 f.set_width(c, v);
@@ -1274,6 +1284,10 @@ fn dispatch(id: Hit, p: (f32, f32)) {
             set_tab(Tab::Lean);
             return;
         }
+        Hit::TabGamepad => {
+            set_tab(Tab::Gamepad);
+            return;
+        }
         Hit::MapDotOpen => {
             toggle_drop(Drop::MapDot);
             return;
@@ -1332,6 +1346,10 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         }
         Hit::LeanStyleOpen => {
             toggle_drop(Drop::LeanStyle);
+            return;
+        }
+        Hit::GamepadStyleOpen => {
+            toggle_drop(Drop::GamepadStyle);
             return;
         }
         Hit::SysAddOpen => {
@@ -1557,8 +1575,10 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::StanceShow => c[WidgetId::Stance].show ^= true,
         Hit::FlagShow => c[WidgetId::Flag].show ^= true,
         Hit::LeanShow => c[WidgetId::Lean].show ^= true,
+        Hit::GamepadShow => c[WidgetId::Gamepad].show ^= true,
         Hit::FlagYellow => c.flag_yellow = !c.flag_yellow,
         Hit::FlagBlue => c.flag_blue = !c.flag_blue,
+        Hit::FlagText => c.flag_text = !c.flag_text,
         Hit::StanceShowSit => c.stance_show_sit = !c.stance_show_sit,
         Hit::TickerTitle => c.ticker_title = !c.ticker_title,
         Hit::TickerAutoscroll => c.ticker_autoscroll = !c.ticker_autoscroll,
@@ -1633,6 +1653,7 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::StanceModePick(mode) => c.stance_mode = mode,
         Hit::StanceStylePick(style) => c.stance_style = style,
         Hit::LeanStylePick(style) => c.lean_style = style,
+        Hit::GamepadStylePick(style) => c.gamepad_style = style,
         Hit::DashFootPick(slot, field) => match slot {
             0 => c.dash_left = field,
             1 => c.dash_mid = field,
@@ -1654,13 +1675,14 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::SectorHistDec => c.sector_hist_laps = (c.sector_hist_laps - 1).max(1),
         Hit::SectorHistInc => c.sector_hist_laps = (c.sector_hist_laps + 1).min(5),
         Hit::TabWidgets | Hit::TabApp | Hit::TabFeedback | Hit::TabSt | Hit::TabRel | Hit::TabMap | Hit::TabMini | Hit::TabRadar | Hit::TabDash
-        | Hit::TabTicker | Hit::TabSys | Hit::TabSector | Hit::TabDelta | Hit::TabStance | Hit::TabFlag | Hit::TabLean
+        | Hit::TabTicker | Hit::TabSys | Hit::TabSector | Hit::TabDelta | Hit::TabStance | Hit::TabFlag | Hit::TabLean | Hit::TabGamepad
         | Hit::MapDotOpen | Hit::MiniDotOpen | Hit::FontOpen | Hit::UnitsOpen | Hit::StTextOpen | Hit::RelTextOpen
         | Hit::SettingsKeyOpen
         | Hit::StanceBindOpen
         | Hit::StanceModeOpen
         | Hit::StanceStyleOpen
         | Hit::LeanStyleOpen
+        | Hit::GamepadStyleOpen
         | Hit::SysAddOpen
         | Hit::DashFootOpen(_)
         | Hit::TickerFootOpen(_)
@@ -1673,7 +1695,7 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::AutoUpdateOnLaunch | Hit::QuitApp | Hit::Uninstall | Hit::GameFolder | Hit::SysAppBrowse
         | Hit::FbRate | Hit::FbBug | Hit::FbFeature | Hit::FbStar(_) | Hit::FbText | Hit::FbAttach | Hit::FbSend
         | Hit::StDrag(_) | Hit::RelDrag(_)
-        | Hit::StBg | Hit::StHl | Hit::RelBg | Hit::RelHl | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg | Hit::FlagBg | Hit::LeanBg
+        | Hit::StBg | Hit::StHl | Hit::RelBg | Hit::RelHl | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg | Hit::FlagBg | Hit::LeanBg | Hit::GamepadBg
         | Hit::StW(_) | Hit::RelW(_) | Hit::Font(_) | Hit::StanceReset | Hit::TrackPbClear => {}
     });
 }
@@ -1703,6 +1725,7 @@ fn is_drop_pick(hit: Hit) -> bool {
             | Hit::StanceModePick(_)
             | Hit::StanceStylePick(_)
             | Hit::LeanStylePick(_)
+            | Hit::GamepadStylePick(_)
             | Hit::SysAddPick(_)
             | Hit::DashFootPick(_, _)
             | Hit::TickerFootPick(_, _)
@@ -1751,13 +1774,14 @@ fn hit_label(hit: Hit) -> String {
         Hit::TabStance => "Stance".into(),
         Hit::TabFlag => "Flags".into(),
         Hit::TabLean => "Lean".into(),
+        Hit::TabGamepad => "Gamepad".into(),
         Hit::StShow | Hit::RelShow | Hit::MapShow | Hit::MiniShow | Hit::RadarShow | Hit::DashShow
-        | Hit::TickerShow | Hit::SysShow | Hit::SectorShow | Hit::DeltaShow | Hit::StanceShow | Hit::FlagShow | Hit::LeanShow => "Show on overlay".into(),
+        | Hit::TickerShow | Hit::SysShow | Hit::SectorShow | Hit::DeltaShow | Hit::StanceShow | Hit::FlagShow | Hit::LeanShow | Hit::GamepadShow => "Show on overlay".into(),
         Hit::QuitApp => "Quit overlay".into(),
         Hit::Font(_) => "Font size".into(),
         Hit::Bold(_) => "Bold text".into(),
         Hit::StBg | Hit::RelBg | Hit::MapBg | Hit::MiniBg => "Background".into(),
-        Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg | Hit::FlagBg | Hit::LeanBg => "Panel opacity".into(),
+        Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg | Hit::FlagBg | Hit::LeanBg | Hit::GamepadBg => "Panel opacity".into(),
         Hit::StHl | Hit::RelHl => "Row highlight".into(),
         Hit::StStripe | Hit::RelStripe => "Alternating rows".into(),
         Hit::StDec | Hit::StInc => "Rows".into(),
@@ -1777,6 +1801,7 @@ fn hit_label(hit: Hit) -> String {
         }
         Hit::StanceModeOpen => "Sit mode".into(),
         Hit::StanceStyleOpen | Hit::LeanStyleOpen => "Look".into(),
+        Hit::GamepadStyleOpen => "Pad".into(),
         Hit::SysAddOpen => "Add app".into(),
         Hit::SysAppBrowse => "Browse .exe".into(),
         Hit::SysAppShow(_) => "Show on Systems".into(),
@@ -1785,6 +1810,7 @@ fn hit_label(hit: Hit) -> String {
         Hit::StanceShowSit => "Show sitting".into(),
         Hit::FlagYellow => "Yellow flag".into(),
         Hit::FlagBlue => "Blue flag".into(),
+        Hit::FlagText => "Text".into(),
         Hit::RadarSides => "Side proximity".into(),
         Hit::RadarRear => "Rear proximity".into(),
         Hit::RadarRings => "Range rings".into(),
@@ -2018,6 +2044,7 @@ fn nudge_slider(hit: Hit, delta: i32) {
         Hit::StanceBg => c[WidgetId::Stance].bg,
         Hit::FlagBg => c[WidgetId::Flag].bg,
         Hit::LeanBg => c[WidgetId::Lean].bg,
+        Hit::GamepadBg => c[WidgetId::Gamepad].bg,
         Hit::StW(i) => c.st_order.get(i as usize).map(|f| f.width(c)).unwrap_or(min),
         Hit::RelW(i) => c.rel_order.get(i as usize).map(|f| f.width(c)).unwrap_or(min),
         Hit::Font(id) => c.font_pct(id),
@@ -2041,6 +2068,7 @@ fn nudge_slider(hit: Hit, delta: i32) {
         Hit::StanceBg => c[WidgetId::Stance].bg = v,
         Hit::FlagBg => c[WidgetId::Flag].bg = v,
         Hit::LeanBg => c[WidgetId::Lean].bg = v,
+        Hit::GamepadBg => c[WidgetId::Gamepad].bg = v,
         Hit::StW(i) => {
             if let Some(f) = c.st_order.get(i as usize).copied() {
                 f.set_width(c, v);
@@ -2201,6 +2229,7 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
         Tab::Stance => pane_stance(px, fonts, &cfg, hover, open_drop, bind_listen, &mut hits, x, py, cw),
         Tab::Flag => pane_flag(px, fonts, &cfg, hover, &mut hits, x, py, cw),
         Tab::Lean => pane_lean(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
+        Tab::Gamepad => pane_gamepad(px, fonts, &cfg, hover, &mut hits, x, py, cw, open_drop),
     };
     draw_top_bar(px, fonts, w, top_y, tab, cfg.settings_key.label(), hover, &mut hits);
 
@@ -2287,6 +2316,7 @@ fn widget_short_name(id: WidgetId) -> &'static str {
         WidgetId::Stance => "Stance",
         WidgetId::Flag => "Flags",
         WidgetId::Lean => "Lean",
+        WidgetId::Gamepad => "Gamepad",
     }
 }
 
@@ -2433,6 +2463,7 @@ fn widget_groups(cfg: &HudConfig) -> Vec<(&'static str, Vec<(Tab, Hit, &'static 
     let cockpit = vec![
         (Tab::Dash, Hit::TabDash, "Dash", cfg[WidgetId::Dash].show),
         (Tab::Lean, Hit::TabLean, "Lean", cfg[WidgetId::Lean].show),
+        (Tab::Gamepad, Hit::TabGamepad, "Gamepad", cfg[WidgetId::Gamepad].show),
         (Tab::Delta, Hit::TabDelta, "Delta Bar", cfg[WidgetId::Delta].show),
         (Tab::Sector, Hit::TabSector, "Sectors", cfg[WidgetId::Sector].show),
         (Tab::Flag, Hit::TabFlag, "Flags", cfg[WidgetId::Flag].show),
@@ -3231,6 +3262,11 @@ fn nav_icon(px: &mut Pixmap, hit: Hit, cx: f32, cy: f32, c: Color) {
                 icon_stroke(px, &path, c, 1.5);
             }
             fill_round(px, cx - 1.0, cy - 3.4, 2.0, 8.0, 0.8, c);
+        }
+        Hit::TabGamepad => {
+            fill_round(px, cx - 6.6, cy - 3.2, 13.2, 8.4, 2.4, c);
+            fill_circle(px, cx - 3.2, cy + 1.6, 1.6, Color::from_rgba8(12, 12, 16, 255));
+            fill_circle(px, cx + 3.2, cy + 1.6, 1.6, Color::from_rgba8(12, 12, 16, 255));
         }
         Hit::QuitApp => {
             icon_stroke_circle(px, cx, cy, 6.2, c);
@@ -4105,6 +4141,14 @@ fn widget_pane_spec(id: WidgetId) -> WidgetPaneSpec {
             bg: Hit::LeanBg,
             bg_label: "Panel opacity",
         },
+        WidgetId::Gamepad => WidgetPaneSpec {
+            id,
+            title: "Gamepad",
+            subtitle: "Live pad — sticks, triggers, bumpers, and buttons",
+            show: Hit::GamepadShow,
+            bg: Hit::GamepadBg,
+            bg_label: "Panel opacity",
+        },
     }
 }
 
@@ -4884,6 +4928,56 @@ fn pane_lean(
     })
 }
 
+fn pane_gamepad(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    cfg: &HudConfig,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+    x: f32,
+    y: f32,
+    w: f32,
+    open_drop: Option<Drop>,
+) -> f32 {
+    let spec = widget_pane_spec(WidgetId::Gamepad);
+    open_widget_pane(px, fonts, cfg, hover, hits, x, y, w, spec, |px, fonts, y, shown, hits| {
+        let mut y = note_lines(
+            px,
+            fonts,
+            x,
+            y,
+            w,
+            "Your local pad, not plugin telemetry. Auto matches your controller. PlayStation and Xbox force that pad art. Triggers fill with squeeze. Bumpers light when held. No pad shows No controller. Other riders’ inputs are not available.",
+        );
+        if !shown {
+            return y;
+        }
+        y = dropdown_row(
+            px,
+            fonts,
+            x,
+            y,
+            w,
+            "Pad",
+            cfg.gamepad_style.label(),
+            open_drop == Some(Drop::GamepadStyle),
+            Hit::GamepadStyleOpen,
+            &[
+                (Hit::GamepadStylePick(GamepadStyle::Auto), "Auto", cfg.gamepad_style == GamepadStyle::Auto),
+                (
+                    Hit::GamepadStylePick(GamepadStyle::PlayStation),
+                    "PlayStation",
+                    cfg.gamepad_style == GamepadStyle::PlayStation,
+                ),
+                (Hit::GamepadStylePick(GamepadStyle::Xbox), "Xbox", cfg.gamepad_style == GamepadStyle::Xbox),
+            ],
+            hover,
+            hits,
+        );
+        pane_style(px, fonts, spec, cfg, hover, hits, x, y, w)
+    })
+}
+
 fn pane_flag(
     px: &mut Pixmap,
     fonts: &Fonts,
@@ -4899,7 +4993,8 @@ fn pane_flag(
         if !shown {
             return y;
         }
-        let mut y = toggle_row(px, fonts, x, y, w, "Yellow flag", cfg.flag_yellow, Hit::FlagYellow, hover, hits);
+        let mut y = toggle_row(px, fonts, x, y, w, "Text", cfg.flag_text, Hit::FlagText, hover, hits);
+        y = toggle_row(px, fonts, x, y, w, "Yellow flag", cfg.flag_yellow, Hit::FlagYellow, hover, hits);
         y = toggle_row(px, fonts, x, y, w, "Blue flag", cfg.flag_blue, Hit::FlagBlue, hover, hits);
         pane_style(px, fonts, spec, cfg, hover, hits, x, y, w)
     })

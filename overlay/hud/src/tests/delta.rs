@@ -1132,3 +1132,38 @@ fn clock_collapse_then_flying_lap_commits() {
         eng.current.filled
     );
 }
+
+#[test]
+fn official_split_resyncs_clock_to_game() {
+    let mut eng = DeltaEngine::new();
+    let lap_ms = 72_000;
+    run_lap(&mut eng, "Snap", lap_ms, 1, false);
+    for i in 1..60 {
+        let t = i as f32 / 180.0;
+        let official = (lap_ms as f32 * t) as i32;
+        eng.tick(&snap("Snap", t, official + 100, lap_ms, 2));
+    }
+    let t = 24_000.0 / lap_ms as f32;
+    let mut fast = snap("Snap", t, 24_100, lap_ms, 2);
+    for _ in 0..80 {
+        eng.tick(&fast);
+    }
+    let before = eng.tick(&fast);
+    assert_eq!(eng.last_synced, 24_100);
+    fast.sector_cur[0] = 24_000;
+    eng.tick(&fast);
+    assert_eq!(eng.official_accum, 24_000);
+    assert_eq!(eng.last_synced, 24_000);
+    for _ in 0..80 {
+        eng.tick(&fast);
+    }
+    let after = eng.tick(&fast);
+    assert_eq!(eng.last_synced, 24_000);
+    assert!(after.has_delta);
+    assert!(
+        after.delta_ms < before.delta_ms,
+        "official snap must pull the hairline toward the game, before={} after={}",
+        before.delta_ms,
+        after.delta_ms
+    );
+}

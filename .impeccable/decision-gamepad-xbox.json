@@ -1,0 +1,45 @@
+{
+  "title": "Choose Xbox pad art",
+  "question": "Broadcast Booth Glass. Your Xbox Series ref drives silhouette and layout — blue background and glow ignored, body opaque. DualShock keeps its own PNG. Orange = live press.",
+  "options": [
+    {
+      "id": "twin",
+      "label": "Twin",
+      "kicker": "BLUEPRINT",
+      "thesis": "Same language as gamepad-ds4.png: opaque charcoal fill, grey hairlines, DS4-style LT/RT tombstones, thin LB/RB bars.",
+      "palette": ["#191B1D", "#7A7A7C", "#FF9430", "#0E0F11", "#88888A"],
+      "materials": ["solid body", "DS4 tombstones", "cream wells", "orange live fill", "ref silhouette"],
+      "viewport": "Wide widget, no plaque. Asymmetric Xbox layout from your ref. A live, left stick out, RT squeezed. Triggers sit on the horns.",
+      "risk": "Tombstone boxes can feel stacked if the horns read cleaner merged.",
+      "comp": ".impeccable/mocks/decision/gamepad-xbox-twin.png",
+      "hero": "overlay/hud/assets/gamepad-xbox-ref.png"
+    },
+    {
+      "id": "merge",
+      "label": "Merge",
+      "kicker": "SILHOUETTE",
+      "thesis": "Horns are part of one connected outline — no separate trigger rectangles. LT/RT labels live inside the horns.",
+      "palette": ["#191B1D", "#7A7A7C", "#FF9430", "#161618", "#88888A"],
+      "materials": ["unified silhouette", "in-horn labels", "cream wells", "orange live fill"],
+      "viewport": "Same layout. Cleaner shoulders — the ref horns become the body edge, not boxes on top. Bumpers stay thin bars on the shelf.",
+      "risk": "Analog trigger fill needs UVs inside the horn cutout.",
+      "comp": ".impeccable/mocks/decision/gamepad-xbox-merge.png",
+      "hero": "overlay/hud/assets/gamepad-xbox-ref.png"
+    },
+    {
+      "id": "plateau",
+      "label": "Plateau",
+      "kicker": "REF FAITHFUL",
+      "thesis": "Dark top band like your ref’s black center plate — guide, view, and menu sit on it. Horns and bumpers at ref positions.",
+      "palette": ["#191B1D", "#0E0F11", "#7A7A7C", "#FF9430", "#88888A"],
+      "materials": ["opaque body", "darker top plateau", "horn labels", "cream wells"],
+      "viewport": "Same Xbox layout. The center reads closer to your photo: dark crown for Xbox / view / menu, charcoal grips below.",
+      "risk": "Two body tones must stay subtle or the pad stops feeling like one glass family.",
+      "comp": ".impeccable/mocks/decision/gamepad-xbox-plateau.png",
+      "hero": "overlay/hud/assets/gamepad-xbox-ref.png"
+    }
+  ],
+  "steer": true,
+  "reroll": true,
+  "buildPath": { "value": "comp", "toggle": true }
+}

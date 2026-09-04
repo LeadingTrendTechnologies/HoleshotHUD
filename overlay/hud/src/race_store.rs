@@ -600,7 +600,7 @@ pub(crate) fn leftover_warmup_len(ms: i32) -> bool {
 }
 
 pub(crate) fn race_clock_ms(clock: i32) -> bool {
-    clock >= 5 * 60_000 && clock <= 20 * 60_000
+    clock >= 5 * 60_000 && clock <= 30 * 60_000
 }
 
 pub(crate) fn wait_display_ms(total: i32, clock: i32) -> i32 {
@@ -614,7 +614,7 @@ pub(crate) fn wait_display_ms(total: i32, clock: i32) -> i32 {
 }
 
 pub(crate) fn standard_race_minutes(ms: i32) -> bool {
-    matches!(session_len_minutes(ms), 5 | 6 | 8 | 10 | 12 | 15 | 20)
+    matches!(session_len_minutes(ms), 5 | 6 | 8 | 10 | 12 | 15 | 20 | 25 | 30)
 }
 
 pub(crate) fn effective_session_len_ms(s: &Snapshot) -> i32 {
@@ -622,10 +622,11 @@ pub(crate) fn effective_session_len_ms(s: &Snapshot) -> i32 {
     if s.session_laps >= 4 && leftover_warmup_len(total) {
         return 0;
     }
-    if s.session_laps > 0 && leftover_practice_len(total) {
+    // Leftover 40+ min practice must not cap a race. 30:00 is a real moto length.
+    if s.session_laps > 0 && leftover_practice_len(total) && !standard_race_minutes(total) {
         return 0;
     }
-    // Leftover start board (~50s) must not cap a live 5–20 min timed +N countdown.
+    // Leftover start board (~50s) must not cap a live 5–30 min timed +N countdown.
     note_timed_extras_hint(s);
     if s.session_laps > 0
         && s.session_laps < 4
@@ -714,7 +715,9 @@ pub(crate) static LOCKED_SESSION_LEN: AtomicI32 = AtomicI32::new(0);
 pub(crate) static RACE_ARMED: AtomicI32 = AtomicI32::new(0);
 pub(crate) static LAST_SESSION_LAPS: AtomicI32 = AtomicI32::new(-1);
 pub(crate) static LAST_RAW_SESSION_LEN: AtomicI32 = AtomicI32::new(0);
-/// Sticky: 1–3 "laps" field is timed extras once we see a 5–20 min race clock / length.
+/// Last `session_kind` (warmup 5, race 1/2 = 6/7). `0` until we have seen one.
+static LAST_SESSION_KIND: AtomicI32 = AtomicI32::new(0);
+/// Sticky: 1–3 "laps" field is timed extras once we see a 5–30 min race clock / length.
 /// Stops 6:00+2 with unset/start-board length flipping to a 2-lap moto after the gate.
 pub(crate) static TIMED_EXTRAS_HINT: AtomicI32 = AtomicI32::new(0);
 /// The clock we were counting down from when it dropped a long way in one frame, so the
@@ -749,6 +752,7 @@ pub(crate) fn reset_session_clock_track() {
     RACE_ARMED.store(0, Ordering::Relaxed);
     LAST_SESSION_LAPS.store(-1, Ordering::Relaxed);
     LAST_RAW_SESSION_LEN.store(0, Ordering::Relaxed);
+    LAST_SESSION_KIND.store(0, Ordering::Relaxed);
     TIMED_EXTRAS_HINT.store(0, Ordering::Relaxed);
     if let Ok(mut g) = LIVE_ORDER.lock() {
         g.clear();
@@ -827,13 +831,26 @@ pub(crate) fn note_session(s: &Snapshot) {
     let from_practice = prev_raw_len <= 0
         || leftover_practice_len(prev_len_ms)
         || matches!(session_len_minutes(prev_len_ms), 10 | 12 | 15 | 20);
-    let entered_race = prev_laps == 0 && laps > 0 && from_practice;
+    // 10–30 min with unpublished extras looks like warmup/practice. When +1 appears on
+    // that same timed race, keep overtime bases — a reset sits on `0/1` and can wave
+    // the checkered while you still have laps to run.
+    let timed_extras_arriving = prev_laps == 0
+        && (1..=3).contains(&laps)
+        && standard_race_minutes(prev_len_ms)
+        && session_len_ms(s.session_length) == prev_len_ms
+        && (RACE_ARMED.load(Ordering::Relaxed) == 1
+            || SESSION_EXPIRED.load(Ordering::Relaxed) == 1);
+    let entered_race = prev_laps == 0 && laps > 0 && from_practice && !timed_extras_arriving;
     let kind_changed = prev_laps > 0 && laps > 0 && (prev_laps >= 4) != (laps >= 4);
-    if left_race || entered_race || kind_changed {
+    let kind = s.session_kind;
+    let prev_kind = LAST_SESSION_KIND.swap(kind, Ordering::Relaxed);
+    let session_kind_changed = prev_kind > 0 && kind > 0 && prev_kind != kind;
+    if left_race || entered_race || kind_changed || session_kind_changed {
         reset_session_clock_track();
         LOCKED_SESSION_LEN.store(s.session_length.max(0), Ordering::Relaxed);
         LAST_SESSION_SIG.store(session_sig(s), Ordering::Relaxed);
         LAST_SESSION_LAPS.store(laps, Ordering::Relaxed);
+        LAST_SESSION_KIND.store(kind, Ordering::Relaxed);
         note_timed_extras_hint(s);
     }
     let lap = s.current_lap.max(0);
@@ -865,12 +882,21 @@ pub(crate) fn extra_laps(s: &Snapshot) -> i32 {
     }
 }
 
+/// Race 1 is `6`, race 2 is `7`. Warmup is `5`. Unknown (`-1` / `0`) stays inferred.
+fn is_race_session_kind(kind: i32) -> bool {
+    kind >= 6
+}
+
 pub(crate) fn is_warmup(s: &Snapshot) -> bool {
     if overtime_active(s) || is_lap_race(s) {
         return false;
     }
     // 1–3 is extras on a timed moto, not practice.
     if s.session_laps > 0 && s.session_laps < 4 {
+        return false;
+    }
+    // A race session at 10–30 min with unpublished extras is not warmup.
+    if is_race_session_kind(s.session_kind) {
         return false;
     }
     let total = session_len_ms(s.session_length);
@@ -898,7 +924,7 @@ pub(crate) fn is_lap_race(s: &Snapshot) -> bool {
     }
     let clock = s.session_time_ms.max(0);
     // 2 extras leak into warmup (length 0, live mid clock). A 2-lap moto has a
-    // gate / leftover start board, not a 5–20 min clock, until green.
+    // gate / leftover start board, not a 5–30 min clock, until green.
     if s.session_laps == 2
         && total <= 0
         && clock > 180_000
@@ -1426,7 +1452,7 @@ pub(crate) fn overtime_active(s: &Snapshot) -> bool {
         && SESSION_EXPIRED.load(Ordering::Relaxed) == 1
 }
 
-/// 5–20 min race clock already expired, extras field still 0. MX Bikes often
+/// 5–30 min race clock already expired, extras field still 0. MX Bikes often
 /// publishes `session_laps = 1` a lap later and resets standings when it does.
 fn timed_race_awaiting_extras(s: &Snapshot) -> bool {
     RACE_ARMED.load(Ordering::Relaxed) == 1

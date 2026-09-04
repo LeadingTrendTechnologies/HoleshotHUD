@@ -19,7 +19,7 @@ Classification is joined by race number for position, laps, bike, best/last, pen
 
 ## Behavior
 
-- Same chrome as Standings (header bar, track name, column headers, optional footer). Header/footer slots include **Fuel**.
+- Same chrome as Standings (header bar, track name, column headers, optional footer). Header/footer slots include **Fuel** and **Setup**.
 - Your row is highlighted. Lapping colors on **other** rows: blue if they are a lap ahead and closing from behind, red if you are a lap ahead and closing on them (`lap_rel` / `lap_row_bg`). Off in warmup. **Row highlight** opacity (`rel_hl`) scales your row and the blue/red lapping tints. **Text color** is White or Black (`rel_text`); bike pills keep brand colors. **Alternating rows** (`rel_stripe`, default on) paints every other row near-black. Same opaque-panel lift as Standings.
 - **Gap column is not classification gap.** It is `|wrapped_frac * track_length / local_speed|` in seconds (you show `0.0`). Speed floor is 4 so a stopped rider does not explode the number.
 - Rows slide when the nearby set changes (`REL_SLIDE`).
@@ -37,10 +37,12 @@ Default columns on: Number, Name, Gap, Fastest, Last lap.
 - Missing `rel_stripe` in the ini keeps alternating rows on.
 - Alternating rows must still read at **Background** 100% (lift, not extra black on night-ink).
 - Fuel header/footer is liters/US gallons (`Fuel`) or tank percent (`Fuel %`). Empty volume is `0.0`; `--` / `--%` only when tank size is missing.
+- Setup header/footer is the loaded bike setup filename stem. `--` when `RunInit` has not sent it. Restart MX Bikes after the V13 plugin.
 - Ctrl+resize chrome is the hugged plaque (column pack × row stack), not leftover widget glass. Dragging it larger grows Name / nearby count.
 
 ## Change log
 
+- 2026-09-03 — **Setup** is a header/footer option (shared `BoardField::Setup` with Standings). Restart MX Bikes after this plugin so SHM `Local\MXBOHudV13` loads.
 - 2026-08-31 — Ctrl+resize of the hugged plaque grows Name width and nearby-rider count, so the table can get larger instead of the orange box being a no-op.
 - 2026-08-31 — Ctrl+resize orange box (and grab handles) follow the hugged plaque, not leftover widget glass.
 - 2026-08-31 — Plaque, header/footer, stripes, bike pill, and row slide share `draw_table_board` with Standings. Neighbor selection and gap-from-track-pos stay here.

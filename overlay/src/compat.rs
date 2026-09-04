@@ -4,9 +4,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use windows::core::{w, PCSTR, PCWSTR, PWSTR};
-use windows::Win32::Foundation::{BOOL, CloseHandle, HWND, LPARAM, RECT};
+use windows::Win32::Foundation::{BOOL, CloseHandle, HWND, LPARAM, POINT, RECT};
 use windows::Win32::Graphics::Gdi::{
-    GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    ClientToScreen, GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
 };
 use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
 use windows::Win32::System::Registry::{
@@ -19,11 +19,12 @@ use windows::Win32::System::Threading::{
 };
 use windows::Win32::UI::Shell::{ABM_WINDOWPOSCHANGED, APPBARDATA, SHAppBarMessage};
 use windows::Win32::UI::WindowsAndMessaging::{
-    ClipCursor, EnumWindows, FindWindowExW, FindWindowW, GetClassNameW, GetForegroundWindow,
-    GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible,
-    SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_EXSTYLE, HWND_NOTOPMOST,
-    HWND_TOPMOST, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SW_HIDE,
-    SW_SHOW, SW_SHOWNOACTIVATE, WS_EX_TRANSPARENT,
+    ClipCursor, EnumWindows, FindWindowExW, FindWindowW, GetClassNameW, GetClientRect,
+    GetForegroundWindow, GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId, IsIconic,
+    IsWindow, IsWindowVisible,
+    SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow, ShowWindowAsync, GWL_EXSTYLE,
+    HWND_NOTOPMOST, HWND_TOPMOST, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    SWP_SHOWWINDOW, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE, WS_EX_TRANSPARENT,
 };
 
 const FLAG: &str = "DISABLEDXMAXIMIZEDWINDOWEDMODE";
@@ -81,6 +82,37 @@ pub fn is_one_px_shy(window: RECT, monitor: RECT) -> bool {
         && window.bottom - window.top == h - 1
 }
 
+const OVERLAY_MIN: i32 = 64;
+
+/// Keep the HUD (and the top-right icon) on the game's monitor when the
+/// game window spans extra screens.
+pub fn overlay_rect_on_monitor(client: RECT, monitor: RECT) -> Option<(i32, i32, i32, i32)> {
+    let left = client.left.max(monitor.left);
+    let top = client.top.max(monitor.top);
+    let right = client.right.min(monitor.right);
+    let bottom = client.bottom.min(monitor.bottom);
+    let w = right - left;
+    let h = bottom - top;
+    (w >= OVERLAY_MIN && h >= OVERLAY_MIN).then_some((left, top, w, h))
+}
+
+/// Game client in screen coords, clipped to the monitor MX Bikes is on.
+pub fn overlay_screen_rect(hwnd: HWND) -> Option<(i32, i32, i32, i32)> {
+    unsafe {
+        let mut cr = RECT::default();
+        GetClientRect(hwnd, &mut cr).ok()?;
+        let mut pt = POINT { x: 0, y: 0 };
+        let _ = ClientToScreen(hwnd, &mut pt);
+        let client = RECT {
+            left: pt.x,
+            top: pt.y,
+            right: pt.x + cr.right - cr.left,
+            bottom: pt.y + cr.bottom - cr.top,
+        };
+        overlay_rect_on_monitor(client, monitor_rect(hwnd)?)
+    }
+}
+
 /// Undo the 1px shrink and keep the taskbar off the game until MX Bikes exits.
 pub fn on_quit(game: Option<HWND>, game_pid: Option<u32>) {
     unsafe {
@@ -109,8 +141,11 @@ pub fn wait_then_restore_taskbar(pid: u32) {
         }
     }
     while process_alive(pid) {
-        if pid_is_foreground(pid) {
-            hide_taskbars();
+        let game = largest_visible_window(pid);
+        if game.is_some_and(overlay_stays_for_game) || pid_is_foreground(pid) {
+            if let Some(hwnd) = game {
+                hide_game_monitor_taskbar(hwnd);
+            }
         } else {
             show_taskbars();
         }
@@ -362,8 +397,9 @@ impl FullscreenFix {
             // closing the game cannot keep the taskbar hidden behind Settings.
             let game = game.filter(|g| IsWindow(*g).as_bool());
             // Settings steals foreground from the game; keep the HUD up so riders can
-            // see widget tweaks live. Alt-tab away from both still hides it.
-            let playing = game.is_some_and(|g| game_is_foreground(g))
+            // see widget tweaks live. Alt-tab to another window on the game screen
+            // still hides it. Other monitors keep the HUD.
+            let playing = game.is_some_and(overlay_stays_for_game)
                 || (game.is_some() && window_is_foreground(settings));
             let now = Instant::now();
             if playing {
@@ -372,7 +408,7 @@ impl FullscreenFix {
                 self.last_playing = true;
                 if became || now.duration_since(self.last_raise) > Duration::from_secs(2) {
                     if let Some(game) = game {
-                        hide_taskbars();
+                        hide_game_monitor_taskbar(game);
                         let id = game.0 as isize;
                         if became && self.shy_hwnd != id {
                             keep_just_shy_of_fullscreen(game);
@@ -524,9 +560,89 @@ fn game_is_foreground(game: HWND) -> bool {
     }
 }
 
-fn hide_taskbars() {
+/// Keep the HUD up on the game screen while the rider uses another monitor
+/// (taskbar, Start, Discord, …). Alt-tab to another window on the game
+/// screen still hides it.
+fn overlay_stays_for_game(game: HWND) -> bool {
+    game_is_foreground(game) || foreground_is_taskbar() || foreground_is_other_monitor(game)
+}
+
+/// Hide this taskbar only when it sits on the same monitor as the game.
+fn should_hide_taskbar(same_monitor: bool) -> bool {
+    same_monitor
+}
+
+/// HUD stays composited when the game, Settings, a taskbar, or another
+/// monitor has foreground.
+fn overlay_stays_up(
+    game_foreground: bool,
+    settings_foreground: bool,
+    taskbar_foreground: bool,
+    other_monitor_foreground: bool,
+) -> bool {
+    game_foreground || settings_foreground || taskbar_foreground || other_monitor_foreground
+}
+
+fn foreground_is_taskbar() -> bool {
+    unsafe { is_taskbar_hwnd(GetForegroundWindow()) }
+}
+
+fn foreground_is_other_monitor(game: HWND) -> bool {
+    unsafe {
+        let fg = GetForegroundWindow();
+        if fg.0.is_null() || fg == game {
+            return false;
+        }
+        let Some(game_mon) = monitor_id(game) else {
+            return false;
+        };
+        let Some(fg_mon) = monitor_id(fg) else {
+            return false;
+        };
+        game_mon != fg_mon
+    }
+}
+
+unsafe fn is_taskbar_hwnd(hwnd: HWND) -> bool {
+    if hwnd.0.is_null() || hwnd.is_invalid() {
+        return false;
+    }
+    let mut name = [0u16; 64];
+    let n = GetClassNameW(hwnd, &mut name);
+    if n <= 0 {
+        return false;
+    }
+    let class = String::from_utf16_lossy(&name[..n as usize]);
+    class == "Shell_TrayWnd" || class == "Shell_SecondaryTrayWnd"
+}
+
+unsafe fn monitor_id(hwnd: HWND) -> Option<isize> {
+    let mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+    if mon.0.is_null() {
+        None
+    } else {
+        Some(mon.0 as isize)
+    }
+}
+
+/// Hide only the taskbar on MX Bikes' monitor. Other screens keep Start
+/// and the taskbar. `ShowWindow` on Explorer can deadlock if the rider
+/// just clicked a hidden bar, so hide is async.
+fn hide_game_monitor_taskbar(game: HWND) {
     TASKBARS_HIDDEN.store(true, Ordering::Relaxed);
-    set_taskbars_visible(false);
+    unsafe {
+        let Some(game_mon) = monitor_id(game) else {
+            return;
+        };
+        for_each_taskbar(|hwnd| {
+            let same = monitor_id(hwnd) == Some(game_mon);
+            if should_hide_taskbar(same) {
+                let _ = ShowWindowAsync(hwnd, SW_HIDE);
+            } else if !IsWindowVisible(hwnd).as_bool() {
+                restore_taskbar(hwnd);
+            }
+        });
+    }
 }
 
 fn show_taskbars() {

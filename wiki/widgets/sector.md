@@ -22,8 +22,8 @@ Split index: `0` or first `1` is S1; a later `1` or `2` is S2. That covers 0-bas
 
 Three columns: **S1**, **S2**, **S3**. The **current** sector is the **hero** (~56% width) with an orange skew **S#** plaque and a large delta. The other two stay quiet. When the box is tall enough, **Lap log** (default on) draws **LAST**, **-2**, … under a hairline, same columns, up to **Laps back** (1–5, default 3). You-row gold is only on the fastest lap in that log. History times tint green/red vs the same comparison as the live strip. Short boxes stay live-only. Off hides the log; splits still record.
 
-- Current sector: live elapsed time and live delta vs your saved tape **at this `local_track_pos`** (S2/S3 ignore time already lost or gained in earlier sectors). S1 until the first split, then S2, then S3 until the line. **Live sector** (default on) in Settings. Off: `--` until that split completes.
-- Leave a sector: that cell shrinks and **freezes** the delta from the split line. Do not keep ticking it.
+- Current sector: live delta vs your saved tape **at this `local_track_pos`** (S2/S3 ignore time already lost or gained in earlier sectors). The night-ink pill is the **target** (saved or session-best duration for that sector) until you leave; the large number is the location delta. S1 until the first split, then S2, then S3 until the line. **Live sector** (default on) in Settings. Off: `--` until that split completes.
+- Leave a sector: that cell shrinks and **freezes** the official split duration vs the saved (or session) best. Do not keep ticking it. Freeze is not tape-at-the-line.
 - Not yet reached this lap: `--`.
 - After you cross: S3 stays hero (frozen last lap) until the next lap clock runs, then S1 is hero again.
 - Split times at the bottom of each cell sit on night-ink pills (same chip as Delta Bar BEST / LAST).
@@ -39,6 +39,8 @@ No column picker; show, **Live sector**, **Compare to session best**, **Lap log*
 - Do not draw off-track unless settings layout boxes are up (same as other race widgets).
 - Hero is the sector you are in, not last completed.
 - Live delta is time vs location in **this** sector (tape at `local_track_pos` minus tape at the sector start). Do not compare live elapsed to the full sector duration — that always looks too fast mid-sector. A wrap at the centerline origin mid-sector (often S3 when origin ≠ the line) is not S/F — keep the live cell ticking.
+- Live elapsed for that location delta uses the same official-synced lap clock as Delta Bar (`delta::lap_clock`). The pill while you are in the sector is the target duration, not the ticking elapsed.
+- Freeze on leave uses the official split duration vs the **old** saved (or session) best. Do not freeze vs tape-at-pos. A new PB is negative, not `0.000`.
 - Do not require S2's split to sit after S1 in raw `track_pos`. Origin wrap can put S2's end before S1's end on the 0..1 line.
 - **Live sector** off still records and freezes on leave; the current cell stays `--` until the split. Default on (`sector_live=1`).
 - Freeze on leave. Do not write the PB file every live frame — only when a frozen duration is faster than saved **for this class**, or when visiting a track whose file is missing/stale `used` (at most hourly). Do not create a file just to stamp a date.
@@ -50,12 +52,13 @@ No column picker; show, **Live sector**, **Compare to session best**, **Lap log*
 - Do not treat a missing S3 as a live estimate while the lap is open. When the lap completes, fill S3 from lap time minus S1/S2 (durations or cumulative). If the plugin left S3 empty, the overlay infers it from last lap time so the S3 cell can still go orange.
 - After `finishLapSectors`, keep last-lap times and deltas on screen until the next lap clock is running. Completing S1 of the new lap overwrites S1 and S2/S3 go pending until those splits.
 - `RunLap` and `RaceLap` can both fire for you. Finish S3 once per `lapNum` so a following split is not folded into last-lap.
-- `RunSplit` and `RaceSplit` both fire for the same split. Record it once. A second write after the session best is updated stores `0.000` on a faster sector. Overlay freeze vs the **old** saved best so a new PB is negative, not `0.000`.
+- `RunSplit` and `RaceSplit` both fire for the same split. Record it once. A second write after the session best is updated stores `0.000` on a faster sector. Overlay freeze vs the **old** saved best so a new PB is negative, not `0.000`. That compare is official duration minus saved, not tape-at-the-line.
 - SHM version must stay in lockstep between `overlay/hud/src/snapshot.rs` and `src/shm/mxbo_shm.h`.
 - Split times at the bottom sit on night-ink pills. Do not leave those captions floating on the game.
 
 ## Change log
 
+- 2026-09-03 — Freeze is official split vs saved/session best (the game's time). Live pill is that target; the large number stays location-in-sector. Live elapsed follows Delta Bar's split-synced clock.
 - 2026-09-01 — Lap-log you-row gold is only on the fastest lap in the log, not always LAST.
 - 2026-09-01 — **Lap log** (default on) and **Laps back** (1–5, default 3). Underboard still LAST / -2 / … vs your best. A short box stays live-only.
 - 2026-09-01 — Underboard: LAST / -2 / -3 completed split times sit under the live strip. Green/red vs your best. Factory box is taller; a short box stays live-only.

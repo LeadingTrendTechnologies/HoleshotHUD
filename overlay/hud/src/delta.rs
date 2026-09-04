@@ -1,7 +1,9 @@
 //! Time vs your best at this point on the lap.
 //!
 //! The plugin does not expose the in-game ghost. We record
-//! `local_track_pos → current_lap_ms` on a decent lap and compare live.
+//! `local_track_pos → lap clock` on a decent lap and compare live. The lap
+//! clock follows plugin `_fTime` until an official split, then snaps to that
+//! split so the tape matches the game.
 
 use crate::race_store::norm_lap_pos;
 use crate::shm::{cstr, Snapshot};
@@ -50,7 +52,7 @@ pub struct DeltaView {
 }
 
 impl DeltaView {
-    pub fn empty() -> Self {
+    pub const fn empty() -> Self {
         Self {
             ready: false,
             recording: false,
@@ -79,7 +81,7 @@ struct LapTape {
 }
 
 impl LapTape {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self {
             bins: [0; BINS],
             filled: 0,
@@ -264,6 +266,15 @@ pub(crate) struct DeltaEngine {
     stale_clock: bool,
     /// Flying lap started (S/F cross, or lap clock on near the line). Out-lap is not this.
     armed: bool,
+    /// Last official accumulated split (S1, or S1+S2). `0` until a split this lap.
+    official_accum: i32,
+    /// Plugin `current_lap_ms` when `official_accum` was snapped. `0` at S/F so
+    /// the plugin clock *is* elapsed until the first split.
+    plugin_at_snap: i32,
+    snap_valid: bool,
+    last_s1: i32,
+    last_s2: i32,
+    last_synced: i32,
     new_best_at: Option<Instant>,
     session_new_best_at: Option<Instant>,
     last_view: DeltaView,
@@ -271,7 +282,7 @@ pub(crate) struct DeltaEngine {
 }
 
 impl DeltaEngine {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self {
             track_key: String::new(),
             bike_key: String::new(),
@@ -293,10 +304,72 @@ impl DeltaEngine {
             session_smooth_init: false,
             stale_clock: false,
             armed: false,
+            official_accum: 0,
+            plugin_at_snap: 0,
+            snap_valid: false,
+            last_s1: 0,
+            last_s2: 0,
+            last_synced: 0,
             new_best_at: None,
             session_new_best_at: None,
             last_view: DeltaView::empty(),
             session_view: DeltaView::empty(),
+        }
+    }
+
+    fn resync(&mut self, official: i32, plugin: i32) {
+        self.official_accum = official.max(0);
+        self.plugin_at_snap = plugin;
+        self.snap_valid = true;
+        self.last_synced = if official > 0 {
+            official
+        } else {
+            plugin.max(0)
+        };
+    }
+
+    fn clear_snap(&mut self) {
+        self.official_accum = 0;
+        self.plugin_at_snap = 0;
+        self.snap_valid = false;
+        self.last_s1 = 0;
+        self.last_s2 = 0;
+        self.last_synced = 0;
+    }
+
+    fn synced_ms(&self, cur_ms: i32) -> i32 {
+        if !self.snap_valid {
+            return cur_ms.max(0);
+        }
+        let pd = cur_ms - self.plugin_at_snap;
+        if pd < -200 || pd > 12 * 60 * 1000 {
+            return self.last_synced;
+        }
+        self.official_accum.saturating_add(pd.max(0))
+    }
+
+    fn note_splits(&mut self, s: &Snapshot, cur_ms: i32) {
+        if !self.armed || self.stale_clock {
+            return;
+        }
+        if !self.snap_valid {
+            // plugin_at_snap 0: `_fTime` *is* elapsed until the first official split.
+            self.resync(0, 0);
+        }
+        let s1 = s.sector_cur.first().copied().unwrap_or(0);
+        let s2 = s.sector_cur.get(1).copied().unwrap_or(0);
+        if s1 > 0 && self.last_s1 <= 0 && near_split(cur_ms, s1) {
+            self.resync(s1, cur_ms);
+            self.last_s1 = s1;
+        } else if s1 <= 0 || self.last_s1 > 0 {
+            self.last_s1 = s1;
+        }
+        let to_s2 = accum_to_s2(s1, s2);
+        if s2 > 0 && self.last_s2 <= 0 && near_split(cur_ms, to_s2) {
+            self.resync(to_s2, cur_ms);
+            self.last_s2 = s2;
+        } else if s2 <= 0 || self.last_s2 > 0 {
+            self.last_s2 = s2;
         }
     }
 
@@ -402,17 +475,25 @@ impl DeltaEngine {
             self.current = LapTape::new();
             self.smooth_init = false;
             self.session_smooth_init = false;
+            self.clear_snap();
             // S/F starts the next flying lap. A reset only drops the clock.
             self.armed = crossed_sf;
         } else if !self.armed && (crossed_sf || start_flying_clock) {
             self.armed = true;
             self.current = LapTape::new();
+            self.clear_snap();
         }
+
+        if !ended {
+            self.note_splits(s, cur_ms);
+        }
+        let clock_ms = self.synced_ms(cur_ms);
+        self.last_synced = clock_ms;
 
         // Same-frame sample still has the old clock at pos 0 (plugin sends 1.0).
         let moving = s.on_track != 0 && s.local_speed >= 1.5 && cur_ms > 0 && pos >= 0.0;
         if moving && !ended && self.armed && !self.stale_clock {
-            self.current.push_at(pos, cur_ms, track_m(s));
+            self.current.push_at(pos, clock_ms, track_m(s));
         }
 
         self.last_lap_num = lap_num;
@@ -436,9 +517,9 @@ impl DeltaEngine {
             self.lookup_pos = -1.0;
             pos
         };
-        let v = live_view(self, lookup, cur_ms, dt, false);
+        let v = live_view(self, lookup, clock_ms, dt, false);
         self.last_view = v;
-        self.session_view = live_view(self, lookup, cur_ms, dt, true);
+        self.session_view = live_view(self, lookup, clock_ms, dt, true);
         v
     }
 }
@@ -527,11 +608,29 @@ fn follow_pos(prev: f32, pos: f32, dt: f32) -> f32 {
     prev + (pos - prev) * a
 }
 
+/// Official accumulated time to S2. Plugin S2 is either duration or S1+S2.
+fn accum_to_s2(s1: i32, s2: i32) -> i32 {
+    if s1 > 0 && s2 > s1 + s1 / 2 {
+        s2
+    } else {
+        s1.saturating_add(s2)
+    }
+}
+
+fn near_split(plugin: i32, official: i32) -> bool {
+    official > 0 && (plugin - official).abs() < 2_500
+}
+
 /// The plugin often zeros `last_lap_ms` on the crossing, or republishes an older
 /// last-lap (the previous PB) while the live clock was faster.
 fn completed_lap_ms(st: &DeltaEngine, s: &Snapshot) -> i32 {
     let taped = st.current.recorded_ms();
-    let live = st.last_cur_ms.max(taped);
+    let clock = if st.snap_valid {
+        st.last_synced
+    } else {
+        st.last_cur_ms
+    };
+    let live = clock.max(taped);
     if s.last_lap_ms > 0 && (st.last_last_lap_ms <= 0 || s.last_lap_ms != st.last_last_lap_ms) {
         if live >= MIN_LAP_MS && live + 400 < s.last_lap_ms {
             return live;
@@ -667,63 +766,23 @@ fn live_view(st: &mut DeltaEngine, pos: f32, cur_ms: i32, dt: f32, session: bool
     }
 }
 
-static STORE: Mutex<DeltaEngine> = Mutex::new(DeltaEngine {
-    track_key: String::new(),
-    bike_key: String::new(),
-    current: LapTape {
-        bins: [0; BINS],
-        filled: 0,
-        min_pos: 1.0,
-        max_pos: 0.0,
-        last_pos: -1.0,
-        last_ms: 0,
-        last_move_pos: -1.0,
-        last_move_ms: 0,
-        dirty: false,
-        track_m: DEFAULT_TRACK_M,
-    },
-    reference: None,
-    ref_lap_ms: 0,
-    session: None,
-    session_lap_ms: 0,
-    last_lap_num: 0,
-    last_last_lap_ms: 0,
-    shown_last_ms: 0,
-    last_cur_ms: 0,
-    last_seen_pos: -1.0,
-    lookup_pos: -1.0,
-    last_tick: None,
-    smooth_ms: 0.0,
-    smooth_init: false,
-    session_smooth_ms: 0.0,
-    session_smooth_init: false,
-    stale_clock: false,
-    armed: false,
-    new_best_at: None,
-    session_new_best_at: None,
-    last_view: DeltaView {
-        ready: false,
-        recording: false,
-        has_delta: false,
-        delta_ms: 0,
-        ref_lap_ms: 0,
-        last_lap_ms: 0,
-        cover: 0,
-        new_best: false,
-    },
-    session_view: DeltaView {
-        ready: false,
-        recording: false,
-        has_delta: false,
-        delta_ms: 0,
-        ref_lap_ms: 0,
-        last_lap_ms: 0,
-        cover: 0,
-        new_best: false,
-    },
-});
+static STORE: Mutex<DeltaEngine> = Mutex::new(DeltaEngine::new());
 
 static PREVIEW: Mutex<Option<DeltaView>> = Mutex::new(None);
+
+/// Official-synced lap clock from the last `tick`. Falls back to plugin `_fTime`.
+pub fn lap_clock(s: &Snapshot) -> i32 {
+    STORE
+        .lock()
+        .map(|g| {
+            if g.snap_valid {
+                g.last_synced
+            } else {
+                s.current_lap_ms.max(0)
+            }
+        })
+        .unwrap_or_else(|_| s.current_lap_ms.max(0))
+}
 
 /// Once per live frame from the overlay loop. Records even when the widget is hidden.
 pub fn tick(s: &Snapshot) -> DeltaView {

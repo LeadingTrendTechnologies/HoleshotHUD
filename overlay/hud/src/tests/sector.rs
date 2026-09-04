@@ -95,7 +95,7 @@ fn live_s1_then_freeze_when_leaving() {
     assert!(r.fresh);
     assert!(r.live);
     assert_eq!(r.delta_ms, 18_000 - tape_at(here));
-    assert_eq!(r.time_ms, 18_000);
+    assert_eq!(r.time_ms, S1);
     let line = pos_for(S1);
     s.current_lap_ms = 26_000;
     s.local_track_pos = line;
@@ -105,7 +105,7 @@ fn live_s1_then_freeze_when_leaving() {
     assert!(!frozen.live);
     assert!(!frozen.fresh);
     assert_eq!(frozen.time_ms, 24_500);
-    assert_eq!(frozen.delta_ms, 24_500 - tape_at(line));
+    assert_eq!(frozen.delta_ms, 500);
     let s2 = row(&s, 1, true);
     assert!(s2.fresh);
     assert!(s2.live);
@@ -148,7 +148,7 @@ fn new_pb_freeze_is_not_zero() {
     s.sector_best = [23_000, 0, 0];
     tick(&s);
     let r = row(&s, 0, true);
-    assert_eq!(r.delta_ms, 23_000 - tape_at(line));
+    assert_eq!(r.delta_ms, 23_000 - S1);
     assert_ne!(r.delta_ms, 0);
     assert_eq!(track_pb::bind("LiveTrack", "").sectors[0], 23_000);
 }
@@ -164,7 +164,7 @@ fn slower_split_does_not_replace_saved() {
     s.sector_cur = [26_000, 0, 0];
     tick(&s);
     assert_eq!(track_pb::bind("LiveTrack", "").sectors[0], 24_000);
-    assert_eq!(row(&s, 0, true).delta_ms, 26_000 - tape_at(line));
+    assert_eq!(row(&s, 0, true).delta_ms, 2_000);
 }
 
 #[test]
@@ -350,9 +350,9 @@ fn session_compare_uses_this_visit_not_saved_best() {
     seed_tape();
     let mut s = snap();
     let line = pos_for(S1);
-    s.current_lap_ms = 23_000;
+    s.current_lap_ms = 24_500;
     s.local_track_pos = line;
-    s.sector_cur = [23_000, 0, 0];
+    s.sector_cur = [24_500, 0, 0];
     tick(&s);
     let first = row_vs(&s, 0, true, true);
     assert!(!first.has_delta, "first session split has no session best yet");
@@ -363,15 +363,40 @@ fn session_compare_uses_this_visit_not_saved_best() {
     tick(&s);
     s.current_lap_ms = 400;
     tick(&s);
-    s.current_lap_ms = 26_000;
+    s.current_lap_ms = 27_500;
     s.local_track_pos = line;
-    s.sector_cur = [26_000, 0, 0];
+    s.sector_cur = [27_500, 0, 0];
     tick(&s);
     let session = row_vs(&s, 0, true, true);
     let alltime = row_vs(&s, 0, true, false);
     assert!(session.has_delta);
     assert_eq!(session.delta_ms, 3_000);
+    assert_eq!(alltime.delta_ms, 3_500);
     assert_ne!(session.delta_ms, alltime.delta_ms);
+}
+
+#[test]
+fn freeze_delta_is_official_vs_saved_not_tape() {
+    let _lock = tmp();
+    track_pb::bind("LiveTrack", "");
+    track_pb::commit_tape("LiveTrack", "", 80_000, linear_bins(80_000));
+    track_pb::commit_sector("LiveTrack", "", 0, S1);
+    let mut s = snap();
+    let pos = 0.33;
+    s.current_lap_ms = 25_000;
+    s.local_track_pos = pos;
+    s.sector_cur = [24_100, 0, 0];
+    tick(&s);
+    let frozen = row(&s, 0, true);
+    assert!(!frozen.live);
+    assert_eq!(frozen.time_ms, 24_100);
+    assert_eq!(frozen.delta_ms, 100);
+    let tape = track_pb::time_at(&linear_bins(80_000), pos).unwrap();
+    assert_ne!(
+        frozen.delta_ms,
+        24_100 - tape,
+        "freeze must not use tape-at-pos vs official"
+    );
 }
 
 fn finish_lap(s: &mut Snapshot, splits: [i32; 3]) {

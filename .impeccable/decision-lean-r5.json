@@ -1,0 +1,41 @@
+{
+  "title": "Choose Lean — more Figure",
+  "question": "Still rear-view rider. Three more: the number lives on the bike, the view is onboard, or you are orange.",
+  "options": [
+    {
+      "id": "plate",
+      "label": "Plate",
+      "kicker": "ON THE BIKE",
+      "thesis": "The number plate is the readout. 32° is on the bike, not floating in the plaque.",
+      "palette": ["#0A0A0A", "#FF9430", "#F8F8FC", "#0C0C0E", "#2A2A2E"],
+      "materials": ["night-ink 6px plaque", "white rider from behind", "orange number plate", "orange bars"],
+      "viewport": "Square plaque. White rear-view MX rider leaned 32°. The rear number plate is an orange skew plaque that reads 32°. Bars orange for steer. Small 30% under the plate.",
+      "risk": "A plate can read as a race number, not degrees, unless the ° is loud.",
+      "comp": ".impeccable/mocks/decision/lean-figure-plate.png"
+    },
+    {
+      "id": "onboard",
+      "label": "Onboard",
+      "kicker": "ABOVE",
+      "thesis": "Camera a little above and behind, like an onboard. Lean is weight on a peg, not a side-on toy.",
+      "palette": ["#0A0A0A", "#FF9430", "#F8F8FC", "#84848A", "#2A2A2E"],
+      "materials": ["night-ink 6px plaque", "white rider 3/4 overhead", "orange 32°", "orange loaded peg"],
+      "viewport": "Square plaque. White MX rider from above-behind, leaned right, right peg loaded orange. Orange 32° in the lower-left of the glass. Small 30% near the bars.",
+      "risk": "Overhead can look like a minimap bike if the helmet isn’t obvious.",
+      "comp": ".impeccable/mocks/decision/lean-figure-onboard.png"
+    },
+    {
+      "id": "you",
+      "label": "You",
+      "kicker": "ORANGE RIDER",
+      "thesis": "Orange is you. The rider is Holeshot Orange, the bike stays white. Lean is the orange body.",
+      "palette": ["#0A0A0A", "#FF9430", "#F8F8FC", "#84848A", "#2A2A2E"],
+      "materials": ["night-ink 6px plaque", "orange rider", "white bike", "white 32°"],
+      "viewport": "Square plaque. Rear-view: white MX bike, orange rider leaned 32°. White ExtraBold Italic 32° under the bike. Steer as the white bar angle. Spectate could dim the rider to white.",
+      "risk": "A fully orange rider can turn into a blob at HUD scale.",
+      "comp": ".impeccable/mocks/decision/lean-figure-you.png"
+    }
+  ],
+  "steer": true,
+  "buildPath": { "value": "comp", "toggle": true }
+}

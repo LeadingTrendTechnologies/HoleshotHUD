@@ -1,5 +1,5 @@
 pub const MAGIC: u32 = 0x4F42584D;
-pub const VERSION: u32 = 12;
+pub const VERSION: u32 = 13;
 pub const MAX_POLY: usize = 1024;
 pub const MAX_RIDERS: usize = 64;
 pub const MAX_STANDINGS: usize = 40;
@@ -156,6 +156,7 @@ pub struct Snapshot {
     pub local_pitch: f32,
     pub local_steer: f32,
     pub steer_lock: f32,
+    pub setup_name: [u8; TRACK_NAME],
 }
 
 impl Default for Snapshot {
@@ -238,6 +239,7 @@ impl Default for Snapshot {
             local_pitch: 0.0,
             local_steer: 0.0,
             steer_lock: 0.0,
+            setup_name: [0; TRACK_NAME],
         }
     }
 }
@@ -257,6 +259,25 @@ impl Snapshot {
             .filter(|b| !b.is_empty())
             .unwrap_or_default()
     }
+
+    /// Setup filename stem from `RunInit` (`m_szSetupFileName`). Empty in replay until a local run.
+    pub fn setup_label(&self) -> String {
+        format_setup_name(&cstr(&self.setup_name))
+    }
+}
+
+/// Path and `.xml` / `.mxb` stripped so a header can show the garage name.
+pub fn format_setup_name(raw: &str) -> String {
+    let name = raw.rsplit(['/', '\\']).next().unwrap_or(raw).trim();
+    let lower = name.to_ascii_lowercase();
+    let stem = if let Some(rest) = lower.strip_suffix(".xml") {
+        &name[..rest.len()]
+    } else if let Some(rest) = lower.strip_suffix(".mxb") {
+        &name[..rest.len()]
+    } else {
+        name
+    };
+    stem.trim().to_string()
 }
 
 pub fn cstr(buf: &[u8]) -> String {
@@ -381,10 +402,11 @@ impl Snapshot {
         );
         let _ = writeln!(
             o,
-            "track={:?} length={:.1} sf_meters={:.1}",
+            "track={:?} length={:.1} sf_meters={:.1} setup={:?}",
             cstr(&self.track_name),
             self.track_length,
-            self.sf_meters
+            self.sf_meters,
+            cstr(&self.setup_name)
         );
         let _ = writeln!(
             o,

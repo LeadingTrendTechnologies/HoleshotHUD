@@ -86,6 +86,10 @@ fn main() {
             size_show(c, "lean", 0.16, 0.32);
             c.lean_style = LeanStyle::Minimal;
         }),
+        ("gamepad.png", W, H, |c| {
+            size_show(c, "gamepad", 0.28, 0.22);
+            mxbo_hud::gamepad::set(mxbo_hud::gamepad::demo_sony());
+        }),
         ("hero.png", W, HERO_H, layout_hero),
     ];
 
@@ -97,6 +101,7 @@ fn main() {
         }
         mxbo_hud::delta::set_preview(None);
         mxbo_hud::set_flag_preview(-1);
+        mxbo_hud::gamepad::set(mxbo_hud::PadState::DISCONNECTED);
         mxbo_hud::sector::reload();
         let mut cfg = base_cfg();
         setup(&mut cfg);
@@ -164,6 +169,7 @@ fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg[WidgetId::Delta].show = name == "delta";
     cfg[WidgetId::Flag].show = name == "flag";
     cfg[WidgetId::Lean].show = name == "lean";
+    cfg[WidgetId::Gamepad].show = name == "gamepad";
 }
 
 fn size_show(cfg: &mut HudConfig, name: &str, w: f32, h: f32) {
@@ -181,6 +187,7 @@ fn size_show(cfg: &mut HudConfig, name: &str, w: f32, h: f32) {
         "delta" => WidgetId::Delta,
         "flag" => WidgetId::Flag,
         "lean" => WidgetId::Lean,
+        "gamepad" => WidgetId::Gamepad,
         _ => return,
     };
     cfg[id].rect.w = w;

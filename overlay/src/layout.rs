@@ -20,6 +20,7 @@ enum Target {
     Stance,
     Flag,
     Lean,
+    Gamepad,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -71,6 +72,7 @@ pub struct Editor {
     stance: Option<Rect>,
     flag: Option<Rect>,
     lean: Option<Rect>,
+    gamepad: Option<Rect>,
     st_w_name: Option<i32>,
     rel_w_name: Option<i32>,
     standings_rows: Option<i32>,
@@ -114,6 +116,7 @@ impl Editor {
             || self.stance.is_some()
             || self.flag.is_some()
             || self.lean.is_some()
+            || self.gamepad.is_some()
             || self.st_w_name.is_some()
             || self.rel_w_name.is_some()
             || self.standings_rows.is_some()
@@ -150,6 +153,9 @@ impl Editor {
         }
         if let Some(s) = self.lean {
             cfg[WidgetId::Lean].rect = s;
+        }
+        if let Some(s) = self.gamepad {
+            cfg[WidgetId::Gamepad].rect = s;
         }
         if let Some(r) = self.standings {
             cfg[WidgetId::Standings].rect = r;
@@ -239,6 +245,7 @@ impl Editor {
                 Target::Stance => self.stance = Some(r),
                 Target::Flag => self.flag = Some(r),
                 Target::Lean => self.lean = Some(r),
+                Target::Gamepad => self.gamepad = Some(r),
             }
             apply_table_resize(self, cfg, d, r, ow, oh);
             let _ = overlay;
@@ -266,6 +273,7 @@ impl Editor {
         self.stance = None;
         self.flag = None;
         self.lean = None;
+        self.gamepad = None;
         self.st_w_name = None;
         self.rel_w_name = None;
         self.standings_rows = None;
@@ -289,6 +297,7 @@ impl Editor {
         let stance = self.stance;
         let flag = self.flag;
         let lean = self.lean;
+        let gamepad = self.gamepad;
         crate::config::update_config(|cfg| {
             cfg[WidgetId::Map].rect = map;
             cfg[WidgetId::Standings].rect = standings;
@@ -322,6 +331,9 @@ impl Editor {
             }
             if let Some(s) = lean {
                 cfg[WidgetId::Lean].rect = s;
+            }
+            if let Some(s) = gamepad {
+                cfg[WidgetId::Gamepad].rect = s;
             }
             if let Some(w) = self.st_w_name {
                 cfg.st_w_name = w;
@@ -406,6 +418,7 @@ fn rect_of(s: &Snapshot, ed: &Editor, cfg: &HudConfig, t: Target) -> Rect {
         Target::Stance => ed.stance.unwrap_or(cfg[WidgetId::Stance].rect),
         Target::Flag => ed.flag.unwrap_or(cfg[WidgetId::Flag].rect),
         Target::Lean => ed.lean.unwrap_or(cfg[WidgetId::Lean].rect),
+        Target::Gamepad => ed.gamepad.unwrap_or(cfg[WidgetId::Gamepad].rect),
     }
 }
 
@@ -424,11 +437,12 @@ fn shown(s: &Snapshot, cfg: &HudConfig, t: Target) -> bool {
         Target::Stance => cfg.stance_visible(),
         Target::Flag => cfg[WidgetId::Flag].show,
         Target::Lean => cfg[WidgetId::Lean].show,
+        Target::Gamepad => cfg[WidgetId::Gamepad].show,
     }
 }
 
 fn hit(s: &Snapshot, ed: &Editor, cfg: &HudConfig, x: f32, y: f32, ow: i32, oh: i32) -> Option<(Target, Handle)> {
-    const ORDER: [Target; 13] = [
+    const ORDER: [Target; 14] = [
         Target::Dash,
         Target::Ticker,
         Target::Sys,
@@ -437,6 +451,7 @@ fn hit(s: &Snapshot, ed: &Editor, cfg: &HudConfig, x: f32, y: f32, ow: i32, oh: 
         Target::Stance,
         Target::Flag,
         Target::Lean,
+        Target::Gamepad,
         Target::Minimap,
         Target::Radar,
         Target::Map,
@@ -567,6 +582,7 @@ fn min_px(t: Target) -> (f32, f32) {
         Target::Stance => (72.0, 36.0),
         Target::Flag => (72.0, 12.0),
         Target::Lean => (100.0, 72.0),
+        Target::Gamepad => (160.0, 96.0),
     }
 }
 

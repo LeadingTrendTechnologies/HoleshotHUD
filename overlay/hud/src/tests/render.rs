@@ -1,7 +1,7 @@
 use super::*;
 use crate::config::{BoardField, DashField, FontFamily, HudConfig, LeanStyle, RelField, StField, StanceStyle, WidgetId};
 use crate::race_store::{effective_extra_laps, effective_race_laps, ClockMode};
-use crate::shm::{write_name, Point, Rider, Snapshot, Standing, MAGIC, VERSION};
+use crate::shm::{write_name, Point, Rider, Snapshot, Standing, MAGIC, TRACK_NAME, VERSION};
 use std::sync::{Mutex, OnceLock};
 use tiny_skia::{Color, Pixmap, Rect};
 
@@ -92,6 +92,7 @@ fn live_snap() -> Snapshot {
     s.riders[0] = rider(1, 20.0, 8.0, 0.10);
     s.riders[1] = rider(12, 10.0, 4.0, 0.92);
     write_name(&mut s.track_name, "Test Track");
+    write_name(&mut s.setup_name, r"C:\Setups\Washougal Soft.xml");
     let n = 24;
     s.poly_count = n;
     for i in 0..n as usize {
@@ -237,6 +238,7 @@ fn hide_widgets(cfg: &mut HudConfig) {
     cfg[WidgetId::Stance].show = false;
     cfg[WidgetId::Flag].show = false;
     cfg[WidgetId::Lean].show = false;
+    cfg[WidgetId::Gamepad].show = false;
 }
 
 fn golden_snap(s: &Snapshot, cfg: &HudConfig) -> Snapshot {
@@ -381,6 +383,7 @@ fn dash_footer_fields_fill_from_live_snapshot() {
     assert_eq!(dash_foot_item(&s, &cfg, DashField::FuelPct).unwrap().1, "80%");
     assert_eq!(dash_foot_item(&s, &cfg, DashField::Bike).unwrap().1, "YZ450");
     assert_eq!(dash_foot_item(&s, &cfg, DashField::Class).unwrap().1, "MX1");
+    assert_eq!(dash_foot_item(&s, &cfg, DashField::Setup).unwrap().1, "Washougal Soft");
     let clock = dash_foot_item(&s, &cfg, DashField::LocalTime).unwrap().1;
     assert!(
         clock.contains("AM") || clock.contains("PM"),
@@ -506,6 +509,10 @@ fn standings_and_relative_board_fields() {
     assert_eq!(board_item(&s, &cfg, BoardField::SessionType).unwrap().1, "Session");
     assert_eq!(board_item(&s, &cfg, BoardField::Fuel).unwrap().1, "5.6 L");
     assert_eq!(board_item(&s, &cfg, BoardField::FuelPct).unwrap().1, "80%");
+    assert_eq!(board_item(&s, &cfg, BoardField::Setup).unwrap().1, "Washougal Soft");
+    let mut empty_setup = s;
+    empty_setup.setup_name = [0; TRACK_NAME];
+    assert_eq!(board_item(&empty_setup, &cfg, BoardField::Setup).unwrap().1, "--");
     let mut empty_fuel = s;
     empty_fuel.fuel = 0.0;
     empty_fuel.max_fuel = 0.0;
@@ -1047,6 +1054,7 @@ fn timed_plus_one_empty_standings_at_expiry_does_not_start_extras() {
     assert_eq!(dash_foot_item(&s, &cfg, DashField::LapCount).unwrap().1, "1/1");
     assert_eq!(ticker_meta_label(BoardField::Lap, "1/1"), "LAPS");
     assert_eq!(ticker_meta_label(BoardField::Fuel, "5.6 L"), "FUEL");
+    assert_eq!(ticker_meta_label(BoardField::Setup, "Washougal Soft"), "SETUP");
 }
 
 /// Timberline 8:00+1: extras published ~150s after expiry and standings reset to 0.
@@ -1126,6 +1134,159 @@ fn eight_minute_plus_one_late_extras_and_standings_reset() {
     assert_eq!(cross_line(&mut s, 6, 7), DashFlag::Checkered);
 }
 
+/// 10–30 min +1 looks like warmup/practice. Publishing extras after expiry must not
+/// reset the session clock, or the dash sits on `0/1` with checkered while you
+/// still have the uncounted lap and the extra to run.
+fn long_timed_plus_one_late_extras(minutes: i32) {
+    reset_session();
+    let mut s = live_snap();
+    s.session_kind = 7;
+    s.session_length = minutes;
+    s.session_laps = 0;
+    s.session_time_ms = 30_000;
+    s.current_lap = 1;
+    s.local_speed = 0.0;
+    s.standings[0].num_laps = 0;
+    s.standings[1].num_laps = 0;
+    let _ = session_remain_ms(&s);
+    let len_ms = minutes * 60 * 1000;
+    s.session_time_ms = len_ms;
+    s.current_lap = 8;
+    s.local_speed = 18.0;
+    s.standings[0].num_laps = 8;
+    s.standings[1].num_laps = 7;
+    let remain = session_remain_ms(&s).expect("countdown while time remains");
+    assert!(remain > 60_000, "{minutes}:00 expected a real countdown, got {remain}");
+    s.session_time_ms = len_ms - 1_000;
+    let _ = session_remain_ms(&s);
+    s.session_time_ms = 400;
+    assert_eq!(session_remain_ms(&s), Some(0));
+    s.session_time_ms = len_ms;
+    let _ = session_remain_ms(&s);
+    assert_eq!(session_banner(&s).1, "00:00", "extras not published yet");
+    assert_eq!(dash_race_flag(&s), DashFlag::None);
+
+    s.current_lap = 9;
+    s.standings[1].num_laps = 8;
+    s.standings[0].num_laps = 7;
+    let _ = session_remain_ms(&s);
+    assert_eq!(dash_race_flag(&s), DashFlag::None, "uncounted lap, extras still unpublished");
+
+    s.session_laps = 1;
+    s.standings[0].num_laps = 0;
+    s.standings[1].num_laps = 0;
+    s.session_time_ms = 40_000;
+    assert_eq!(session_banner(&s).1, "0/1");
+    assert_eq!(dash_race_flag(&s), DashFlag::None, "empty standings after reset");
+
+    s.standings[0].num_laps = 1;
+    s.standings[1].num_laps = 1;
+    s.current_lap = 2;
+    assert_eq!(dash_race_flag(&s), DashFlag::None);
+    s.standings[0].num_laps = 2;
+    s.standings[1].num_laps = 2;
+    s.current_lap = 3;
+    assert_eq!(
+        dash_race_flag(&s),
+        DashFlag::None,
+        "rebuilt lap 2 is not the extra"
+    );
+    s.standings[0].num_laps = 9;
+    s.standings[1].num_laps = 8;
+    s.current_lap = 9;
+    assert_ne!(
+        dash_race_flag(&s),
+        DashFlag::Checkered,
+        "must not latch checkered while the extra is still ahead"
+    );
+    assert_eq!(session_banner(&s).1, "0/1", "still the uncounted lap after recovery");
+
+    s.standings[0].num_laps = 9;
+    s.standings[1].num_laps = 8;
+    s.current_lap = 9;
+    assert_eq!(ride_to(&mut s, 0.40), DashFlag::None);
+    s.standings[1].num_laps = 9;
+    s.current_lap = 10;
+    assert_eq!(dash_race_flag(&s), DashFlag::White, "last extra after the timed-lap base");
+    age_white_wave();
+    assert_eq!(ride_to(&mut s, 0.50), DashFlag::None);
+    assert_eq!(cross_line(&mut s, 10, 11), DashFlag::Checkered);
+}
+
+#[test]
+fn fifteen_minute_plus_one_late_extras_and_standings_reset() {
+    let _g = session_lock();
+    long_timed_plus_one_late_extras(15);
+}
+
+#[test]
+fn twenty_five_minute_plus_one_late_extras_and_standings_reset() {
+    let _g = session_lock();
+    long_timed_plus_one_late_extras(25);
+}
+
+#[test]
+fn thirty_minute_plus_one_late_extras_and_standings_reset() {
+    let _g = session_lock();
+    long_timed_plus_one_late_extras(30);
+}
+
+#[test]
+fn twenty_five_minute_plus_two_is_timed_not_a_two_lap_moto() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_kind = 7;
+    s.session_length = 25;
+    s.session_laps = 2;
+    s.session_time_ms = 30_000;
+    s.current_lap = 1;
+    s.local_speed = 0.0;
+    s.standings[0].num_laps = 0;
+    s.standings[1].num_laps = 0;
+    assert_eq!(session_banner(&s).1, "00:30");
+    s.session_time_ms = 25 * 60 * 1000;
+    s.local_speed = 18.0;
+    s.current_lap = 2;
+    s.standings[0].num_laps = 1;
+    s.standings[1].num_laps = 1;
+    let remain = session_remain_ms(&s).expect("25:00+2 countdown");
+    assert!(remain > 20 * 60 * 1000, "expected ~25 min left, got {remain}");
+    assert_ne!(session_banner(&s).1, "2 / 2");
+    assert!(!overtime_active(&s));
+}
+
+#[test]
+fn warmup_fifteen_then_fifteen_plus_one_still_counts_down() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_kind = 5;
+    s.session_length = 15;
+    s.session_laps = 0;
+    s.session_time_ms = 15 * 60 * 1000;
+    s.current_lap = 2;
+    s.local_speed = 12.0;
+    s.standings[0].num_laps = 1;
+    s.standings[1].num_laps = 1;
+    assert_eq!(session_banner(&s).1, "15:00");
+    s.session_time_ms = 1_000;
+    let _ = session_remain_ms(&s);
+    s.session_time_ms = 400;
+    let _ = session_remain_ms(&s);
+
+    s.session_kind = 7;
+    s.session_laps = 1;
+    s.session_time_ms = 15 * 60 * 1000;
+    s.current_lap = 1;
+    s.local_speed = 0.0;
+    s.standings[0].num_laps = 0;
+    s.standings[1].num_laps = 0;
+    assert_eq!(session_banner(&s).1, "15:00");
+    assert_ne!(session_banner(&s).1, "0/1");
+    assert!(!overtime_active(&s));
+}
+
 #[test]
 fn ticker_title_warmup_not_timed_or_lap_race() {
     let _g = session_lock();
@@ -1140,6 +1301,15 @@ fn ticker_title_warmup_not_timed_or_lap_race() {
     assert_eq!(ticker_title(&s), "WARMUP - TEST TRACK");
     s.session_length = 40;
     assert_eq!(ticker_title(&s), "WARMUP - TEST TRACK");
+    s.session_kind = 7;
+    s.session_length = 15;
+    s.session_laps = 0;
+    assert_eq!(
+        ticker_title(&s),
+        "TIMED - TEST TRACK",
+        "a 15:00 race with unpublished extras is not warmup"
+    );
+    s.session_kind = -1;
     s.session_length = 8;
     s.session_laps = 1;
     assert_eq!(ticker_title(&s), "TIMED - TEST TRACK");
@@ -3712,6 +3882,23 @@ fn lean_min_golden() {
 }
 
 #[test]
+fn gamepad_goldens() {
+    let _g = session_lock();
+    reset_session();
+    let base = live_snap();
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg[WidgetId::Gamepad].show = true;
+    crate::gamepad::set(crate::gamepad::demo_sony());
+    let s = golden_snap(&base, &cfg);
+    draw_widget_golden("gamepad", &s, &cfg, cfg[WidgetId::Gamepad].rect);
+    crate::gamepad::set(crate::gamepad::demo_xbox());
+    draw_widget_golden("gamepad-xbox", &s, &cfg, cfg[WidgetId::Gamepad].rect);
+    crate::gamepad::set(crate::gamepad::PadState::DISCONNECTED);
+    draw_widget_golden("gamepad-none", &s, &cfg, cfg[WidgetId::Gamepad].rect);
+}
+
+#[test]
 fn flag_widget_draws_nothing_when_no_flag() {
     let _g = session_lock();
     reset_session();
@@ -4030,6 +4217,38 @@ fn flag_caption_white_leaves_cloth_above_and_below() {
     assert!(
         (1..4).any(|dy| cloth(sample_px(&px, x0 + 12.0, y1 - dy as f32))),
         "cloth should show below the caption white"
+    );
+}
+
+#[test]
+fn flag_text_off_leaves_cloth_with_no_caption() {
+    let _g = session_lock();
+    reset_session();
+    struct Guard;
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            reset_flag_display();
+        }
+    }
+    let _pg = Guard;
+    set_flag_preview(3);
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg[WidgetId::Flag].show = true;
+    cfg.flag_text = false;
+    let s = golden_snap(&live_snap(), &cfg);
+    let mut px = Pixmap::new(1280, 720).expect("pixmap");
+    draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
+    let w = cfg[WidgetId::Flag].rect.w * 1280.0;
+    let h = cfg[WidgetId::Flag].rect.h * 720.0;
+    let x = cfg[WidgetId::Flag].rect.x * 1280.0;
+    let y = cfg[WidgetId::Flag].rect.y * 720.0;
+    let cx = x + w * 0.5;
+    let mid_y = y + h * 0.5;
+    assert!(
+        is_yellow(sample_px(&px, cx, mid_y)),
+        "cloth should show through the center when text is off, got {:?}",
+        sample_px(&px, cx, mid_y)
     );
 }
 

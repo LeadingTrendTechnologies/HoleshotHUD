@@ -1,0 +1,41 @@
+{
+  "title": "Choose Lean — Figure variations",
+  "question": "Figure (rear-view rider) is the shortlist. Three similar compositions: same rider, different hierarchy.",
+  "options": [
+    {
+      "id": "fill",
+      "label": "Fill",
+      "kicker": "RIDER FIRST",
+      "thesis": "The rider fills the glass. 32° is a small orange TV bug on the body. Steer lives on the orange bars.",
+      "palette": ["#0A0A0A", "#FF9430", "#F8F8FC", "#84848A", "#2A2A2E"],
+      "materials": ["night-ink 6px plaque", "white rider filling the plaque", "orange skew 32° bug", "orange handlebar"],
+      "viewport": "Square plaque. White rear-view MX rider fills it, leaned 32°. Small orange 32° bug on the hip. Handlebar is orange and turned. No bottom hairline.",
+      "risk": "The number can get lost on the figure at race speed.",
+      "comp": ".impeccable/mocks/decision/lean-figure-fill.png"
+    },
+    {
+      "id": "callout",
+      "label": "Callout",
+      "kicker": "NUMBER FIRST",
+      "thesis": "Huge 32° on the left, rider on the right. The number is the glance; the rider proves it.",
+      "palette": ["#0A0A0A", "#FF9430", "#F8F8FC", "#84848A", "#2A2A2E"],
+      "materials": ["night-ink 6px plaque", "huge ExtraBold Italic", "white rider", "2px steer hairline"],
+      "viewport": "Wide plaque. Left 45%: huge orange 32°. Right 55%: white rear-view rider leaned 32°. Steer 30% as a hairline under the rider.",
+      "risk": "Can read as a stats card with a sticker if the rider shrinks too far.",
+      "comp": ".impeccable/mocks/decision/lean-figure-callout.png"
+    },
+    {
+      "id": "crop",
+      "label": "Crop",
+      "kicker": "CLOSE",
+      "thesis": "Helmet, bars, shoulders. A tight rear crop so the lean is a body, not a tiny toy in a box.",
+      "palette": ["#0A0A0A", "#FF9430", "#F8F8FC", "#84848A", "#2A2A2E"],
+      "materials": ["night-ink 6px plaque", "cropped white rider", "orange 32° under helmet", "orange bars"],
+      "viewport": "Square plaque. Tight crop from helmet through handlebars and shoulders, leaned 32°. Orange 32° sits under the helmet like a nameplate. Bars orange for steer.",
+      "risk": "Without boots/wheels it may not read as a bike at a glance.",
+      "comp": ".impeccable/mocks/decision/lean-figure-crop.png"
+    }
+  ],
+  "steer": true,
+  "buildPath": { "value": "comp", "toggle": true }
+}

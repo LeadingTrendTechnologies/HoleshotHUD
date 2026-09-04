@@ -1,0 +1,41 @@
+{
+  "title": "Choose Gamepad",
+  "question": "Three compositions in the existing HUD world. Same job: glance which buttons and sticks are live. DualShock vs Xbox glyphs switch with the pad. No pad is a small No controller plaque, not an empty DualShock.",
+  "options": [
+    {
+      "id": "glass",
+      "label": "Glass",
+      "kicker": "PAD",
+      "thesis": "The DualShock fills the night-ink plaque. Orange is the press. Sticks physically leave their wells.",
+      "palette": ["#0A0A0A", "#FF9430", "#18191D", "#E4E4E6", "#2A2A2E"],
+      "materials": ["night-ink 6px plaque", "1px hairline", "flat DualShock silhouette", "orange live fill", "Exo 2 ExtraBold Italic"],
+      "viewport": "Wide plaque. Full DualShock 4 top-down, charcoal body, no space art. Cross filled orange. Left stick kicked up-left with an orange halo. R2 analog fill. Xbox pads get the same body language with ABXY.",
+      "risk": "A full pad can read as a toy instead of a race graphic if the body gets busy.",
+      "comp": ".impeccable/mocks/gamepad-glass.png"
+    },
+    {
+      "id": "cluster",
+      "label": "Cluster",
+      "kicker": "WELLS",
+      "thesis": "No grips. Four input wells across the glass — D-pad, left stick, right stick, face — plus L2/R2 tracks on top.",
+      "palette": ["#0A0A0A", "#FF9430", "#F8F8FC", "#84848A", "#2A2A2E"],
+      "materials": ["night-ink 6px plaque", "1px hairline", "four wells", "Systems-style analog tracks"],
+      "viewport": "Wide shorter plaque. No controller body. Right on the D-pad and Cross on the diamond are orange fills. Left stick disc is offset in its well. Thin L2/R2 tracks along the top edge, R2 ~70% orange.",
+      "risk": "Without the DualShock silhouette it may not feel like the photo you brought.",
+      "comp": ".impeccable/mocks/gamepad-cluster.png"
+    },
+    {
+      "id": "tracks",
+      "label": "Tracks",
+      "kicker": "METER",
+      "thesis": "A small live pad plus Systems-family analog tracks. Magnitude as numbers, presses as orange glyphs.",
+      "palette": ["#0A0A0A", "#FF9430", "#F8F8FC", "#84848A", "#2A2A2E"],
+      "materials": ["night-ink 6px plaque", "1px split", "small pad graphic", "thin heat tracks", "huge ExtraBold Italic"],
+      "viewport": "Portrait plaque, hairline split. Top: compact DualShock with orange Cross and offset left stick. Bottom: LX LY RX RY LT RT tracks with orange fills and percents.",
+      "risk": "Glance may require reading numbers. The stick-follows-hand moment is smaller.",
+      "comp": ".impeccable/mocks/gamepad-tracks.png"
+    }
+  ],
+  "steer": true,
+  "buildPath": { "value": "comp", "toggle": true }
+}

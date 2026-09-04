@@ -505,6 +505,47 @@ impl StanceStyle {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum GamepadStyle {
+    Auto,
+    PlayStation,
+    Xbox,
+}
+
+impl GamepadStyle {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "Auto",
+            Self::PlayStation => "PlayStation",
+            Self::Xbox => "Xbox",
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::PlayStation => "playstation",
+            Self::Xbox => "xbox",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "playstation" | "sony" | "ps" | "dualshock" | "dualsense" => Self::PlayStation,
+            "xbox" | "xinput" => Self::Xbox,
+            _ => Self::Auto,
+        }
+    }
+
+    pub fn sony_art(self, pad: crate::gamepad::PadKind) -> bool {
+        match self {
+            Self::Auto => pad == crate::gamepad::PadKind::Sony,
+            Self::PlayStation => true,
+            Self::Xbox => false,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum LeanStyle {
     Figure,
     Minimal,
@@ -548,10 +589,11 @@ pub enum WidgetId {
     Stance,
     Flag,
     Lean,
+    Gamepad,
 }
 
 impl WidgetId {
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 14] = [
         Self::Standings,
         Self::Relative,
         Self::Map,
@@ -565,8 +607,9 @@ impl WidgetId {
         Self::Stance,
         Self::Flag,
         Self::Lean,
+        Self::Gamepad,
     ];
-    pub const COUNT: usize = 13;
+    pub const COUNT: usize = 14;
 
     pub fn idx(self) -> usize {
         self as usize
@@ -597,14 +640,15 @@ impl WidgetId {
             Self::Stance => Rect { x: 0.445, y: 0.705, w: 0.11, h: 0.065 },
             Self::Flag => Rect { x: 0.447, y: 0.026, w: 0.107, h: 0.019 },
             Self::Lean => Rect { x: 0.318, y: 0.755, w: 0.11, h: 0.20 },
+            Self::Gamepad => Rect { x: 0.38, y: 0.76, w: 0.24, h: 0.20 },
         }
     }
 
     fn default_bg(self) -> i32 {
         match self {
             Self::Standings | Self::Relative => 78,
-            Self::Map | Self::Minimap | Self::Delta => 0,
             Self::Radar | Self::Ticker | Self::Stance | Self::Lean => 86,
+            Self::Gamepad | Self::Map | Self::Minimap | Self::Delta => 0,
             Self::Dash | Self::Sys | Self::Sector => 82,
             Self::Flag => 100,
         }
@@ -626,6 +670,7 @@ impl WidgetId {
             Self::Stance => WidgetIni { rect: "stance", show: "show_stance", font: "stance_font", bold: "stance_bold", bg: "stance_bg" },
             Self::Flag => WidgetIni { rect: "flag", show: "show_flag", font: "flag_font", bold: "flag_bold", bg: "flag_bg" },
             Self::Lean => WidgetIni { rect: "lean", show: "show_lean", font: "lean_font", bold: "lean_bold", bg: "lean_bg" },
+            Self::Gamepad => WidgetIni { rect: "gamepad", show: "show_gamepad", font: "gamepad_font", bold: "gamepad_bold", bg: "gamepad_bg" },
         }
     }
 }
@@ -1192,6 +1237,8 @@ pub struct HudConfig {
     pub flag_yellow: bool,
     /// Someone a lap up closing from behind. Flags widget only. Off by default.
     pub flag_blue: bool,
+    /// Caption on the Flags cloth (WHITE FLAG / …). On by default.
+    pub flag_text: bool,
     /// Kept in the ini for older builds. No widget is gated on this anymore.
     pub experimental: bool,
     /// Plugin-only: when true the in-game HUD draws. Overlay still saves this key.
@@ -1283,6 +1330,7 @@ pub struct HudConfig {
     pub stance_style: StanceStyle,
     pub stance_show_sit: bool,
     pub lean_style: LeanStyle,
+    pub gamepad_style: GamepadStyle,
     /// Process rows on Systems. Built-ins stay; extras can be added and removed.
     pub sys_apps: Vec<SysApp>,
     pub st_order: Vec<StField>,
@@ -1326,6 +1374,7 @@ impl HudConfig {
             delta_session: false,
             flag_yellow: false,
             flag_blue: false,
+            flag_text: true,
             experimental: false,
             ingame_hud: false,
             standings_rows: 12,
@@ -1411,6 +1460,7 @@ impl HudConfig {
             stance_style: StanceStyle::Text,
             stance_show_sit: false,
             lean_style: LeanStyle::Figure,
+            gamepad_style: GamepadStyle::Auto,
             sys_apps: default_sys_apps(),
             st_order: StField::ALL.to_vec(),
             rel_order: RelField::ALL.to_vec(),
@@ -1485,6 +1535,7 @@ impl HudConfig {
                 }
                 "flag_yellow" => cfg.flag_yellow = b,
                 "flag_blue" => cfg.flag_blue = b,
+                "flag_text" => cfg.flag_text = b,
                 "experimental" | "feature_experimental" | "feature_sector" => cfg.experimental = b,
                 "ingame_hud" => cfg.ingame_hud = b,
                 "standings_rows" => cfg.standings_rows = val.parse().unwrap_or(12).max(3),
@@ -1575,6 +1626,7 @@ impl HudConfig {
                 "stance_mode" => cfg.stance_mode = StanceMode::parse(val),
                 "stance_style" => cfg.stance_style = StanceStyle::parse(val),
                 "lean_style" => cfg.lean_style = LeanStyle::parse(val),
+                "gamepad_style" => cfg.gamepad_style = GamepadStyle::parse(val),
                 "sys_apps" => cfg.sys_apps = parse_sys_apps(val),
                 "stance_show_sit" => cfg.stance_show_sit = b,
                 "stance_icon" => {
@@ -1712,6 +1764,7 @@ impl HudConfig {
         let stance = self[WidgetId::Stance];
         let flag = self[WidgetId::Flag];
         let lean = self[WidgetId::Lean];
+        let gamepad = self[WidgetId::Gamepad];
         let body = format!(
             "# Holeshot HUD layout (normalized 0..1, origin top-left)\n\
              [Layout]\n\
@@ -1728,8 +1781,9 @@ impl HudConfig {
              stance_x={}\nstance_y={}\nstance_w={}\nstance_h={}\n\
              flag_x={}\nflag_y={}\nflag_w={}\nflag_h={}\n\
              lean_x={}\nlean_y={}\nlean_w={}\nlean_h={}\n\
+             gamepad_x={}\ngamepad_y={}\ngamepad_w={}\ngamepad_h={}\n\
              \n[Widgets]\n\
-             show_standings={}\nshow_relative={}\nshow_map={}\nshow_minimap={}\nshow_radar={}\nshow_dash={}\nshow_ticker={}\nshow_sys={}\nshow_sector={}\nshow_delta={}\nshow_stance={}\nshow_flag={}\nshow_lean={}\n\
+             show_standings={}\nshow_relative={}\nshow_map={}\nshow_minimap={}\nshow_radar={}\nshow_dash={}\nshow_ticker={}\nshow_sys={}\nshow_sector={}\nshow_delta={}\nshow_stance={}\nshow_flag={}\nshow_lean={}\nshow_gamepad={}\n\
              ingame_hud={}\nstandings_rows={}\nrelative_count={}\nticker_count={}\n\
              \n[Standings]\n\
              st_pos={}\nst_num={}\nst_name={}\nst_gap={}\nst_interval={}\nst_laps={}\nst_current={}\nst_best={}\nst_last={}\nst_status={}\n\
@@ -1776,10 +1830,12 @@ impl HudConfig {
              stance_bind={}\nstance_mode={}\nstance_style={}\nstance_show_sit={}\n\
              stance_bg={}\nstance_font={}\nstance_bold={}\n\
              \n[Flag]\n\
-             flag_bg={}\nflag_yellow={}\nflag_blue={}\nflag_font={}\nflag_bold={}\n\
+             flag_bg={}\nflag_yellow={}\nflag_blue={}\nflag_text={}\nflag_font={}\nflag_bold={}\n\
              \n[Lean]\n\
              lean_style={}\n\
              lean_bg={}\nlean_font={}\nlean_bold={}\n\
+             \n[Gamepad]\n\
+             gamepad_style={}\ngamepad_bg={}\ngamepad_font={}\ngamepad_bold={}\n\
              \n[App]\n\
              font_family={}\nunits={}\nsettings_key={}\nstart_with_windows={}\nminimize_on_close={}\nclose_with_game={}\nopen_with_game={}\nauto_update_on_launch={}\nwhats_new_seen={}\nfirst_install_version={}\nexperimental={}\n",
             st.rect.x,
@@ -1834,6 +1890,10 @@ impl HudConfig {
             lean.rect.y,
             lean.rect.w,
             lean.rect.h,
+            gamepad.rect.x,
+            gamepad.rect.y,
+            gamepad.rect.w,
+            gamepad.rect.h,
             b(st.show),
             b(rel.show),
             b(map.show),
@@ -1847,6 +1907,7 @@ impl HudConfig {
             b(stance.show),
             b(flag.show),
             b(lean.show),
+            b(gamepad.show),
             b(self.ingame_hud),
             self.standings_rows,
             self.relative_count,
@@ -1989,12 +2050,17 @@ impl HudConfig {
             flag.bg,
             b(self.flag_yellow),
             b(self.flag_blue),
+            b(self.flag_text),
             flag.font,
             b(flag.bold),
             self.lean_style.key(),
             lean.bg,
             lean.font,
             b(lean.bold),
+            self.gamepad_style.key(),
+            gamepad.bg,
+            gamepad.font,
+            b(gamepad.bold),
             self.font_family.key(),
             self.units.key(),
             self.settings_key.key(),
@@ -2301,10 +2367,11 @@ pub enum BoardField {
     SessionType,
     Fuel,
     FuelPct,
+    Setup,
 }
 
 impl BoardField {
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 17] = [
         Self::None,
         Self::Position,
         Self::ClassPos,
@@ -2321,6 +2388,7 @@ impl BoardField {
         Self::SessionType,
         Self::Fuel,
         Self::FuelPct,
+        Self::Setup,
     ];
 
     pub const DEFAULT_HEAD: [Self; 3] = [Self::Session, Self::None, Self::Riders];
@@ -2344,6 +2412,7 @@ impl BoardField {
             Self::SessionType => "stype",
             Self::Fuel => "fuel",
             Self::FuelPct => "fuelpct",
+            Self::Setup => "setup",
         }
     }
 
@@ -2365,6 +2434,7 @@ impl BoardField {
             Self::SessionType => "Session type",
             Self::Fuel => "Fuel",
             Self::FuelPct => "Fuel %",
+            Self::Setup => "Setup",
         }
     }
 
@@ -2386,6 +2456,7 @@ impl BoardField {
             "stype" | "sessiontype" => Self::SessionType,
             "fuel" => Self::Fuel,
             "fuelpct" | "fuel%" | "fuelpercent" => Self::FuelPct,
+            "setup" => Self::Setup,
             _ => Self::None,
         }
     }
@@ -2401,6 +2472,7 @@ impl BoardField {
             Self::Best | Self::SessionBest => '\u{f2f2}',
             Self::SessionType => '\u{f11e}',
             Self::Fuel | Self::FuelPct => '\u{f52f}',
+            Self::Setup => '\u{f0ad}',
         }
     }
 
@@ -2434,10 +2506,11 @@ pub enum DashField {
     Class,
     Fuel,
     FuelPct,
+    Setup,
 }
 
 impl DashField {
-    pub const ALL: [Self; 23] = [
+    pub const ALL: [Self; 24] = [
         Self::None,
         Self::Speed,
         Self::Rpm,
@@ -2461,6 +2534,7 @@ impl DashField {
         Self::Class,
         Self::Fuel,
         Self::FuelPct,
+        Self::Setup,
     ];
 
     pub fn key(self) -> &'static str {
@@ -2488,6 +2562,7 @@ impl DashField {
             Self::Class => "class",
             Self::Fuel => "fuel",
             Self::FuelPct => "fuelpct",
+            Self::Setup => "setup",
         }
     }
 
@@ -2516,6 +2591,7 @@ impl DashField {
             Self::Class => "Class",
             Self::Fuel => "Fuel",
             Self::FuelPct => "Fuel %",
+            Self::Setup => "Setup",
         }
     }
 
@@ -2544,6 +2620,7 @@ impl DashField {
             "class" => Self::Class,
             "fuel" => Self::Fuel,
             "fuelpct" | "fuel%" | "fuelpercent" => Self::FuelPct,
+            "setup" => Self::Setup,
             _ => Self::None,
         }
     }
@@ -2566,6 +2643,7 @@ impl DashField {
             Self::Bike => '\u{f21c}',
             Self::Class => '\u{f0c0}',
             Self::Fuel | Self::FuelPct => '\u{f52f}',
+            Self::Setup => '\u{f0ad}',
         }
     }
 }

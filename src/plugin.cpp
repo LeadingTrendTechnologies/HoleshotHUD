@@ -272,9 +272,14 @@ __declspec(dllexport) void EventDeinit()
 
 __declspec(dllexport) void RunInit(void* _pData, int _iDataSize)
 {
-    (void)_pData;
-    (void)_iDataSize;
-    safeCall([] { g_state.beginRun(); });
+    safeCall([&] {
+        SPluginsBikeSession_t data{};
+        if (copySized(data, _pData, _iDataSize))
+        {
+            g_state.setBikeSession(data);
+        }
+        g_state.beginRun();
+    });
 }
 
 __declspec(dllexport) void RunDeinit()

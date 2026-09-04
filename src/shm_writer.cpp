@@ -230,6 +230,7 @@ void ShmWriter::publish(const PluginState& state, const PluginConfig& config)
     local.localSteer = state.localSteer();
     local.steerLock = state.steerLock();
     copyBounded(local.trackName, MXBO_TRACK_NAME, state.trackName().c_str());
+    copyBounded(local.setupName, MXBO_TRACK_NAME, state.setupName().c_str());
     local.trackLength = state.trackLength();
     local.sfMeters = state.startFinishMeters();
 

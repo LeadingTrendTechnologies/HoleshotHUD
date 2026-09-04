@@ -2,7 +2,7 @@ mod demo_track;
 mod edit;
 
 use mxbo_hud::config::{
-    BoardField, DashField, DotLabel, FontFamily, HudConfig, LeanStyle, SnapAlign, TableText, Units, WidgetId,
+    BoardField, DashField, DotLabel, FontFamily, GamepadStyle, HudConfig, LeanStyle, SnapAlign, TableText, Units, WidgetId,
 };
 use mxbo_hud::render::{draw, Fonts};
 use mxbo_hud::snapshot::{
@@ -221,6 +221,7 @@ impl Preview {
         self.cfg.apply_to_snapshot(&mut self.snap);
         sync_delta_preview(&self.active, self.t);
         sync_flag_preview(&self.active, self.t, self.cfg.flag_yellow, self.cfg.flag_blue);
+        sync_gamepad_preview(&self.active, self.t);
     }
 
     pub fn frame(&mut self, width: u32, height: u32) -> Vec<u8> {
@@ -311,6 +312,8 @@ fn center_widget(cfg: &mut HudConfig, name: &str) {
         size_demo_dash(cfg);
     } else if name == "lean" {
         size_demo_lean(cfg);
+    } else if name == "gamepad" {
+        size_demo_gamepad(cfg);
     } else if let Some(id) = widget_id(name) {
         cfg.snap(id, SnapAlign::Center);
     }
@@ -335,6 +338,12 @@ fn size_demo_lean(cfg: &mut HudConfig) {
     cfg.snap(WidgetId::Lean, SnapAlign::Center);
 }
 
+fn size_demo_gamepad(cfg: &mut HudConfig) {
+    cfg[WidgetId::Gamepad].rect.w = 0.28;
+    cfg[WidgetId::Gamepad].rect.h = 0.22;
+    cfg.snap(WidgetId::Gamepad, SnapAlign::Center);
+}
+
 fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg[WidgetId::Standings].show = name == "standings";
     cfg[WidgetId::Relative].show = name == "relative";
@@ -348,6 +357,7 @@ fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg[WidgetId::Delta].show = name == "delta";
     cfg[WidgetId::Flag].show = name == "flag";
     cfg[WidgetId::Lean].show = name == "lean";
+    cfg[WidgetId::Gamepad].show = name == "gamepad";
 }
 
 fn widget_id(name: &str) -> Option<WidgetId> {
@@ -364,8 +374,39 @@ fn widget_id(name: &str) -> Option<WidgetId> {
         "delta" => WidgetId::Delta,
         "flag" => WidgetId::Flag,
         "lean" => WidgetId::Lean,
+        "gamepad" => WidgetId::Gamepad,
         _ => return None,
     })
+}
+
+fn sync_gamepad_preview(active: &str, t: f32) {
+    if active != "gamepad" {
+        mxbo_hud::gamepad::set(mxbo_hud::PadState::DISCONNECTED);
+        return;
+    }
+    let mut buttons = 0u32;
+    if (t * 2.1).sin() > 0.15 {
+        buttons |= mxbo_hud::gamepad::SOUTH;
+    }
+    if (t * 1.3).cos() > 0.45 {
+        buttons |= mxbo_hud::gamepad::RIGHT;
+    }
+    if (t * 0.9).sin() > 0.2 {
+        buttons |= mxbo_hud::gamepad::LB;
+    }
+    if (t * 1.7).cos() > 0.55 {
+        buttons |= mxbo_hud::gamepad::RB;
+    }
+    mxbo_hud::gamepad::set(mxbo_hud::PadState {
+        kind: mxbo_hud::PadKind::Sony,
+        lx: (t * 1.1).sin() * 0.72,
+        ly: (t * 0.85).cos() * -0.55,
+        rx: (t * 0.6).cos() * 0.35,
+        ry: (t * 0.5).sin() * 0.25,
+        lt: ((t * 0.7).sin() * 0.5 + 0.5).clamp(0.0, 1.0),
+        rt: ((t * 1.35).cos() * 0.5 + 0.5).clamp(0.0, 1.0),
+        buttons,
+    });
 }
 
 fn sync_delta_preview(active: &str, t: f32) {
@@ -472,8 +513,10 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "delta_bold" => cfg[WidgetId::Delta].bold,
         "flag_bold" => cfg[WidgetId::Flag].bold,
         "lean_bold" => cfg[WidgetId::Lean].bold,
+        "gamepad_bold" => cfg[WidgetId::Gamepad].bold,
         "flag_yellow" => cfg.flag_yellow,
         "flag_blue" => cfg.flag_blue,
+        "flag_text" => cfg.flag_text,
         "ticker_title" => cfg.ticker_title,
         "ticker_autoscroll" => cfg.ticker_autoscroll,
         _ => return None,
@@ -544,8 +587,10 @@ fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
         "delta_bold" => cfg[WidgetId::Delta].bold = on,
         "flag_bold" => cfg[WidgetId::Flag].bold = on,
         "lean_bold" => cfg[WidgetId::Lean].bold = on,
+        "gamepad_bold" => cfg[WidgetId::Gamepad].bold = on,
         "flag_yellow" => cfg.flag_yellow = on,
         "flag_blue" => cfg.flag_blue = on,
+        "flag_text" => cfg.flag_text = on,
         "ticker_title" => cfg.ticker_title = on,
         "ticker_autoscroll" => cfg.ticker_autoscroll = on,
         _ => {}
@@ -585,6 +630,8 @@ fn int_val(cfg: &HudConfig, key: &str) -> Option<i32> {
         "flag_bg" => cfg[WidgetId::Flag].bg,
         "lean_font" => cfg[WidgetId::Lean].font,
         "lean_bg" => cfg[WidgetId::Lean].bg,
+        "gamepad_font" => cfg[WidgetId::Gamepad].font,
+        "gamepad_bg" => cfg[WidgetId::Gamepad].bg,
         _ => return None,
     })
 }
@@ -608,6 +655,7 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "delta_bg" => cfg[WidgetId::Delta].bg = value.clamp(0, 100),
         "flag_bg" => cfg[WidgetId::Flag].bg = value.clamp(0, 100),
         "lean_bg" => cfg[WidgetId::Lean].bg = value.clamp(0, 100),
+        "gamepad_bg" => cfg[WidgetId::Gamepad].bg = value.clamp(0, 100),
         "ticker_count" => cfg.ticker_count = value.clamp(3, 15),
         "sector_hist_laps" => cfg.sector_hist_laps = value.clamp(1, 5),
         "st_font" => cfg.set_font_pct(WidgetId::Standings, value),
@@ -622,6 +670,7 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "delta_font" => cfg.set_font_pct(WidgetId::Delta, value),
         "flag_font" => cfg.set_font_pct(WidgetId::Flag, value),
         "lean_font" => cfg.set_font_pct(WidgetId::Lean, value),
+        "gamepad_font" => cfg.set_font_pct(WidgetId::Gamepad, value),
         _ => {}
     }
 }
@@ -650,6 +699,7 @@ fn field_val(cfg: &HudConfig, key: &str) -> Option<String> {
         "st_text" => cfg.st_text.key().into(),
         "rel_text" => cfg.rel_text.key().into(),
         "lean_style" => cfg.lean_style.key().into(),
+        "gamepad_style" => cfg.gamepad_style.key().into(),
         _ => return None,
     })
 }
@@ -678,6 +728,7 @@ fn set_field(cfg: &mut HudConfig, key: &str, value: &str) {
         "st_text" => cfg.st_text = TableText::parse(value),
         "rel_text" => cfg.rel_text = TableText::parse(value),
         "lean_style" => cfg.lean_style = LeanStyle::parse(value),
+        "gamepad_style" => cfg.gamepad_style = GamepadStyle::parse(value),
         _ => {}
     }
 }
@@ -757,6 +808,7 @@ fn demo_snapshot() -> Snapshot {
     s.steer_lock = 0.40;
     let (poly, length, sf, name) = captured_track();
     write_name(&mut s.track_name, &name);
+    write_name(&mut s.setup_name, "Washougal Soft");
     s.poly_count = poly.len() as i32;
     for (i, p) in poly.iter().enumerate() {
         s.poly[i] = *p;

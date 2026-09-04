@@ -263,9 +263,13 @@ pub fn row_vs(s: &Snapshot, i: usize, live_on: bool, session: bool) -> SectorRow
             match vs_location(&g, s, i, t, pos, session) {
                 Some(raw) => {
                     let d = smooth_live(&mut g, i, raw);
-                    (t, d, t > CLOCK_ON, true)
+                    let best = compare_best(&g, s, i, session);
+                    (best, d, true, true)
                 }
-                None => (t, 0, false, true),
+                None => {
+                    let best = compare_best(&g, s, i, session);
+                    (best, 0, false, true)
+                }
             }
         }
     } else if frozen {
@@ -301,17 +305,15 @@ pub fn row_vs(s: &Snapshot, i: usize, live_on: bool, session: bool) -> SectorRow
         (0, 0, false, false)
     };
     drop(g);
-    let showing = time_ms > 0;
-    let has_delta = showing && has_delta;
     SectorRow {
         label,
         time_ms,
         delta_ms,
-        pending: !showing,
+        pending: !is_live && time_ms <= 0,
         has_delta,
         slower: has_delta && delta_ms > 0,
         fresh: hero,
-        live: is_live && showing,
+        live: is_live,
     }
 }
 
@@ -414,8 +416,8 @@ fn freeze_split(g: &mut SectorEngine, s: &Snapshot, i: usize, cur: [i32; 3]) {
     g.freeze_time[i] = dur;
     g.freeze_ok |= 1 << i;
     g.smooth_i = -1;
-    write_freeze_delta(g, s, i, dur, pos, false);
-    write_freeze_delta(g, s, i, dur, pos, true);
+    write_freeze_delta(g, s, i, dur, false);
+    write_freeze_delta(g, s, i, dur, true);
     if !g.track.is_empty() && track_pb::commit_sector(&g.track, &g.bike, i, dur) {
         g.saved[i] = dur;
     }
@@ -427,18 +429,9 @@ fn freeze_split(g: &mut SectorEngine, s: &Snapshot, i: usize, cur: [i32; 3]) {
     }
 }
 
-fn write_freeze_delta(
-    g: &mut SectorEngine,
-    s: &Snapshot,
-    i: usize,
-    dur: i32,
-    pos: f32,
-    session: bool,
-) {
-    let d = vs_location(g, s, i, dur, pos, session).or_else(|| {
-        let best = compare_best(g, s, i, session);
-        (best > 0).then_some(dur - best)
-    });
+fn write_freeze_delta(g: &mut SectorEngine, s: &Snapshot, i: usize, dur: i32, session: bool) {
+    let best = compare_best(g, s, i, session);
+    let d = (best > 0).then_some(dur - best);
     if session {
         if let Some(d) = d {
             g.session_freeze_delta[i] = d;
@@ -571,7 +564,7 @@ fn plugin_has_delta(s: &Snapshot, i: usize) -> bool {
 }
 
 fn live_elapsed(s: &Snapshot, i: usize) -> i32 {
-    let t = s.current_lap_ms;
+    let t = delta::lap_clock(s);
     if t <= 0 {
         return 0;
     }

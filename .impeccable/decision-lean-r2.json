@@ -1,0 +1,41 @@
+{
+  "title": "Choose Lean — round 2",
+  "question": "Horizon, Needle, and Twin are out. Three new structures in the same HUD world. Still: glance lean, steer percent while riding, no toy bike.",
+  "options": [
+    {
+      "id": "tape",
+      "label": "Tape",
+      "kicker": "WINDOW",
+      "thesis": "A rolling bank tape in a window, like an aircraft scale — the number sits still, the ticks move.",
+      "palette": ["#0A0A0A", "#FF9430", "#E4E4E6", "#84848A", "#2A2A2E"],
+      "materials": ["night-ink 6px plaque", "1px hairline", "vertical tick tape", "fixed orange bug", "Exo 2 ExtraBold Italic"],
+      "viewport": "Portrait plaque. Left third is a vertical window of ticks (15/30/45) scrolled so 32 sits at a fixed orange bug. Right: huge still 32°. Steer hairline along the bottom.",
+      "risk": "Aviation grammar may not read as moto at a glance.",
+      "comp": ".impeccable/mocks/decision/lean-tape.png"
+    },
+    {
+      "id": "lights",
+      "label": "Lights",
+      "kicker": "DASH",
+      "thesis": "Lean as the Dash rev lights: a row of capsules lighting out from center. Hardware, not a drawing of a bike.",
+      "palette": ["#0A0A0A", "#FF9430", "#E4E4E6", "#84848A", "#2A2A2E"],
+      "materials": ["night-ink 6px plaque", "Dash LED capsules", "huge ExtraBold Italic", "2px steer row"],
+      "viewport": "Wide plaque. Huge orange 32° on top. One row of 11 rounded LED cells, center white, four to the right lit orange. A thinner second row is steer at 30%. Dim L and R on the ends.",
+      "risk": "Can look like a second RPM bar sitting near Dash.",
+      "comp": ".impeccable/mocks/decision/lean-lights.png"
+    },
+    {
+      "id": "shear",
+      "label": "Shear",
+      "kicker": "TYPE",
+      "thesis": "The number is the widget. The +32° ExtraBold Italic is sheared with the bike; steer is a caption. No gauge chrome.",
+      "palette": ["#0A0A0A", "#FF9430", "#E4E4E6", "#84848A", "#2A2A2E"],
+      "materials": ["night-ink 6px plaque", "1px hairline", "sheared ExtraBold Italic", "2px steer caption"],
+      "viewport": "Compact plaque. One huge sheared orange +32° filling the field. Small white 30% R under it. No arc, no needle, no columns, no LEDs.",
+      "risk": "If the shear is timid it is just a big number; if loud it can look like a title plaque.",
+      "comp": ".impeccable/mocks/decision/lean-shear.png"
+    }
+  ],
+  "steer": true,
+  "buildPath": { "value": "comp", "toggle": true }
+}

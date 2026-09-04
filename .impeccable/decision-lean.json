@@ -1,0 +1,41 @@
+{
+  "title": "Choose Lean",
+  "question": "Three compositions in the existing HUD world. Same job: glance how far you are leaned, plus steer percent while riding. Spectate keeps lean and hides steer. The toy bike is out.",
+  "options": [
+    {
+      "id": "horizon",
+      "label": "Horizon",
+      "kicker": "HAIR",
+      "thesis": "The world tilts. Lean is a 2px horizon line and a huge signed degree — Delta Bar’s family, not a toy.",
+      "palette": ["#0A0A0A", "#FF9430", "#E4E4E6", "#84848A", "#2A2A2E"],
+      "materials": ["night-ink 6px plaque", "1px hairline", "2px tilted horizon", "Exo 2 ExtraBold Italic"],
+      "viewport": "Wide plaque. Huge orange +32° on top. A white 2px horizon physically rolled 32° with L/R on the ends. Steer is a second 2px orange hairline and 30% under it.",
+      "risk": "Can read as another Delta Bar if the tilt isn’t obvious at a glance.",
+      "comp": ".impeccable/mocks/decision/lean-horizon.png"
+    },
+    {
+      "id": "needle",
+      "label": "Needle",
+      "kicker": "METER",
+      "thesis": "A TV tach for roll: ticks, a fat orange needle, still type at the hub. The bike is the needle, not a silhouette.",
+      "palette": ["#0A0A0A", "#FF9430", "#E4E4E6", "#84848A", "#2A2A2E"],
+      "materials": ["night-ink 6px plaque", "1px hairline", "white tick arc", "orange needle", "Exo 2 ExtraBold Italic"],
+      "viewport": "Square plaque. Semicircle of ticks, thick orange needle at +32°. Huge still 32° under the hub. Steer hairline and 30% along the bottom.",
+      "risk": "Closest to the rejected gauge if the needle gets thin or a bike sneaks back in.",
+      "comp": ".impeccable/mocks/decision/lean-needle.png"
+    },
+    {
+      "id": "twin",
+      "label": "Twin",
+      "kicker": "COLUMNS",
+      "thesis": "Two numbers, one split. Lean and steer as Systems: huge type, thin tracks, no picture of a bike.",
+      "palette": ["#0A0A0A", "#FF9430", "#F8F8FC", "#84848A", "#2A2A2E"],
+      "materials": ["night-ink 6px plaque", "1px split", "huge ExtraBold Italic", "thin heat tracks"],
+      "viewport": "Portrait plaque, vertical hairline. Left: dim LEAN, huge orange 32°, thin white roll track. Right: dim STEER, huge white 30%, thin orange fill. Spectate drops the right column.",
+      "risk": "Glance may require reading both numbers; the graphic of lean is weaker.",
+      "comp": ".impeccable/mocks/decision/lean-twin.png"
+    }
+  ],
+  "steer": true,
+  "buildPath": { "value": "comp", "toggle": true }
+}

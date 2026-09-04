@@ -9,10 +9,11 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, VK_LBUTTON, VK_MBUTTON, VK_RBUTTON, VK_XBUTTON1, VK_XBUTTON2,
 };
 use windows::Win32::UI::Input::XboxController::{
-    XInputGetState, XINPUT_GAMEPAD_A, XINPUT_GAMEPAD_B, XINPUT_GAMEPAD_DPAD_DOWN,
-    XINPUT_GAMEPAD_DPAD_LEFT, XINPUT_GAMEPAD_DPAD_RIGHT, XINPUT_GAMEPAD_DPAD_UP,
-    XINPUT_GAMEPAD_LEFT_SHOULDER, XINPUT_GAMEPAD_RIGHT_SHOULDER, XINPUT_GAMEPAD_X,
-    XINPUT_GAMEPAD_Y, XINPUT_STATE,
+    XInputGetState, XINPUT_GAMEPAD_A, XINPUT_GAMEPAD_B, XINPUT_GAMEPAD_BACK,
+    XINPUT_GAMEPAD_DPAD_DOWN, XINPUT_GAMEPAD_DPAD_LEFT, XINPUT_GAMEPAD_DPAD_RIGHT,
+    XINPUT_GAMEPAD_DPAD_UP, XINPUT_GAMEPAD_LEFT_SHOULDER, XINPUT_GAMEPAD_LEFT_THUMB,
+    XINPUT_GAMEPAD_RIGHT_SHOULDER, XINPUT_GAMEPAD_RIGHT_THUMB, XINPUT_GAMEPAD_START,
+    XINPUT_GAMEPAD_X, XINPUT_GAMEPAD_Y, XINPUT_STATE,
 };
 
 const SONY_VID: u16 = 0x054C;
@@ -64,17 +65,31 @@ impl Default for Tracker {
 
 impl Tracker {
     /// Poll sit/stand, or capture the next pad / key / mouse press while settings is listening.
+    /// `gamepad_on` keeps analog viz polling even when Stance is hidden.
     pub fn tick(
         &mut self,
         bind: StanceBind,
         mode: StanceMode,
         listen: bool,
-        active: bool,
+        stance_on: bool,
+        gamepad_on: bool,
     ) -> Option<StanceBind> {
         if RESET.swap(false, Ordering::SeqCst) {
             self.sitting = false;
         }
-        if !active && !listen {
+        let want_pad = listen || stance_on || gamepad_on;
+        if !want_pad {
+            mxbo_hud::set_stance(self.sitting);
+            mxbo_hud::gamepad::set(mxbo_hud::PadState::DISCONNECTED);
+            return None;
+        }
+        let viz = self.read_viz();
+        if gamepad_on {
+            mxbo_hud::gamepad::set(viz);
+        } else {
+            mxbo_hud::gamepad::set(mxbo_hud::PadState::DISCONNECTED);
+        }
+        if !stance_on && !listen {
             mxbo_hud::set_stance(self.sitting);
             return None;
         }
@@ -134,6 +149,36 @@ impl Tracker {
             [0; 32]
         };
         Snap { pad, mouse, keys }
+    }
+
+    fn read_viz(&mut self) -> mxbo_hud::PadState {
+        if let Some(g) = self.xinput_gamepad() {
+            return xbox_viz(g);
+        }
+        self.hid.viz()
+    }
+
+    fn xinput_gamepad(&mut self) -> Option<windows::Win32::UI::Input::XboxController::XINPUT_GAMEPAD> {
+        let mut state = XINPUT_STATE::default();
+        if let Some(i) = self.xinput_slot {
+            if unsafe { XInputGetState(i, &mut state) } == 0 {
+                return Some(state.Gamepad);
+            }
+            self.xinput_slot = None;
+            self.xinput_retry = Instant::now() + Duration::from_secs(2);
+            return None;
+        }
+        if Instant::now() < self.xinput_retry {
+            return None;
+        }
+        for i in 0u32..4 {
+            if unsafe { XInputGetState(i, &mut state) } == 0 {
+                self.xinput_slot = Some(i);
+                return Some(state.Gamepad);
+            }
+        }
+        self.xinput_retry = Instant::now() + Duration::from_secs(2);
+        None
     }
 
     fn xinput_pad(&mut self) -> Option<(u16, u8, u8)> {
@@ -335,6 +380,67 @@ fn mask_from_buttons(check: impl Fn(StanceBind) -> bool) -> u16 {
     })
 }
 
+fn xbox_viz(g: windows::Win32::UI::Input::XboxController::XINPUT_GAMEPAD) -> mxbo_hud::PadState {
+    use mxbo_hud::gamepad::{
+        axis_i16, trigger_u8, BACK, DOWN, EAST, LB, LEFT, LS, NORTH, RB, RIGHT, RS, SOUTH, START, UP,
+        WEST,
+    };
+    let b = g.wButtons.0;
+    let mut buttons = 0u32;
+    if b & XINPUT_GAMEPAD_A.0 != 0 {
+        buttons |= SOUTH;
+    }
+    if b & XINPUT_GAMEPAD_B.0 != 0 {
+        buttons |= EAST;
+    }
+    if b & XINPUT_GAMEPAD_X.0 != 0 {
+        buttons |= WEST;
+    }
+    if b & XINPUT_GAMEPAD_Y.0 != 0 {
+        buttons |= NORTH;
+    }
+    if b & XINPUT_GAMEPAD_LEFT_SHOULDER.0 != 0 {
+        buttons |= LB;
+    }
+    if b & XINPUT_GAMEPAD_RIGHT_SHOULDER.0 != 0 {
+        buttons |= RB;
+    }
+    if b & XINPUT_GAMEPAD_BACK.0 != 0 {
+        buttons |= BACK;
+    }
+    if b & XINPUT_GAMEPAD_START.0 != 0 {
+        buttons |= START;
+    }
+    if b & XINPUT_GAMEPAD_LEFT_THUMB.0 != 0 {
+        buttons |= LS;
+    }
+    if b & XINPUT_GAMEPAD_RIGHT_THUMB.0 != 0 {
+        buttons |= RS;
+    }
+    if b & XINPUT_GAMEPAD_DPAD_UP.0 != 0 {
+        buttons |= UP;
+    }
+    if b & XINPUT_GAMEPAD_DPAD_DOWN.0 != 0 {
+        buttons |= DOWN;
+    }
+    if b & XINPUT_GAMEPAD_DPAD_LEFT.0 != 0 {
+        buttons |= LEFT;
+    }
+    if b & XINPUT_GAMEPAD_DPAD_RIGHT.0 != 0 {
+        buttons |= RIGHT;
+    }
+    mxbo_hud::PadState {
+        kind: mxbo_hud::PadKind::Xbox,
+        lx: axis_i16(g.sThumbLX, 7849),
+        ly: -axis_i16(g.sThumbLY, 7849),
+        rx: axis_i16(g.sThumbRX, 8689),
+        ry: -axis_i16(g.sThumbRY, 8689),
+        lt: trigger_u8(g.bLeftTrigger),
+        rt: trigger_u8(g.bRightTrigger),
+        buttons,
+    }
+}
+
 #[derive(Clone, Copy)]
 enum HidKind {
     DualSense,
@@ -345,8 +451,13 @@ enum HidKind {
 struct DsPad {
     b0: u8,
     b1: u8,
+    b2: u8,
     lt: u8,
     rt: u8,
+    lx: u8,
+    ly: u8,
+    rx: u8,
+    ry: u8,
 }
 
 fn ds_held(pad: DsPad, bind: StanceBind) -> bool {
@@ -376,20 +487,35 @@ fn ds_buttons(buf: &[u8]) -> Option<DsPad> {
         0x01 if buf.len() > 9 => Some(DsPad {
             b0: buf[8],
             b1: buf[9],
+            b2: buf.get(10).copied().unwrap_or(0),
             lt: buf.get(5).copied().unwrap_or(0),
             rt: buf.get(6).copied().unwrap_or(0),
+            lx: buf.get(1).copied().unwrap_or(128),
+            ly: buf.get(2).copied().unwrap_or(128),
+            rx: buf.get(3).copied().unwrap_or(128),
+            ry: buf.get(4).copied().unwrap_or(128),
         }),
         0x31 if buf.len() > 10 => Some(DsPad {
             b0: buf[9],
             b1: buf[10],
+            b2: buf.get(11).copied().unwrap_or(0),
             lt: buf.get(6).copied().unwrap_or(0),
             rt: buf.get(7).copied().unwrap_or(0),
+            lx: buf.get(2).copied().unwrap_or(128),
+            ly: buf.get(3).copied().unwrap_or(128),
+            rx: buf.get(4).copied().unwrap_or(128),
+            ry: buf.get(5).copied().unwrap_or(128),
         }),
         _ if buf.len() > 8 => Some(DsPad {
             b0: buf[7],
             b1: buf[8],
+            b2: buf.get(9).copied().unwrap_or(0),
             lt: buf.get(4).copied().unwrap_or(0),
             rt: buf.get(5).copied().unwrap_or(0),
+            lx: buf.get(1).copied().unwrap_or(128),
+            ly: buf.get(2).copied().unwrap_or(128),
+            rx: buf.get(3).copied().unwrap_or(128),
+            ry: buf.get(4).copied().unwrap_or(128),
         }),
         _ => None,
     }
@@ -403,22 +529,104 @@ fn ds4_buttons(buf: &[u8]) -> Option<DsPad> {
         0x01 if buf.len() > 9 => Some(DsPad {
             b0: buf[5],
             b1: buf[6],
+            b2: buf.get(7).copied().unwrap_or(0),
             lt: buf.get(8).copied().unwrap_or(0),
             rt: buf.get(9).copied().unwrap_or(0),
+            lx: buf.get(1).copied().unwrap_or(128),
+            ly: buf.get(2).copied().unwrap_or(128),
+            rx: buf.get(3).copied().unwrap_or(128),
+            ry: buf.get(4).copied().unwrap_or(128),
         }),
         0x11 if buf.len() > 11 => Some(DsPad {
             b0: buf[7],
             b1: buf[8],
+            b2: buf.get(9).copied().unwrap_or(0),
             lt: buf.get(10).copied().unwrap_or(0),
             rt: buf.get(11).copied().unwrap_or(0),
+            lx: buf.get(3).copied().unwrap_or(128),
+            ly: buf.get(4).copied().unwrap_or(128),
+            rx: buf.get(5).copied().unwrap_or(128),
+            ry: buf.get(6).copied().unwrap_or(128),
         }),
         _ if buf.len() > 8 => Some(DsPad {
             b0: buf[5],
             b1: buf[6],
+            b2: buf.get(7).copied().unwrap_or(0),
             lt: buf.get(8).copied().unwrap_or(0),
             rt: buf.get(9).copied().unwrap_or(0),
+            lx: buf.get(1).copied().unwrap_or(128),
+            ly: buf.get(2).copied().unwrap_or(128),
+            rx: buf.get(3).copied().unwrap_or(128),
+            ry: buf.get(4).copied().unwrap_or(128),
         }),
         _ => None,
+    }
+}
+
+fn sony_viz(pad: DsPad) -> mxbo_hud::PadState {
+    use mxbo_hud::gamepad::{
+        axis_u8, trigger_u8, BACK, DOWN, EAST, GUIDE, LB, LEFT, LS, NORTH, RB, RIGHT, RS, SOUTH, START,
+        TOUCH, UP, WEST,
+    };
+    let hat = pad.b0 & 0x0F;
+    let mut buttons = 0u32;
+    if pad.b0 & (1 << 4) != 0 {
+        buttons |= WEST;
+    }
+    if pad.b0 & (1 << 5) != 0 {
+        buttons |= SOUTH;
+    }
+    if pad.b0 & (1 << 6) != 0 {
+        buttons |= EAST;
+    }
+    if pad.b0 & (1 << 7) != 0 {
+        buttons |= NORTH;
+    }
+    if pad.b1 & (1 << 0) != 0 {
+        buttons |= LB;
+    }
+    if pad.b1 & (1 << 1) != 0 {
+        buttons |= RB;
+    }
+    if pad.b1 & (1 << 4) != 0 {
+        buttons |= BACK;
+    }
+    if pad.b1 & (1 << 5) != 0 {
+        buttons |= START;
+    }
+    if pad.b1 & (1 << 6) != 0 {
+        buttons |= LS;
+    }
+    if pad.b1 & (1 << 7) != 0 {
+        buttons |= RS;
+    }
+    if matches!(hat, 0 | 1 | 7) {
+        buttons |= UP;
+    }
+    if matches!(hat, 1 | 2 | 3) {
+        buttons |= RIGHT;
+    }
+    if matches!(hat, 3 | 4 | 5) {
+        buttons |= DOWN;
+    }
+    if matches!(hat, 5 | 6 | 7) {
+        buttons |= LEFT;
+    }
+    if pad.b2 & (1 << 0) != 0 {
+        buttons |= GUIDE;
+    }
+    if pad.b2 & (1 << 1) != 0 {
+        buttons |= TOUCH;
+    }
+    mxbo_hud::PadState {
+        kind: mxbo_hud::PadKind::Sony,
+        lx: axis_u8(pad.lx),
+        ly: axis_u8(pad.ly),
+        rx: axis_u8(pad.rx),
+        ry: axis_u8(pad.ry),
+        lt: trigger_u8(pad.lt),
+        rt: trigger_u8(pad.rt),
+        buttons,
     }
 }
 
@@ -435,6 +643,7 @@ struct HidPad {
     device: Option<HidDevice>,
     kind: HidKind,
     last: u16,
+    last_ds: Option<DsPad>,
     next_scan: Instant,
 }
 
@@ -445,6 +654,7 @@ impl HidPad {
             device: None,
             kind: HidKind::DualSense,
             last: 0,
+            last_ds: None,
             next_scan: Instant::now(),
         }
     }
@@ -464,16 +674,23 @@ impl HidPad {
                 };
                 if let Some(pad) = pad {
                     self.last = mask_from_buttons(|bind| ds_held(pad, bind));
+                    self.last_ds = Some(pad);
                 }
                 self.last
             }
             Err(_) => {
                 self.device = None;
                 self.last = 0;
+                self.last_ds = None;
                 self.next_scan = Instant::now() + Duration::from_millis(400);
                 0
             }
         }
+    }
+
+    fn viz(&mut self) -> mxbo_hud::PadState {
+        self.held_mask();
+        self.last_ds.map(sony_viz).unwrap_or(mxbo_hud::PadState::DISCONNECTED)
     }
 
     fn ensure(&mut self) {

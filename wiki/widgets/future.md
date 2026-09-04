@@ -8,7 +8,6 @@ Plugin field status lives in [Home.md](../Home.md). **Overlay** = already in SHM
 | --- | --- | --- |
 | [G-Force](#g-force) | — | Need SHM (`m_fAccelerationX/Y/Z`) |
 | [Fuel calculator](#fuel-calculator) | Dash / table **Fuel** and **Fuel %** | Overlay (`fuel` / `maxFuel`) |
-| [Gamepad](#gamepad) | [Stance](stance.md) pad poll | Local XInput/HID, not plugin |
 | [Ideal Lap](#ideal-lap) | [Sectors](sector.md) | Overlay splits + `track_pb` |
 | [Lap consistency](#lap-consistency) | [Delta Bar](delta-bar.md) | Overlay last/best lap; need a lap ring |
 | [Telemetry](#telemetry) | — | Need SHM (throttle / brake / clutch / susp) |
@@ -32,14 +31,6 @@ Consumption tracking, not just a tank readout.
 - Level is already **Overlay** (`fuel` / `maxFuel`) and shows in Dash / Standings / Relative / ticker footers. This widget is **rate**: L/lap or gal/lap, remaining laps, maybe a session total.
 - Derive from `fuel` vs completed laps / `local_track_pos`. No extra plugin field.
 - Do not treat a refill or a reset as a huge burn. Need a baseline after leaving pits / starting a lap.
-
-## Gamepad
-
-Live controller visualization.
-
-- Not plugin telemetry. Reuse the Stance poll in `overlay/src/stance.rs` (XInput, DualSense / DS4 HID). Today that path only runs while Stance is shown or listening for a bind — a Gamepad widget must keep polling while **it** is shown.
-- Sticks, triggers, face buttons, D-pad. Stance’s sit bind is unrelated.
-- Other riders’ inputs are not available (only throttle / front brake / lean on `RaceVehicleData`).
 
 ## Ideal Lap
 
@@ -84,6 +75,7 @@ Timestamped race-event feed.
 
 ## Change log
 
+- 2026-09-02 — Gamepad shipped. Moved to [gamepad.md](gamepad.md).
 - 2026-09-01 — Lean shipped. Moved to [lean.md](lean.md).
 - 2026-09-01 — Added Lap consistency (session lap-time trend).
 - 2026-09-01 — First cut. Eight widgets only.
