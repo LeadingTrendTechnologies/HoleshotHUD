@@ -3888,6 +3888,7 @@ fn gamepad_goldens() {
     let base = live_snap();
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
+    cfg.experimental = true;
     cfg[WidgetId::Gamepad].show = true;
     crate::gamepad::set(crate::gamepad::demo_sony());
     let s = golden_snap(&base, &cfg);

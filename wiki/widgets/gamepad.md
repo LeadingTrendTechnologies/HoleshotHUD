@@ -1,8 +1,8 @@
-# Gamepad
+# Controller
 
-Live local controller on the overlay. DualShock / DualSense HID draws PlayStation glyphs; Steam Xbox mapping and native XInput draw Xbox. Settings subtitle: “Live pad — sticks, triggers, bumpers, and buttons”.
+Live local controller on the overlay. DualShock / DualSense HID draws PlayStation glyphs; Steam Xbox mapping and native XInput draw Xbox. Settings subtitle: “Live pad — sticks, triggers, bumpers, and buttons”. Settings tab name is **Controller**. `WidgetId` stays `Gamepad`.
 
-Turn it on with **Show on overlay**. Lives under Cockpit with Dash, Lean, and Systems.
+Behind **Experimental widgets** (Settings → Labs). Then turn it on with **Show on overlay**. Lives under Labs, not Cockpit.
 
 This is **not** plugin telemetry. Other riders’ inputs are not available.
 
@@ -23,13 +23,13 @@ Starts **hidden**.
 
 - Draw: `draw_gamepad` in `overlay/hud/src/render.rs`
 - State: `overlay/hud/src/gamepad.rs`
-- Poll: `overlay/src/stance.rs` (`Tracker::tick` `gamepad_on`). Reuses XInput / DualSense / DS4 HID from Stance. Pad scan runs while Gamepad **or** Stance is shown (or while listening for a bind).
+- Poll: `overlay/src/stance.rs` (`Tracker::tick` `gamepad_on`). Reuses XInput / DualSense / DS4 HID from Stance. Pad scan runs while Controller is visible (`gamepad_visible`) **or** Stance is shown (or while listening for a bind).
 - Settings: `pane_gamepad` in `overlay/src/settings.rs`
 
 ## Do not regress
 
-- Keep the widget off until **Show on overlay** is on.
-- Fresh install: `show_gamepad = false`.
+- Keep the widget off until Labs → **Experimental widgets** and **Show on overlay** are on. `show_gamepad` alone must not draw.
+- Fresh install: `show_gamepad = false`, `experimental = false`.
 - XInput / Steam Xbox mapping draws the Xbox Series pad (A/B/X/Y, LB/RB, LT/RT). Sony HID draws DualShock glyphs (△○×□, L1/R1, L2/R2). Do not put Xbox labels on the DualShock body.
 - DualShock keeps its proportions in the widget box. A wide short widget letterboxes the pad; it does not pancake the silhouette. Same aspect-fit for Xbox.
 - DualShock art is `overlay/hud/assets/gamepad-ds4.png`. Xbox art is `overlay/hud/assets/gamepad-xbox.png`. Do not rewrite DualShock UVs or `gamepad-ds4.png` to ship Xbox. Orange tints the drawing's interiors and well rings; it does not draw HUD capsules over the pad.
@@ -40,12 +40,13 @@ Starts **hidden**.
 - Pulled trigger orange follows the rounded bottom lip (not a flat cut). Analog squeeze is from that lip up. Bumpers light the shoulder bar while held.
 - Pressed labels and glyphs stay that pad’s 1px cream strokes on orange. Do not thicken them, ink them black, or redraw outlines.
 - No pad is the **No controller** pill, not an idle pad.
-- Do not poll XInput/HID every overlay frame unless Gamepad or Stance is shown (or bind listen). Disconnected XInput slots still back off for 2s.
+- Do not poll XInput/HID every overlay frame unless Controller is visible or Stance is shown (or bind listen). Disconnected XInput slots still back off for 2s.
 - Sit / stand stays Stance. This widget must not change sitting.
 - Other riders’ throttle / brake are not this widget.
 
 ## Change log
 
+- 2026-09-04 — Rider-facing name is Controller. Behind Settings → Labs → Experimental widgets. Ini keys stay `show_gamepad` / `gamepad_*`.
 - 2026-09-03 — Xbox is its own Series silhouette (LS up-left, d-pad down-left, ABXY, LT/RT). DualShock drawing and UVs stay as they were.
 - 2026-09-03 — Trigger orange follows the rounded bottom lip per column, not a flat row. Full pull still fills the wing.
 - 2026-09-02 — Pressed labels are dark ink on orange. Bumpers fill the rounded shoulder. Face and D-pad fills reach the outline.

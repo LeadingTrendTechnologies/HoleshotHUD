@@ -1,4 +1,4 @@
-//! Live local pad for the Gamepad widget. Not plugin telemetry.
+//! Live local pad for the Controller widget. Not plugin telemetry.
 
 use std::sync::Mutex;
 

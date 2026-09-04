@@ -75,6 +75,7 @@ Timestamped race-event feed.
 
 ## Change log
 
+- 2026-09-04 — Controller (was Gamepad) is Labs-only. See [gamepad.md](gamepad.md).
 - 2026-09-02 — Gamepad shipped. Moved to [gamepad.md](gamepad.md).
 - 2026-09-01 — Lean shipped. Moved to [lean.md](lean.md).
 - 2026-09-01 — Added Lap consistency (session lap-time trend).

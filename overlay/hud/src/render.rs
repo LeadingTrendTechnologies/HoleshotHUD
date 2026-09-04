@@ -486,7 +486,7 @@ fn draw_widgets(
         let _g = push_style(fonts, cfg[WidgetId::Lean].bold, cfg[WidgetId::Lean].font);
         draw_lean(px, fonts, s, cfg, sw, sh);
     }
-    if cfg[WidgetId::Gamepad].show {
+    if cfg.gamepad_visible() {
         let _g = push_style(fonts, cfg[WidgetId::Gamepad].bold, cfg[WidgetId::Gamepad].font);
         draw_gamepad(px, fonts, cfg, sw, sh);
     }
@@ -595,7 +595,7 @@ fn draw_layout(px: &mut Pixmap, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32)
     if cfg[WidgetId::Lean].show {
         layout_box(px, cfg[WidgetId::Lean].rect.x * sw, cfg[WidgetId::Lean].rect.y * sh, cfg[WidgetId::Lean].rect.w * sw, cfg[WidgetId::Lean].rect.h * sh, false);
     }
-    if cfg[WidgetId::Gamepad].show {
+    if cfg.gamepad_visible() {
         layout_box(px, cfg[WidgetId::Gamepad].rect.x * sw, cfg[WidgetId::Gamepad].rect.y * sh, cfg[WidgetId::Gamepad].rect.w * sw, cfg[WidgetId::Gamepad].rect.h * sh, false);
     }
     if cfg[WidgetId::Flag].show {

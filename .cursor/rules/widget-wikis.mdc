@@ -23,6 +23,6 @@ Before changing a HUD widget, read its page under `wiki/widgets/`. Index: `wiki/
 | Delta Bar | `wiki/widgets/delta-bar.md` |
 | Stance | `wiki/widgets/stance.md` |
 | Lean | `wiki/widgets/lean.md` |
-| Gamepad | `wiki/widgets/gamepad.md` |
+| Controller (`Gamepad`) | `wiki/widgets/gamepad.md` |
 
 After a behavior, layout, settings, or color change, append a dated bullet to that page’s **Change log** (why, not just what). Update the **Do not regress** list if you add an invariant. Plugin-field status still belongs in `wiki/Home.md`.

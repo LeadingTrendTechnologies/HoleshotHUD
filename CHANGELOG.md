@@ -2,11 +2,11 @@
 
 ## 0.7.0
 
-Gamepad is a new Cockpit widget for live controller inputs. Delta Bar and Sectors snap live time to the game's official splits.
+Controller is a new Labs widget for live pad inputs. Delta Bar and Sectors snap live time to the game's official splits.
 
-### Gamepad
+### Controller
 
-- Turn it on with **Show on overlay**. It starts hidden. This is your local pad, not plugin telemetry.
+- Turn on **Experimental widgets** in Settings → Labs, then **Show on overlay**. It starts hidden. This is your local pad, not plugin telemetry.
 - DualShock / DualSense HID draws the PlayStation pad. Steam Xbox mapping draws an Xbox Series pad (A/B/X/Y, offset sticks), not DualShock with Xbox labels.
 - Analog sticks leave their wells. Triggers (L2/R2 or LT/RT) fill from the curved bottom lip. Bumpers (L1/R1 or LB/RB) light orange while held.
 - Face buttons and D-pad fill out to that pad’s outline. Bumpers fill the rounded shoulder. Pressed labels stay the drawing’s cream strokes. No pad shows **No controller**.

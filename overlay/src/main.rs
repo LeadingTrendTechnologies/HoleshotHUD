@@ -592,7 +592,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
                 cfg[crate::config::WidgetId::Stance].show,
                 cfg.stance_bind,
                 cfg.stance_mode,
-                cfg[crate::config::WidgetId::Gamepad].show,
+                cfg.gamepad_visible(),
             ),
             None => crate::config::with_config(|cfg| {
                 (
@@ -601,7 +601,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
                     cfg[crate::config::WidgetId::Stance].show,
                     cfg.stance_bind,
                     cfg.stance_mode,
-                    cfg[crate::config::WidgetId::Gamepad].show,
+                    cfg.gamepad_visible(),
                 )
             }),
         };

@@ -313,6 +313,7 @@ fn center_widget(cfg: &mut HudConfig, name: &str) {
     } else if name == "lean" {
         size_demo_lean(cfg);
     } else if name == "gamepad" {
+        cfg.experimental = true;
         size_demo_gamepad(cfg);
     } else if let Some(id) = widget_id(name) {
         cfg.snap(id, SnapAlign::Center);
@@ -358,6 +359,7 @@ fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg[WidgetId::Flag].show = name == "flag";
     cfg[WidgetId::Lean].show = name == "lean";
     cfg[WidgetId::Gamepad].show = name == "gamepad";
+    cfg.experimental = name == "gamepad";
 }
 
 fn widget_id(name: &str) -> Option<WidgetId> {

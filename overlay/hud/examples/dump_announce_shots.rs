@@ -87,6 +87,7 @@ fn main() {
             c.lean_style = LeanStyle::Minimal;
         }),
         ("gamepad.png", W, H, |c| {
+            c.experimental = true;
             size_show(c, "gamepad", 0.28, 0.22);
             mxbo_hud::gamepad::set(mxbo_hud::gamepad::demo_sony());
         }),

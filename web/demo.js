@@ -111,7 +111,7 @@ const NAMES = {
   delta: "Delta Bar",
   flag: "Flags",
   lean: "Lean",
-  gamepad: "Gamepad",
+  gamepad: "Controller",
 };
 
 const canvas = document.getElementById("hud");

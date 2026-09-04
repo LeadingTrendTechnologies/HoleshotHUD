@@ -1,7 +1,7 @@
 //! THESIS: Settings is a first-run on-switch, then a working board — not a Windows Settings clone.
 //! OWN-WORLD: Charcoal stack, Holeshot Orange plaque, Exo 2 ExtraBold Italic, 6–10px rounds, no card shadows.
 //! STORY: Rider hits F8, sees Show on overlay, turns widgets on, then edits columns and snap.
-//! FIRST VIEWPORT: Top mode bar (Widgets / Settings / Feedback); widget rail grouped Boards / Track / Cockpit; rail hides on Settings and Feedback; orange name plaque; Show on overlay on the right; Header/Footer are three slots.
+//! FIRST VIEWPORT: Top mode bar (Widgets / Settings / Feedback); widget rail grouped Boards / Track / Cockpit / Labs; rail hides on Settings and Feedback; orange name plaque; Show on overlay on the right; Header/Footer are three slots.
 //! FORM: Combined Show Plaque + Header Strip columns; seed settings-comp.
 //! FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance.
 
@@ -244,6 +244,10 @@ impl Tab {
     fn is_widget(self) -> bool {
         !matches!(self, Tab::App | Tab::Feedback)
     }
+
+    fn is_labs(self) -> bool {
+        matches!(self, Tab::Gamepad)
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -432,6 +436,7 @@ enum Hit {
     MinimizeOnClose,
     CloseWithGame,
     OpenWithGame,
+    FeatureSector,
     AutoUpdateOnLaunch,
     QuitApp,
     Uninstall,
@@ -1221,6 +1226,11 @@ fn dispatch(id: Hit, p: (f32, f32)) {
     match id {
         Hit::TabWidgets => {
             let last = UI.lock().unwrap().as_ref().map(|u| u.last_widget).unwrap_or(Tab::Standings);
+            let last = if last.is_labs() && !with_config(|c| c.experimental_unlocked()) {
+                Tab::Standings
+            } else {
+                last
+            };
             set_tab(last);
             return;
         }
@@ -1576,6 +1586,12 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::FlagShow => c[WidgetId::Flag].show ^= true,
         Hit::LeanShow => c[WidgetId::Lean].show ^= true,
         Hit::GamepadShow => c[WidgetId::Gamepad].show ^= true,
+        Hit::FeatureSector => {
+            c.experimental = !c.experimental;
+            if !c.experimental {
+                c[WidgetId::Gamepad].show = false;
+            }
+        }
         Hit::FlagYellow => c.flag_yellow = !c.flag_yellow,
         Hit::FlagBlue => c.flag_blue = !c.flag_blue,
         Hit::FlagText => c.flag_text = !c.flag_text,
@@ -1698,6 +1714,12 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::StBg | Hit::StHl | Hit::RelBg | Hit::RelHl | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg | Hit::FlagBg | Hit::LeanBg | Hit::GamepadBg
         | Hit::StW(_) | Hit::RelW(_) | Hit::Font(_) | Hit::StanceReset | Hit::TrackPbClear => {}
     });
+    if id == Hit::FeatureSector && !with_config(|c| c.experimental_unlocked()) {
+        let on_labs = UI.lock().unwrap().as_ref().is_some_and(|u| u.tab.is_labs());
+        if on_labs {
+            set_tab(Tab::App);
+        }
+    }
 }
 
 fn is_drop_pick(hit: Hit) -> bool {
@@ -1774,7 +1796,8 @@ fn hit_label(hit: Hit) -> String {
         Hit::TabStance => "Stance".into(),
         Hit::TabFlag => "Flags".into(),
         Hit::TabLean => "Lean".into(),
-        Hit::TabGamepad => "Gamepad".into(),
+        Hit::TabGamepad => "Controller".into(),
+        Hit::FeatureSector => "Experimental widgets".into(),
         Hit::StShow | Hit::RelShow | Hit::MapShow | Hit::MiniShow | Hit::RadarShow | Hit::DashShow
         | Hit::TickerShow | Hit::SysShow | Hit::SectorShow | Hit::DeltaShow | Hit::StanceShow | Hit::FlagShow | Hit::LeanShow | Hit::GamepadShow => "Show on overlay".into(),
         Hit::QuitApp => "Quit overlay".into(),
@@ -2140,7 +2163,7 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
 
 fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig) {
     let pending = crate::feedback::pending_reply();
-    let (tab, hover, focus, open_drop, drag, scroll, nav_scroll, banner_dismissed, whats_new_open, whats_new_scroll, bind_listen, reply_scroll, reply_id) = {
+    let (mut tab, hover, focus, open_drop, drag, scroll, nav_scroll, banner_dismissed, whats_new_open, whats_new_scroll, bind_listen, reply_scroll, reply_id) = {
         let mut ui = UI.lock().unwrap();
         if let Some(u) = ui.as_mut() {
             if !u.whats_new_open && u.reply_id.is_none() {
@@ -2168,6 +2191,9 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
             ui.and_then(|u| u.reply_id.clone()),
         )
     };
+    if tab.is_labs() && !cfg.experimental_unlocked() {
+        tab = Tab::App;
+    }
     let banner = crate::update::manual_banner(cfg.auto_update_on_launch, banner_dismissed, &crate::update::state());
     let banner_h = if banner.is_some() {
         if crate::update::update_may_need_admin() {
@@ -2316,7 +2342,7 @@ fn widget_short_name(id: WidgetId) -> &'static str {
         WidgetId::Stance => "Stance",
         WidgetId::Flag => "Flags",
         WidgetId::Lean => "Lean",
-        WidgetId::Gamepad => "Gamepad",
+        WidgetId::Gamepad => "Controller",
     }
 }
 
@@ -2463,14 +2489,13 @@ fn widget_groups(cfg: &HudConfig) -> Vec<(&'static str, Vec<(Tab, Hit, &'static 
     let cockpit = vec![
         (Tab::Dash, Hit::TabDash, "Dash", cfg[WidgetId::Dash].show),
         (Tab::Lean, Hit::TabLean, "Lean", cfg[WidgetId::Lean].show),
-        (Tab::Gamepad, Hit::TabGamepad, "Gamepad", cfg[WidgetId::Gamepad].show),
         (Tab::Delta, Hit::TabDelta, "Delta Bar", cfg[WidgetId::Delta].show),
         (Tab::Sector, Hit::TabSector, "Sectors", cfg[WidgetId::Sector].show),
         (Tab::Flag, Hit::TabFlag, "Flags", cfg[WidgetId::Flag].show),
         (Tab::Sys, Hit::TabSys, "Systems", cfg[WidgetId::Sys].show),
         (Tab::Stance, Hit::TabStance, "Stance", cfg[WidgetId::Stance].show),
     ];
-    vec![
+    let mut groups = vec![
         (
             "Boards",
             vec![
@@ -2488,7 +2513,19 @@ fn widget_groups(cfg: &HudConfig) -> Vec<(&'static str, Vec<(Tab, Hit, &'static 
             ],
         ),
         ("Cockpit", cockpit),
-    ]
+    ];
+    if cfg.experimental_unlocked() {
+        groups.push((
+            "Labs",
+            vec![(
+                Tab::Gamepad,
+                Hit::TabGamepad,
+                "Controller",
+                cfg[WidgetId::Gamepad].show,
+            )],
+        ));
+    }
+    groups
 }
 
 fn widget_rail_height(cfg: &HudConfig) -> f32 {
@@ -3543,6 +3580,10 @@ fn pane_app(
         text(px, fonts, "Starts the overlay in the tray when MX Bikes launches, including after you close the game. F8 or the HUD mark opens settings.", 11.0, x + 4.0, y + 2.0, dim(), false);
         y += 22.0;
     }
+    y = section(px, fonts, x, y, "Labs");
+    y = toggle_row(px, fonts, x, y, w, "Experimental widgets", cfg.experimental, Hit::FeatureSector, hover, hits);
+    text(px, fonts, "Adds Controller. Off until you turn this on.", 11.0, x + 4.0, y + 2.0, dim(), false);
+    y += 22.0;
     y = section(px, fonts, x, y, "Updates");
     let need_admin = crate::update::update_may_need_admin();
     y = toggle_row(px, fonts, x, y, w, "Update automatically on launch", cfg.auto_update_on_launch, Hit::AutoUpdateOnLaunch, hover, hits);
@@ -4143,7 +4184,7 @@ fn widget_pane_spec(id: WidgetId) -> WidgetPaneSpec {
         },
         WidgetId::Gamepad => WidgetPaneSpec {
             id,
-            title: "Gamepad",
+            title: "Controller",
             subtitle: "Live pad — sticks, triggers, bumpers, and buttons",
             show: Hit::GamepadShow,
             bg: Hit::GamepadBg,

@@ -2154,9 +2154,13 @@ impl HudConfig {
         cols
     }
 
-    /// Older Settings → Labs toggle. Unused for draw; still round-trips in the ini.
+    /// Settings → Labs → Experimental widgets. Gates Controller.
     pub fn experimental_unlocked(&self) -> bool {
         self.experimental
+    }
+
+    pub fn gamepad_visible(&self) -> bool {
+        self.experimental_unlocked() && self[WidgetId::Gamepad].show
     }
 
     pub fn sector_visible(&self) -> bool {
@@ -2180,6 +2184,7 @@ impl HudConfig {
             WidgetId::Sector => self.sector_visible(),
             WidgetId::Delta => self.delta_visible(),
             WidgetId::Stance => self.stance_visible(),
+            WidgetId::Gamepad => self.gamepad_visible(),
             _ => self[id].show,
         })
     }

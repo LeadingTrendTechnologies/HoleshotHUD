@@ -66,7 +66,7 @@ cmd.exe //c "taskkill /IM Holeshot-HUD.exe /F"
 
 ### Local debug
 
-`cargo run` and `build.bat` keep every overlay widget off until **Show on overlay** is on. **Sectors**, **Delta Bar**, **Lean**, **Gamepad**, **Stance**, and **Flags** are regular Cockpit widgets.
+`cargo run` and `build.bat` keep every overlay widget off until **Show on overlay** is on. **Sectors**, **Delta Bar**, **Lean**, **Stance**, and **Flags** are regular Cockpit widgets. **Controller** is behind Settings → Labs → Experimental widgets.
 
 ```bash
 cmd.exe //c "cargo run --manifest-path overlay\Cargo.toml --bin Holeshot-HUD"

@@ -87,6 +87,7 @@ fn default_hud_hides_every_widget() {
     assert_eq!(cfg.gamepad_style, GamepadStyle::Auto);
     assert!(!cfg.stance_show_sit);
     assert!(!cfg.experimental);
+    assert!(!cfg.gamepad_visible());
     assert!(cfg.whats_new_seen.is_empty());
     assert!(cfg.first_install_version.is_empty());
     assert!(cfg.ticker_title);
@@ -299,6 +300,18 @@ fn disabled_columns_drop_from_widget_layout() {
     cfg.rel_best = false;
     cfg.rel_last = false;
     assert_eq!(cfg.relative_cols(), vec![RelField::Name]);
+}
+
+#[test]
+fn gamepad_needs_experimental() {
+    let mut cfg = HudConfig::new();
+    cfg[WidgetId::Gamepad].show = true;
+    assert!(!cfg.experimental_unlocked());
+    assert!(!cfg.gamepad_visible());
+    cfg.experimental = true;
+    assert!(cfg.gamepad_visible());
+    cfg[WidgetId::Gamepad].show = false;
+    assert!(!cfg.gamepad_visible());
 }
 
 #[test]

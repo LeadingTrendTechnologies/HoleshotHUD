@@ -437,7 +437,7 @@ fn shown(s: &Snapshot, cfg: &HudConfig, t: Target) -> bool {
         Target::Stance => cfg.stance_visible(),
         Target::Flag => cfg[WidgetId::Flag].show,
         Target::Lean => cfg[WidgetId::Lean].show,
-        Target::Gamepad => cfg[WidgetId::Gamepad].show,
+        Target::Gamepad => cfg.gamepad_visible(),
     }
 }
 
