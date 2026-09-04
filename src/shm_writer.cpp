@@ -9,6 +9,7 @@
 #include "shm/mxbo_shm.h"
 #include "config.h"
 #include "state.h"
+#include "steam_friends.h"
 #include "str_util.h"
 #include "track_geom.h"
 
@@ -304,6 +305,8 @@ void ShmWriter::publish(const PluginState& state, const PluginConfig& config)
     copyBounded(local.guid, MXBO_GUID, state.guid().c_str());
     copyBounded(local.serverName, MXBO_SERVER_NAME, state.serverName().c_str());
     local.serverType = state.serverType();
+    steamFriendsCopy(&local.localSteamId, &local.friendCount, local.friends, MXBO_MAX_FRIENDS);
+    local.friendPad = 0;
     local.lastLapMs = state.lastLapMs();
     local.bestLapMs = state.bestLapMs();
     local.currentLapMs = state.currentLapMs();

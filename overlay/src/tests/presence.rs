@@ -42,10 +42,12 @@ fn match_prefers_race_num_and_name() {
             RemoteRider {
                 race_num: 12,
                 name: "alex".into(),
+                steam_id: 0,
             },
             RemoteRider {
                 race_num: 99,
                 name: "Ghost".into(),
+                steam_id: 0,
             },
         ],
     );
@@ -60,6 +62,7 @@ fn match_unique_name_if_number_drifted() {
         &[RemoteRider {
             race_num: 99,
             name: "Troy".into(),
+            steam_id: 0,
         }],
     );
     assert_eq!(marks, vec![7]);
@@ -73,6 +76,7 @@ fn match_ignores_duplicate_names_without_number() {
         &[RemoteRider {
             race_num: 0,
             name: "Sam".into(),
+            steam_id: 0,
         }],
     );
     assert!(marks.is_empty());
@@ -192,6 +196,49 @@ fn session_change_to_rolling_does_not_join() {
         next_pulse(&mut st, true, Some("b"), 7, 16, 8 * 60_000, t0),
         Pulse::Silent
     );
+}
+
+#[test]
+fn friend_mark_is_steam_id_only() {
+    let field = board(&[(7, "Troy"), (12, "Alex")]);
+    let remote = [
+        RemoteRider {
+            race_num: 12,
+            name: "Alex".into(),
+            steam_id: 76561198000000012,
+        },
+        RemoteRider {
+            race_num: 7,
+            name: "Troy".into(),
+            steam_id: 0,
+        },
+    ];
+    let marks = match_friends(&field, &remote, &[76561198000000012], 76561198000000001, 3);
+    assert_eq!(marks, vec![12]);
+}
+
+#[test]
+fn same_name_without_steam_id_is_not_a_friend() {
+    let field = board(&[(7, "Troy"), (12, "Alex")]);
+    let remote = [RemoteRider {
+        race_num: 12,
+        name: "Alex".into(),
+        steam_id: 0,
+    }];
+    let marks = match_friends(&field, &remote, &[76561198000000012], 76561198000000001, 3);
+    assert!(marks.is_empty());
+}
+
+#[test]
+fn own_steam_id_is_not_a_friend() {
+    let field = board(&[(3, "Me"), (12, "Alex")]);
+    let remote = [RemoteRider {
+        race_num: 12,
+        name: "Alex".into(),
+        steam_id: 76561198000000001,
+    }];
+    let marks = match_friends(&field, &remote, &[76561198000000001], 76561198000000001, 3);
+    assert!(marks.is_empty());
 }
 
 #[test]

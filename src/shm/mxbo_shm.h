@@ -7,10 +7,10 @@ extern "C" {
 #endif
 
 #define MXBO_SHM_MAGIC 0x4F42584Du /* 'MXBO' */
-#define MXBO_SHM_VERSION 11
+#define MXBO_SHM_VERSION 12
 /* Versioned name so a leftover smaller mapping cannot be remapped and overrun. */
-#define MXBO_SHM_NAME L"Local\\MXBOHudV11"
-#define MXBO_SHM_NAME_A "Local\\MXBOHudV11"
+#define MXBO_SHM_NAME L"Local\\MXBOHudV12"
+#define MXBO_SHM_NAME_A "Local\\MXBOHudV12"
 #define MXBO_CMD_MAGIC 0x4342584Du /* 'MXBC' */
 #define MXBO_CMD_NAME L"Local\\MXBOHudCmdV1"
 #define MXBO_CMD_NAME_A "Local\\MXBOHudCmdV1"
@@ -22,6 +22,7 @@ extern "C" {
 #define MXBO_TRACK_NAME 64
 #define MXBO_GUID 100
 #define MXBO_SERVER_NAME 64
+#define MXBO_MAX_FRIENDS 256
 
 typedef struct MxboShmPoint
 {
@@ -140,6 +141,11 @@ typedef struct MxboShmSnapshot
     char guid[MXBO_GUID];
     char serverName[MXBO_SERVER_NAME];
     int32_t serverType;
+
+    uint64_t localSteamId;
+    int32_t friendCount;
+    int32_t friendPad;
+    uint64_t friends[MXBO_MAX_FRIENDS];
 } MxboShmSnapshot;
 
 /* Overlay → plugin. Separate mapping so the snapshot seqlock is not mixed with writes. */

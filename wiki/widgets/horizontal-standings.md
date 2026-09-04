@@ -28,9 +28,11 @@ Settings subtitle: “Your name is highlighted in the field”.
 - Gap on a card is vs **you**, not vs the leader (except you / P1 edge cases via `format_signed_delta`).
 - Cards iterate `RaceField::board()` (live order), not `s.standings`. Scroll index and the focus card follow that order.
 - Click-to-follow only while spectating / replay. Do not capture overlay clicks while riding.
+- Friend icon before the card name is opt-in (`highlight_friends`) and Steam64-only. Same glyph as Map / table Friend column.
 
 ## Change log
 
+- 2026-09-04 — Steam friends who also run Holeshot get a friend icon before the card name (`highlight_friends`).
 - 2026-08-29 — **Fuel %** is a separate side-slot option from volume.
 
 - 2026-08-29 — Fuel reads as liters or US gallons from Units, not percent.

@@ -161,7 +161,7 @@ fn shipped_changelog_has_current_or_unreleased_notes() {
 fn current_notes_include_presence() {
     assert!(
         current_notes().is_some(),
-        "0.4.0 presence notes should open What's new"
+        "presence / friends notes should open What's new"
     );
 }
 

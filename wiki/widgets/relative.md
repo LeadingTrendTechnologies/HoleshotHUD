@@ -39,9 +39,11 @@ Default columns on: Number, Name, Gap, Fastest, Last lap.
 - Fuel header/footer is liters/US gallons (`Fuel`) or tank percent (`Fuel %`). Empty volume is `0.0`; `--` / `--%` only when tank size is missing.
 - Ctrl+resize chrome is the hugged plaque (column pack × row stack), not leftover widget glass. Dragging it larger grows Name / nearby count.
 - Presence marks are opt-in (`show_presence`). Do not paint a mark on a rider who is not on this board, or on yourself.
+- Friend column shares Standings (`highlight_friends`). Steam64 only.
 
 ## Change log
 
+- 2026-09-04 — Shares Standings Friend column (`highlight_friends`).
 - 2026-08-31 — Shares the Standings opt-in Holeshot mark after the name when that rider also runs the overlay.
 
 - 2026-08-31 — Ctrl+resize of the hugged plaque grows Name width and nearby-rider count, so the table can get larger instead of the orange box being a no-op.

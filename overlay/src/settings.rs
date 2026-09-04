@@ -286,6 +286,7 @@ enum Hit {
     FlagBlue,
     FeatureSector,
     ShowPresence,
+    HighlightFriends,
     TickerTitle,
     TickerAutoscroll,
     StPos,
@@ -1528,6 +1529,7 @@ fn dispatch(id: Hit, p: (f32, f32)) {
             }
         },
         Hit::ShowPresence => c.show_presence = !c.show_presence,
+        Hit::HighlightFriends => c.highlight_friends = !c.highlight_friends,
         Hit::TickerTitle => c.ticker_title = !c.ticker_title,
         Hit::TickerAutoscroll => c.ticker_autoscroll = !c.ticker_autoscroll,
         Hit::StStripe => c.st_stripe = !c.st_stripe,
@@ -1736,6 +1738,7 @@ fn hit_label(hit: Hit) -> String {
         Hit::SettingsKeyOpen => "Settings key".into(),
         Hit::FeatureSector => "Experimental widgets".into(),
         Hit::ShowPresence => "Show overlay users".into(),
+        Hit::HighlightFriends => "Highlight Steam friends".into(),
         Hit::StanceBindOpen => {
             if UI.lock().unwrap().as_ref().is_some_and(|u| u.bind_listen) {
                 "Press a pad button, key, or mouse button now. Escape cancels.".into()
@@ -3449,6 +3452,9 @@ fn pane_app(
     y = toggle_row(px, fonts, x, y, w, "Show overlay users", cfg.show_presence, Hit::ShowPresence, hover, hits);
     text(px, fonts, "Marks riders in this session who also run Holeshot. Names are already on the board; this only adds that they use it. Off until you turn it on.", 11.0, x + 4.0, y + 2.0, dim(), false);
     y += 36.0;
+    y = toggle_row(px, fonts, x, y, w, "Highlight Steam friends", cfg.highlight_friends, Hit::HighlightFriends, hover, hits);
+    text(px, fonts, "Friend icon on map dots and a column on tables when a Steam friend also runs Holeshot. Needs Show overlay users. Friends without the overlay cannot be marked. Off until you turn it on.", 11.0, x + 4.0, y + 2.0, dim(), false);
+    y += 48.0;
     y = section(px, fonts, x, y, "Labs");
     y = toggle_row(px, fonts, x, y, w, "Experimental widgets", cfg.experimental, Hit::FeatureSector, hover, hits);
     text(px, fonts, "Adds Sectors and Delta Bar. Off until you turn this on.", 11.0, x + 4.0, y + 2.0, dim(), false);
@@ -5131,6 +5137,7 @@ fn st_toggle(f: StField) -> Hit {
         StField::Penalty => Hit::StPenalty,
         StField::Crashed => Hit::StCrashed,
         StField::Interval => Hit::StInterval,
+        StField::Friend => Hit::HighlightFriends,
     }
 }
 
@@ -5148,6 +5155,7 @@ fn rel_toggle(f: RelField) -> Hit {
         RelField::Crashed => Hit::RelCrashed,
         RelField::Best => Hit::RelBest,
         RelField::Last => Hit::RelLast,
+        RelField::Friend => Hit::HighlightFriends,
     }
 }
 

@@ -649,6 +649,7 @@ pub enum StField {
     Bike,
     Penalty,
     Crashed,
+    Friend,
 }
 
 impl StField {
@@ -683,6 +684,7 @@ impl StField {
             Self::Bike => "bike",
             Self::Penalty => "pen",
             Self::Crashed => "crash",
+            Self::Friend => "friend",
         }
     }
 
@@ -701,6 +703,7 @@ impl StField {
             Self::Bike => "Bike",
             Self::Penalty => "Penalty",
             Self::Crashed => "Crashed",
+            Self::Friend => "Friend",
         }
     }
 
@@ -719,6 +722,7 @@ impl StField {
             "bike" => Self::Bike,
             "pen" | "penalty" => Self::Penalty,
             "crash" | "crashed" => Self::Crashed,
+            "friend" => Self::Friend,
             _ => return None,
         })
     }
@@ -738,6 +742,7 @@ impl StField {
             Self::Bike => c.st_bike,
             Self::Penalty => c.st_penalty,
             Self::Crashed => c.st_crashed,
+            Self::Friend => c.highlight_friends,
         }
     }
 
@@ -756,6 +761,7 @@ impl StField {
             Self::Bike => c.st_w_bike,
             Self::Penalty => c.st_w_penalty,
             Self::Crashed => c.st_w_crashed,
+            Self::Friend => 22,
         }
     }
 
@@ -786,6 +792,7 @@ impl StField {
             Self::Bike => c.st_w_bike = next,
             Self::Penalty => c.st_w_penalty = next,
             Self::Crashed => c.st_w_crashed = next,
+            Self::Friend => {}
         }
     }
 }
@@ -833,6 +840,7 @@ pub enum RelField {
     Crashed,
     Best,
     Last,
+    Friend,
 }
 
 impl RelField {
@@ -865,6 +873,7 @@ impl RelField {
             Self::Crashed => "crash",
             Self::Best => "best",
             Self::Last => "last",
+            Self::Friend => "friend",
         }
     }
 
@@ -882,6 +891,7 @@ impl RelField {
             Self::Crashed => "Crashed",
             Self::Best => "Fastest",
             Self::Last => "Last lap",
+            Self::Friend => "Friend",
         }
     }
 
@@ -899,6 +909,7 @@ impl RelField {
             "crash" | "crashed" => Self::Crashed,
             "best" => Self::Best,
             "last" => Self::Last,
+            "friend" => Self::Friend,
             _ => return None,
         })
     }
@@ -917,6 +928,7 @@ impl RelField {
             Self::Crashed => c.rel_crashed,
             Self::Best => c.rel_best,
             Self::Last => c.rel_last,
+            Self::Friend => c.highlight_friends,
         }
     }
 
@@ -934,6 +946,7 @@ impl RelField {
             Self::Crashed => c.rel_w_crashed,
             Self::Best => c.rel_w_best,
             Self::Last => c.rel_w_last,
+            Self::Friend => 22,
         }
     }
 
@@ -963,6 +976,7 @@ impl RelField {
             Self::Crashed => c.rel_w_crashed = next,
             Self::Best => c.rel_w_best = next,
             Self::Last => c.rel_w_last = next,
+            Self::Friend => {}
         }
     }
 }
@@ -980,6 +994,8 @@ pub struct HudConfig {
     pub experimental: bool,
     /// Opt-in: publish that you run Holeshot and mark others in this session who do.
     pub show_presence: bool,
+    /// Opt-in: friend icon on map dots and a Friend column on tables.
+    pub highlight_friends: bool,
     /// Stable per-install id for presence upserts. Generated on first use.
     pub presence_id: String,
     /// Plugin-only: when true the in-game HUD draws. Overlay still saves this key.
@@ -1109,6 +1125,7 @@ impl HudConfig {
             flag_blue: false,
             experimental: false,
             show_presence: false,
+            highlight_friends: false,
             presence_id: String::new(),
             ingame_hud: false,
             standings_rows: 12,
@@ -1264,6 +1281,7 @@ impl HudConfig {
                 "flag_blue" => cfg.flag_blue = b,
                 "experimental" | "feature_experimental" | "feature_sector" => cfg.experimental = b,
                 "show_presence" => cfg.show_presence = b,
+                "highlight_friends" => cfg.highlight_friends = b,
                 "presence_id" => cfg.presence_id = val.trim().to_string(),
                 "ingame_hud" => cfg.ingame_hud = b,
                 "standings_rows" => cfg.standings_rows = val.parse().unwrap_or(12).max(3),
@@ -1487,7 +1505,7 @@ impl HudConfig {
              \n[Flag]\n\
              flag_bg={}\nflag_yellow={}\nflag_blue={}\nflag_font={}\nflag_bold={}\n\
              \n[App]\n\
-             font_family={}\nunits={}\nsettings_key={}\nstart_with_windows={}\nminimize_on_close={}\nclose_with_game={}\nopen_with_game={}\nauto_update_on_launch={}\nwhats_new_seen={}\nfirst_install_version={}\nexperimental={}\nshow_presence={}\npresence_id={}\n",
+             font_family={}\nunits={}\nsettings_key={}\nstart_with_windows={}\nminimize_on_close={}\nclose_with_game={}\nopen_with_game={}\nauto_update_on_launch={}\nwhats_new_seen={}\nfirst_install_version={}\nexperimental={}\nshow_presence={}\nhighlight_friends={}\npresence_id={}\n",
             st.rect.x,
             st.rect.y,
             st.rect.w,
@@ -1699,6 +1717,7 @@ impl HudConfig {
             self.first_install_version,
             b(self.experimental),
             b(self.show_presence),
+            b(self.highlight_friends),
             self.presence_id,
         );
         let _ = fs::write(&path, body);
@@ -1729,9 +1748,17 @@ impl HudConfig {
     }
 
     pub fn standings_cols(&self) -> Vec<StField> {
-        let mut cols: Vec<_> = self.st_order.iter().copied().filter(|c| c.enabled(self)).collect();
+        let mut cols: Vec<_> = self
+            .st_order
+            .iter()
+            .copied()
+            .filter(|c| *c != StField::Friend && c.enabled(self))
+            .collect();
         if cols.is_empty() {
             cols.push(StField::Name);
+        }
+        if self.highlight_friends {
+            insert_before_name(&mut cols, StField::Friend, StField::Name);
         }
         cols
     }
@@ -1775,9 +1802,17 @@ impl HudConfig {
     }
 
     pub fn relative_cols(&self) -> Vec<RelField> {
-        let mut cols: Vec<_> = self.rel_order.iter().copied().filter(|c| c.enabled(self)).collect();
+        let mut cols: Vec<_> = self
+            .rel_order
+            .iter()
+            .copied()
+            .filter(|c| *c != RelField::Friend && c.enabled(self))
+            .collect();
         if cols.is_empty() {
             cols.push(RelField::Name);
+        }
+        if self.highlight_friends {
+            insert_before_name(&mut cols, RelField::Friend, RelField::Name);
         }
         cols
     }
@@ -1934,12 +1969,33 @@ fn snap_rect(r: &mut Rect, align: SnapAlign) {
     }
 }
 
+fn insert_before_name<T: Copy + PartialEq>(cols: &mut Vec<T>, friend: T, name: T) {
+    if cols.contains(&friend) {
+        return;
+    }
+    if let Some(i) = cols.iter().position(|c| *c == name) {
+        cols.insert(i, friend);
+    } else {
+        cols.insert(0, friend);
+    }
+}
+
 fn parse_st_order(s: &str) -> Vec<StField> {
-    normalize(s.split(',').filter_map(|p| StField::parse(p.trim())), &StField::ALL)
+    normalize(
+        s.split(',')
+            .filter_map(|p| StField::parse(p.trim()))
+            .filter(|c| *c != StField::Friend),
+        &StField::ALL,
+    )
 }
 
 fn parse_rel_order(s: &str) -> Vec<RelField> {
-    normalize(s.split(',').filter_map(|p| RelField::parse(p.trim())), &RelField::ALL)
+    normalize(
+        s.split(',')
+            .filter_map(|p| RelField::parse(p.trim()))
+            .filter(|c| *c != RelField::Friend),
+        &RelField::ALL,
+    )
 }
 
 fn normalize<T: Copy + PartialEq>(found: impl Iterator<Item = T>, all: &[T]) -> Vec<T> {

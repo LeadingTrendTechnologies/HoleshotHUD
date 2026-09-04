@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use mxbo_hud::shm::{cstr, Snapshot, MAX_RIDERS, MAX_STANDINGS};
+use mxbo_hud::shm::{cstr, Snapshot, MAX_FRIENDS, MAX_RIDERS, MAX_STANDINGS};
 use mxbo_hud::config::HudConfig;
 
 use crate::util::{json_array_slice, json_escape, json_string};
@@ -25,6 +25,7 @@ pub struct BoardRider {
 pub struct RemoteRider {
     pub race_num: i32,
     pub name: String,
+    pub steam_id: u64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -109,6 +110,37 @@ fn match_one(board: &[BoardRider], remote: &RemoteRider) -> Option<i32> {
         return Some(hits[0]);
     }
     None
+}
+
+/// Race numbers whose presence `steam_id` is in the friend set. Friendship is
+/// ID-only; in-game names are never used to decide it.
+pub fn match_friends(
+    board: &[BoardRider],
+    remote: &[RemoteRider],
+    friend_ids: &[u64],
+    local_steam: u64,
+    local_race: i32,
+) -> Vec<i32> {
+    let mut out = Vec::new();
+    for r in remote {
+        if r.steam_id == 0 || r.steam_id == local_steam {
+            continue;
+        }
+        if !friend_ids.contains(&r.steam_id) {
+            continue;
+        }
+        if let Some(n) = match_one(board, r) {
+            if n != local_race && !out.contains(&n) {
+                out.push(n);
+            }
+        }
+    }
+    out
+}
+
+fn snap_friends(s: &Snapshot) -> (u64, Vec<u64>) {
+    let n = s.friend_count.clamp(0, MAX_FRIENDS as i32) as usize;
+    (s.local_steam_id, s.friends[..n].iter().copied().filter(|id| *id != 0).collect())
 }
 
 fn normalize_name(s: &str) -> String {
@@ -306,7 +338,11 @@ fn live() -> &'static Mutex<Live> {
 pub fn tick(cfg: &HudConfig, snap: Option<&Snapshot>) {
     ensure_id(cfg);
     let enabled = cfg.show_presence;
-    let (session, kind, state, remain, identity, board) = match snap {
+    let highlight_friends = cfg.highlight_friends && enabled;
+    if !highlight_friends {
+        mxbo_hud::set_friend_marks(&[]);
+    }
+    let (session, kind, state, remain, identity, board, steam) = match snap {
         Some(s) if enabled => {
             let nums: Vec<i32> = board_from_snap(s).iter().map(|r| r.race_num).collect();
             let key = session_key(
@@ -322,9 +358,10 @@ pub fn tick(cfg: &HudConfig, snap: Option<&Snapshot>) {
                 gate_remain_ms(s),
                 local_identity(s),
                 board_from_snap(s),
+                snap_friends(s),
             )
         }
-        _ => (None, -1, -1, i32::MAX, None, Vec::new()),
+        _ => (None, -1, -1, i32::MAX, None, Vec::new(), (0, Vec::new())),
     };
     if enabled && session.is_some() && identity.is_none() {
         return;
@@ -357,7 +394,8 @@ pub fn tick(cfg: &HudConfig, snap: Option<&Snapshot>) {
             };
             if !old.is_empty() {
                 mxbo_hud::set_presence_marks(&[]);
-                post(None, old, client_id);
+                mxbo_hud::set_friend_marks(&[]);
+                post(None, old, client_id, 0, Vec::new(), false);
             }
         }
         Pulse::Leave => {
@@ -368,8 +406,9 @@ pub fn tick(cfg: &HudConfig, snap: Option<&Snapshot>) {
                 s
             };
             mxbo_hud::set_presence_marks(&[]);
+            mxbo_hud::set_friend_marks(&[]);
             if !old.is_empty() {
-                post(None, old, client_id);
+                post(None, old, client_id, 0, Vec::new(), false);
             }
         }
         Pulse::Publish => {
@@ -395,9 +434,13 @@ pub fn tick(cfg: &HudConfig, snap: Option<&Snapshot>) {
                     race_num,
                     name,
                     board,
+                    steam_id: steam.0,
                 }),
                 old,
                 client_id,
+                steam.0,
+                steam.1,
+                highlight_friends,
             );
         }
     }
@@ -412,11 +455,12 @@ pub fn leave_now() {
         s
     };
     mxbo_hud::set_presence_marks(&[]);
+    mxbo_hud::set_friend_marks(&[]);
     if session.is_empty() {
         return;
     }
     let id = crate::config::with_config(|c| c.presence_id.clone());
-    post(None, session, id);
+    post(None, session, id, 0, Vec::new(), false);
 }
 
 fn ensure_id(cfg: &HudConfig) {
@@ -444,9 +488,17 @@ struct Join {
     race_num: i32,
     name: String,
     board: Vec<BoardRider>,
+    steam_id: u64,
 }
 
-fn post(join: Option<Join>, leave: String, client_id: String) {
+fn post(
+    join: Option<Join>,
+    leave: String,
+    client_id: String,
+    local_steam: u64,
+    friend_ids: Vec<u64>,
+    highlight_friends: bool,
+) {
     if client_id.is_empty() {
         return;
     }
@@ -470,12 +522,18 @@ fn post(join: Option<Join>, leave: String, client_id: String) {
                 .send_string(&body);
         }
         if let Some(join) = join {
+            let steam = if join.steam_id != 0 {
+                format!(",\"steam_id\":\"{}\"", join.steam_id)
+            } else {
+                String::new()
+            };
             let body = format!(
-                "{{\"session\":\"{}\",\"client_id\":\"{}\",\"race_num\":{},\"name\":\"{}\"}}",
+                "{{\"session\":\"{}\",\"client_id\":\"{}\",\"race_num\":{},\"name\":\"{}\"{}}}",
                 json_escape(&join.session),
                 json_escape(&client_id),
                 join.race_num,
-                json_escape(&join.name)
+                json_escape(&join.name),
+                steam
             );
             if let Ok(resp) = agent
                 .post(&url)
@@ -487,6 +545,18 @@ fn post(join: Option<Join>, leave: String, client_id: String) {
                     let mut marks = match_room(&join.board, &remote);
                     marks.retain(|n| *n != join.race_num);
                     mxbo_hud::set_presence_marks(&marks);
+                    if highlight_friends {
+                        let friends = match_friends(
+                            &join.board,
+                            &remote,
+                            &friend_ids,
+                            local_steam,
+                            join.race_num,
+                        );
+                        mxbo_hud::set_friend_marks(&friends);
+                    } else {
+                        mxbo_hud::set_friend_marks(&[]);
+                    }
                 }
             }
         }
@@ -508,12 +578,37 @@ fn parse_riders(body: &str) -> Vec<RemoteRider> {
         let obj = &chunk[..=end];
         let race_num = json_i32(obj, "race_num").unwrap_or(0);
         let name = json_string(obj, "name").unwrap_or_default();
-        if race_num > 0 || !name.is_empty() {
-            out.push(RemoteRider { race_num, name });
+        let steam_id = json_steam_id(obj);
+        if race_num > 0 || !name.is_empty() || steam_id != 0 {
+            out.push(RemoteRider {
+                race_num,
+                name,
+                steam_id,
+            });
         }
         rest = &chunk[end + 1..];
     }
     out
+}
+
+fn json_steam_id(obj: &str) -> u64 {
+    if let Some(s) = json_string(obj, "steam_id") {
+        let digits: String = s.chars().filter(|c| c.is_ascii_digit()).collect();
+        if let Ok(n) = digits.parse::<u64>() {
+            return n;
+        }
+    }
+    json_u64(obj, "steam_id").unwrap_or(0)
+}
+
+fn json_u64(body: &str, key: &str) -> Option<u64> {
+    let needle = format!("\"{key}\"");
+    let i = body.find(&needle)?;
+    let rest = &body[i + needle.len()..];
+    let colon = rest.find(':')?;
+    let rest = rest[colon + 1..].trim_start();
+    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    digits.parse().ok()
 }
 
 fn json_i32(body: &str, key: &str) -> Option<i32> {

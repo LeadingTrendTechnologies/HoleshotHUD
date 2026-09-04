@@ -9,6 +9,7 @@ add_library(mxbo SHARED
     src/state.cpp
     src/config.cpp
     src/shm_writer.cpp
+    src/steam_friends.cpp
     src/hud/draw_list.cpp
     src/hud/map_hud.cpp
     src/hud/widgets.cpp

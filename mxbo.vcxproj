@@ -85,6 +85,7 @@
     <ClCompile Include="src\state.cpp" />
     <ClCompile Include="src\config.cpp" />
     <ClCompile Include="src\shm_writer.cpp" />
+    <ClCompile Include="src\steam_friends.cpp" />
     <ClCompile Include="src\hud\draw_list.cpp" />
     <ClCompile Include="src\hud\map_hud.cpp" />
     <ClCompile Include="src\hud\widgets.cpp" />
@@ -99,6 +100,7 @@
     <ClInclude Include="src\str_util.h" />
     <ClInclude Include="src\track_geom.h" />
     <ClInclude Include="src\shm_writer.h" />
+    <ClInclude Include="src\steam_friends.h" />
     <ClInclude Include="src\shm\mxbo_shm.h" />
     <ClInclude Include="src\hud\draw_list.h" />
     <ClInclude Include="src\hud\map_hud.h" />

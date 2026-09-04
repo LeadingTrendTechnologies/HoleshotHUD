@@ -75,6 +75,7 @@ fn default_hud_hides_every_widget() {
     assert!(!cfg.stance_show_sit);
     assert!(!cfg.experimental);
     assert!(!cfg.show_presence);
+    assert!(!cfg.highlight_friends);
     assert!(cfg.presence_id.is_empty());
     assert!(cfg.whats_new_seen.is_empty());
     assert!(cfg.first_install_version.is_empty());
@@ -279,6 +280,22 @@ fn disabled_columns_drop_from_widget_layout() {
     cfg.rel_best = false;
     cfg.rel_last = false;
     assert_eq!(cfg.relative_cols(), vec![RelField::Name]);
+}
+
+#[test]
+fn friend_column_sits_before_name_when_highlight_is_on() {
+    let mut cfg = HudConfig::new();
+    assert!(!cfg.standings_cols().contains(&StField::Friend));
+    assert!(!cfg.relative_cols().contains(&RelField::Friend));
+    cfg.highlight_friends = true;
+    let st = cfg.standings_cols();
+    let rel = cfg.relative_cols();
+    let st_name = st.iter().position(|c| *c == StField::Name).unwrap();
+    let rel_name = rel.iter().position(|c| *c == RelField::Name).unwrap();
+    assert_eq!(st[st_name - 1], StField::Friend);
+    assert_eq!(rel[rel_name - 1], RelField::Friend);
+    assert!(!StField::ALL.contains(&StField::Friend));
+    assert!(!RelField::ALL.contains(&RelField::Friend));
 }
 
 #[test]

@@ -2,15 +2,16 @@
 
 ## Unreleased
 
-Opt-in marks for others in this MX Bikes session who also run Holeshot HUD.
+Opt-in marks for overlay users and Steam friends who also run Holeshot HUD.
 
 ### Settings
 
 - App has **Show overlay users**. Off until you turn it on. Marks others in this session who also run Holeshot.
+- App has **Highlight Steam friends**. Off until you turn it on. Friend icon on map dots and a Friend column on tables when a Steam friend also runs Holeshot. Needs Show overlay users. Friends without the overlay cannot be marked.
 
 ### Overlay
 
-- Holeshot HUD marks other riders on Standings, Relative, Map, and Minimap when they also run it. Restart MX Bikes after this update so the session id is live.
+- Holeshot HUD marks other riders on Standings, Relative, Horizontal Standings, Map, and Minimap when they also run it. Steam friends who also run it get the same friend icon on map dots, a Friend column on tables, and the icon before the name on Horizontal Standings. Restart MX Bikes after this update so the session id and Steam list are live.
 
 ## 0.3.1
 

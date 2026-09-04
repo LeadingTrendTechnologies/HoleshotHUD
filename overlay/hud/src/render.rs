@@ -38,6 +38,8 @@ fn panel_col() -> Color { Color::from_rgba8(10, 10, 10, 200) }
 fn track_col() -> Color { Color::from_rgba8(236, 236, 240, 255) }
 fn fill_col() -> Color { Color::from_rgba8(10, 8, 8, 168) }
 fn you_col() -> Color { Color::from_rgba8(255, 148, 48, 255) }
+fn friend_col() -> Color { Color::from_rgba8(45, 212, 191, 255) }
+fn friend_ch() -> char { '\u{f500}' }
 fn other_col() -> Color { Color::from_rgba8(48, 52, 64, 255) }
 fn lapping_col() -> Color { Color::from_rgba8(59, 130, 246, 255) }
 fn lapped_col() -> Color { Color::from_rgba8(239, 68, 68, 255) }
@@ -1173,6 +1175,7 @@ trait BoardCol: Copy + PartialEq {
     fn is_name(self) -> bool;
     fn is_bike(self) -> bool;
     fn is_pos(self) -> bool;
+    fn is_friend(self) -> bool;
 }
 
 impl BoardCol for StField {
@@ -1191,6 +1194,7 @@ impl BoardCol for StField {
             Self::Bike => "BIKE",
             Self::Penalty => "PEN",
             Self::Crashed => "CR",
+            Self::Friend => "",
         }
     }
 
@@ -1209,6 +1213,10 @@ impl BoardCol for StField {
     fn is_pos(self) -> bool {
         matches!(self, Self::Pos)
     }
+
+    fn is_friend(self) -> bool {
+        matches!(self, Self::Friend)
+    }
 }
 
 impl BoardCol for RelField {
@@ -1226,6 +1234,7 @@ impl BoardCol for RelField {
             Self::Crashed => "Crash",
             Self::Best => "Fastest",
             Self::Last => "Last",
+            Self::Friend => "",
         }
     }
 
@@ -1243,6 +1252,10 @@ impl BoardCol for RelField {
 
     fn is_pos(self) -> bool {
         matches!(self, Self::Pos)
+    }
+
+    fn is_friend(self) -> bool {
+        matches!(self, Self::Friend)
     }
 }
 
@@ -2256,6 +2269,10 @@ fn draw_table_board<C: BoardCol>(
     cy += track_h;
     let hdr_y = cy + 2.0;
     for (col, cx, cw) in &slots {
+        if col.is_friend() {
+            icon(px, fonts, friend_ch(), 10.0, *cx + *cw * 0.5, hdr_y, friend_col(), true);
+            continue;
+        }
         let right = !col.is_name() && !col.is_bike();
         let pad = if col.is_name() { name_left_pad(*cx, bar_end) } else { 0.0 };
         col_text(px, fonts, col.header(), 10.0, *cx + pad, (*cw - pad).max(8.0), hdr_y, hdr_c, right);
@@ -2399,6 +2416,14 @@ fn paint_table_row<C: BoardCol>(
     for (kind, cx, cw) in row.slots {
         if kind.is_pos() {
             fill_skew(px, *cx + *cw + 1.0, row.cy + 4.0, BIKE_BAR_W, row.row_h - 8.0, BIKE_BAR_SKEW, accent);
+        }
+        if kind.is_friend() {
+            if let Some(num) = click {
+                if crate::presence::friend_has(num) {
+                    icon(px, fonts, friend_ch(), 12.0, *cx + *cw * 0.5, row.cy + 4.0, friend_col(), true);
+                }
+            }
+            continue;
         }
         let (val, color, right) = cell(*kind);
         let pad = if kind.is_name() { name_left_pad(*cx, row.bar_end) } else { 0.0 };
@@ -2545,6 +2570,7 @@ fn draw_standings(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig,
                                 (String::new(), dim, true)
                             }
                         }
+                        StField::Friend => (String::new(), dim, true),
                     });
                 });
             });
@@ -3836,9 +3862,14 @@ fn draw_ticker_card(
     if let Some(rrt) = rr(bar_x, y + 4.0, 2.2, h - 8.0) {
         fill_rect(px, rrt, accent_c);
     }
-    let text_x = bar_x + 7.0;
+    let mut text_x = bar_x + 7.0;
     let name_sz = (h * 0.28).clamp(10.5, 13.5);
     let gap_sz = (h * 0.22).clamp(8.5, 11.0);
+    if crate::presence::friend_has(row.race_num) {
+        let icon_s = (name_sz * 0.95).clamp(10.0, 13.0);
+        icon(px, fonts, friend_ch(), icon_s, text_x + 1.0, y + h * 0.16, friend_col(), false);
+        text_x += icon_s + 4.0;
+    }
     let name = ellipsize(fonts, &cstr(&row.name), name_sz, (w - (text_x - x) - 8.0).max(24.0));
     let name_c = if out {
         Color::from_rgba8(110, 110, 116, 255)
@@ -5110,6 +5141,7 @@ fn draw_relative(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, 
                             true,
                         ),
                         RelField::Last => (format_lap(last_ms), dim, true),
+                        RelField::Friend => (String::new(), dim, true),
                     });
                 });
             });
@@ -5244,6 +5276,7 @@ fn draw_map(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f
             let (sdx, sdy) = screen_dir(&to_px, rider.x, rider.z, fwx, fwz);
             draw_dot_chevron(px, hx, hy, other_r, sdx, sdy, fill, false);
             draw_rider_overhead(px, fonts, s, rider.race_num, hx, hy, other_r, subject, leader, cfg.map_crown, cfg.map_place);
+            friend_over_dot(px, fonts, s, rider.race_num, hx, hy, other_r, leader, cfg.map_crown);
             draw_state_mark(px, fonts, hx, hy, other_r, rider_mark(s, rider.race_num, rider.crashed != 0));
         }
     }
@@ -5427,6 +5460,7 @@ fn draw_minimap(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, s
             let (sdx, sdy) = screen_dir(&to_px, rider.x, rider.z, fwx, fwz);
             draw_dot_chevron(mini, hx, hy, other_r, sdx, sdy, fill, false);
             draw_rider_overhead(mini, fonts, s, rider.race_num, hx, hy, other_r, subject, leader, cfg.mini_crown, cfg.mini_place);
+            friend_over_dot(mini, fonts, s, rider.race_num, hx, hy, other_r, leader, cfg.mini_crown);
             draw_state_mark(mini, fonts, hx, hy, other_r, rider_mark(s, rider.race_num, rider.crashed != 0));
         }
     }
@@ -5723,6 +5757,35 @@ fn icon_over_dot_scaled(
 
 fn crown_over_dot(px: &mut Pixmap, fonts: &Fonts, x: f32, y: f32, r: f32) {
     icon_over_dot(px, fonts, x, y, r, '\u{f521}', Color::from_rgba8(255, 196, 48, 255));
+}
+
+fn rider_has_crown(s: &Snapshot, race_num: i32, leader: i32, show_crown: bool) -> bool {
+    if !show_crown {
+        return false;
+    }
+    standing_pos(s, race_num) == 1 || (leader > 0 && race_num == leader)
+}
+
+fn friend_over_dot(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    s: &Snapshot,
+    race_num: i32,
+    x: f32,
+    y: f32,
+    r: f32,
+    leader: i32,
+    show_crown: bool,
+) {
+    if !crate::presence::friend_has(race_num) {
+        return;
+    }
+    let ox = if rider_has_crown(s, race_num, leader, show_crown) {
+        -(r * 1.55).max(8.0)
+    } else {
+        0.0
+    };
+    icon_over_dot(px, fonts, x + ox, y, r, friend_ch(), friend_col());
 }
 
 fn draw_rider_overhead(

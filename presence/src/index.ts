@@ -18,6 +18,7 @@ type Body = {
   client_id?: unknown;
   race_num?: unknown;
   name?: unknown;
+  steam_id?: unknown;
   leave?: unknown;
 };
 
@@ -42,9 +43,14 @@ export class PresenceRoom extends DurableObject<Env> {
         client_id TEXT PRIMARY KEY,
         race_num INTEGER NOT NULL,
         name TEXT NOT NULL,
+        steam_id TEXT NOT NULL DEFAULT '',
         at INTEGER NOT NULL
       )`,
     );
+    const cols = sql.exec(`PRAGMA table_info(riders)`).toArray();
+    if (!cols.some((c) => String(c.name) === "steam_id")) {
+      sql.exec(`ALTER TABLE riders ADD COLUMN steam_id TEXT NOT NULL DEFAULT ''`);
+    }
     const now = Date.now();
     sql.exec(`DELETE FROM riders WHERE at < ?`, now - STALE_MS);
 
@@ -53,26 +59,29 @@ export class PresenceRoom extends DurableObject<Env> {
     } else {
       const raceNum = Number(body.race_num) || 0;
       const name = String(body.name || "").slice(0, 64);
+      const steamId = String(body.steam_id || "").replace(/\D/g, "").slice(0, 20);
       const mine = sql.exec(`SELECT client_id FROM riders WHERE client_id = ?`, clientId).toArray();
       const n = Number(sql.exec(`SELECT COUNT(*) AS c FROM riders`).one().c);
       if (mine.length > 0 || n < CAP) {
         sql.exec(
-          `INSERT INTO riders (client_id, race_num, name, at) VALUES (?, ?, ?, ?)
-           ON CONFLICT(client_id) DO UPDATE SET race_num = excluded.race_num, name = excluded.name, at = excluded.at`,
+          `INSERT INTO riders (client_id, race_num, name, steam_id, at) VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(client_id) DO UPDATE SET race_num = excluded.race_num, name = excluded.name, steam_id = excluded.steam_id, at = excluded.at`,
           clientId,
           raceNum,
           name,
+          steamId,
           now,
         );
       }
     }
 
     const riders = sql
-      .exec(`SELECT race_num, name FROM riders`)
+      .exec(`SELECT race_num, name, steam_id FROM riders`)
       .toArray()
       .map((row) => ({
         race_num: Number(row.race_num) || 0,
         name: String(row.name || ""),
+        steam_id: String(row.steam_id || ""),
       }));
     return json({ riders });
   }

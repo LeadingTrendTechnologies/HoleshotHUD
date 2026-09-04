@@ -1,5 +1,5 @@
 pub const MAGIC: u32 = 0x4F42584D;
-pub const VERSION: u32 = 11;
+pub const VERSION: u32 = 12;
 pub const MAX_POLY: usize = 1024;
 pub const MAX_RIDERS: usize = 64;
 pub const MAX_STANDINGS: usize = 40;
@@ -8,6 +8,7 @@ pub const NAME: usize = 32;
 pub const TRACK_NAME: usize = 64;
 pub const GUID: usize = 100;
 pub const SERVER_NAME: usize = 64;
+pub const MAX_FRIENDS: usize = 256;
 
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
@@ -155,6 +156,10 @@ pub struct Snapshot {
     pub guid: [u8; GUID],
     pub server_name: [u8; SERVER_NAME],
     pub server_type: i32,
+    pub local_steam_id: u64,
+    pub friend_count: i32,
+    pub friend_pad: i32,
+    pub friends: [u64; MAX_FRIENDS],
 }
 
 impl Default for Snapshot {
@@ -236,6 +241,10 @@ impl Default for Snapshot {
             guid: [0; GUID],
             server_name: [0; SERVER_NAME],
             server_type: 0,
+            local_steam_id: 0,
+            friend_count: 0,
+            friend_pad: 0,
+            friends: [0; MAX_FRIENDS],
         }
     }
 }
@@ -413,10 +422,12 @@ impl Snapshot {
         );
         let _ = writeln!(
             o,
-            "guid={:?} server_name={:?} server_type={}",
+            "guid={:?} server_name={:?} server_type={} steam={} friend_count={}",
             cstr(&self.guid),
             cstr(&self.server_name),
-            self.server_type
+            self.server_type,
+            if self.local_steam_id != 0 { "yes" } else { "no" },
+            self.friend_count.max(0)
         );
         if self.version > 0 && self.version < VERSION {
             let _ = writeln!(

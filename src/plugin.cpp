@@ -7,6 +7,7 @@
 #include "hud/font_atlas.h"
 #include "layout.h"
 #include "shm_writer.h"
+#include "steam_friends.h"
 
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -224,6 +225,7 @@ __declspec(dllexport) int Startup(char* _szSavePath)
         stampIniWriteTime();
         g_layoutDirty = true;
         g_shm.open();
+        steamFriendsStart();
         ensureOverlayCompat();
         return kTelemetryHz;
     }
@@ -247,6 +249,7 @@ __declspec(dllexport) void Shutdown()
         }
         g_state.clearEvent();
         g_draw.clear();
+        steamFriendsStop();
         g_shm.close();
     });
 }

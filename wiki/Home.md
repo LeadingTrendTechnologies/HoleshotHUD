@@ -3,7 +3,7 @@
 Everything the PiBoSo plugin API can send this project, and whether we already keep it.
 
 Source of truth: `src/vendor/piboso/mxb_api.h` (data version **8**, interface **9**).  
-The game loads `Holeshot-HUD.dlo` and calls the exported functions below. The plugin may copy fields into `PluginState`, then into shared memory `Local\MXBOHudV11` for the Rust overlay.
+The game loads `Holeshot-HUD.dlo` and calls the exported functions below. The plugin may copy fields into `PluginState`, then into shared memory `Local\MXBOHudV12` for the Rust overlay.
 
 **Status**
 
@@ -416,6 +416,7 @@ Already published (version **1**):
 - Session: length, laps, remaining clock, **kind** (`m_iSession`), **state** (`m_iSessionState`) — SHM version **9**
 - Fuel: `fuel` / `maxFuel` — SHM version **10**
 - Presence: `guid`, `serverName`, `serverType` — SHM version **11**
+- Steam friends: `localSteamId`, `friendCount`, `friends[]` — SHM version **12**. Do not log the IDs.
 - Layout: map / standings / relative rects + show flags + row counts
 
 Command mapping `Local\MXBOHudCmdV1` (`MxboShmCmd`): overlay writes `spectateRaceNum`; plugin writes `spectating` while `SpectateVehicles` is live. Not part of the snapshot seqlock.
