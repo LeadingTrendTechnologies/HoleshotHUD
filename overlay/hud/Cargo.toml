@@ -6,3 +6,6 @@ edition = "2021"
 [dependencies]
 tiny-skia = { version = "0.11", features = ["png-format"] }
 fontdue = "0.9"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

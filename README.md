@@ -40,7 +40,7 @@ Restart MX Bikes after installing or updating the plugin.
 
 ## Build from source
 
-Needs Visual Studio 2022 (C++ desktop) and [Rust](https://rustup.rs/).
+Needs Visual Studio 2022 (C++ desktop) and [Rust](https://rustup.rs/) on **Windows**.
 
 From **cmd**:
 
@@ -57,6 +57,21 @@ cmd.exe //c build.bat
 
 `build.bat` compiles `out\Release\Holeshot-HUD.dlo` and `overlay\target\release\Holeshot-HUD.exe`.  
 `pack.bat` writes `dist\HoleshotHUD-Setup.exe` (needs [Inno Setup 6](https://jrsoftware.org/isinfo.php)).
+
+### macOS / Linux
+
+The overlay and game plugin are Windows-only (MX Bikes). On macOS you can build and test the HUD library:
+
+```bash
+./build.sh
+```
+
+Or manually:
+
+```bash
+cargo test --manifest-path overlay/Cargo.toml --workspace
+cargo build --release --manifest-path overlay/Cargo.toml
+```
 
 If cargo fails with **Access is denied** on `Holeshot-HUD.exe`, quit the overlay (tray → **Quit overlay**) or, from Git Bash:
 

@@ -257,7 +257,7 @@ impl Fonts {
     }
 
     pub fn for_family(family: FontFamily) -> Option<Self> {
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(windows)]
         {
             if let Some(loaded) = Self::from_windows(family) {
                 return Some(loaded);
@@ -266,7 +266,7 @@ impl Fonts {
         if let Some(loaded) = Self::from_bundled(family) {
             return Some(loaded);
         }
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(windows)]
         {
             for fallback in [FontFamily::Segoe, FontFamily::Arial, FontFamily::Tahoma] {
                 if fallback == family {
@@ -284,7 +284,7 @@ impl Fonts {
         font_from(include_bytes!("../fonts/fa-solid-900.ttf").as_slice())
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(windows)]
     fn from_windows(family: FontFamily) -> Option<Self> {
         let (reg, bld) = family.windows_files()?;
         let bytes = std::fs::read(reg).ok()?;
@@ -1944,7 +1944,7 @@ fn local_clock() -> String {
         let mins = (anim_now() as i32 / 60).rem_euclid(24 * 60);
         return format_local_clock((mins / 60) as u16, (mins % 60) as u16);
     }
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(not(target_arch = "wasm32"), windows))]
     {
         #[repr(C)]
         struct SystemTime {
@@ -1974,6 +1974,19 @@ fn local_clock() -> String {
             GetLocalTime(&mut st);
         }
         format_local_clock(st.hour, st.minute)
+    }
+    #[cfg(all(not(target_arch = "wasm32"), not(windows)))]
+    {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0) as i64;
+        let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+        unsafe {
+            libc::localtime_r(&secs, &mut tm);
+        }
+        format_local_clock(tm.tm_hour as u16, tm.tm_min as u16)
     }
 }
 

@@ -1,13 +1,31 @@
+#[cfg(windows)]
 #[path = "../shm.rs"]
 mod shm;
 
+#[cfg(windows)]
 use mxbo_hud::snapshot::cstr;
+
+#[cfg(windows)]
 use std::env;
+#[cfg(windows)]
 use std::fs;
+#[cfg(windows)]
 use std::io::Write;
+#[cfg(windows)]
 use std::path::PathBuf;
 
 fn main() {
+    #[cfg(windows)]
+    run();
+    #[cfg(not(windows))]
+    {
+        eprintln!("dump-track requires Windows (reads MX Bikes shared memory).");
+        std::process::exit(1);
+    }
+}
+
+#[cfg(windows)]
+fn run() {
     let shm = shm::Shm::open().unwrap_or_else(|| {
         eprintln!("MX Bikes is not publishing HUD data. Start the game on a track with Holeshot-HUD.dlo loaded.");
         std::process::exit(1);

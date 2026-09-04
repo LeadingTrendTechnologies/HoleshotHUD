@@ -1,8 +1,17 @@
+#[cfg(windows)]
 use std::env;
+#[cfg(windows)]
 use std::fs;
+#[cfg(windows)]
 use std::path::PathBuf;
 
 fn main() {
+    #[cfg(windows)]
+    embed_icon_and_plugin();
+}
+
+#[cfg(windows)]
+fn embed_icon_and_plugin() {
     embed_icon();
     let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let src = manifest.join("..").join("out").join("Release").join("Holeshot-HUD.dlo");
@@ -15,6 +24,7 @@ fn main() {
     }
 }
 
+#[cfg(windows)]
 fn embed_icon() {
     let icon = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("icon.ico");
     println!("cargo:rerun-if-changed={}", icon.display());
