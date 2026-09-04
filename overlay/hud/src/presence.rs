@@ -35,6 +35,13 @@ pub fn presence_has(race_num: i32) -> bool {
         .unwrap_or(false)
 }
 
+pub fn friend_any() -> bool {
+    friends()
+        .lock()
+        .map(|g| g.iter().any(|n| *n > 0))
+        .unwrap_or(false)
+}
+
 pub fn friend_has(race_num: i32) -> bool {
     if race_num <= 0 {
         return false;

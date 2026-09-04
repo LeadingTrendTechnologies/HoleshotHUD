@@ -38,12 +38,13 @@ Toggles: other riders, start/finish, sector lines, track arrows, leader crown, n
 - Leaving spectate / going back on the bike must put the orange marker on you. Live telemetry wins over a stale `focus_race_num`.
 - Sector lines are thin best-lap-violet dashes at the **start** of S1 / S2 / S3, not orange. They span only the track stroke — do not stick out into the grass. Orange stays the S/F bar and the you-dot. S1 sits on the line; S2 / S3 wait for learned splits. Do not invent equal-third gates when splits are unknown.
 
-- Presence rings on other dots are opt-in (`show_presence`) and must not wrap the you-dot.
-- Friend icon over other dots is opt-in (`highlight_friends`) and Steam64-only. Same placement as the leader crown; offset left if both show. Do not mark the you-dot.
+- Presence rings on other dots are opt-in (`show_presence`) and must not wrap the you-dot or a friend (teal already means they run it). Overlay does not change the fill.
+- Friend other-dots are teal (`highlight_friends`), same as the table Friend icon. Do not recolor the you-dot. Lapping blue/red wins; friend teal wins over overlay orange.
 
 ## Change log
 
-- 2026-09-04 — Steam friends who also run Holeshot get a friend icon over the dot (`highlight_friends`). ID join only; in-game names are ignored.
+- 2026-09-04 — Steam friends who also run Holeshot get a teal other-dot (`highlight_friends`). ID join only; in-game names are ignored.
+- 2026-09-04 — Overlay users on the map get a thin orange ring (`show_presence`). Fill stays slate unless they are a friend (teal).
 - 2026-08-31 — Thin orange ring on other dots when **Show overlay users** is on and that rider is in the session presence list.
 
 - 2026-08-30 — Sector lines mark where each sector starts (S1 at S/F, S2 / S3 at the learned splits). The old S1 / S2 labels sat on the split that *ended* that sector.

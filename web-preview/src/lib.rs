@@ -56,10 +56,13 @@ impl Preview {
         let mut cfg = HudConfig::new();
         cfg.font_family = FontFamily::Exo2;
         cfg.units = Units::Imperial;
+        cfg.show_presence = true;
+        cfg.highlight_friends = true;
         show_only(&mut cfg, "standings");
         center_widget(&mut cfg, "standings");
         let mut snap = demo_snapshot();
         cfg.apply_to_snapshot(&mut snap);
+        sync_demo_marks(&cfg);
         Ok(Self {
             fonts,
             cfg,
@@ -119,6 +122,9 @@ impl Preview {
         set_flag(&mut self.cfg, key, on);
         if key == "dash_simple" {
             size_demo_dash(&mut self.cfg);
+        }
+        if key == "show_presence" || key == "highlight_friends" {
+            sync_demo_marks(&self.cfg);
         }
         self.cfg.apply_to_snapshot(&mut self.snap);
     }
@@ -360,6 +366,24 @@ fn sync_delta_preview(active: &str, t: f32) {
     }));
 }
 
+/// Overlay users in the demo field. Race 11 is You — never marked.
+const DEMO_OVERLAY: &[i32] = &[1, 2, 4, 5, 12];
+/// Steam friends who also run Holeshot. Subset of `DEMO_OVERLAY`.
+const DEMO_FRIENDS: &[i32] = &[1, 4, 12];
+
+fn sync_demo_marks(cfg: &HudConfig) {
+    if cfg.show_presence {
+        mxbo_hud::set_presence_marks(DEMO_OVERLAY);
+    } else {
+        mxbo_hud::set_presence_marks(&[]);
+    }
+    if cfg.show_presence && cfg.highlight_friends {
+        mxbo_hud::set_friend_marks(DEMO_FRIENDS);
+    } else {
+        mxbo_hud::set_friend_marks(&[]);
+    }
+}
+
 fn sync_flag_preview(active: &str, t: f32, yellow: bool, blue: bool) {
     if active != "flag" {
         mxbo_hud::set_flag_preview(-1);
@@ -446,6 +470,8 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "flag_blue" => cfg.flag_blue,
         "ticker_title" => cfg.ticker_title,
         "ticker_autoscroll" => cfg.ticker_autoscroll,
+        "show_presence" => cfg.show_presence,
+        "highlight_friends" => cfg.highlight_friends,
         _ => return None,
     })
 }
@@ -514,6 +540,8 @@ fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
         "flag_blue" => cfg.flag_blue = on,
         "ticker_title" => cfg.ticker_title = on,
         "ticker_autoscroll" => cfg.ticker_autoscroll = on,
+        "show_presence" => cfg.show_presence = on,
+        "highlight_friends" => cfg.highlight_friends = on,
         _ => {}
     }
 }

@@ -46,12 +46,12 @@ Default columns on: Position, Number, Name, Gap, Fastest, Last lap.
 - Fuel header/footer is liters/US gallons (`Fuel`) or tank percent (`Fuel %`). Empty volume is `0.0`; `--` / `--%` only when tank size is missing.
 - Ctrl+resize chrome is the hugged plaque (column pack × row stack), not leftover widget glass. Dragging it larger still grows Name / Rows — do not leave the orange box as a no-op hug.
 
-- Presence marks are opt-in (`show_presence`). Do not paint a mark on a rider who is not on this board, or on yourself.
-- Friend column (same icon as Map) is opt-in (`highlight_friends`) and Steam64-only. Inserted before Name. Do not mark yourself. Same in-game name without a Steam64 is not a friend.
+- Presence marks are opt-in (`show_presence`). Orange overlay icon before the name, not a dot. Do not paint a mark on a rider who is not on this board, or on yourself.
+- Friend column is opt-in (`highlight_friends`), needs Show overlay users, and only appears when a friend is in this race. Inserted before Name. Do not mark yourself. Same in-game name without a Steam64 is not a friend.
 
 ## Change log
 
-- 2026-09-04 — Steam friends who also run Holeshot get a Friend column (`highlight_friends`). ID join only.
+- 2026-09-04 — Steam friends who also run Holeshot get a Friend column (`highlight_friends`). ID join only. Website demo turns this on with a few marked riders.
 - 2026-08-31 — Opt-in Holeshot mark after the name when that rider is in this session and also running the overlay (`show_presence`).
 
 - 2026-08-31 — Ctrl+resize of the hugged plaque grows Name width and **Rows**, so the table can get larger instead of the orange box being a no-op.

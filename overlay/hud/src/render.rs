@@ -530,6 +530,31 @@ fn app_icon() -> &'static Pixmap {
     ICON.get_or_init(|| Pixmap::decode_png(include_bytes!("../../icon-48.png")).expect("icon-48.png"))
 }
 
+/// Mini Holeshot mark before an overlay user's name. Returns the advance width.
+fn draw_overlay_logo(px: &mut Pixmap, x: f32, y: f32, size: f32) -> f32 {
+    let icon = app_icon();
+    let size = size.clamp(10.0, 16.0);
+    let iw = icon.width().max(1) as f32;
+    let scale = size / iw;
+    let r = size * 10.0 / 48.0;
+    let mut paint = PixmapPaint::default();
+    paint.quality = FilterQuality::Bicubic;
+    let clip = round_rect_path(x, y, size, size, r).and_then(|path| {
+        let mut m = Mask::new(px.width(), px.height())?;
+        m.fill_path(&path, FillRule::Winding, true, Transform::identity());
+        Some(m)
+    });
+    px.draw_pixmap(
+        0,
+        0,
+        icon.as_ref(),
+        &paint,
+        Transform::from_row(scale, 0.0, 0.0, scale, x, y),
+        clip.as_ref(),
+    );
+    size + 4.0
+}
+
 /// Circular rounded rect (cubic approximation). Quadratic corners look pointed at this size.
 fn round_rect_path(x: f32, y: f32, w: f32, h: f32, r: f32) -> Option<Path> {
     let r = r.min(w * 0.5).min(h * 0.5);
@@ -1086,7 +1111,19 @@ fn rider_dot_col(s: &Snapshot, race_num: i32) -> Color {
     match lap_rel(s, race_num) {
         LapRel::LappingMe => lapping_col(),
         LapRel::LappedByMe => lapped_col(),
+        LapRel::Same if crate::presence::friend_has(race_num) => friend_col(),
         LapRel::Same => other_col(),
+    }
+}
+
+fn draw_presence_ring(px: &mut Pixmap, x: f32, y: f32, r: f32, race_num: i32) {
+    if !crate::presence::presence_has(race_num) || crate::presence::friend_has(race_num) {
+        return;
+    }
+    let mut pb = PathBuilder::new();
+    pb.push_circle(x, y, r + 2.4);
+    if let Some(path) = pb.finish() {
+        stroke_path(px, &path, accent(), 1.5);
     }
 }
 
@@ -1119,39 +1156,6 @@ fn col_text(
         x
     };
     text(px, fonts, &t, size, tx, y, color, false);
-}
-
-fn draw_name_presence_mark(
-    px: &mut Pixmap,
-    fonts: &Fonts,
-    name: &str,
-    x: f32,
-    w: f32,
-    y: f32,
-    row_h: f32,
-    race_num: i32,
-) {
-    if !crate::presence::presence_has(race_num) {
-        return;
-    }
-    let t = ellipsize(fonts, name, 12.0, (w - 10.0).max(8.0));
-    let tw = measure(fonts, &t, 12.0);
-    let mx = x + tw + 6.0;
-    if mx + 3.5 > x + w {
-        return;
-    }
-    fill_circle(px, mx, y + row_h * 0.28, 3.0, accent());
-}
-
-fn draw_presence_ring(px: &mut Pixmap, x: f32, y: f32, r: f32, race_num: i32) {
-    if !crate::presence::presence_has(race_num) {
-        return;
-    }
-    let mut pb = PathBuilder::new();
-    pb.push_circle(x, y, r + 2.4);
-    if let Some(path) = pb.finish() {
-        stroke_path(px, &path, accent(), 1.5);
-    }
 }
 
 fn draw_count_track(px: &mut Pixmap, fonts: &Fonts, x: f32, cy: f32, n: usize, track: &str) {
@@ -2438,13 +2442,19 @@ fn paint_table_row<C: BoardCol>(
         if kind.is_bike() && !val.is_empty() {
             draw_bike_pill(px, fonts, &val, *cx, row.cy, *cw, row.row_h, accent);
         } else {
-            let text_w = (*cw - pad).max(8.0);
-            col_text(px, fonts, &val, 12.0, *cx + pad, text_w, row.cy + 4.0, color, right);
+            let mut text_x = *cx + pad;
+            let mut text_w = (*cw - pad).max(8.0);
             if kind.is_name() {
                 if let Some(num) = click {
-                    draw_name_presence_mark(px, fonts, &val, *cx + pad, text_w, row.cy + 4.0, row.row_h, num);
+                    if crate::presence::presence_has(num) && !crate::presence::friend_has(num) {
+                        let mark = (row.row_h * 0.55).clamp(11.0, 14.0);
+                        let used = draw_overlay_logo(px, text_x, row.cy + (row.row_h - mark) * 0.5, mark);
+                        text_x += used;
+                        text_w = (text_w - used).max(8.0);
+                    }
                 }
             }
+            col_text(px, fonts, &val, 12.0, text_x, text_w, row.cy + 4.0, color, right);
         }
     }
     if !named {
@@ -3865,8 +3875,12 @@ fn draw_ticker_card(
     let mut text_x = bar_x + 7.0;
     let name_sz = (h * 0.28).clamp(10.5, 13.5);
     let gap_sz = (h * 0.22).clamp(8.5, 11.0);
+    let icon_s = (name_sz * 0.95).clamp(10.0, 13.0);
+    if crate::presence::presence_has(row.race_num) && !crate::presence::friend_has(row.race_num) {
+        let mark = icon_s.clamp(11.0, 14.0);
+        text_x += draw_overlay_logo(px, text_x + 1.0, y + (h - mark) * 0.42, mark);
+    }
     if crate::presence::friend_has(row.race_num) {
-        let icon_s = (name_sz * 0.95).clamp(10.0, 13.0);
         icon(px, fonts, friend_ch(), icon_s, text_x + 1.0, y + h * 0.16, friend_col(), false);
         text_x += icon_s + 4.0;
     }
@@ -5276,7 +5290,6 @@ fn draw_map(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f
             let (sdx, sdy) = screen_dir(&to_px, rider.x, rider.z, fwx, fwz);
             draw_dot_chevron(px, hx, hy, other_r, sdx, sdy, fill, false);
             draw_rider_overhead(px, fonts, s, rider.race_num, hx, hy, other_r, subject, leader, cfg.map_crown, cfg.map_place);
-            friend_over_dot(px, fonts, s, rider.race_num, hx, hy, other_r, leader, cfg.map_crown);
             draw_state_mark(px, fonts, hx, hy, other_r, rider_mark(s, rider.race_num, rider.crashed != 0));
         }
     }
@@ -5460,7 +5473,6 @@ fn draw_minimap(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, s
             let (sdx, sdy) = screen_dir(&to_px, rider.x, rider.z, fwx, fwz);
             draw_dot_chevron(mini, hx, hy, other_r, sdx, sdy, fill, false);
             draw_rider_overhead(mini, fonts, s, rider.race_num, hx, hy, other_r, subject, leader, cfg.mini_crown, cfg.mini_place);
-            friend_over_dot(mini, fonts, s, rider.race_num, hx, hy, other_r, leader, cfg.mini_crown);
             draw_state_mark(mini, fonts, hx, hy, other_r, rider_mark(s, rider.race_num, rider.crashed != 0));
         }
     }
@@ -5757,35 +5769,6 @@ fn icon_over_dot_scaled(
 
 fn crown_over_dot(px: &mut Pixmap, fonts: &Fonts, x: f32, y: f32, r: f32) {
     icon_over_dot(px, fonts, x, y, r, '\u{f521}', Color::from_rgba8(255, 196, 48, 255));
-}
-
-fn rider_has_crown(s: &Snapshot, race_num: i32, leader: i32, show_crown: bool) -> bool {
-    if !show_crown {
-        return false;
-    }
-    standing_pos(s, race_num) == 1 || (leader > 0 && race_num == leader)
-}
-
-fn friend_over_dot(
-    px: &mut Pixmap,
-    fonts: &Fonts,
-    s: &Snapshot,
-    race_num: i32,
-    x: f32,
-    y: f32,
-    r: f32,
-    leader: i32,
-    show_crown: bool,
-) {
-    if !crate::presence::friend_has(race_num) {
-        return;
-    }
-    let ox = if rider_has_crown(s, race_num, leader, show_crown) {
-        -(r * 1.55).max(8.0)
-    } else {
-        0.0
-    };
-    icon_over_dot(px, fonts, x + ox, y, r, friend_ch(), friend_col());
 }
 
 fn draw_rider_overhead(

@@ -30,12 +30,13 @@ Toggles match Map, plus **Zoom**. Default background 0.
 - Follow / north-up must use `subject_pose`, not `has_telemetry` alone, or spectate falls back to a whole-track fit with no orange you-dot.
 - After spectate, live telemetry must put the origin back on you. Do not keep following a stale camera target.
 - Sector lines use the same sector-start gates as Map (S1 at S/F, S2 / S3 at learned splits). Do not paint them orange. Skip a gate that is outside the circle.
-- Presence rings on other dots are opt-in (`show_presence`) and must not wrap the you-dot.
-- Friend icon shares Map (`highlight_friends`). Do not mark the you-dot.
+- Presence rings share Map (`show_presence`). Do not wrap the you-dot. Overlay does not change the fill.
+- Friend teal other-dots share Map (`highlight_friends`). Do not recolor the you-dot.
 
 ## Change log
 
-- 2026-09-04 — Shares Map friend icon (`highlight_friends`).
+- 2026-09-04 — Shares Map friend teal other-dots (`highlight_friends`).
+- 2026-09-04 — Shares Map overlay rings (`show_presence`).
 - 2026-08-31 — Shares the Map presence ring on other dots (`show_presence`).
 
 - 2026-08-30 — Shares the Map fix: sector lines mark where each sector starts, not where the previous one ended.

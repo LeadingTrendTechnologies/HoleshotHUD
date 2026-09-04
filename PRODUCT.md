@@ -35,7 +35,7 @@ A broadcast-style race HUD MX Bikes does not ship: standings, relative, map/mini
 - Optional simpler in-game HUD (`ingame_hud`) draws inside the game; overlay work does not go there.
 - Architecture: `Holeshot-HUD.dlo` → shared memory `Local\MXBOHudV12` → Rust overlay. Field availability is gated by the PiBoSo plugin API (see `wiki/Home.md`). Bump `MXBO_SHM_VERSION` when the snapshot layout changes.
 - Auto-update from GitHub releases; after an in-app update, Settings shows a What's new board for this version. In-app feedback (F8 → Feedback) posts private gists; a reply from the inbox pops up in settings on that PC, and they can write back.
-- Opt-in **Show overlay users** (Settings → App, off by default) marks others in this session who also run Holeshot. **Highlight Steam friends** (same pane, off by default) adds a friend icon on map dots and a Friend column on tables for friends who also run it, by Steam64 in that room. Presence goes to a Cloudflare Worker, not the Vercel site.
+- Opt-in **Show overlay users** (Settings → App, off by default) marks others in this session who also run Holeshot. **Highlight Steam friends** (same pane, off by default) paints those friends teal on the map and adds a Friend column on tables, by Steam64 in that room. Presence goes to a Cloudflare Worker, not the Vercel site.
 - MX Bikes only. Not a general sim HUD.
 
 ## Brand Commitments

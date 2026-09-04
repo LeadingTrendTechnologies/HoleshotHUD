@@ -742,7 +742,7 @@ impl StField {
             Self::Bike => c.st_bike,
             Self::Penalty => c.st_penalty,
             Self::Crashed => c.st_crashed,
-            Self::Friend => c.highlight_friends,
+            Self::Friend => c.show_friend_col(),
         }
     }
 
@@ -928,7 +928,7 @@ impl RelField {
             Self::Crashed => c.rel_crashed,
             Self::Best => c.rel_best,
             Self::Last => c.rel_last,
-            Self::Friend => c.highlight_friends,
+            Self::Friend => c.show_friend_col(),
         }
     }
 
@@ -994,7 +994,7 @@ pub struct HudConfig {
     pub experimental: bool,
     /// Opt-in: publish that you run Holeshot and mark others in this session who do.
     pub show_presence: bool,
-    /// Opt-in: friend icon on map dots and a Friend column on tables.
+    /// Opt-in: teal map dots and a Friend column on tables.
     pub highlight_friends: bool,
     /// Stable per-install id for presence upserts. Generated on first use.
     pub presence_id: String,
@@ -1747,6 +1747,10 @@ impl HudConfig {
         move_to(&mut self.rel_order, from, to);
     }
 
+    pub fn show_friend_col(&self) -> bool {
+        self.highlight_friends && self.show_presence && crate::presence::friend_any()
+    }
+
     pub fn standings_cols(&self) -> Vec<StField> {
         let mut cols: Vec<_> = self
             .st_order
@@ -1757,7 +1761,7 @@ impl HudConfig {
         if cols.is_empty() {
             cols.push(StField::Name);
         }
-        if self.highlight_friends {
+        if self.show_friend_col() {
             insert_before_name(&mut cols, StField::Friend, StField::Name);
         }
         cols
@@ -1811,7 +1815,7 @@ impl HudConfig {
         if cols.is_empty() {
             cols.push(RelField::Name);
         }
-        if self.highlight_friends {
+        if self.show_friend_col() {
             insert_before_name(&mut cols, RelField::Friend, RelField::Name);
         }
         cols

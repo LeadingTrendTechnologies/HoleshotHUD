@@ -283,19 +283,31 @@ fn disabled_columns_drop_from_widget_layout() {
 }
 
 #[test]
-fn friend_column_sits_before_name_when_highlight_is_on() {
+fn friend_column_only_when_overlay_is_on_and_a_friend_is_in_the_race() {
+    let _g = INI_LOCK.lock().unwrap();
     let mut cfg = HudConfig::new();
+    crate::set_friend_marks(&[]);
     assert!(!cfg.standings_cols().contains(&StField::Friend));
     assert!(!cfg.relative_cols().contains(&RelField::Friend));
     cfg.highlight_friends = true;
+    assert!(!cfg.standings_cols().contains(&StField::Friend));
+    cfg.show_presence = true;
+    assert!(!cfg.standings_cols().contains(&StField::Friend));
+    crate::set_friend_marks(&[4]);
     let st = cfg.standings_cols();
     let rel = cfg.relative_cols();
     let st_name = st.iter().position(|c| *c == StField::Name).unwrap();
     let rel_name = rel.iter().position(|c| *c == RelField::Name).unwrap();
     assert_eq!(st[st_name - 1], StField::Friend);
     assert_eq!(rel[rel_name - 1], RelField::Friend);
+    cfg.show_presence = false;
+    assert!(!cfg.standings_cols().contains(&StField::Friend));
+    cfg.show_presence = true;
+    crate::set_friend_marks(&[]);
+    assert!(!cfg.standings_cols().contains(&StField::Friend));
     assert!(!StField::ALL.contains(&StField::Friend));
     assert!(!RelField::ALL.contains(&RelField::Friend));
+    crate::set_friend_marks(&[]);
 }
 
 #[test]

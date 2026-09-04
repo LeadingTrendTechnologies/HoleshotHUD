@@ -120,7 +120,7 @@ stageStatus.hidden = false;
 
 let preview;
 try {
-  await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=0.3.1", import.meta.url) });
+  await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=0.5.0", import.meta.url) });
   preview = new Preview();
   stageStatus.hidden = true;
 } catch (err) {
@@ -171,6 +171,10 @@ function fieldRow(key, label, options) {
   return `<div class="row stack"><label>${label}</label>${selectHtml(key, options)}</div>`;
 }
 
+function sessionToggles() {
+  return `<div class="section">Session</div>${toggleRow("show_presence", "Show overlay users")}${toggleRow("highlight_friends", "Highlight Steam friends")}`;
+}
+
 function styleControls(prefix, opacityLabel = "Background") {
   let html = `${sliderRow(`${prefix}_font`, "Font size", 70, 160, "%")}${sliderRow(`${prefix}_bg`, opacityLabel, 0, 100, "%")}`;
   if (prefix === "st" || prefix === "rel") {
@@ -196,6 +200,7 @@ function renderSettings() {
   const w = preview.active_widget();
   let html = "";
   if (w === "standings") {
+    html += sessionToggles();
     html += styleControls("st");
     html += `<div class="section">Header</div>`;
     html += fieldRow("st_head0", "Left", BOARD);
@@ -209,6 +214,7 @@ function renderSettings() {
     html += `<div class="section">Columns</div>`;
     html += ST_COLS.map(([k, l]) => toggleRow(k, l)).join("");
   } else if (w === "relative") {
+    html += sessionToggles();
     html += styleControls("rel");
     html += `<div class="section">Header</div>`;
     html += fieldRow("rel_head0", "Left", BOARD);
@@ -222,11 +228,13 @@ function renderSettings() {
     html += `<div class="section">Columns</div>`;
     html += REL_COLS.map(([k, l]) => toggleRow(k, l)).join("");
   } else if (w === "map") {
+    html += sessionToggles();
     html += styleControls("map");
     html += `<div class="section">On the map</div>`;
     html += MAP_TOGGLES.map(([k, l]) => toggleRow(k, l)).join("");
     html += fieldRow("map_dot", "Dot number", [["num", "Number"], ["pos", "Position"]]);
   } else if (w === "minimap") {
+    html += sessionToggles();
     html += styleControls("mini");
     html += `<div class="section">On the minimap</div>`;
     html += MINI_TOGGLES.map(([k, l]) => toggleRow(k, l)).join("");
@@ -249,6 +257,7 @@ function renderSettings() {
       html += fieldRow("dash_right", "Right", DASH);
     }
   } else if (w === "ticker") {
+    html += sessionToggles();
     html += styleControls("ticker", "Panel opacity");
     html += toggleRow("ticker_title", "Track name");
     html += toggleRow("ticker_autoscroll", "Autoscroll");

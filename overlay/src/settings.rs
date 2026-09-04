@@ -3450,10 +3450,10 @@ fn pane_app(
     }
     y = section(px, fonts, x, y, "Session");
     y = toggle_row(px, fonts, x, y, w, "Show overlay users", cfg.show_presence, Hit::ShowPresence, hover, hits);
-    text(px, fonts, "Marks riders in this session who also run Holeshot. Names are already on the board; this only adds that they use it. Off until you turn it on.", 11.0, x + 4.0, y + 2.0, dim(), false);
+    text(px, fonts, "Holeshot mark before the name on tables and an orange ring on the map when they also run Holeshot. Off until you turn it on.", 11.0, x + 4.0, y + 2.0, dim(), false);
     y += 36.0;
     y = toggle_row(px, fonts, x, y, w, "Highlight Steam friends", cfg.highlight_friends, Hit::HighlightFriends, hover, hits);
-    text(px, fonts, "Friend icon on map dots and a column on tables when a Steam friend also runs Holeshot. Needs Show overlay users. Friends without the overlay cannot be marked. Off until you turn it on.", 11.0, x + 4.0, y + 2.0, dim(), false);
+    text(px, fonts, "Teal map dots and a Friend column on tables when a Steam friend also runs Holeshot. Needs Show overlay users. Friends without the overlay cannot be marked. Off until you turn it on.", 11.0, x + 4.0, y + 2.0, dim(), false);
     y += 48.0;
     y = section(px, fonts, x, y, "Labs");
     y = toggle_row(px, fonts, x, y, w, "Experimental widgets", cfg.experimental, Hit::FeatureSector, hover, hits);
