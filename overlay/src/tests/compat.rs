@@ -38,18 +38,53 @@ fn restore_taskbar_pid_reads_flag_and_value() {
 }
 
 #[test]
-fn only_the_game_monitor_taskbar_hides() {
-    assert!(should_hide_taskbar(true));
-    assert!(!should_hide_taskbar(false));
+fn only_the_game_monitor_taskbar_hides_while_the_pointer_is_there() {
+    assert!(should_hide_game_taskbar(true, true, false));
+    assert!(!should_hide_game_taskbar(false, true, false));
+    assert!(!should_hide_game_taskbar(true, false, false));
+    assert!(!should_hide_game_taskbar(true, true, true));
 }
 
 #[test]
-fn overlay_stays_when_another_monitor_or_taskbar_is_in_front() {
-    assert!(overlay_stays_up(true, false, false, false));
-    assert!(overlay_stays_up(false, true, false, false));
-    assert!(overlay_stays_up(false, false, true, false));
-    assert!(overlay_stays_up(false, false, false, true));
-    assert!(!overlay_stays_up(false, false, false, false));
+fn overlay_stays_when_another_monitor_or_start_is_in_front() {
+    assert!(overlay_stays_up(true, false, false, false, false));
+    assert!(overlay_stays_up(false, true, false, false, false));
+    assert!(overlay_stays_up(false, false, true, false, false));
+    assert!(overlay_stays_up(false, false, false, true, false));
+    assert!(overlay_stays_up(false, false, false, false, true));
+    assert!(!overlay_stays_up(false, false, false, false, false));
+}
+
+#[test]
+fn start_and_search_hosts_count_as_shell_ui() {
+    assert!(is_shell_ui_class("Shell_TrayWnd"));
+    assert!(is_shell_ui_class("Shell_SecondaryTrayWnd"));
+    assert!(is_shell_ui_class("ImmersiveLauncher"));
+    assert!(!is_shell_ui_class("MXBOOverlay"));
+    assert!(is_shell_ui_process(r"C:\Windows\SystemApps\StartMenuExperienceHost.exe"));
+    assert!(is_shell_ui_process(r"C:\Windows\System32\SearchHost.exe"));
+    assert!(is_shell_ui_process(r"C:\Windows\System32\ShellHost.exe"));
+    assert!(!is_shell_ui_process(r"C:\Games\MX Bikes\mxbikes.exe"));
+    assert!(!is_shell_ui_process(r"C:\Windows\explorer.exe"));
+}
+
+#[test]
+fn explorer_flyouts_count_as_shell_ui_not_file_explorer() {
+    let explorer = r"C:\Windows\explorer.exe";
+    assert!(is_shell_ui("XamlExplorerHostIslandWindow", explorer));
+    assert!(is_shell_ui("MultitaskingViewFrame", explorer));
+    assert!(is_shell_ui("TaskListThumbnailWnd", explorer));
+    assert!(is_shell_ui("NotifyIconOverflowWindow", explorer));
+    assert!(is_shell_ui(
+        "Windows.UI.Core.CoreWindow",
+        r"C:\Windows\SystemApps\ShellExperienceHost.exe"
+    ));
+    assert!(!is_shell_ui("CabinetWClass", explorer));
+    assert!(!is_shell_ui(
+        "Windows.UI.Core.CoreWindow",
+        r"C:\Program Files\WindowsApps\Calculator.exe"
+    ));
+    assert!(!is_shell_ui("MXBOOverlay", r"C:\Games\MX Bikes\mxbikes.exe"));
 }
 
 #[test]

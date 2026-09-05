@@ -6,7 +6,8 @@ use std::time::{Duration, Instant};
 use windows::core::{w, PCSTR, PCWSTR, PWSTR};
 use windows::Win32::Foundation::{BOOL, CloseHandle, HWND, LPARAM, POINT, RECT};
 use windows::Win32::Graphics::Gdi::{
-    ClientToScreen, GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    ClientToScreen, GetMonitorInfoW, MonitorFromPoint, MonitorFromWindow, MONITORINFO,
+    MONITOR_DEFAULTTONEAREST,
 };
 use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
 use windows::Win32::System::Registry::{
@@ -20,8 +21,8 @@ use windows::Win32::System::Threading::{
 use windows::Win32::UI::Shell::{ABM_WINDOWPOSCHANGED, APPBARDATA, SHAppBarMessage};
 use windows::Win32::UI::WindowsAndMessaging::{
     ClipCursor, EnumWindows, FindWindowExW, FindWindowW, GetClassNameW, GetClientRect,
-    GetForegroundWindow, GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId, IsIconic,
-    IsWindow, IsWindowVisible,
+    GetCursorPos, GetForegroundWindow, GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId,
+    IsIconic, IsWindow, IsWindowVisible,
     SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow, ShowWindowAsync, GWL_EXSTYLE,
     HWND_NOTOPMOST, HWND_TOPMOST, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
     SWP_SHOWWINDOW, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE, WS_EX_TRANSPARENT,
@@ -140,14 +141,40 @@ pub fn wait_then_restore_taskbar(pid: u32) {
             restore_if_shy(hwnd);
         }
     }
+    let mut want_hide = false;
+    let mut game_mon = 0isize;
+    let mut last_show = Instant::now() - Duration::from_secs(10);
     while process_alive(pid) {
         let game = largest_visible_window(pid);
         if game.is_some_and(overlay_stays_for_game) || pid_is_foreground(pid) {
             if let Some(hwnd) = game {
-                hide_game_monitor_taskbar(hwnd);
+                let next = should_hide_game_taskbar(
+                    true,
+                    pointer_on_game_monitor(hwnd),
+                    foreground_is_shell_ui(),
+                );
+                let mon = unsafe { monitor_id(hwnd) }.unwrap_or(0);
+                if mon != game_mon {
+                    game_mon = mon;
+                    restore_all_taskbars_async();
+                    want_hide = false;
+                }
+                if next != want_hide {
+                    if next {
+                        hide_game_monitor_taskbar(hwnd);
+                    } else {
+                        restore_game_monitor_taskbar(hwnd);
+                    }
+                    want_hide = next;
+                }
             }
-        } else {
+        } else if TASKBARS_HIDDEN.load(Ordering::Relaxed)
+            && last_show.elapsed() >= Duration::from_millis(500)
+        {
             show_taskbars();
+            last_show = Instant::now();
+            want_hide = false;
+            game_mon = 0;
         }
         thread::sleep(Duration::from_millis(200));
     }
@@ -351,6 +378,12 @@ pub struct FullscreenFix {
     hide_after: Option<Instant>,
     last_raise: Instant,
     layout_on: bool,
+    /// Last hide/show we asked Explorer for. Do not touch the bars every
+    /// raise — ShowWindow during Start freezes the HUD.
+    taskbar_want_hide: bool,
+    /// Monitor MX Bikes was on when we last hid/showed the taskbar.
+    game_mon: isize,
+    last_show_retry: Instant,
     /// Game HWND we already shrank 1px. Do not SetWindowPos it again on a
     /// foreground flicker — that hitch freezes MX Bikes mid-moto.
     shy_hwnd: isize,
@@ -372,6 +405,9 @@ impl FullscreenFix {
                 hide_after: None,
                 last_raise: Instant::now() - Duration::from_secs(10),
                 layout_on: false,
+                taskbar_want_hide: false,
+                game_mon: 0,
+                last_show_retry: Instant::now() - Duration::from_secs(10),
                 shy_hwnd: 0,
             }
         }
@@ -406,11 +442,33 @@ impl FullscreenFix {
                 self.hide_after = None;
                 let became = !self.last_playing;
                 self.last_playing = true;
+                if let Some(game) = game {
+                    let want_hide = should_hide_game_taskbar(
+                        true,
+                        pointer_on_game_monitor(game),
+                        foreground_is_shell_ui(),
+                    );
+                    let mon = monitor_id(game).unwrap_or(0);
+                    if mon != self.game_mon {
+                        self.game_mon = mon;
+                        restore_all_taskbars_async();
+                        self.taskbar_want_hide = false;
+                        keep_just_shy_of_fullscreen(game);
+                        self.shy_hwnd = game.0 as isize;
+                    }
+                    if want_hide != self.taskbar_want_hide {
+                        if want_hide {
+                            hide_game_monitor_taskbar(game);
+                        } else {
+                            restore_game_monitor_taskbar(game);
+                        }
+                        self.taskbar_want_hide = want_hide;
+                    }
+                }
                 if became || now.duration_since(self.last_raise) > Duration::from_secs(2) {
                     if let Some(game) = game {
-                        hide_game_monitor_taskbar(game);
                         let id = game.0 as isize;
-                        if became && self.shy_hwnd != id {
+                        if self.shy_hwnd != id {
                             keep_just_shy_of_fullscreen(game);
                             self.shy_hwnd = id;
                         }
@@ -442,6 +500,8 @@ impl FullscreenFix {
                     if game_gone {
                         restore_desktop(overlay);
                         self.hide_after = None;
+                        self.taskbar_want_hide = false;
+                        self.game_mon = 0;
                         self.shy_hwnd = 0;
                         return false;
                     }
@@ -454,9 +514,14 @@ impl FullscreenFix {
                     }
                     restore_desktop(overlay);
                     self.hide_after = None;
-                } else if TASKBARS_HIDDEN.load(Ordering::Relaxed) {
-                    // Win11 often ignores a single ShowWindow after SW_HIDE; keep trying.
+                    self.taskbar_want_hide = false;
+                    self.game_mon = 0;
+                } else if TASKBARS_HIDDEN.load(Ordering::Relaxed)
+                    && now.duration_since(self.last_show_retry) >= Duration::from_millis(500)
+                {
+                    // Win11 often ignores a single ShowWindow after SW_HIDE; retry, not every frame.
                     show_taskbars();
+                    self.last_show_retry = now;
                 }
                 false
             }
@@ -564,27 +629,93 @@ fn game_is_foreground(game: HWND) -> bool {
 /// (taskbar, Start, Discord, …). Alt-tab to another window on the game
 /// screen still hides it.
 fn overlay_stays_for_game(game: HWND) -> bool {
-    game_is_foreground(game) || foreground_is_taskbar() || foreground_is_other_monitor(game)
+    game_is_foreground(game)
+        || foreground_is_shell_ui()
+        || foreground_is_other_monitor(game)
+        || !pointer_on_game_monitor(game)
 }
 
-/// Hide this taskbar only when it sits on the same monitor as the game.
-fn should_hide_taskbar(same_monitor: bool) -> bool {
-    same_monitor
+/// Hide the game-monitor taskbar only while the pointer is on that screen
+/// and Start / Search / flyouts are not up. Win11 Start is a host window:
+/// hiding `Shell_TrayWnd` makes it open on the game monitor and freezes
+/// the HUD. The same hop happens for Quick Settings, the clock, and Task View.
+fn should_hide_game_taskbar(same_monitor: bool, pointer_on_game: bool, shell_ui: bool) -> bool {
+    same_monitor && pointer_on_game && !shell_ui
 }
 
-/// HUD stays composited when the game, Settings, a taskbar, or another
-/// monitor has foreground.
+/// HUD stays composited when the game, Settings, shell UI, another
+/// monitor, or the pointer on another screen is in front.
 fn overlay_stays_up(
     game_foreground: bool,
     settings_foreground: bool,
-    taskbar_foreground: bool,
+    shell_ui: bool,
     other_monitor_foreground: bool,
+    pointer_on_other_monitor: bool,
 ) -> bool {
-    game_foreground || settings_foreground || taskbar_foreground || other_monitor_foreground
+    game_foreground
+        || settings_foreground
+        || shell_ui
+        || other_monitor_foreground
+        || pointer_on_other_monitor
 }
 
-fn foreground_is_taskbar() -> bool {
-    unsafe { is_taskbar_hwnd(GetForegroundWindow()) }
+fn foreground_is_shell_ui() -> bool {
+    unsafe { is_shell_ui_hwnd(GetForegroundWindow()) }
+}
+
+fn is_shell_ui_class(class: &str) -> bool {
+    matches!(
+        class,
+        "Shell_TrayWnd" | "Shell_SecondaryTrayWnd" | "ImmersiveLauncher"
+    )
+}
+
+/// Explorer-hosted flyouts. Match only with explorer / a shell host — not
+/// every `CoreWindow` UWP app on the game screen.
+fn is_explorer_flyout_class(class: &str) -> bool {
+    matches!(
+        class,
+        "XamlExplorerHostIslandWindow"
+            | "Windows.UI.Core.CoreWindow"
+            | "MultitaskingViewFrame"
+            | "TaskListThumbnailWnd"
+            | "NotifyIconOverflowWindow"
+    )
+}
+
+fn exe_file_name(path: &str) -> String {
+    path.rsplit(['\\', '/'])
+        .next()
+        .unwrap_or(path)
+        .to_ascii_lowercase()
+}
+
+fn is_explorer_process(path: &str) -> bool {
+    exe_file_name(path) == "explorer.exe"
+}
+
+fn is_shell_ui_process(path: &str) -> bool {
+    matches!(
+        exe_file_name(path).as_str(),
+        "startmenuexperiencehost.exe"
+            | "searchhost.exe"
+            | "searchapp.exe"
+            | "shellexperiencehost.exe"
+            | "shellhost.exe"
+            | "widgets.exe"
+            | "textinputhost.exe"
+            | "gamebar.exe"
+    )
+}
+
+fn is_shell_ui(class: &str, path: &str) -> bool {
+    if is_shell_ui_class(class) {
+        return true;
+    }
+    if is_explorer_flyout_class(class) && (is_explorer_process(path) || is_shell_ui_process(path)) {
+        return true;
+    }
+    is_shell_ui_process(path)
 }
 
 fn foreground_is_other_monitor(game: HWND) -> bool {
@@ -603,17 +734,39 @@ fn foreground_is_other_monitor(game: HWND) -> bool {
     }
 }
 
-unsafe fn is_taskbar_hwnd(hwnd: HWND) -> bool {
+unsafe fn is_shell_ui_hwnd(hwnd: HWND) -> bool {
     if hwnd.0.is_null() || hwnd.is_invalid() {
         return false;
     }
-    let mut name = [0u16; 64];
+    let mut name = [0u16; 80];
     let n = GetClassNameW(hwnd, &mut name);
-    if n <= 0 {
-        return false;
+    let class = if n > 0 {
+        String::from_utf16_lossy(&name[..n as usize])
+    } else {
+        String::new()
+    };
+    let mut pid = 0u32;
+    GetWindowThreadProcessId(hwnd, Some(&mut pid));
+    let path = if pid != 0 {
+        exe_path_for_pid(pid).unwrap_or_default()
+    } else {
+        String::new()
+    };
+    is_shell_ui(&class, &path)
+}
+
+fn pointer_on_game_monitor(game: HWND) -> bool {
+    unsafe {
+        let Some(game_mon) = monitor_id(game) else {
+            return true;
+        };
+        let mut pt = POINT { x: 0, y: 0 };
+        if GetCursorPos(&mut pt).is_err() {
+            return true;
+        }
+        let mon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+        !mon.0.is_null() && mon.0 as isize == game_mon
     }
-    let class = String::from_utf16_lossy(&name[..n as usize]);
-    class == "Shell_TrayWnd" || class == "Shell_SecondaryTrayWnd"
 }
 
 unsafe fn monitor_id(hwnd: HWND) -> Option<isize> {
@@ -636,11 +789,36 @@ fn hide_game_monitor_taskbar(game: HWND) {
         };
         for_each_taskbar(|hwnd| {
             let same = monitor_id(hwnd) == Some(game_mon);
-            if should_hide_taskbar(same) {
+            if same {
                 let _ = ShowWindowAsync(hwnd, SW_HIDE);
             } else if !IsWindowVisible(hwnd).as_bool() {
-                restore_taskbar(hwnd);
+                let _ = ShowWindowAsync(hwnd, SW_SHOWNOACTIVATE);
             }
+        });
+    }
+}
+
+/// Put the game-monitor bar back so Win11 Start can open on the hovered screen.
+fn restore_game_monitor_taskbar(game: HWND) {
+    unsafe {
+        let Some(game_mon) = monitor_id(game) else {
+            return;
+        };
+        for_each_taskbar(|hwnd| {
+            if monitor_id(hwnd) == Some(game_mon) {
+                let _ = ShowWindowAsync(hwnd, SW_SHOWNOACTIVATE);
+            }
+        });
+    }
+}
+
+/// Show every bar without a sync Explorer poke. Used when the game moves
+/// so the old monitor's bar does not stay hidden.
+fn restore_all_taskbars_async() {
+    TASKBARS_HIDDEN.store(false, Ordering::Relaxed);
+    unsafe {
+        for_each_taskbar(|hwnd| {
+            let _ = ShowWindowAsync(hwnd, SW_SHOWNOACTIVATE);
         });
     }
 }

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.1
+
+Start, Quick Settings, and moving MX Bikes to another screen no longer freeze the HUD.
+
+### Overlay
+
+- Hovering Start on another monitor no longer opens Start on the MX Bikes screen or freezes the HUD. The game-monitor taskbar comes back while the pointer is off that screen so Win11 Start can stay put.
+- Moving MX Bikes to another screen hides that screen's taskbar and brings the old one back.
+- Quick Settings, the clock, Task View, and the other Win11 flyouts no longer poke Explorer the way Start did.
+
 ## 0.7.0
 
 Controller is a new Labs widget for live pad inputs. Delta Bar and Sectors snap live time to the game's official splits.
