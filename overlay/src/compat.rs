@@ -1,5 +1,5 @@
 use std::mem::size_of;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -33,13 +33,29 @@ const ZBID_IMMERSIVE_NOTIFICATION: u32 = 4;
 const STILL_ACTIVE: u32 = 259;
 
 static UNCLIP: AtomicBool = AtomicBool::new(false);
+static CLIP_ON: AtomicBool = AtomicBool::new(false);
+static CLIP_L: AtomicI32 = AtomicI32::new(0);
+static CLIP_T: AtomicI32 = AtomicI32::new(0);
+static CLIP_R: AtomicI32 = AtomicI32::new(0);
+static CLIP_B: AtomicI32 = AtomicI32::new(0);
 static BG_RUN: AtomicBool = AtomicBool::new(true);
 static TASKBARS_HIDDEN: AtomicBool = AtomicBool::new(false);
 
 fn spawn_unclip_thread() {
     thread::spawn(|| {
         while BG_RUN.load(Ordering::Relaxed) {
-            if UNCLIP.load(Ordering::Relaxed) {
+            if CLIP_ON.load(Ordering::Relaxed) {
+                let r = RECT {
+                    left: CLIP_L.load(Ordering::Relaxed),
+                    top: CLIP_T.load(Ordering::Relaxed),
+                    right: CLIP_R.load(Ordering::Relaxed),
+                    bottom: CLIP_B.load(Ordering::Relaxed),
+                };
+                unsafe {
+                    let _ = ClipCursor(Some(&r));
+                }
+                thread::sleep(Duration::from_millis(1));
+            } else if UNCLIP.load(Ordering::Relaxed) {
                 unsafe {
                     let _ = ClipCursor(None);
                 }
@@ -51,9 +67,26 @@ fn spawn_unclip_thread() {
     });
 }
 
+fn set_clip_rect(r: RECT) {
+    CLIP_L.store(r.left, Ordering::Relaxed);
+    CLIP_T.store(r.top, Ordering::Relaxed);
+    CLIP_R.store(r.right, Ordering::Relaxed);
+    CLIP_B.store(r.bottom, Ordering::Relaxed);
+    CLIP_ON.store(true, Ordering::Relaxed);
+}
+
+fn clear_clip() {
+    CLIP_ON.store(false, Ordering::Relaxed);
+    UNCLIP.store(false, Ordering::Relaxed);
+    unsafe {
+        let _ = ClipCursor(None);
+    }
+}
+
 pub fn stop_background_threads() {
     BG_RUN.store(false, Ordering::Relaxed);
     UNCLIP.store(false, Ordering::Relaxed);
+    CLIP_ON.store(false, Ordering::Relaxed);
 }
 
 pub fn restore_taskbar_pid(args: impl IntoIterator<Item = impl AsRef<str>>) -> Option<u32> {
@@ -398,7 +431,7 @@ impl FullscreenFix {
                 Some(std::mem::transmute::<_, SetWindowBandFn>(proc))
             })();
             spawn_unclip_thread();
-            show_taskbars();
+            restore_all_taskbars_async();
             Self {
                 set_window_band,
                 last_playing: false,
@@ -414,15 +447,27 @@ impl FullscreenFix {
     }
 
     pub fn set_layout_mode(&mut self, overlay: HWND, on: bool) {
+        if on {
+            // Stay on the HUD. The 1px shy gap under the game is a Start
+            // hot-edge; unclipping into it opens Start and freezes the HUD.
+            unsafe {
+                let mut wr = RECT::default();
+                let _ = GetWindowRect(overlay, &mut wr);
+                if wr.right > wr.left && wr.bottom > wr.top {
+                    set_clip_rect(wr);
+                    let _ = ClipCursor(Some(&wr));
+                }
+            }
+            UNCLIP.store(false, Ordering::Relaxed);
+        }
         if self.layout_on == on {
             return;
         }
         self.layout_on = on;
-        UNCLIP.store(on, Ordering::Relaxed);
         unsafe {
             set_click_through(overlay, !on);
-            if on {
-                let _ = ClipCursor(None);
+            if !on {
+                clear_clip();
             }
         }
     }
@@ -456,7 +501,11 @@ impl FullscreenFix {
                         keep_just_shy_of_fullscreen(game);
                         self.shy_hwnd = game.0 as isize;
                     }
-                    if want_hide != self.taskbar_want_hide {
+                    // Ctrl-drag must not ShowWindow the bar. Start on this
+                    // screen + Explorer poke is what freezes the HUD.
+                    if !self.layout_on && !crate::layout::Editor::ctrl_down()
+                        && want_hide != self.taskbar_want_hide
+                    {
                         if want_hide {
                             hide_game_monitor_taskbar(game);
                         } else {
@@ -636,9 +685,9 @@ fn overlay_stays_for_game(game: HWND) -> bool {
 }
 
 /// Hide the game-monitor taskbar only while the pointer is on that screen
-/// and Start / Search / flyouts are not up. Win11 Start is a host window:
-/// hiding `Shell_TrayWnd` makes it open on the game monitor and freezes
-/// the HUD. The same hop happens for Quick Settings, the clock, and Task View.
+/// and Start / Task View / flyouts are not up. Win+Tab and the Win key
+/// need the bar back. Ctrl-drag skips this path so a hot-edge Start
+/// does not ShowWindow Explorer and freeze the HUD.
 fn should_hide_game_taskbar(same_monitor: bool, pointer_on_game: bool, shell_ui: bool) -> bool {
     same_monitor && pointer_on_game && !shell_ui
 }

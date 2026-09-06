@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.2
+
+Ctrl-drag to the bottom of the game no longer opens Start or freezes the HUD. Win+Tab still shows the taskbar.
+
+### Overlay
+
+- Ctrl-drag clips the cursor to the HUD so the 1px gap under the game cannot open Start.
+- Win+Tab, Task View, and the Win key still show the game-monitor taskbar.
+
 ## 0.7.1
 
 Start, Quick Settings, and moving MX Bikes to another screen no longer freeze the HUD.
