@@ -350,7 +350,7 @@ impl SessionGate {
         let racing = current_lap > 0 || time_ms > 8000 || (on_track != 0 && time_ms > 3000);
         let clock_restart = self.time_ms >= 20_000
             && time_ms < 2_500
-            && !(self.laps > 0 && laps == self.laps && laps < 4);
+            && !(self.laps > 0 && laps == self.laps && laps > 0 && laps <= 4);
         let new_session = self.saw_race
             && ((!self.track.is_empty() && !track.is_empty() && self.track != track)
                 || (self.laps > 0 && laps > 0 && self.laps != laps)

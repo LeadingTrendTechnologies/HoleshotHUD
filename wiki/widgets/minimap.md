@@ -33,6 +33,7 @@ Toggles match Map, plus **Zoom**. Default background 0.
 
 ## Change log
 
+- 2026-09-07 — Shares the Map fix: warmup (`session_kind` 5) keeps dots slate when extras leak.
 - 2026-08-30 — Shares the Map fix: sector lines mark where each sector starts, not where the previous one ended.
 - 2026-08-29 — Shares the Map fix: a rider two laps up stays blue (not red) when closing from behind.
 - 2026-08-28 — Thin violet dotted S1 / S2 sector lines, same toggle and splits as Map. Hidden when that split is outside the zoomed circle.

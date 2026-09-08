@@ -64,6 +64,7 @@ fn default_hud_hides_every_widget() {
     assert!(!cfg[WidgetId::Minimap].show);
     assert!(!cfg[WidgetId::Radar].show);
     assert!(cfg.radar_rings);
+    assert_eq!(cfg.radar_range, 12);
     assert!(!cfg[WidgetId::Dash].show);
     assert!(!cfg[WidgetId::Ticker].show);
     assert!(!cfg[WidgetId::Sys].show);
@@ -80,6 +81,7 @@ fn default_hud_hides_every_widget() {
     assert!(!cfg[WidgetId::Gamepad].show);
     assert!(!cfg.flag_yellow);
     assert!(!cfg.flag_blue);
+    assert!(!cfg.flag_red);
     assert!(cfg.flag_text);
     assert!(!cfg.any_overlay_widget());
     assert_eq!(cfg.stance_style, StanceStyle::Text);
@@ -104,6 +106,9 @@ fn default_hud_hides_every_widget() {
     assert_eq!(cfg[WidgetId::Dash].rect.w, 0.111);
     assert_eq!(cfg[WidgetId::Dash].rect.h, 0.115);
     assert!(!cfg.dash_simple);
+    assert!(!cfg.dash_yellow);
+    assert!(!cfg.dash_blue);
+    assert!(!cfg.dash_red);
     assert_eq!(cfg.dash_left, DashField::Engine);
     assert_eq!(cfg.dash_mid, DashField::Air);
     assert_eq!(cfg.dash_right, DashField::Best);
@@ -200,8 +205,10 @@ fn migrate_default_sector_restores_tall_strip() {
         h: 0.085,
     };
     super::migrate_default_sector(&mut factory);
-    assert!((factory.h - 0.22).abs() < 0.001);
-    assert!((factory.y - 0.70).abs() < 0.001);
+    assert!((factory.h - 0.26).abs() < 0.001);
+    assert!((factory.y - 0.68).abs() < 0.001);
+    assert!((factory.w - 0.36).abs() < 0.001);
+    assert!((factory.x - 0.62).abs() < 0.001);
     let mut mid = crate::shm::Rect {
         x: 0.66,
         y: 0.78,
@@ -209,8 +216,9 @@ fn migrate_default_sector_restores_tall_strip() {
         h: 0.14,
     };
     super::migrate_default_sector(&mut mid);
-    assert!((mid.h - 0.22).abs() < 0.001);
-    assert!((mid.y - 0.70).abs() < 0.001);
+    assert!((mid.h - 0.26).abs() < 0.001);
+    assert!((mid.y - 0.68).abs() < 0.001);
+    assert!((mid.w - 0.36).abs() < 0.001);
     let mut wide = crate::shm::Rect {
         x: 0.60,
         y: 0.8275,
@@ -541,4 +549,85 @@ fn sys_apps_missing_ini_keeps_defaults_and_empty_restores_builtins() {
     let keys: Vec<&str> = parsed.iter().map(|a| a.key.as_str()).collect();
     assert_eq!(keys[..5], ["hud", "mxbikes", "mxbapp", "reshade", "obs"]);
     assert!(parsed.iter().any(|a| a.key == "discord" && a.show));
+}
+
+#[test]
+fn session_preset_keys_round_trip() {
+    for p in SessionPreset::ALL {
+        assert_eq!(SessionPreset::parse(p.key()), p, "{}", p.label());
+    }
+    assert_eq!(SessionPreset::parse("spectating"), SessionPreset::Spectate);
+    assert_eq!(SessionPreset::parse(""), SessionPreset::Race);
+}
+
+#[test]
+fn old_ini_clones_layout_into_every_preset() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-preset-mig-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    std::fs::write(
+        &path,
+        "show_dash=1\ndash_x=0.33\nexperimental=1\nfirst_install_version=0.1.0\nst_last=1\nrel_last=1\n",
+    )
+    .unwrap();
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let mut cfg = HudConfig::load_file();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(cfg.experimental);
+    for p in SessionPreset::ALL {
+        cfg.settings_preset = p;
+        assert!(cfg[WidgetId::Dash].show, "{p:?}");
+        assert!((cfg[WidgetId::Dash].rect.x - 0.33).abs() < 0.0001, "{p:?}");
+    }
+}
+
+#[test]
+fn preset_sections_round_trip_stay_isolated() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-preset-rt-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    std::env::set_var("MXBO_TEST_INI", &path);
+
+    let mut cfg = HudConfig::new();
+    cfg.first_install_version = "0.1.0".into();
+    cfg.settings_preset = SessionPreset::Race;
+    cfg[WidgetId::Dash].show = true;
+    cfg.settings_preset = SessionPreset::Practice;
+    cfg[WidgetId::Sector].show = true;
+    cfg.save();
+
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("[Practice]"), "{text}");
+    assert!(text.contains("[Race]"), "{text}");
+    assert!(text.contains("[Warmup]"), "{text}");
+    assert!(text.contains("[Spectate]"), "{text}");
+    assert!(text.contains("[App]"), "{text}");
+
+    let mut loaded = HudConfig::load_file();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    loaded.settings_preset = SessionPreset::Race;
+    assert!(loaded[WidgetId::Dash].show);
+    assert!(!loaded[WidgetId::Sector].show);
+    loaded.settings_preset = SessionPreset::Practice;
+    assert!(loaded[WidgetId::Sector].show);
+    assert!(!loaded[WidgetId::Dash].show);
+}
+
+#[test]
+fn settings_slot_does_not_change_live_layout() {
+    let mut cfg = HudConfig::new();
+    cfg.active_preset = SessionPreset::Race;
+    cfg.settings_preset = SessionPreset::Practice;
+    cfg[WidgetId::Map].show = true;
+    assert!(cfg.edit()[WidgetId::Map].show);
+    assert!(!cfg.live()[WidgetId::Map].show);
+    let mut s = crate::shm::Snapshot::default();
+    cfg.apply_to_snapshot(&mut s);
+    assert_eq!(s.show_map, 0);
+    cfg.copy_settings_to_all();
+    assert!(cfg.live()[WidgetId::Map].show);
 }

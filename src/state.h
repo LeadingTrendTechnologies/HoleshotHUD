@@ -125,7 +125,14 @@ public:
     void clearSpectateSelection();
     const std::string& localName() const { return m_localName; }
 
-    bool hasTelemetry() const { return m_hasTelemetry; }
+    bool hasTelemetry() const
+    {
+        if (!m_hasTelemetry)
+        {
+            return false;
+        }
+        return (pluginNowSeconds() - m_telemetryStamp) < 2.0;
+    }
     float localSpeed() const { return m_localSpeed; }
     float localTrackPos() const { return m_localTrackPos; }
     float localX() const { return m_localX; }

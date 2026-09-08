@@ -195,9 +195,9 @@ void PluginState::endRun()
 
 bool PluginState::onTrack() const
 {
-    // Replay / spectate never call RunInit, but telemetry and positions still stream.
-    // Standings stay after RunDeinit (garage / lobby) and must not keep the HUD up.
-    return m_inRun || m_hasTelemetry || !m_trackPos.empty();
+    // Replay / spectate never call RunInit. Positions stay after SpectateVehicles
+    // stops (garage) and must not keep the HUD up — same as leftover standings.
+    return m_inRun || hasTelemetry() || spectating();
 }
 
 namespace
@@ -217,22 +217,61 @@ namespace
         return len >= 3 && len < 15;
     }
 
+    bool raceMinutes(int len)
+    {
+        switch (len)
+        {
+        case 5:
+        case 6:
+        case 8:
+        case 10:
+        case 12:
+        case 15:
+        case 20:
+        case 25:
+        case 30:
+            return true;
+        default:
+            break;
+        }
+        if (len >= 5 * 60000 && len <= 60 * 60000)
+        {
+            const int mins = (len + 30000) / 60000;
+            switch (mins)
+            {
+            case 5:
+            case 6:
+            case 8:
+            case 10:
+            case 12:
+            case 15:
+            case 20:
+            case 25:
+            case 30:
+            case 35:
+            case 40:
+            case 45:
+            case 50:
+            case 60:
+                return true;
+            default:
+                break;
+            }
+        }
+        return false;
+    }
+
     bool practiceSized(int len)
     {
-        if (len >= 30 * 60000)
+        if (raceMinutes(len))
+        {
+            return false;
+        }
+        if (len >= 70 * 60000)
         {
             return true;
         }
         return len >= 30 && len < 60;
-    }
-
-    bool raceMinutes(int len)
-    {
-        if (len >= 3 * 60000 && len <= 20 * 60000)
-        {
-            return true;
-        }
-        return len >= 3 && len <= 20 && len < 60;
     }
 
     bool warmupSized(int len)
@@ -362,8 +401,10 @@ void PluginState::setSession(const SPluginsRaceSession_t& s)
     // when this session publishes 0. -1 = not written yet; 0 = game sent 0.
     noteSessionKind(s.m_iSession);
     m_sessionState = s.m_iSessionState;
-    // Don't let extras (1–3) replace a 4+ lap moto unless the session kind changed.
-    if (!(m_sessionLaps >= 4 && laps > 0 && laps < 4 && !newKind))
+    // Don't let extras (1–4) replace a 5+ lap moto, or 1–3 replace a 4-lap moto,
+    // unless the session kind changed.
+    if (!((m_sessionLaps >= 5 && laps >= 1 && laps <= 4 && !newKind)
+            || (m_sessionLaps >= 4 && laps >= 1 && laps <= 3 && !newKind)))
     {
         m_sessionLaps = laps;
     }

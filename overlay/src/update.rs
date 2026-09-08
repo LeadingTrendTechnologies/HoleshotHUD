@@ -376,6 +376,7 @@ fn zip_plugin_differs_from_installed(src_dlo: &Path) -> bool {
     }
 }
 
+#[cfg(test)]
 fn dlo_differs(new_bytes: &[u8], existing: Option<&[u8]>) -> bool {
     match existing {
         Some(old) => old != new_bytes,

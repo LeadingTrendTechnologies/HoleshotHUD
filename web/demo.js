@@ -124,7 +124,7 @@ stageStatus.hidden = false;
 
 let preview;
 try {
-  await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=0.7.2", import.meta.url) });
+  await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=0.8.0", import.meta.url) });
   preview = new Preview();
   stageStatus.hidden = true;
 } catch (err) {
@@ -239,12 +239,16 @@ function renderSettings() {
   } else if (w === "radar") {
     html += styleControls("radar", "Panel opacity");
     html += `<div class="section">On the radar</div>`;
+    html += sliderRow("radar_range", "Range", 6, 30, "m");
     html += toggleRow("radar_sides", "Riders beside you");
     html += toggleRow("radar_rear", "Riders behind you");
     html += toggleRow("radar_rings", "Range rings");
   } else if (w === "dash") {
     html += styleControls("dash", "Panel opacity");
     html += toggleRow("dash_simple", "Simple dash");
+    html += toggleRow("dash_yellow", "Yellow flag");
+    html += toggleRow("dash_blue", "Blue flag");
+    html += toggleRow("dash_red", "Red flag");
     if (!preview.get_bool("dash_simple")) {
       html += toggleRow("dash_rev", "Rev indicator");
       html += `<div class="section">Footer</div>`;
@@ -275,6 +279,7 @@ function renderSettings() {
     html += toggleRow("flag_text", "Text");
     html += toggleRow("flag_yellow", "Yellow flag");
     html += toggleRow("flag_blue", "Blue flag");
+    html += toggleRow("flag_red", "Red flag");
     html += styleControls("flag", "Panel opacity");
   } else if (w === "lean") {
     html += fieldRow("lean_style", "Look", [

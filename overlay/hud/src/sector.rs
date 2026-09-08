@@ -329,8 +329,22 @@ pub struct HistoryCell {
 pub struct HistoryRow {
     pub label: &'static str,
     pub cells: [HistoryCell; 3],
+    pub lap_ms: i32,
+    pub lap_delta_ms: i32,
+    pub has_lap_delta: bool,
+    pub lap_slower: bool,
+    pub lap_faster: bool,
     /// You-row gold: this lap's total is the fastest in the log (and vs saved/session best).
     pub fastest: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LapColumn {
+    pub time_ms: i32,
+    pub delta_ms: i32,
+    pub has_delta: bool,
+    pub slower: bool,
+    pub pending: bool,
 }
 
 /// Demo / tests: pin LAST … -5 completed laps.
@@ -360,7 +374,8 @@ pub fn history_board(s: &Snapshot, session: bool, n: usize) -> Vec<HistoryRow> {
         compare_best(&g, s, 2, session),
     ];
     let totals: Vec<i32> = laps.iter().map(|lap| lap_total(*lap)).collect();
-    let best_lap = totals.iter().copied().filter(|&t| t > 0).min().unwrap_or(0);
+    let gold_lap = totals.iter().copied().filter(|&t| t > 0).min().unwrap_or(0);
+    let ref_lap = delta::view_for(session).ref_lap_ms;
     (0..n)
         .map(|row| {
             let cells = std::array::from_fn(|i| {
@@ -373,13 +388,94 @@ pub fn history_board(s: &Snapshot, session: bool, n: usize) -> Vec<HistoryRow> {
                     faster: has && t < best[i],
                 }
             });
+            let tot = totals[row];
+            let has_lap = tot > 0 && ref_lap > 0;
+            let d = if has_lap { tot - ref_lap } else { 0 };
             HistoryRow {
                 label: HIST_LABELS[row],
                 cells,
-                fastest: best_lap > 0 && totals[row] == best_lap,
+                lap_ms: tot,
+                lap_delta_ms: d,
+                has_lap_delta: has_lap,
+                lap_slower: has_lap && d > 0,
+                lap_faster: has_lap && d < 0,
+                fastest: gold_lap > 0 && tot == gold_lap,
             }
         })
         .collect()
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct IdealLap {
+    pub sectors: [i32; 3],
+    pub lap_ms: i32,
+}
+
+impl IdealLap {
+    pub const fn empty() -> Self {
+        Self {
+            sectors: [0; 3],
+            lap_ms: 0,
+        }
+    }
+
+    pub fn ready(self) -> bool {
+        self.lap_ms > 0
+    }
+}
+
+/// Best S1 + S2 + S3 (possibly from different laps). Same saved/session splits as the strip.
+pub fn ideal(s: &Snapshot, session: bool) -> IdealLap {
+    let g = live();
+    let sectors = [
+        compare_best(&g, s, 0, session),
+        compare_best(&g, s, 1, session),
+        compare_best(&g, s, 2, session),
+    ];
+    IdealLap {
+        sectors,
+        lap_ms: lap_total(sectors),
+    }
+}
+
+pub fn live_lap(s: &Snapshot, session: bool) -> LapColumn {
+    let clock = s.current_lap_ms > CLOCK_ON;
+    let dv = delta::view_for(session);
+    if clock {
+        let t = delta::lap_clock(s);
+        let on = t > CLOCK_ON;
+        let has = on && dv.has_delta;
+        LapColumn {
+            time_ms: if on { t } else { 0 },
+            delta_ms: if has { dv.delta_ms } else { 0 },
+            has_delta: has,
+            slower: has && dv.delta_ms > 0,
+            pending: !on,
+        }
+    } else {
+        let t = last_completed_lap_ms(s);
+        let has = t > 0 && dv.ref_lap_ms > 0;
+        let d = if has { t - dv.ref_lap_ms } else { 0 };
+        LapColumn {
+            time_ms: t,
+            delta_ms: d,
+            has_delta: has,
+            slower: has && d > 0,
+            pending: t <= 0,
+        }
+    }
+}
+
+fn last_completed_lap_ms(s: &Snapshot) -> i32 {
+    let tot = lap_total(live().hist[0]);
+    if tot > 0 {
+        return tot;
+    }
+    lap_total([
+        last_lap_time(s, 0),
+        last_lap_time(s, 1),
+        last_lap_time(s, 2),
+    ])
 }
 
 fn lap_total(lap: [i32; 3]) -> i32 {
@@ -579,16 +675,13 @@ fn live_elapsed(s: &Snapshot, i: usize) -> i32 {
 }
 
 fn last_lap_time(s: &Snapshot, i: usize) -> i32 {
-    let last = s.sector_last_lap.get(i).copied().unwrap_or(0);
-    if last > 0 {
-        return last;
-    }
-    if i == 2 {
-        return three_ms(
-            s.sector_last_lap.first().copied().unwrap_or(0),
-            s.sector_last_lap.get(1).copied().unwrap_or(0),
-            s.last_lap_ms,
-        );
+    let last = [
+        s.sector_last_lap.first().copied().unwrap_or(0),
+        s.sector_last_lap.get(1).copied().unwrap_or(0),
+        s.sector_last_lap.get(2).copied().unwrap_or(0),
+    ];
+    if last[i] > 0 || i == 2 {
+        return split_duration(i, last, s.last_lap_ms);
     }
     0
 }

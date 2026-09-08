@@ -32,7 +32,7 @@ Toggles: other riders, start/finish, sector lines, track arrows, leader crown, n
 - Lapping color is **not** “anyone a lap up is blue”. They must also be behind you and inside `catch_span_m`.
 - Do not trust `num_laps` over `gap_laps` for blue/red. A rider two down can have a completed-lap count that looks a lap *up*; that used to paint the leader red the second time they went by. `other_laps_ahead` prefers `gap_laps`.
 - Dot **Position** labels, leader crown and the nearest ahead / behind rings use live `RaceStore` rank during a race (`standing_pos` / `leader_num` prefer `live_position` / `live_leader`). See [live race order](../live-order.md).
-- No blue/red lapping dots in warmup; `lap_rel` is `Same` until the race starts.
+- No blue/red lapping dots in warmup; `lap_rel` is `Same` until the race starts. `session_kind` 5 wins even when extras leak.
 - Map uses snapshot rect `s.map` (copied from config), not only `cfg.map` at draw time.
 - In spectate/replay, do not leave the orange marker on leftover local telemetry; overlay drops `has_telemetry` while `SpectateVehicles` is live so `subject_pose` uses the focused rider’s XZ.
 - Leaving spectate / going back on the bike must put the orange marker on you. Live telemetry wins over a stale `focus_race_num`.
@@ -40,6 +40,7 @@ Toggles: other riders, start/finish, sector lines, track arrows, leader crown, n
 
 ## Change log
 
+- 2026-09-07 — Warmup (`session_kind` 5) keeps dots slate even when leaked extras make the lap field look like a race.
 - 2026-08-30 — Sector lines mark where each sector starts (S1 at S/F, S2 / S3 at the learned splits). The old S1 / S2 labels sat on the split that *ended* that sector.
 - 2026-08-29 — Second time the leader laps you no longer paints them red. Lap-down color prefers `gap_laps` over completed-lap counts.
 - 2026-08-28 — Thin violet dotted S1 / S2 sector lines on the full-track map (**Sector lines**, default on). Same learned split positions as Sectors. Hidden until those splits exist for the track.

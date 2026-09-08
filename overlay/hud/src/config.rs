@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 use std::fs;
-use std::ops::{Index, IndexMut};
+use std::ops::{Deref, DerefMut, Index, IndexMut};
 use std::path::PathBuf;
 use std::sync::{LazyLock, Mutex};
 use std::time::SystemTime;
@@ -12,6 +12,9 @@ pub static CONFIG: LazyLock<Mutex<HudConfig>> = LazyLock::new(|| Mutex::new(HudC
 pub const COL_W_MIN: i32 = 18;
 pub const COL_W_MAX: i32 = 160;
 pub const NAME_W_MAX: i32 = 400;
+pub const RADAR_RANGE_MIN: i32 = 6;
+pub const RADAR_RANGE_MAX: i32 = 30;
+pub const RADAR_RANGE_DEFAULT: i32 = 12;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum FontFamily {
@@ -635,7 +638,7 @@ impl WidgetId {
             Self::Dash => Rect { x: 0.445, y: 0.865, w: 0.111, h: 0.115 },
             Self::Ticker => Rect { x: 0.06, y: 0.012, w: 0.88, h: 0.055 },
             Self::Sys => Rect { x: 0.012, y: 0.36, w: 0.086, h: 0.25 },
-            Self::Sector => Rect { x: 0.66, y: 0.70, w: 0.32, h: 0.22 },
+            Self::Sector => Rect { x: 0.62, y: 0.68, w: 0.36, h: 0.26 },
             Self::Delta => Rect { x: 0.36, y: 0.76, w: 0.28, h: 0.09 },
             Self::Stance => Rect { x: 0.445, y: 0.705, w: 0.11, h: 0.065 },
             Self::Flag => Rect { x: 0.447, y: 0.026, w: 0.107, h: 0.019 },
@@ -685,7 +688,7 @@ struct WidgetIni {
 }
 
 /// Shared per-widget style: rect, visibility, font size, bold, background.
-/// Standings columns, dash layout, flag yellow/blue, etc. stay on `HudConfig`.
+/// Standings columns, dash layout, flag yellow/blue, etc. stay on `HudLayout`.
 #[derive(Clone, Copy, Debug)]
 pub struct WidgetPrefs {
     pub rect: Rect,
@@ -696,6 +699,50 @@ pub struct WidgetPrefs {
 }
 
 const _: () = assert!(WidgetId::ALL.len() == WidgetId::COUNT);
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SessionPreset {
+    Practice,
+    Warmup,
+    Race,
+    Spectate,
+}
+
+impl SessionPreset {
+    pub const ALL: [Self; 4] = [Self::Practice, Self::Warmup, Self::Race, Self::Spectate];
+    pub const COUNT: usize = 4;
+
+    pub fn idx(self) -> usize {
+        self as usize
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Practice => "Practice",
+            Self::Warmup => "Warmup",
+            Self::Race => "Race",
+            Self::Spectate => "Spectate",
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Practice => "practice",
+            Self::Warmup => "warmup",
+            Self::Race => "race",
+            Self::Spectate => "spectate",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "practice" => Self::Practice,
+            "warmup" => Self::Warmup,
+            "spectate" | "spectating" => Self::Spectate,
+            _ => Self::Race,
+        }
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum SnapAlign {
@@ -1221,7 +1268,7 @@ fn ensure_sys_builtins(apps: &mut Vec<SysApp>) {
 }
 
 #[derive(Clone)]
-pub struct HudConfig {
+pub struct HudLayout {
     widgets: [WidgetPrefs; WidgetId::COUNT],
     /// Tick the current sector live. Off: times only after the split.
     pub sector_live: bool,
@@ -1233,16 +1280,14 @@ pub struct HudConfig {
     pub sector_hist_laps: i32,
     /// Compare Delta Bar to this session's fastest decent lap instead of the saved tape.
     pub delta_session: bool,
-    /// Nearby crash. Flags widget only. Off by default.
+    /// Nearby crash. Flags widget only. Off by default. Dash has `dash_yellow`.
     pub flag_yellow: bool,
-    /// Someone a lap up closing from behind. Flags widget only. Off by default.
+    /// Someone a lap up closing from behind. Flags widget only. Off by default. Dash has `dash_blue`.
     pub flag_blue: bool,
+    /// Someone you are coming to lap. Flags widget only. Off by default. Dash has `dash_red`.
+    pub flag_red: bool,
     /// Caption on the Flags cloth (WHITE FLAG / …). On by default.
     pub flag_text: bool,
-    /// Kept in the ini for older builds. No widget is gated on this anymore.
-    pub experimental: bool,
-    /// Plugin-only: when true the in-game HUD draws. Overlay still saves this key.
-    pub ingame_hud: bool,
     pub standings_rows: i32,
     pub relative_count: i32,
     pub ticker_count: i32,
@@ -1293,6 +1338,9 @@ pub struct HudConfig {
     pub radar_sides: bool,
     pub radar_rear: bool,
     pub radar_rings: bool,
+    /// How far beside and behind, in meters, the radar shows other riders.
+    /// Rings stay at 3 / 6 / 12 m; a longer range places dots outside the 12 m ring.
+    pub radar_range: i32,
     pub st_hl: i32,
     pub st_text: TableText,
     pub st_stripe: bool,
@@ -1301,6 +1349,12 @@ pub struct HudConfig {
     pub rel_stripe: bool,
     pub mini_zoom: i32,
     pub dash_rev: bool,
+    /// Nearby crash wrap on Dash. Off by default.
+    pub dash_yellow: bool,
+    /// Someone a lap up closing from behind, wrap on Dash. Off by default.
+    pub dash_blue: bool,
+    /// Someone you are coming to lap, wrap on Dash. Off by default.
+    pub dash_red: bool,
     /// Gear + speed lockup; hides RPM, place, footer, and the rev bar.
     pub dash_simple: bool,
     pub dash_left: DashField,
@@ -1312,20 +1366,6 @@ pub struct HudConfig {
     pub st_foot: [BoardField; 3],
     pub rel_head: [BoardField; 3],
     pub rel_foot: [BoardField; 3],
-    pub font_family: FontFamily,
-    pub units: Units,
-    pub start_with_windows: bool,
-    pub minimize_on_close: bool,
-    pub close_with_game: bool,
-    pub open_with_game: bool,
-    pub auto_update_on_launch: bool,
-    /// Last version whose What's new modal was dismissed with Got it.
-    pub whats_new_seen: String,
-    /// Overlay version on the first launch that wrote this settings file.
-    /// `"unknown"` if they already had settings before this field existed.
-    pub first_install_version: String,
-    pub settings_key: SettingsKey,
-    pub stance_bind: StanceBind,
     pub stance_mode: StanceMode,
     pub stance_style: StanceStyle,
     pub stance_show_sit: bool,
@@ -1360,10 +1400,9 @@ pub struct HudConfig {
     pub rel_w_crashed: i32,
     pub rel_w_best: i32,
     pub rel_w_last: i32,
-    loaded_mtime: Option<SystemTime>,
 }
 
-impl HudConfig {
+impl HudLayout {
     pub fn new() -> Self {
         Self {
             widgets: std::array::from_fn(|i| WidgetId::ALL[i].default_prefs()),
@@ -1374,9 +1413,8 @@ impl HudConfig {
             delta_session: false,
             flag_yellow: false,
             flag_blue: false,
+            flag_red: false,
             flag_text: true,
-            experimental: false,
-            ingame_hud: false,
             standings_rows: 12,
             relative_count: 3,
             ticker_count: 7,
@@ -1427,6 +1465,7 @@ impl HudConfig {
             radar_sides: true,
             radar_rear: true,
             radar_rings: true,
+            radar_range: RADAR_RANGE_DEFAULT,
             st_hl: 50,
             st_text: TableText::White,
             st_stripe: true,
@@ -1435,6 +1474,9 @@ impl HudConfig {
             rel_stripe: true,
             mini_zoom: 70,
             dash_rev: true,
+            dash_yellow: false,
+            dash_blue: false,
+            dash_red: false,
             dash_simple: false,
             dash_left: DashField::Engine,
             dash_mid: DashField::Air,
@@ -1445,17 +1487,6 @@ impl HudConfig {
             st_foot: BoardField::DEFAULT_FOOT,
             rel_head: BoardField::DEFAULT_HEAD,
             rel_foot: BoardField::DEFAULT_FOOT,
-            font_family: FontFamily::Exo2,
-            units: Units::Metric,
-            start_with_windows: false,
-            minimize_on_close: false,
-            close_with_game: false,
-            open_with_game: false,
-            auto_update_on_launch: false,
-            whats_new_seen: String::new(),
-            first_install_version: String::new(),
-            settings_key: SettingsKey::F8,
-            stance_bind: StanceBind::PadRb,
             stance_mode: StanceMode::Toggle,
             stance_style: StanceStyle::Text,
             stance_show_sit: false,
@@ -1489,8 +1520,117 @@ impl HudConfig {
             rel_w_crashed: 44,
             rel_w_best: 54,
             rel_w_last: 54,
+        }
+    }
+
+    pub fn prefs(&self, id: WidgetId) -> &WidgetPrefs {
+        &self.widgets[id.idx()]
+    }
+
+    pub fn prefs_mut(&mut self, id: WidgetId) -> &mut WidgetPrefs {
+        &mut self.widgets[id.idx()]
+    }
+
+    fn migrate_rects(&mut self) {
+        migrate_default_dash(&mut self[WidgetId::Dash].rect);
+        migrate_default_sector(&mut self[WidgetId::Sector].rect);
+        migrate_default_flag(&mut self[WidgetId::Flag].rect);
+    }
+}
+
+impl Index<WidgetId> for HudLayout {
+    type Output = WidgetPrefs;
+
+    fn index(&self, id: WidgetId) -> &WidgetPrefs {
+        self.prefs(id)
+    }
+}
+
+impl IndexMut<WidgetId> for HudLayout {
+    fn index_mut(&mut self, id: WidgetId) -> &mut WidgetPrefs {
+        self.prefs_mut(id)
+    }
+}
+
+#[derive(Clone)]
+pub struct HudConfig {
+    layouts: [HudLayout; SessionPreset::COUNT],
+    pub active_preset: SessionPreset,
+    pub settings_preset: SessionPreset,
+    /// True while a session is live so Settings follows the overlay, not the garage picker.
+    pub session_live: bool,
+    /// Kept in the ini for older builds. No widget is gated on this anymore.
+    pub experimental: bool,
+    /// Plugin-only: when true the in-game HUD draws. Overlay still saves this key.
+    pub ingame_hud: bool,
+    pub font_family: FontFamily,
+    pub units: Units,
+    pub start_with_windows: bool,
+    pub minimize_on_close: bool,
+    pub close_with_game: bool,
+    pub open_with_game: bool,
+    pub auto_update_on_launch: bool,
+    /// Last version whose What's new modal was dismissed with Got it.
+    pub whats_new_seen: String,
+    /// Overlay version on the first launch that wrote this settings file.
+    /// `"unknown"` if they already had settings before this field existed.
+    pub first_install_version: String,
+    pub settings_key: SettingsKey,
+    pub stance_bind: StanceBind,
+    loaded_mtime: Option<SystemTime>,
+}
+
+impl HudConfig {
+    pub fn new() -> Self {
+        let layout = HudLayout::new();
+        Self {
+            layouts: [
+                layout.clone(),
+                layout.clone(),
+                layout.clone(),
+                layout,
+            ],
+            active_preset: SessionPreset::Race,
+            settings_preset: SessionPreset::Race,
+            session_live: false,
+            experimental: false,
+            ingame_hud: false,
+            font_family: FontFamily::Exo2,
+            units: Units::Metric,
+            start_with_windows: false,
+            minimize_on_close: false,
+            close_with_game: false,
+            open_with_game: false,
+            auto_update_on_launch: false,
+            whats_new_seen: String::new(),
+            first_install_version: String::new(),
+            settings_key: SettingsKey::F8,
+            stance_bind: StanceBind::PadRb,
             loaded_mtime: None,
         }
+    }
+
+    pub fn live(&self) -> &HudLayout {
+        &self.layouts[self.active_preset.idx()]
+    }
+
+    pub fn edit(&self) -> &HudLayout {
+        &self.layouts[self.settings_preset.idx()]
+    }
+
+    pub fn edit_mut(&mut self) -> &mut HudLayout {
+        &mut self.layouts[self.settings_preset.idx()]
+    }
+
+    pub fn for_overlay(&self) -> Self {
+        let mut c = self.clone();
+        c.settings_preset = c.active_preset;
+        c
+    }
+
+    pub fn copy_settings_to_all(&mut self) {
+        let src = self.edit().clone();
+        self.layouts = [src.clone(), src.clone(), src.clone(), src];
     }
 
     pub fn load_file() -> Self {
@@ -1506,11 +1646,20 @@ impl HudConfig {
         };
         let meta_path = if path.is_file() { &path } else { &legacy };
         cfg.loaded_mtime = fs::metadata(meta_path).and_then(|m| m.modified()).ok();
-        let mut saw_last_cols = false;
+        let mut saw_last_cols = [false; SessionPreset::COUNT];
         let mut saw_first_install = false;
+        let mut saw_preset = [false; SessionPreset::COUNT];
+        let mut section = IniSection::Legacy;
+        let mut legacy_layout = HudLayout::new();
+        let mut saw_legacy_layout = false;
+        let mut legacy_last_cols = false;
         for raw in text.lines() {
             let line = raw.trim();
-            if line.is_empty() || line.starts_with('#') || line.starts_with(';') || line.starts_with('[') {
+            if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
+                continue;
+            }
+            if line.starts_with('[') {
+                section = parse_ini_section(line);
                 continue;
             }
             let Some((k, v)) = line.split_once('=') else {
@@ -1520,159 +1669,64 @@ impl HudConfig {
             let val = v.trim();
             let f = val.parse::<f32>().unwrap_or(0.0);
             let b = val == "1" || val.eq_ignore_ascii_case("true") || val.eq_ignore_ascii_case("yes");
-            if apply_widget_prefs(&mut cfg, key, val, f, b) {
-                continue;
-            }
-            match key {
-                "sector_live" => cfg.sector_live = b,
-                "sector_session" => cfg.sector_session = b,
-                "sector_hist" => cfg.sector_hist = b,
-                "sector_hist_laps" => cfg.sector_hist_laps = val.parse().unwrap_or(3).clamp(1, 5),
-                "delta_session" => cfg.delta_session = b,
-                "flag_caution" => {
-                    cfg.flag_yellow = b;
-                    cfg.flag_blue = b;
+            match section {
+                IniSection::App => {
+                    apply_app_key(&mut cfg, key, val, b, &mut saw_first_install);
                 }
-                "flag_yellow" => cfg.flag_yellow = b,
-                "flag_blue" => cfg.flag_blue = b,
-                "flag_text" => cfg.flag_text = b,
-                "experimental" | "feature_experimental" | "feature_sector" => cfg.experimental = b,
-                "ingame_hud" => cfg.ingame_hud = b,
-                "standings_rows" => cfg.standings_rows = val.parse().unwrap_or(12).max(3),
-                "relative_count" => cfg.relative_count = val.parse().unwrap_or(3).max(1),
-                "ticker_count" => cfg.ticker_count = val.parse().unwrap_or(7).clamp(3, 15),
-                "ticker_title" => cfg.ticker_title = b,
-                "ticker_autoscroll" => cfg.ticker_autoscroll = b,
-                "st_pos" => cfg.st_pos = b,
-                "st_num" => cfg.st_num = b,
-                "st_name" => cfg.st_name = b,
-                "st_gap" => cfg.st_gap = b,
-                "st_interval" => cfg.st_interval = b,
-                "st_laps" => cfg.st_laps = b,
-                "st_current" => cfg.st_current = b,
-                "st_best" => cfg.st_best = b,
-                "st_last" => {
-                    cfg.st_last = b;
-                    saw_last_cols = true;
-                }
-                "st_status" => cfg.st_status = b,
-                "st_bike" => cfg.st_bike = b,
-                "st_penalty" => cfg.st_penalty = b,
-                "st_crashed" => cfg.st_crashed = b,
-                "rel_num" => cfg.rel_num = b,
-                "rel_name" => cfg.rel_name = b,
-                "rel_gap" => cfg.rel_gap = b,
-                "rel_laps" => cfg.rel_laps = b,
-                "rel_current" => cfg.rel_current = b,
-                "rel_pos" => cfg.rel_pos = b,
-                "rel_bike" => cfg.rel_bike = b,
-                "rel_penalty" => cfg.rel_penalty = b,
-                "rel_interval" => cfg.rel_interval = b,
-                "rel_crashed" => cfg.rel_crashed = b,
-                "rel_best" => cfg.rel_best = b,
-                "rel_last" => cfg.rel_last = b,
-                "map_others" => cfg.map_others = b,
-                "map_sf" => cfg.map_sf = b,
-                "map_sectors" => cfg.map_sectors = b,
-                "map_name" => cfg.map_name = b,
-                "map_numbers" => cfg.map_numbers = b,
-                "map_arrows" => cfg.map_arrows = b,
-                "map_crown" => cfg.map_crown = b,
-                "map_place" => cfg.map_place = b,
-                "map_dot" => cfg.map_dot = DotLabel::parse(val),
-                "mini_others" => cfg.mini_others = b,
-                "mini_sf" => cfg.mini_sf = b,
-                "mini_sectors" => cfg.mini_sectors = b,
-                "mini_numbers" => cfg.mini_numbers = b,
-                "mini_arrows" => cfg.mini_arrows = b,
-                "mini_crown" => cfg.mini_crown = b,
-                "mini_place" => cfg.mini_place = b,
-                "mini_dot" => cfg.mini_dot = DotLabel::parse(val),
-                "radar_sides" => cfg.radar_sides = b,
-                "radar_rear" => cfg.radar_rear = b,
-                "radar_rings" => cfg.radar_rings = b,
-                "st_hl" => cfg.st_hl = clamp_pct(val),
-                "st_text" => cfg.st_text = TableText::parse(val),
-                "st_stripe" => cfg.st_stripe = b,
-                "rel_hl" => cfg.rel_hl = clamp_pct(val),
-                "rel_text" => cfg.rel_text = TableText::parse(val),
-                "rel_stripe" => cfg.rel_stripe = b,
-                "mini_zoom" => cfg.mini_zoom = clamp_pct(val),
-                "dash_rev" => cfg.dash_rev = b,
-                "dash_simple" => cfg.dash_simple = b,
-                "dash_left" => cfg.dash_left = DashField::parse(val),
-                "dash_mid" => cfg.dash_mid = DashField::parse(val),
-                "dash_right" => cfg.dash_right = DashField::parse(val),
-                "ticker_left" => cfg.ticker_left = BoardField::parse(val),
-                "ticker_right" => cfg.ticker_right = BoardField::parse(val),
-                "st_head" => cfg.st_head = parse_board(val, BoardField::DEFAULT_HEAD),
-                "st_foot" => cfg.st_foot = parse_board(val, BoardField::DEFAULT_FOOT),
-                "rel_head" => cfg.rel_head = parse_board(val, BoardField::DEFAULT_HEAD),
-                "rel_foot" => cfg.rel_foot = parse_board(val, BoardField::DEFAULT_FOOT),
-                "font_family" => cfg.font_family = FontFamily::parse(val),
-                "units" => cfg.units = Units::parse(val),
-                "start_with_windows" => cfg.start_with_windows = b,
-                "minimize_on_close" => cfg.minimize_on_close = b,
-                "close_with_game" => cfg.close_with_game = b,
-                "open_with_game" => cfg.open_with_game = b,
-                "auto_update_on_launch" => cfg.auto_update_on_launch = b,
-                "whats_new_seen" => cfg.whats_new_seen = val.trim().to_string(),
-                "first_install_version" => {
-                    cfg.first_install_version = val.trim().to_string();
-                    saw_first_install = true;
-                },
-                "settings_key" => cfg.settings_key = SettingsKey::parse(val),
-                "stance_bind" => cfg.stance_bind = StanceBind::parse(val),
-                "stance_mode" => cfg.stance_mode = StanceMode::parse(val),
-                "stance_style" => cfg.stance_style = StanceStyle::parse(val),
-                "lean_style" => cfg.lean_style = LeanStyle::parse(val),
-                "gamepad_style" => cfg.gamepad_style = GamepadStyle::parse(val),
-                "sys_apps" => cfg.sys_apps = parse_sys_apps(val),
-                "stance_show_sit" => cfg.stance_show_sit = b,
-                "stance_icon" => {
-                    if b {
-                        cfg.stance_style = StanceStyle::Icon;
+                IniSection::Preset(p) => {
+                    saw_preset[p.idx()] = true;
+                    let layout = &mut cfg.layouts[p.idx()];
+                    if apply_widget_prefs(layout, key, val, f, b) {
+                        continue;
                     }
+                    apply_layout_key(layout, key, val, b, &mut saw_last_cols[p.idx()]);
                 }
-                "st_order" => cfg.st_order = parse_st_order(val),
-                "rel_order" => cfg.rel_order = parse_rel_order(val),
-                "st_w_pos" => cfg.st_w_pos = clamp_w(val),
-                "st_w_num" => cfg.st_w_num = clamp_w(val),
-                "st_w_name" => cfg.st_w_name = clamp_name_w(val),
-                "st_w_gap" => cfg.st_w_gap = clamp_w(val),
-                "st_w_interval" => cfg.st_w_interval = clamp_w(val),
-                "st_w_laps" => cfg.st_w_laps = clamp_w(val),
-                "st_w_current" => cfg.st_w_current = clamp_w(val),
-                "st_w_best" => cfg.st_w_best = clamp_w(val),
-                "st_w_last" => cfg.st_w_last = clamp_w(val),
-                "st_w_status" => cfg.st_w_status = clamp_w(val),
-                "st_w_bike" => cfg.st_w_bike = clamp_w(val),
-                "st_w_penalty" => cfg.st_w_penalty = clamp_w(val),
-                "st_w_crashed" => cfg.st_w_crashed = clamp_w(val),
-                "rel_w_num" => cfg.rel_w_num = clamp_w(val),
-                "rel_w_name" => cfg.rel_w_name = clamp_name_w(val),
-                "rel_w_gap" => cfg.rel_w_gap = clamp_w(val),
-                "rel_w_laps" => cfg.rel_w_laps = clamp_w(val),
-                "rel_w_current" => cfg.rel_w_current = clamp_w(val),
-                "rel_w_pos" => cfg.rel_w_pos = clamp_w(val),
-                "rel_w_bike" => cfg.rel_w_bike = clamp_w(val),
-                "rel_w_penalty" => cfg.rel_w_penalty = clamp_w(val),
-                "rel_w_interval" => cfg.rel_w_interval = clamp_w(val),
-                "rel_w_crashed" => cfg.rel_w_crashed = clamp_w(val),
-                "rel_w_best" => cfg.rel_w_best = clamp_w(val),
-                "rel_w_last" => cfg.rel_w_last = clamp_w(val),
-                _ => {}
+                IniSection::Legacy => {
+                    if apply_app_key(&mut cfg, key, val, b, &mut saw_first_install) {
+                        continue;
+                    }
+                    saw_legacy_layout = true;
+                    if apply_widget_prefs(&mut legacy_layout, key, val, f, b) {
+                        continue;
+                    }
+                    apply_layout_key(&mut legacy_layout, key, val, b, &mut legacy_last_cols);
+                }
             }
         }
-        if !saw_last_cols {
-            cfg.st_best = true;
-            cfg.st_last = true;
-            cfg.rel_best = true;
-            cfg.rel_last = true;
+        if saw_preset.iter().any(|&on| on) {
+            let donor = SessionPreset::ALL
+                .iter()
+                .find(|p| saw_preset[p.idx()])
+                .map(|p| cfg.layouts[p.idx()].clone())
+                .unwrap_or_else(HudLayout::new);
+            for p in SessionPreset::ALL {
+                if !saw_preset[p.idx()] {
+                    cfg.layouts[p.idx()] = donor.clone();
+                }
+                if !saw_last_cols[p.idx()] && saw_preset[p.idx()] {
+                    cfg.layouts[p.idx()].st_best = true;
+                    cfg.layouts[p.idx()].st_last = true;
+                    cfg.layouts[p.idx()].rel_best = true;
+                    cfg.layouts[p.idx()].rel_last = true;
+                }
+            }
+        } else if saw_legacy_layout {
+            if !legacy_last_cols {
+                legacy_layout.st_best = true;
+                legacy_layout.st_last = true;
+                legacy_layout.rel_best = true;
+                legacy_layout.rel_last = true;
+            }
+            cfg.layouts = [
+                legacy_layout.clone(),
+                legacy_layout.clone(),
+                legacy_layout.clone(),
+                legacy_layout,
+            ];
         }
-        migrate_default_dash(&mut cfg[WidgetId::Dash].rect);
-        migrate_default_sector(&mut cfg[WidgetId::Sector].rect);
-        migrate_default_flag(&mut cfg[WidgetId::Flag].rect);
+        for layout in &mut cfg.layouts {
+            layout.migrate_rects();
+        }
         if !saw_first_install || cfg.first_install_version.is_empty() {
             cfg.first_install_version = "unknown".into();
             cfg.save();
@@ -1751,316 +1805,13 @@ impl HudConfig {
         if let Some(dir) = path.parent() {
             let _ = fs::create_dir_all(dir);
         }
-        let st = self[WidgetId::Standings];
-        let rel = self[WidgetId::Relative];
-        let map = self[WidgetId::Map];
-        let mini = self[WidgetId::Minimap];
-        let radar = self[WidgetId::Radar];
-        let dash = self[WidgetId::Dash];
-        let ticker = self[WidgetId::Ticker];
-        let sys = self[WidgetId::Sys];
-        let sector = self[WidgetId::Sector];
-        let delta = self[WidgetId::Delta];
-        let stance = self[WidgetId::Stance];
-        let flag = self[WidgetId::Flag];
-        let lean = self[WidgetId::Lean];
-        let gamepad = self[WidgetId::Gamepad];
         let body = format!(
             "# Holeshot HUD layout (normalized 0..1, origin top-left)\n\
-             [Layout]\n\
-             standings_x={}\nstandings_y={}\nstandings_w={}\nstandings_h={}\n\
-             relative_x={}\nrelative_y={}\nrelative_w={}\nrelative_h={}\n\
-             map_x={}\nmap_y={}\nmap_w={}\nmap_h={}\n\
-             minimap_x={}\nminimap_y={}\nminimap_w={}\nminimap_h={}\n\
-             radar_x={}\nradar_y={}\nradar_w={}\nradar_h={}\n\
-             dash_x={}\ndash_y={}\ndash_w={}\ndash_h={}\n\
-             ticker_x={}\nticker_y={}\nticker_w={}\nticker_h={}\n\
-             sys_x={}\nsys_y={}\nsys_w={}\nsys_h={}\n\
-             sector_x={}\nsector_y={}\nsector_w={}\nsector_h={}\n\
-             delta_x={}\ndelta_y={}\ndelta_w={}\ndelta_h={}\n\
-             stance_x={}\nstance_y={}\nstance_w={}\nstance_h={}\n\
-             flag_x={}\nflag_y={}\nflag_w={}\nflag_h={}\n\
-             lean_x={}\nlean_y={}\nlean_w={}\nlean_h={}\n\
-             gamepad_x={}\ngamepad_y={}\ngamepad_w={}\ngamepad_h={}\n\
-             \n[Widgets]\n\
-             show_standings={}\nshow_relative={}\nshow_map={}\nshow_minimap={}\nshow_radar={}\nshow_dash={}\nshow_ticker={}\nshow_sys={}\nshow_sector={}\nshow_delta={}\nshow_stance={}\nshow_flag={}\nshow_lean={}\nshow_gamepad={}\n\
-             ingame_hud={}\nstandings_rows={}\nrelative_count={}\nticker_count={}\n\
-             \n[Standings]\n\
-             st_pos={}\nst_num={}\nst_name={}\nst_gap={}\nst_interval={}\nst_laps={}\nst_current={}\nst_best={}\nst_last={}\nst_status={}\n\
-             st_bike={}\nst_penalty={}\nst_crashed={}\n\
-             st_order={}\n\
-             st_w_pos={}\nst_w_num={}\nst_w_name={}\nst_w_gap={}\nst_w_interval={}\nst_w_laps={}\nst_w_current={}\nst_w_best={}\nst_w_last={}\nst_w_status={}\n\
-             st_w_bike={}\nst_w_penalty={}\nst_w_crashed={}\n\
-             st_bg={}\nst_hl={}\nst_text={}\nst_stripe={}\nst_font={}\nst_bold={}\n\
-             st_head={}\nst_foot={}\n\
-             \n[Relative]\n\
-             rel_num={}\nrel_name={}\nrel_gap={}\nrel_laps={}\nrel_current={}\nrel_pos={}\nrel_bike={}\nrel_penalty={}\nrel_interval={}\nrel_crashed={}\n\
-             rel_best={}\nrel_last={}\n\
-             rel_order={}\n\
-             rel_w_num={}\nrel_w_name={}\nrel_w_gap={}\nrel_w_laps={}\nrel_w_current={}\nrel_w_pos={}\nrel_w_bike={}\nrel_w_penalty={}\nrel_w_interval={}\nrel_w_crashed={}\n\
-             rel_w_best={}\nrel_w_last={}\n\
-             rel_bg={}\nrel_hl={}\nrel_text={}\nrel_stripe={}\nrel_font={}\nrel_bold={}\n\
-             rel_head={}\nrel_foot={}\n\
-             \n[Map]\n\
-             map_others={}\nmap_sf={}\nmap_sectors={}\nmap_name={}\nmap_numbers={}\nmap_arrows={}\nmap_crown={}\nmap_place={}\nmap_dot={}\n\
-             map_bg={}\nmap_font={}\nmap_bold={}\n\
-             \n[Minimap]\n\
-             mini_others={}\nmini_sf={}\nmini_sectors={}\nmini_numbers={}\nmini_arrows={}\nmini_crown={}\nmini_place={}\nmini_dot={}\n\
-             mini_bg={}\nmini_zoom={}\nmini_font={}\nmini_bold={}\n\
-             \n[Radar]\n\
-             radar_sides={}\nradar_rear={}\nradar_rings={}\n\
-             radar_bg={}\nradar_font={}\nradar_bold={}\n\
-             \n[Dash]\n\
-             dash_rev={}\n\
-             dash_simple={}\n\
-             dash_left={}\ndash_mid={}\ndash_right={}\n\
-             dash_bg={}\ndash_font={}\ndash_bold={}\n\
-             \n[Ticker]\n\
-             ticker_left={}\nticker_right={}\n\
-             ticker_title={}\n\
-             ticker_autoscroll={}\n\
-             ticker_bg={}\nticker_font={}\nticker_bold={}\n\
-             \n[Sys]\n\
-             sys_bg={}\nsys_font={}\nsys_bold={}\nsys_apps={}\n\
-             \n[Sector]\n\
-             sector_live={}\nsector_session={}\nsector_hist={}\nsector_hist_laps={}\nsector_bg={}\nsector_font={}\nsector_bold={}\n\
-             \n[Delta]\n\
-             delta_session={}\ndelta_bg={}\ndelta_font={}\ndelta_bold={}\n\
-             \n[Stance]\n\
-             stance_bind={}\nstance_mode={}\nstance_style={}\nstance_show_sit={}\n\
-             stance_bg={}\nstance_font={}\nstance_bold={}\n\
-             \n[Flag]\n\
-             flag_bg={}\nflag_yellow={}\nflag_blue={}\nflag_text={}\nflag_font={}\nflag_bold={}\n\
-             \n[Lean]\n\
-             lean_style={}\n\
-             lean_bg={}\nlean_font={}\nlean_bold={}\n\
-             \n[Gamepad]\n\
-             gamepad_style={}\ngamepad_bg={}\ngamepad_font={}\ngamepad_bold={}\n\
-             \n[App]\n\
-             font_family={}\nunits={}\nsettings_key={}\nstart_with_windows={}\nminimize_on_close={}\nclose_with_game={}\nopen_with_game={}\nauto_update_on_launch={}\nwhats_new_seen={}\nfirst_install_version={}\nexperimental={}\n",
-            st.rect.x,
-            st.rect.y,
-            st.rect.w,
-            st.rect.h,
-            rel.rect.x,
-            rel.rect.y,
-            rel.rect.w,
-            rel.rect.h,
-            map.rect.x,
-            map.rect.y,
-            map.rect.w,
-            map.rect.h,
-            mini.rect.x,
-            mini.rect.y,
-            mini.rect.w,
-            mini.rect.h,
-            radar.rect.x,
-            radar.rect.y,
-            radar.rect.w,
-            radar.rect.h,
-            dash.rect.x,
-            dash.rect.y,
-            dash.rect.w,
-            dash.rect.h,
-            ticker.rect.x,
-            ticker.rect.y,
-            ticker.rect.w,
-            ticker.rect.h,
-            sys.rect.x,
-            sys.rect.y,
-            sys.rect.w,
-            sys.rect.h,
-            sector.rect.x,
-            sector.rect.y,
-            sector.rect.w,
-            sector.rect.h,
-            delta.rect.x,
-            delta.rect.y,
-            delta.rect.w,
-            delta.rect.h,
-            stance.rect.x,
-            stance.rect.y,
-            stance.rect.w,
-            stance.rect.h,
-            flag.rect.x,
-            flag.rect.y,
-            flag.rect.w,
-            flag.rect.h,
-            lean.rect.x,
-            lean.rect.y,
-            lean.rect.w,
-            lean.rect.h,
-            gamepad.rect.x,
-            gamepad.rect.y,
-            gamepad.rect.w,
-            gamepad.rect.h,
-            b(st.show),
-            b(rel.show),
-            b(map.show),
-            b(mini.show),
-            b(radar.show),
-            b(dash.show),
-            b(ticker.show),
-            b(sys.show),
-            b(sector.show),
-            b(delta.show),
-            b(stance.show),
-            b(flag.show),
-            b(lean.show),
-            b(gamepad.show),
-            b(self.ingame_hud),
-            self.standings_rows,
-            self.relative_count,
-            self.ticker_count,
-            b(self.st_pos),
-            b(self.st_num),
-            b(self.st_name),
-            b(self.st_gap),
-            b(self.st_interval),
-            b(self.st_laps),
-            b(self.st_current),
-            b(self.st_best),
-            b(self.st_last),
-            b(self.st_status),
-            b(self.st_bike),
-            b(self.st_penalty),
-            b(self.st_crashed),
-            join_st(&self.st_order),
-            self.st_w_pos,
-            self.st_w_num,
-            self.st_w_name,
-            self.st_w_gap,
-            self.st_w_interval,
-            self.st_w_laps,
-            self.st_w_current,
-            self.st_w_best,
-            self.st_w_last,
-            self.st_w_status,
-            self.st_w_bike,
-            self.st_w_penalty,
-            self.st_w_crashed,
-            st.bg,
-            self.st_hl,
-            self.st_text.key(),
-            b(self.st_stripe),
-            st.font,
-            b(st.bold),
-            join_board(&self.st_head),
-            join_board(&self.st_foot),
-            b(self.rel_num),
-            b(self.rel_name),
-            b(self.rel_gap),
-            b(self.rel_laps),
-            b(self.rel_current),
-            b(self.rel_pos),
-            b(self.rel_bike),
-            b(self.rel_penalty),
-            b(self.rel_interval),
-            b(self.rel_crashed),
-            b(self.rel_best),
-            b(self.rel_last),
-            join_rel(&self.rel_order),
-            self.rel_w_num,
-            self.rel_w_name,
-            self.rel_w_gap,
-            self.rel_w_laps,
-            self.rel_w_current,
-            self.rel_w_pos,
-            self.rel_w_bike,
-            self.rel_w_penalty,
-            self.rel_w_interval,
-            self.rel_w_crashed,
-            self.rel_w_best,
-            self.rel_w_last,
-            rel.bg,
-            self.rel_hl,
-            self.rel_text.key(),
-            b(self.rel_stripe),
-            rel.font,
-            b(rel.bold),
-            join_board(&self.rel_head),
-            join_board(&self.rel_foot),
-            b(self.map_others),
-            b(self.map_sf),
-            b(self.map_sectors),
-            b(self.map_name),
-            b(self.map_numbers),
-            b(self.map_arrows),
-            b(self.map_crown),
-            b(self.map_place),
-            self.map_dot.key(),
-            map.bg,
-            map.font,
-            b(map.bold),
-            b(self.mini_others),
-            b(self.mini_sf),
-            b(self.mini_sectors),
-            b(self.mini_numbers),
-            b(self.mini_arrows),
-            b(self.mini_crown),
-            b(self.mini_place),
-            self.mini_dot.key(),
-            mini.bg,
-            self.mini_zoom,
-            mini.font,
-            b(mini.bold),
-            b(self.radar_sides),
-            b(self.radar_rear),
-            b(self.radar_rings),
-            radar.bg,
-            radar.font,
-            b(radar.bold),
-            b(self.dash_rev),
-            b(self.dash_simple),
-            self.dash_left.key(),
-            self.dash_mid.key(),
-            self.dash_right.key(),
-            dash.bg,
-            dash.font,
-            b(dash.bold),
-            self.ticker_left.key(),
-            self.ticker_right.key(),
-            b(self.ticker_title),
-            b(self.ticker_autoscroll),
-            ticker.bg,
-            ticker.font,
-            b(ticker.bold),
-            sys.bg,
-            sys.font,
-            b(sys.bold),
-            encode_sys_apps(&self.sys_apps),
-            b(self.sector_live),
-            b(self.sector_session),
-            b(self.sector_hist),
-            self.sector_hist_laps.clamp(1, 5),
-            sector.bg,
-            sector.font,
-            b(sector.bold),
-            b(self.delta_session),
-            delta.bg,
-            delta.font,
-            b(delta.bold),
-            self.stance_bind.key(),
-            self.stance_mode.key(),
-            self.stance_style.key(),
-            b(self.stance_show_sit),
-            stance.bg,
-            stance.font,
-            b(stance.bold),
-            flag.bg,
-            b(self.flag_yellow),
-            b(self.flag_blue),
-            b(self.flag_text),
-            flag.font,
-            b(flag.bold),
-            self.lean_style.key(),
-            lean.bg,
-            lean.font,
-            b(lean.bold),
-            self.gamepad_style.key(),
-            gamepad.bg,
-            gamepad.font,
-            b(gamepad.bold),
+             [App]\n\
+             font_family={}\nunits={}\nsettings_key={}\nstart_with_windows={}\nminimize_on_close={}\n\
+             close_with_game={}\nopen_with_game={}\nauto_update_on_launch={}\nwhats_new_seen={}\n\
+             first_install_version={}\nexperimental={}\ningame_hud={}\nstance_bind={}\nactive_preset={}\n\
+             \n[Practice]\n{}\n\n[Warmup]\n{}\n\n[Race]\n{}\n\n[Spectate]\n{}\n",
             self.font_family.key(),
             self.units.key(),
             self.settings_key.key(),
@@ -2072,6 +1823,13 @@ impl HudConfig {
             self.whats_new_seen,
             self.first_install_version,
             b(self.experimental),
+            b(self.ingame_hud),
+            self.stance_bind.key(),
+            self.active_preset.key(),
+            layout_ini(&self.layouts[SessionPreset::Practice.idx()]),
+            layout_ini(&self.layouts[SessionPreset::Warmup.idx()]),
+            layout_ini(&self.layouts[SessionPreset::Race.idx()]),
+            layout_ini(&self.layouts[SessionPreset::Spectate.idx()]),
         );
         let _ = fs::write(&path, body);
         self.loaded_mtime = fs::metadata(&path).and_then(|m| m.modified()).ok();
@@ -2082,14 +1840,15 @@ impl HudConfig {
     }
 
     pub fn apply_to_snapshot(&self, s: &mut Snapshot) {
-        s.standings_rect = self[WidgetId::Standings].rect;
-        s.relative = self[WidgetId::Relative].rect;
-        s.map = self[WidgetId::Map].rect;
-        s.show_standings = i32::from(self[WidgetId::Standings].show);
-        s.show_relative = i32::from(self[WidgetId::Relative].show);
-        s.show_map = i32::from(self[WidgetId::Map].show);
-        s.standings_rows = self.standings_rows;
-        s.relative_count = self.relative_count;
+        let lay = self.live();
+        s.standings_rect = lay[WidgetId::Standings].rect;
+        s.relative = lay[WidgetId::Relative].rect;
+        s.map = lay[WidgetId::Map].rect;
+        s.show_standings = i32::from(lay[WidgetId::Standings].show);
+        s.show_relative = i32::from(lay[WidgetId::Relative].show);
+        s.show_map = i32::from(lay[WidgetId::Map].show);
+        s.standings_rows = lay.standings_rows;
+        s.relative_count = lay.relative_count;
     }
 
     pub fn move_st_to(&mut self, from: usize, to: usize) {
@@ -2109,11 +1868,11 @@ impl HudConfig {
     }
 
     pub fn prefs(&self, id: WidgetId) -> &WidgetPrefs {
-        &self.widgets[id.idx()]
+        &self.edit()[id]
     }
 
     pub fn prefs_mut(&mut self, id: WidgetId) -> &mut WidgetPrefs {
-        &mut self.widgets[id.idx()]
+        &mut self.edit_mut()[id]
     }
 
     pub fn font_pct(&self, id: WidgetId) -> i32 {
@@ -2204,7 +1963,205 @@ impl IndexMut<WidgetId> for HudConfig {
     }
 }
 
-fn apply_widget_prefs(cfg: &mut HudConfig, key: &str, val: &str, f: f32, b: bool) -> bool {
+impl Deref for HudConfig {
+    type Target = HudLayout;
+
+    fn deref(&self) -> &HudLayout {
+        self.edit()
+    }
+}
+
+impl DerefMut for HudConfig {
+    fn deref_mut(&mut self) -> &mut HudLayout {
+        self.edit_mut()
+    }
+}
+
+#[derive(Clone, Copy)]
+enum IniSection {
+    App,
+    Preset(SessionPreset),
+    Legacy,
+}
+
+fn parse_ini_section(line: &str) -> IniSection {
+    let name = line
+        .trim()
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .trim()
+        .to_ascii_lowercase();
+    match name.as_str() {
+        "app" => IniSection::App,
+        "practice" => IniSection::Preset(SessionPreset::Practice),
+        "warmup" => IniSection::Preset(SessionPreset::Warmup),
+        "race" => IniSection::Preset(SessionPreset::Race),
+        "spectate" | "spectating" => IniSection::Preset(SessionPreset::Spectate),
+        _ => IniSection::Legacy,
+    }
+}
+
+fn apply_app_key(cfg: &mut HudConfig, key: &str, val: &str, b: bool, saw_first_install: &mut bool) -> bool {
+    match key {
+        "experimental" | "feature_experimental" | "feature_sector" => cfg.experimental = b,
+        "ingame_hud" => cfg.ingame_hud = b,
+        "font_family" => cfg.font_family = FontFamily::parse(val),
+        "units" => cfg.units = Units::parse(val),
+        "start_with_windows" => cfg.start_with_windows = b,
+        "minimize_on_close" => cfg.minimize_on_close = b,
+        "close_with_game" => cfg.close_with_game = b,
+        "open_with_game" => cfg.open_with_game = b,
+        "auto_update_on_launch" => cfg.auto_update_on_launch = b,
+        "whats_new_seen" => cfg.whats_new_seen = val.trim().to_string(),
+        "first_install_version" => {
+            cfg.first_install_version = val.trim().to_string();
+            *saw_first_install = true;
+        }
+        "settings_key" => cfg.settings_key = SettingsKey::parse(val),
+        "stance_bind" => cfg.stance_bind = StanceBind::parse(val),
+        "active_preset" => {
+            let p = SessionPreset::parse(val);
+            cfg.active_preset = p;
+            cfg.settings_preset = p;
+        }
+        _ => return false,
+    }
+    true
+}
+
+fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last_cols: &mut bool) {
+    match key {
+        "sector_live" => cfg.sector_live = b,
+        "sector_session" => cfg.sector_session = b,
+        "sector_hist" => cfg.sector_hist = b,
+        "sector_hist_laps" => cfg.sector_hist_laps = val.parse().unwrap_or(3).clamp(1, 5),
+        "delta_session" => cfg.delta_session = b,
+        "flag_caution" => {
+            cfg.flag_yellow = b;
+            cfg.flag_blue = b;
+        }
+        "flag_yellow" => cfg.flag_yellow = b,
+        "flag_blue" => cfg.flag_blue = b,
+        "flag_red" => cfg.flag_red = b,
+        "flag_text" => cfg.flag_text = b,
+        "standings_rows" => cfg.standings_rows = val.parse().unwrap_or(12).max(3),
+        "relative_count" => cfg.relative_count = val.parse().unwrap_or(3).max(1),
+        "ticker_count" => cfg.ticker_count = val.parse().unwrap_or(7).clamp(3, 15),
+        "ticker_title" => cfg.ticker_title = b,
+        "ticker_autoscroll" => cfg.ticker_autoscroll = b,
+        "st_pos" => cfg.st_pos = b,
+        "st_num" => cfg.st_num = b,
+        "st_name" => cfg.st_name = b,
+        "st_gap" => cfg.st_gap = b,
+        "st_interval" => cfg.st_interval = b,
+        "st_laps" => cfg.st_laps = b,
+        "st_current" => cfg.st_current = b,
+        "st_best" => cfg.st_best = b,
+        "st_last" => {
+            cfg.st_last = b;
+            *saw_last_cols = true;
+        }
+        "st_status" => cfg.st_status = b,
+        "st_bike" => cfg.st_bike = b,
+        "st_penalty" => cfg.st_penalty = b,
+        "st_crashed" => cfg.st_crashed = b,
+        "rel_num" => cfg.rel_num = b,
+        "rel_name" => cfg.rel_name = b,
+        "rel_gap" => cfg.rel_gap = b,
+        "rel_laps" => cfg.rel_laps = b,
+        "rel_current" => cfg.rel_current = b,
+        "rel_pos" => cfg.rel_pos = b,
+        "rel_bike" => cfg.rel_bike = b,
+        "rel_penalty" => cfg.rel_penalty = b,
+        "rel_interval" => cfg.rel_interval = b,
+        "rel_crashed" => cfg.rel_crashed = b,
+        "rel_best" => cfg.rel_best = b,
+        "rel_last" => cfg.rel_last = b,
+        "map_others" => cfg.map_others = b,
+        "map_sf" => cfg.map_sf = b,
+        "map_sectors" => cfg.map_sectors = b,
+        "map_name" => cfg.map_name = b,
+        "map_numbers" => cfg.map_numbers = b,
+        "map_arrows" => cfg.map_arrows = b,
+        "map_crown" => cfg.map_crown = b,
+        "map_place" => cfg.map_place = b,
+        "map_dot" => cfg.map_dot = DotLabel::parse(val),
+        "mini_others" => cfg.mini_others = b,
+        "mini_sf" => cfg.mini_sf = b,
+        "mini_sectors" => cfg.mini_sectors = b,
+        "mini_numbers" => cfg.mini_numbers = b,
+        "mini_arrows" => cfg.mini_arrows = b,
+        "mini_crown" => cfg.mini_crown = b,
+        "mini_place" => cfg.mini_place = b,
+        "mini_dot" => cfg.mini_dot = DotLabel::parse(val),
+        "radar_sides" => cfg.radar_sides = b,
+        "radar_rear" => cfg.radar_rear = b,
+        "radar_rings" => cfg.radar_rings = b,
+        "radar_range" => cfg.radar_range = clamp_radar_range(val),
+        "st_hl" => cfg.st_hl = clamp_pct(val),
+        "st_text" => cfg.st_text = TableText::parse(val),
+        "st_stripe" => cfg.st_stripe = b,
+        "rel_hl" => cfg.rel_hl = clamp_pct(val),
+        "rel_text" => cfg.rel_text = TableText::parse(val),
+        "rel_stripe" => cfg.rel_stripe = b,
+        "mini_zoom" => cfg.mini_zoom = clamp_pct(val),
+        "dash_rev" => cfg.dash_rev = b,
+        "dash_yellow" => cfg.dash_yellow = b,
+        "dash_blue" => cfg.dash_blue = b,
+        "dash_red" => cfg.dash_red = b,
+        "dash_simple" => cfg.dash_simple = b,
+        "dash_left" => cfg.dash_left = DashField::parse(val),
+        "dash_mid" => cfg.dash_mid = DashField::parse(val),
+        "dash_right" => cfg.dash_right = DashField::parse(val),
+        "ticker_left" => cfg.ticker_left = BoardField::parse(val),
+        "ticker_right" => cfg.ticker_right = BoardField::parse(val),
+        "st_head" => cfg.st_head = parse_board(val, BoardField::DEFAULT_HEAD),
+        "st_foot" => cfg.st_foot = parse_board(val, BoardField::DEFAULT_FOOT),
+        "rel_head" => cfg.rel_head = parse_board(val, BoardField::DEFAULT_HEAD),
+        "rel_foot" => cfg.rel_foot = parse_board(val, BoardField::DEFAULT_FOOT),
+        "stance_mode" => cfg.stance_mode = StanceMode::parse(val),
+        "stance_style" => cfg.stance_style = StanceStyle::parse(val),
+        "lean_style" => cfg.lean_style = LeanStyle::parse(val),
+        "gamepad_style" => cfg.gamepad_style = GamepadStyle::parse(val),
+        "sys_apps" => cfg.sys_apps = parse_sys_apps(val),
+        "stance_show_sit" => cfg.stance_show_sit = b,
+        "stance_icon" => {
+            if b {
+                cfg.stance_style = StanceStyle::Icon;
+            }
+        }
+        "st_order" => cfg.st_order = parse_st_order(val),
+        "rel_order" => cfg.rel_order = parse_rel_order(val),
+        "st_w_pos" => cfg.st_w_pos = clamp_w(val),
+        "st_w_num" => cfg.st_w_num = clamp_w(val),
+        "st_w_name" => cfg.st_w_name = clamp_name_w(val),
+        "st_w_gap" => cfg.st_w_gap = clamp_w(val),
+        "st_w_interval" => cfg.st_w_interval = clamp_w(val),
+        "st_w_laps" => cfg.st_w_laps = clamp_w(val),
+        "st_w_current" => cfg.st_w_current = clamp_w(val),
+        "st_w_best" => cfg.st_w_best = clamp_w(val),
+        "st_w_last" => cfg.st_w_last = clamp_w(val),
+        "st_w_status" => cfg.st_w_status = clamp_w(val),
+        "st_w_bike" => cfg.st_w_bike = clamp_w(val),
+        "st_w_penalty" => cfg.st_w_penalty = clamp_w(val),
+        "st_w_crashed" => cfg.st_w_crashed = clamp_w(val),
+        "rel_w_num" => cfg.rel_w_num = clamp_w(val),
+        "rel_w_name" => cfg.rel_w_name = clamp_name_w(val),
+        "rel_w_gap" => cfg.rel_w_gap = clamp_w(val),
+        "rel_w_laps" => cfg.rel_w_laps = clamp_w(val),
+        "rel_w_current" => cfg.rel_w_current = clamp_w(val),
+        "rel_w_pos" => cfg.rel_w_pos = clamp_w(val),
+        "rel_w_bike" => cfg.rel_w_bike = clamp_w(val),
+        "rel_w_penalty" => cfg.rel_w_penalty = clamp_w(val),
+        "rel_w_interval" => cfg.rel_w_interval = clamp_w(val),
+        "rel_w_crashed" => cfg.rel_w_crashed = clamp_w(val),
+        "rel_w_best" => cfg.rel_w_best = clamp_w(val),
+        "rel_w_last" => cfg.rel_w_last = clamp_w(val),
+        _ => {}
+    }
+}
+
+fn apply_widget_prefs(cfg: &mut HudLayout, key: &str, val: &str, f: f32, b: bool) -> bool {
     for id in WidgetId::ALL {
         let k = id.ini();
         if key == k.show {
@@ -2243,6 +2200,125 @@ fn apply_widget_prefs(cfg: &mut HudConfig, key: &str, val: &str, f: f32, b: bool
     false
 }
 
+fn layout_ini(l: &HudLayout) -> String {
+    let st = l[WidgetId::Standings];
+    let rel = l[WidgetId::Relative];
+    let map = l[WidgetId::Map];
+    let mini = l[WidgetId::Minimap];
+    let radar = l[WidgetId::Radar];
+    let dash = l[WidgetId::Dash];
+    let ticker = l[WidgetId::Ticker];
+    let sys = l[WidgetId::Sys];
+    let sector = l[WidgetId::Sector];
+    let delta = l[WidgetId::Delta];
+    let stance = l[WidgetId::Stance];
+    let flag = l[WidgetId::Flag];
+    let lean = l[WidgetId::Lean];
+    let gamepad = l[WidgetId::Gamepad];
+    format!(
+        "standings_x={}\nstandings_y={}\nstandings_w={}\nstandings_h={}\n\
+         relative_x={}\nrelative_y={}\nrelative_w={}\nrelative_h={}\n\
+         map_x={}\nmap_y={}\nmap_w={}\nmap_h={}\n\
+         minimap_x={}\nminimap_y={}\nminimap_w={}\nminimap_h={}\n\
+         radar_x={}\nradar_y={}\nradar_w={}\nradar_h={}\n\
+         dash_x={}\ndash_y={}\ndash_w={}\ndash_h={}\n\
+         ticker_x={}\nticker_y={}\nticker_w={}\nticker_h={}\n\
+         sys_x={}\nsys_y={}\nsys_w={}\nsys_h={}\n\
+         sector_x={}\nsector_y={}\nsector_w={}\nsector_h={}\n\
+         delta_x={}\ndelta_y={}\ndelta_w={}\ndelta_h={}\n\
+         stance_x={}\nstance_y={}\nstance_w={}\nstance_h={}\n\
+         flag_x={}\nflag_y={}\nflag_w={}\nflag_h={}\n\
+         lean_x={}\nlean_y={}\nlean_w={}\nlean_h={}\n\
+         gamepad_x={}\ngamepad_y={}\ngamepad_w={}\ngamepad_h={}\n\
+         show_standings={}\nshow_relative={}\nshow_map={}\nshow_minimap={}\nshow_radar={}\n\
+         show_dash={}\nshow_ticker={}\nshow_sys={}\nshow_sector={}\nshow_delta={}\n\
+         show_stance={}\nshow_flag={}\nshow_lean={}\nshow_gamepad={}\n\
+         standings_rows={}\nrelative_count={}\nticker_count={}\n\
+         st_pos={}\nst_num={}\nst_name={}\nst_gap={}\nst_interval={}\nst_laps={}\nst_current={}\n\
+         st_best={}\nst_last={}\nst_status={}\nst_bike={}\nst_penalty={}\nst_crashed={}\n\
+         st_order={}\n\
+         st_w_pos={}\nst_w_num={}\nst_w_name={}\nst_w_gap={}\nst_w_interval={}\nst_w_laps={}\n\
+         st_w_current={}\nst_w_best={}\nst_w_last={}\nst_w_status={}\nst_w_bike={}\nst_w_penalty={}\nst_w_crashed={}\n\
+         st_bg={}\nst_hl={}\nst_text={}\nst_stripe={}\nst_font={}\nst_bold={}\n\
+         st_head={}\nst_foot={}\n\
+         rel_num={}\nrel_name={}\nrel_gap={}\nrel_laps={}\nrel_current={}\nrel_pos={}\nrel_bike={}\n\
+         rel_penalty={}\nrel_interval={}\nrel_crashed={}\nrel_best={}\nrel_last={}\n\
+         rel_order={}\n\
+         rel_w_num={}\nrel_w_name={}\nrel_w_gap={}\nrel_w_laps={}\nrel_w_current={}\nrel_w_pos={}\n\
+         rel_w_bike={}\nrel_w_penalty={}\nrel_w_interval={}\nrel_w_crashed={}\nrel_w_best={}\nrel_w_last={}\n\
+         rel_bg={}\nrel_hl={}\nrel_text={}\nrel_stripe={}\nrel_font={}\nrel_bold={}\n\
+         rel_head={}\nrel_foot={}\n\
+         map_others={}\nmap_sf={}\nmap_sectors={}\nmap_name={}\nmap_numbers={}\nmap_arrows={}\n\
+         map_crown={}\nmap_place={}\nmap_dot={}\nmap_bg={}\nmap_font={}\nmap_bold={}\n\
+         mini_others={}\nmini_sf={}\nmini_sectors={}\nmini_numbers={}\nmini_arrows={}\nmini_crown={}\n\
+         mini_place={}\nmini_dot={}\nmini_bg={}\nmini_zoom={}\nmini_font={}\nmini_bold={}\n\
+         radar_sides={}\nradar_rear={}\nradar_rings={}\nradar_range={}\nradar_bg={}\nradar_font={}\nradar_bold={}\n\
+         dash_rev={}\ndash_yellow={}\ndash_blue={}\ndash_red={}\ndash_simple={}\ndash_left={}\ndash_mid={}\ndash_right={}\n\
+         dash_bg={}\ndash_font={}\ndash_bold={}\n\
+         ticker_left={}\nticker_right={}\nticker_title={}\nticker_autoscroll={}\n\
+         ticker_bg={}\nticker_font={}\nticker_bold={}\n\
+         sys_bg={}\nsys_font={}\nsys_bold={}\nsys_apps={}\n\
+         sector_live={}\nsector_session={}\nsector_hist={}\nsector_hist_laps={}\n\
+         sector_bg={}\nsector_font={}\nsector_bold={}\n\
+         delta_session={}\ndelta_bg={}\ndelta_font={}\ndelta_bold={}\n\
+         stance_mode={}\nstance_style={}\nstance_show_sit={}\n\
+         stance_bg={}\nstance_font={}\nstance_bold={}\n\
+         flag_bg={}\nflag_yellow={}\nflag_blue={}\nflag_red={}\nflag_text={}\nflag_font={}\nflag_bold={}\n\
+         lean_style={}\nlean_bg={}\nlean_font={}\nlean_bold={}\n\
+         gamepad_style={}\ngamepad_bg={}\ngamepad_font={}\ngamepad_bold={}",
+        st.rect.x, st.rect.y, st.rect.w, st.rect.h,
+        rel.rect.x, rel.rect.y, rel.rect.w, rel.rect.h,
+        map.rect.x, map.rect.y, map.rect.w, map.rect.h,
+        mini.rect.x, mini.rect.y, mini.rect.w, mini.rect.h,
+        radar.rect.x, radar.rect.y, radar.rect.w, radar.rect.h,
+        dash.rect.x, dash.rect.y, dash.rect.w, dash.rect.h,
+        ticker.rect.x, ticker.rect.y, ticker.rect.w, ticker.rect.h,
+        sys.rect.x, sys.rect.y, sys.rect.w, sys.rect.h,
+        sector.rect.x, sector.rect.y, sector.rect.w, sector.rect.h,
+        delta.rect.x, delta.rect.y, delta.rect.w, delta.rect.h,
+        stance.rect.x, stance.rect.y, stance.rect.w, stance.rect.h,
+        flag.rect.x, flag.rect.y, flag.rect.w, flag.rect.h,
+        lean.rect.x, lean.rect.y, lean.rect.w, lean.rect.h,
+        gamepad.rect.x, gamepad.rect.y, gamepad.rect.w, gamepad.rect.h,
+        b(st.show), b(rel.show), b(map.show), b(mini.show), b(radar.show),
+        b(dash.show), b(ticker.show), b(sys.show), b(sector.show), b(delta.show),
+        b(stance.show), b(flag.show), b(lean.show), b(gamepad.show),
+        l.standings_rows, l.relative_count, l.ticker_count,
+        b(l.st_pos), b(l.st_num), b(l.st_name), b(l.st_gap), b(l.st_interval), b(l.st_laps), b(l.st_current),
+        b(l.st_best), b(l.st_last), b(l.st_status), b(l.st_bike), b(l.st_penalty), b(l.st_crashed),
+        join_st(&l.st_order),
+        l.st_w_pos, l.st_w_num, l.st_w_name, l.st_w_gap, l.st_w_interval, l.st_w_laps,
+        l.st_w_current, l.st_w_best, l.st_w_last, l.st_w_status, l.st_w_bike, l.st_w_penalty, l.st_w_crashed,
+        st.bg, l.st_hl, l.st_text.key(), b(l.st_stripe), st.font, b(st.bold),
+        join_board(&l.st_head), join_board(&l.st_foot),
+        b(l.rel_num), b(l.rel_name), b(l.rel_gap), b(l.rel_laps), b(l.rel_current), b(l.rel_pos), b(l.rel_bike),
+        b(l.rel_penalty), b(l.rel_interval), b(l.rel_crashed), b(l.rel_best), b(l.rel_last),
+        join_rel(&l.rel_order),
+        l.rel_w_num, l.rel_w_name, l.rel_w_gap, l.rel_w_laps, l.rel_w_current, l.rel_w_pos,
+        l.rel_w_bike, l.rel_w_penalty, l.rel_w_interval, l.rel_w_crashed, l.rel_w_best, l.rel_w_last,
+        rel.bg, l.rel_hl, l.rel_text.key(), b(l.rel_stripe), rel.font, b(rel.bold),
+        join_board(&l.rel_head), join_board(&l.rel_foot),
+        b(l.map_others), b(l.map_sf), b(l.map_sectors), b(l.map_name), b(l.map_numbers), b(l.map_arrows),
+        b(l.map_crown), b(l.map_place), l.map_dot.key(), map.bg, map.font, b(map.bold),
+        b(l.mini_others), b(l.mini_sf), b(l.mini_sectors), b(l.mini_numbers), b(l.mini_arrows), b(l.mini_crown),
+        b(l.mini_place), l.mini_dot.key(), mini.bg, l.mini_zoom, mini.font, b(mini.bold),
+        b(l.radar_sides), b(l.radar_rear), b(l.radar_rings), l.radar_range, radar.bg, radar.font, b(radar.bold),
+        b(l.dash_rev), b(l.dash_yellow), b(l.dash_blue), b(l.dash_red), b(l.dash_simple), l.dash_left.key(), l.dash_mid.key(), l.dash_right.key(),
+        dash.bg, dash.font, b(dash.bold),
+        l.ticker_left.key(), l.ticker_right.key(), b(l.ticker_title), b(l.ticker_autoscroll),
+        ticker.bg, ticker.font, b(ticker.bold),
+        sys.bg, sys.font, b(sys.bold), encode_sys_apps(&l.sys_apps),
+        b(l.sector_live), b(l.sector_session), b(l.sector_hist), l.sector_hist_laps.clamp(1, 5),
+        sector.bg, sector.font, b(sector.bold),
+        b(l.delta_session), delta.bg, delta.font, b(delta.bold),
+        l.stance_mode.key(), l.stance_style.key(), b(l.stance_show_sit),
+        stance.bg, stance.font, b(stance.bold),
+        flag.bg, b(l.flag_yellow), b(l.flag_blue), b(l.flag_red), b(l.flag_text), flag.font, b(flag.bold),
+        l.lean_style.key(), lean.bg, lean.font, b(lean.bold),
+        l.gamepad_style.key(), gamepad.bg, gamepad.font, b(gamepad.bold),
+    )
+}
+
 fn b(v: bool) -> i32 {
     i32::from(v)
 }
@@ -2257,6 +2333,10 @@ fn clamp_name_w(val: &str) -> i32 {
 
 fn clamp_pct(val: &str) -> i32 {
     val.parse().unwrap_or(80).clamp(0, 100)
+}
+
+fn clamp_radar_range(val: &str) -> i32 {
+    val.parse().unwrap_or(RADAR_RANGE_DEFAULT).clamp(RADAR_RANGE_MIN, RADAR_RANGE_MAX)
 }
 
 fn clamp_font(val: &str) -> i32 {
@@ -2716,10 +2796,10 @@ fn migrate_default_flag(r: &mut Rect) {
 
 fn migrate_default_sector(r: &mut Rect) {
     let factory = Rect {
-        x: 0.66,
-        y: 0.70,
-        w: 0.32,
-        h: 0.22,
+        x: 0.62,
+        y: 0.68,
+        w: 0.36,
+        h: 0.26,
     };
     let untouched = |x: f32, y: f32, w: f32, h: f32| {
         (r.x - x).abs() < 0.001
@@ -2727,7 +2807,11 @@ fn migrate_default_sector(r: &mut Rect) {
             && (r.w - w).abs() < 0.001
             && (r.h - h).abs() < 0.001
     };
-    if untouched(0.66, 0.84, 0.32, 0.085) || untouched(0.66, 0.78, 0.32, 0.14) {
+    if untouched(0.66, 0.84, 0.32, 0.085)
+        || untouched(0.66, 0.78, 0.32, 0.14)
+        || untouched(0.66, 0.70, 0.32, 0.22)
+        || untouched(0.62, 0.70, 0.36, 0.22)
+    {
         *r = factory;
         return;
     }
@@ -2773,6 +2857,19 @@ pub fn update_config(f: impl FnOnce(&mut HudConfig)) {
     let mut g = CONFIG.lock().unwrap_or_else(|e| e.into_inner());
     f(&mut g);
     g.save();
+}
+
+/// Follow live session mode without writing the ini every frame.
+pub fn sync_session_preset(preset: Option<SessionPreset>) {
+    let mut g = CONFIG.lock().unwrap_or_else(|e| e.into_inner());
+    match preset {
+        Some(p) => {
+            g.active_preset = p;
+            g.settings_preset = p;
+            g.session_live = true;
+        }
+        None => g.session_live = false,
+    }
 }
 
 #[cfg(test)]

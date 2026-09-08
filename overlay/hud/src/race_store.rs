@@ -4,6 +4,7 @@
 //! (re-entrant) so they do not clone the store. [`RaceStore::tick`] still returns
 //! a clone for tests and clock logs.
 
+use crate::config::SessionPreset;
 use crate::shm::{cstr, Snapshot, Standing, MAX_STANDINGS};
 use std::cell::Cell;
 use std::ptr::NonNull;
@@ -444,11 +445,6 @@ pub(crate) fn timed_race_flag(s: &Snapshot) -> RaceFlag {
     if CHECKERED_LATCH.load(Ordering::Relaxed) == 1 {
         return RaceFlag::Checkered;
     }
-    // Crossing the line after the leader finished ends your race a lap down.
-    if race_over_for_me(s) && finish_earned(s) {
-        CHECKERED_LATCH.store(1, Ordering::Relaxed);
-        return RaceFlag::Checkered;
-    }
     if !extras_started(s) {
         return RaceFlag::None;
     }
@@ -457,8 +453,10 @@ pub(crate) fn timed_race_flag(s: &Snapshot) -> RaceFlag {
     if left == 0 && finish_earned(s) {
         CHECKERED_LATCH.store(1, Ordering::Relaxed);
         RaceFlag::Checkered
-    } else if left <= 1 || leader_finished(s) {
-        // Your last remaining extra, or the leader is already done.
+    } else if skip_last_lap_white(s, Some(left)) {
+        RaceFlag::None
+    } else if left <= 1 {
+        // Your last remaining extra of the distance you are still running.
         RaceFlag::White
     } else {
         RaceFlag::None
@@ -572,6 +570,8 @@ pub(crate) fn format_session_clock(ms: i32) -> String {
 
 pub(crate) fn session_len_ms(len: i32) -> i32 {
     // Plugin uses -1 until this session writes a length; same as 0 (no clock).
+    // 1–59 is minutes, 60–999 is seconds (a 00:60 gate, not a 60:00 race),
+    // 1000+ is already milliseconds (a 60:00 race is 3_600_000).
     if len <= 0 {
         0
     } else if len >= 1_000 {
@@ -591,6 +591,13 @@ pub(crate) fn session_len_minutes(ms: i32) -> i32 {
     }
 }
 
+/// Timed extras the plugin publishes as `session_laps`. Five or more is a lap moto.
+pub(crate) const EXTRA_LAPS_MAX: i32 = 4;
+
+pub(crate) fn extra_laps_field(n: i32) -> bool {
+    (1..=EXTRA_LAPS_MAX).contains(&n)
+}
+
 pub(crate) fn leftover_practice_len(ms: i32) -> bool {
     ms >= 30 * 60_000
 }
@@ -600,7 +607,7 @@ pub(crate) fn leftover_warmup_len(ms: i32) -> bool {
 }
 
 pub(crate) fn race_clock_ms(clock: i32) -> bool {
-    clock >= 5 * 60_000 && clock <= 30 * 60_000
+    clock >= 5 * 60_000 && clock <= 60 * 60_000
 }
 
 pub(crate) fn wait_display_ms(total: i32, clock: i32) -> i32 {
@@ -614,22 +621,24 @@ pub(crate) fn wait_display_ms(total: i32, clock: i32) -> i32 {
 }
 
 pub(crate) fn standard_race_minutes(ms: i32) -> bool {
-    matches!(session_len_minutes(ms), 5 | 6 | 8 | 10 | 12 | 15 | 20 | 25 | 30)
+    matches!(
+        session_len_minutes(ms),
+        5 | 6 | 8 | 10 | 12 | 15 | 20 | 25 | 30 | 60
+    )
 }
 
 pub(crate) fn effective_session_len_ms(s: &Snapshot) -> i32 {
     let total = session_len_ms(s.session_length);
-    if s.session_laps >= 4 && leftover_warmup_len(total) {
+    if is_lap_race(s) && leftover_warmup_len(total) {
         return 0;
     }
-    // Leftover 40+ min practice must not cap a race. 30:00 is a real moto length.
+    // Leftover practice (not a 5–60 min race length) must not cap a moto.
     if s.session_laps > 0 && leftover_practice_len(total) && !standard_race_minutes(total) {
         return 0;
     }
-    // Leftover start board (~50s) must not cap a live 5–30 min timed +N countdown.
+    // Leftover start board (~50s) must not cap a live 5–60 min timed +N countdown.
     note_timed_extras_hint(s);
-    if s.session_laps > 0
-        && s.session_laps < 4
+    if extra_laps_field(s.session_laps)
         && total > 0
         && total < 3 * 60_000
         && (TIMED_EXTRAS_HINT.load(Ordering::Relaxed) == 1
@@ -706,6 +715,9 @@ pub(crate) static CLOSING_ON_LINE: AtomicI32 = AtomicI32::new(0);
 /// Your lap count while laps still remained, so the checkered has to be earned by a
 /// crossing rather than by one glitched frame. `-1` until the race is under way.
 pub(crate) static LAPS_TO_RUN_AT: AtomicI32 = AtomicI32::new(-1);
+/// Last stable `laps_left` of 2 or more. A drop of two or more in one step is a
+/// glitched `session_laps`, not a last lap — that used to wave white for a second.
+static LAST_LAPS_REMAINING: AtomicI32 = AtomicI32::new(-1);
 pub(crate) static LAST_SESSION_SIG: AtomicI32 = AtomicI32::new(0);
 pub(crate) static LAST_CUR_LAP: AtomicI32 = AtomicI32::new(0);
 pub(crate) static IN_GATE: AtomicI32 = AtomicI32::new(0);
@@ -717,9 +729,19 @@ pub(crate) static LAST_SESSION_LAPS: AtomicI32 = AtomicI32::new(-1);
 pub(crate) static LAST_RAW_SESSION_LEN: AtomicI32 = AtomicI32::new(0);
 /// Last `session_kind` (warmup 5, race 1/2 = 6/7). `0` until we have seen one.
 static LAST_SESSION_KIND: AtomicI32 = AtomicI32::new(0);
-/// Sticky: 1–3 "laps" field is timed extras once we see a 5–30 min race clock / length.
+/// Sticky: 1–4 "laps" field is timed extras once we see a 5–60 min race clock / length.
 /// Stops 6:00+2 with unset/start-board length flipping to a 2-lap moto after the gate.
 pub(crate) static TIMED_EXTRAS_HINT: AtomicI32 = AtomicI32::new(0);
+/// A 2–4-lap moto already ran its gate board. Sticky so a later 5–60 min
+/// `session_time_ms` dump cannot flip the dash to a timed clock.
+static LAP_MOTO_GATE: AtomicI32 = AtomicI32::new(0);
+/// The lap-up leader has gone past you this session. Classification `gap_laps` only
+/// moves at the line, so this is what makes `~Lapped` and `0/1` → `1/1` instant.
+static LAPPED_LATCH: AtomicI32 = AtomicI32::new(0);
+/// Last sample: the lap-up leader was behind you, so the next time they are ahead is the pass.
+static LEADER_BEHIND: AtomicI32 = AtomicI32::new(0);
+/// Leader lap fraction last sample, ten-thousandths. The pass has to be them moving, not you.
+static LAST_LEAD_FRAC: AtomicI32 = AtomicI32::new(-1);
 /// The clock we were counting down from when it dropped a long way in one frame, so the
 /// climb back out of a republished start board is not read as the race clock expiring.
 /// `-1` when the clock is running normally.
@@ -745,6 +767,7 @@ pub(crate) fn reset_session_clock_track() {
     LAP_MID_SEEN.store(0, Ordering::Relaxed);
     CLOSING_ON_LINE.store(0, Ordering::Relaxed);
     LAPS_TO_RUN_AT.store(-1, Ordering::Relaxed);
+    LAST_LAPS_REMAINING.store(-1, Ordering::Relaxed);
     IN_GATE.store(0, Ordering::Relaxed);
     POST_GATE.store(0, Ordering::Relaxed);
     LAP_GREEN.store(0, Ordering::Relaxed);
@@ -754,6 +777,10 @@ pub(crate) fn reset_session_clock_track() {
     LAST_RAW_SESSION_LEN.store(0, Ordering::Relaxed);
     LAST_SESSION_KIND.store(0, Ordering::Relaxed);
     TIMED_EXTRAS_HINT.store(0, Ordering::Relaxed);
+    LAP_MOTO_GATE.store(0, Ordering::Relaxed);
+    LAPPED_LATCH.store(0, Ordering::Relaxed);
+    LEADER_BEHIND.store(0, Ordering::Relaxed);
+    LAST_LEAD_FRAC.store(-1, Ordering::Relaxed);
     if let Ok(mut g) = LIVE_ORDER.lock() {
         g.clear();
     }
@@ -768,12 +795,29 @@ pub(crate) fn reset_session_clock_track() {
 
 fn note_timed_extras_hint(s: &Snapshot) {
     let laps = s.session_laps;
-    if !(1..=3).contains(&laps) {
+    if !extra_laps_field(laps) {
         return;
     }
     let total = session_len_ms(s.session_length);
+    let clock = s.session_time_ms.max(0);
+    let last = LAST_SESSION_CLOCK.load(Ordering::Relaxed);
     if standard_race_minutes(total) {
-        TIMED_EXTRAS_HINT.store(1, Ordering::Relaxed);
+        // +1..+3 with a published 5–60 min length is extras. +4 looks like a 4-lap
+        // leftover 8:00 until a live race clock proves it.
+        if laps <= 3 || race_clock_ms(clock) || race_clock_ms(last) {
+            TIMED_EXTRAS_HINT.store(1, Ordering::Relaxed);
+        }
+        return;
+    }
+    // 35–50 min is leftover practice in the integer encoding, but a live 35:00–60:00
+    // clock with extras is a long timed race (including +4).
+    if leftover_practice_len(total) {
+        if LAP_MOTO_GATE.load(Ordering::Relaxed) == 1 {
+            return;
+        }
+        if race_clock_ms(clock) || race_clock_ms(last) {
+            TIMED_EXTRAS_HINT.store(1, Ordering::Relaxed);
+        }
         return;
     }
     // Only when length is unset or a leftover start board — not a 7-min 3-lap leftover.
@@ -781,10 +825,17 @@ fn note_timed_extras_hint(s: &Snapshot) {
     if !ambiguous {
         return;
     }
-    let clock = s.session_time_ms.max(0);
-    let last = LAST_SESSION_CLOCK.load(Ordering::Relaxed);
     let saw_race_clock = race_clock_ms(clock) || race_clock_ms(last);
     if !saw_race_clock && RACE_ARMED.load(Ordering::Relaxed) == 0 {
+        return;
+    }
+    // Already counted this down as a 2–4-lap gate. A later 5–60 min dump is garbage.
+    if LAP_MOTO_GATE.load(Ordering::Relaxed) == 1 {
+        return;
+    }
+    // A 2–4-lap gate board (≤2 min) that jumps into 5–60 min is plugin garbage, not
+    // 6:00+2. Real timed extras already stamped the hint from the race clock.
+    if last > 0 && last <= 180_000 && !race_clock_ms(last) && race_clock_ms(clock) {
         return;
     }
     // Warmup can leak extras + a live 5:00 while you're already lapping — that is not
@@ -831,17 +882,19 @@ pub(crate) fn note_session(s: &Snapshot) {
     let from_practice = prev_raw_len <= 0
         || leftover_practice_len(prev_len_ms)
         || matches!(session_len_minutes(prev_len_ms), 10 | 12 | 15 | 20);
-    // 10–30 min with unpublished extras looks like warmup/practice. When +1 appears on
+    // 10–60 min with unpublished extras looks like warmup/practice. When +1 appears on
     // that same timed race, keep overtime bases — a reset sits on `0/1` and can wave
     // the checkered while you still have laps to run.
     let timed_extras_arriving = prev_laps == 0
-        && (1..=3).contains(&laps)
-        && standard_race_minutes(prev_len_ms)
+        && extra_laps_field(laps)
+        && (standard_race_minutes(prev_len_ms) || leftover_practice_len(prev_len_ms))
         && session_len_ms(s.session_length) == prev_len_ms
         && (RACE_ARMED.load(Ordering::Relaxed) == 1
             || SESSION_EXPIRED.load(Ordering::Relaxed) == 1);
     let entered_race = prev_laps == 0 && laps > 0 && from_practice && !timed_extras_arriving;
-    let kind_changed = prev_laps > 0 && laps > 0 && (prev_laps >= 4) != (laps >= 4);
+    let kind_changed = prev_laps > 0
+        && laps > 0
+        && (prev_laps > EXTRA_LAPS_MAX) != (laps > EXTRA_LAPS_MAX);
     let kind = s.session_kind;
     let prev_kind = LAST_SESSION_KIND.swap(kind, Ordering::Relaxed);
     let session_kind_changed = prev_kind > 0 && kind > 0 && prev_kind != kind;
@@ -888,11 +941,15 @@ fn is_race_session_kind(kind: i32) -> bool {
 }
 
 pub(crate) fn is_warmup(s: &Snapshot) -> bool {
+    // Kind 5 is warmup even when extras / lap counts leak — those fields are for race motos.
+    if s.session_kind == 5 {
+        return true;
+    }
     if overtime_active(s) || is_lap_race(s) {
         return false;
     }
-    // 1–3 is extras on a timed moto, not practice.
-    if s.session_laps > 0 && s.session_laps < 4 {
+    // 1–4 is extras on a timed moto, not practice.
+    if extra_laps_field(s.session_laps) {
         return false;
     }
     // A race session at 10–30 min with unpublished extras is not warmup.
@@ -903,16 +960,61 @@ pub(crate) fn is_warmup(s: &Snapshot) -> bool {
     leftover_practice_len(total) || matches!(session_len_minutes(total), 10 | 12 | 15 | 20)
 }
 
+/// Riding telemetry, or rider positions while `SpectateVehicles` is live.
+/// Leftover dots after spectate (garage) are not a session — same as leftover standings.
+pub fn live_session(s: &Snapshot, spectating: bool) -> bool {
+    s.has_telemetry != 0 || (spectating && s.rider_count > 0)
+}
+
+/// Live HUD preset from session state. `None` in the garage/menus so the last slot is held.
+pub fn session_preset(s: &Snapshot, spectating: bool) -> Option<SessionPreset> {
+    if !live_session(s, spectating) {
+        return None;
+    }
+    if spectating {
+        return Some(SessionPreset::Spectate);
+    }
+    if s.session_kind == 5 {
+        return Some(SessionPreset::Warmup);
+    }
+    if is_race_session_kind(s.session_kind) || is_lap_race(s) || overtime_active(s) {
+        return Some(SessionPreset::Race);
+    }
+    let total = session_len_ms(s.session_length);
+    if extra_laps_field(s.session_laps) && !is_lap_race(s) {
+        return Some(SessionPreset::Race);
+    }
+    if session_len_minutes(total) >= 40 {
+        return Some(SessionPreset::Practice);
+    }
+    if is_warmup(s) {
+        return Some(SessionPreset::Warmup);
+    }
+    if s.session_length > 0 || s.session_time_ms > 0 || prestart(s) {
+        return Some(SessionPreset::Race);
+    }
+    None
+}
+
 pub(crate) fn is_lap_race(s: &Snapshot) -> bool {
-    // Extra laps are 1–3 on a timed set. Four or more is always a lap moto,
+    // Extra laps are 1–4 on a timed set. Five or more is always a lap moto,
     // even when leftover warmup (10:00) is still sitting in session length.
-    if s.session_laps >= 4 {
+    if s.session_laps > EXTRA_LAPS_MAX {
         return true;
     }
     if s.session_laps <= 1 {
         return false;
     }
     note_timed_extras_hint(s);
+    // A 2–4-lap moto that already ran its gate stays a lap race even if extras-hint
+    // later sees a glitched 5–60 min clock.
+    if LAP_MOTO_GATE.load(Ordering::Relaxed) == 1 {
+        return true;
+    }
+    // 4-lap leftover 8:00/10:00 is a lap moto. 8:00+4 needs a live race clock hint.
+    if s.session_laps == 4 {
+        return TIMED_EXTRAS_HINT.load(Ordering::Relaxed) != 1;
+    }
     let total = session_len_ms(s.session_length);
     if leftover_practice_len(total) || standard_race_minutes(total) {
         return false;
@@ -924,7 +1026,7 @@ pub(crate) fn is_lap_race(s: &Snapshot) -> bool {
     }
     let clock = s.session_time_ms.max(0);
     // 2 extras leak into warmup (length 0, live mid clock). A 2-lap moto has a
-    // gate / leftover start board, not a 5–30 min clock, until green.
+    // gate / leftover start board, not a 5–60 min clock, until green.
     if s.session_laps == 2
         && total <= 0
         && clock > 180_000
@@ -1023,17 +1125,96 @@ pub(crate) fn local_overtime_done(s: &Snapshot) -> i32 {
     (local - local0 - 1).max(0)
 }
 
-pub(crate) fn local_overtime_taken(s: &Snapshot) -> i32 {
-    let _ = local_overtime_done(s);
-    if !extras_started(s) {
-        return 0;
-    }
+fn raw_overtime_taken(s: &Snapshot) -> i32 {
     let local = focus_num_laps(s);
     let local0 = OVERTIME_LOCAL_BASE.load(Ordering::Relaxed);
     if local <= 0 || local0 < 0 {
         return 0;
     }
     (local - local0).max(0)
+}
+
+fn leader_race_num(s: &Snapshot) -> Option<i32> {
+    s.standings
+        .iter()
+        .take(s.standing_count.max(0) as usize)
+        .find(|row| row.position == 1)
+        .map(|row| row.race_num)
+        .filter(|&n| n > 0)
+}
+
+fn leader_lap_lead(s: &Snapshot) -> i32 {
+    leader_num_laps(s) - focus_num_laps(s)
+}
+
+fn leader_is_lap_up(s: &Snapshot) -> bool {
+    let lead = leader_lap_lead(s);
+    // After the leader takes the flag, +1 completed lap is "they finished, you have
+    // not crossed yet" — you are still on the same last lap, not lapped.
+    let need = if leader_finished(s) { 2 } else { 1 };
+    if lead >= need {
+        return true;
+    }
+    // Extras started and you have not taken one: the leader is a lap up even when
+    // the game leaves both `num_laps` on the race lap.
+    !leader_finished(s)
+        && extras_started(s)
+        && raw_overtime_taken(s) == 0
+        && lead >= 0
+}
+
+/// Latch the moment the lap-up leader goes past you. `gap_laps` waits for a line crossing.
+fn note_lapped_by_leader(s: &Snapshot) {
+    if s.on_track == 0 || is_warmup(s) || prestart(s) {
+        LEADER_BEHIND.store(0, Ordering::Relaxed);
+        return;
+    }
+    if LAPPED_LATCH.load(Ordering::Relaxed) == 1 {
+        return;
+    }
+    let focus = if s.focus_race_num > 0 {
+        s.focus_race_num
+    } else {
+        s.local_race_num
+    };
+    let Some(lead) = leader_race_num(s) else {
+        return;
+    };
+    if lead == focus || !leader_is_lap_up(s) {
+        LEADER_BEHIND.store(0, Ordering::Relaxed);
+        return;
+    }
+    let (Some(lp), Some(fp)) = (rider_lap_pos(s, lead), rider_lap_pos(s, focus)) else {
+        return;
+    };
+    let len = if s.track_length > 10.0 {
+        s.track_length
+    } else {
+        1000.0
+    };
+    let along = wrap_signed(lp - fp) * len;
+    let prev = LAST_LEAD_FRAC.load(Ordering::Relaxed);
+    LAST_LEAD_FRAC.store((lp * 10_000.0).round() as i32, Ordering::Relaxed);
+    let lead_moved = prev >= 0
+        && wrap_signed(lp - prev as f32 / 10_000.0) * len > PASS_M;
+    if along < -PASS_M {
+        LEADER_BEHIND.store(1, Ordering::Relaxed);
+    } else if along > PASS_M {
+        if lead_moved && LEADER_BEHIND.swap(0, Ordering::Relaxed) == 1 {
+            LAPPED_LATCH.store(1, Ordering::Relaxed);
+        } else if !lead_moved {
+            // You rode around; the wrap flipped. That is not them going past you.
+            LEADER_BEHIND.store(0, Ordering::Relaxed);
+        }
+    }
+}
+
+pub(crate) fn local_overtime_taken(s: &Snapshot) -> i32 {
+    let _ = local_overtime_done(s);
+    if !extras_started(s) {
+        return 0;
+    }
+    raw_overtime_taken(s)
 }
 
 pub(crate) fn overtime_lap_text(s: &Snapshot) -> String {
@@ -1126,6 +1307,7 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
         }
         if clock > 0 && clock <= 180_000 {
             IN_GATE.store(1, Ordering::Relaxed);
+            LAP_MOTO_GATE.store(1, Ordering::Relaxed);
             RACE_ARMED.store(0, Ordering::Relaxed);
             SESSION_EXPIRED.store(0, Ordering::Relaxed);
             return Some(clock);
@@ -1452,14 +1634,16 @@ pub(crate) fn overtime_active(s: &Snapshot) -> bool {
         && SESSION_EXPIRED.load(Ordering::Relaxed) == 1
 }
 
-/// 5–30 min race clock already expired, extras field still 0. MX Bikes often
+/// 5–60 min race clock already expired, extras field still 0. MX Bikes often
 /// publishes `session_laps = 1` a lap later and resets standings when it does.
 fn timed_race_awaiting_extras(s: &Snapshot) -> bool {
+    let total = session_len_ms(s.session_length);
     RACE_ARMED.load(Ordering::Relaxed) == 1
         && SESSION_EXPIRED.load(Ordering::Relaxed) == 1
         && !is_lap_race(s)
         && s.session_laps <= 0
-        && standard_race_minutes(session_len_ms(s.session_length))
+        && (standard_race_minutes(total)
+            || (leftover_practice_len(total) && is_race_session_kind(s.session_kind)))
 }
 
 pub(crate) fn prestart(s: &Snapshot) -> bool {
@@ -1548,7 +1732,11 @@ pub(crate) fn leader_finished(s: &Snapshot) -> bool {
 }
 
 fn note_leader_finish(s: &Snapshot) {
-    if LEADER_FIN_LOCAL_BASE.load(Ordering::Relaxed) >= 0 || !leader_finished(s) {
+    note_lapped_by_leader(s);
+    if LEADER_FIN_LOCAL_BASE.load(Ordering::Relaxed) >= 0 {
+        return;
+    }
+    if !leader_finished(s) {
         return;
     }
     LEADER_FIN_LOCAL_BASE.store(focus_num_laps(s).max(0), Ordering::Relaxed);
@@ -1569,8 +1757,10 @@ pub(crate) fn effective_race_laps(s: &Snapshot) -> i32 {
 }
 
 /// Extras you will actually be scored over, on the same rule as `effective_race_laps`.
-/// Counted against `OVERTIME_LOCAL_BASE` because the banner's first extra is the crossing
-/// that ends the lap the leader's extras started on.
+/// Counted against `OVERTIME_LOCAL_BASE`. `base - local0` is extras already started
+/// when the leader finished; the uncounted lap (`0`) still clamps to one extra so a
+/// rider waved off on `0/2` reads `1/1`, not `2/2`. Being a lap down on `0/1` does
+/// not latch this — only `leader_finished` does.
 pub(crate) fn effective_extra_laps(s: &Snapshot) -> i32 {
     let n = extra_laps(s).max(1);
     note_leader_finish(s);
@@ -1579,7 +1769,7 @@ pub(crate) fn effective_extra_laps(s: &Snapshot) -> i32 {
     if base < 0 || local0 < 0 || !extras_started(s) {
         return n;
     }
-    (base + 1 - local0).clamp(1, n)
+    (base - local0).clamp(1, n)
 }
 
 /// Your race is done: you covered the distance, or you crossed the line after the
@@ -1615,16 +1805,13 @@ pub(crate) fn i_finished(s: &Snapshot) -> bool {
 
 pub(crate) fn laps_left(s: &Snapshot) -> Option<i32> {
     // Checked before `prestart` so stopping after the finish cannot drop the checkered.
-    if race_over_for_me(s) {
-        return Some(0);
-    }
     if prestart(s) || timed_clock_live(s) {
         return None;
     }
     if lap_race_racing(s) {
-        // Effective, so a lapped rider counts down to the shorter race they will run and
-        // the flags fall out of the same lap count as everyone else.
-        return Some((effective_race_laps(s) - laps_done(s)).max(0));
+        // Your published distance, not a wave-off. Checkered waits until you
+        // complete these laps, even if the leader has already taken the flag.
+        return Some((s.session_laps.max(1) - laps_done(s)).max(0));
     }
     if overtime_active(s) {
         note_overtime_base(s);
@@ -1633,15 +1820,14 @@ pub(crate) fn laps_left(s: &Snapshot) -> Option<i32> {
         if !extras_started(s) {
             return None;
         }
-        // Count down to the lap total you finish on. Deriving this from
+        // Count down to the extras you will run. Deriving this from
         // `local_overtime_done` instead would lose a lap: its `max(0)` clamp reports 0
         // both on the lap that does not count and on your first extra.
-        let local0 = OVERTIME_LOCAL_BASE.load(Ordering::Relaxed);
-        if local0 < 0 {
-            return None;
-        }
-        let target = local0 + 1 + extra_laps(s).max(1);
-        return Some((target - focus_num_laps(s)).max(0));
+        // The leader finishing does not cut this short — checkered is when you
+        // complete the extra, not when they do.
+        let extras = extra_laps(s).max(1);
+        let taken = local_overtime_taken(s);
+        return Some((extras + 1 - taken).max(0));
     }
     None
 }
@@ -1651,6 +1837,28 @@ pub(crate) fn note_laps_to_run(s: &Snapshot, left: Option<i32>) {
     if left.is_some_and(|n| n > 0) {
         LAPS_TO_RUN_AT.store(focus_num_laps(s), Ordering::Relaxed);
     }
+    if let Some(n) = left {
+        if n >= 2 && !remaining_laps_collapsed(n) {
+            LAST_LAPS_REMAINING.store(n, Ordering::Relaxed);
+        }
+    }
+}
+
+fn remaining_laps_collapsed(left: i32) -> bool {
+    let prev = LAST_LAPS_REMAINING.load(Ordering::Relaxed);
+    prev >= 0 && left < prev && prev - left >= 2
+}
+
+/// White is the last-lap wave for a rider still running the full distance.
+/// A first-lap `session_laps` drop that collapses remaining laps is not a last lap.
+pub(crate) fn skip_last_lap_white(s: &Snapshot, left: Option<i32>) -> bool {
+    let Some(n) = left else {
+        return false;
+    };
+    if remaining_laps_collapsed(n) {
+        return true;
+    }
+    n <= 1 && laps_done(s) <= 0 && is_lap_race(s) && s.session_laps > 1
 }
 
 /// You have completed a lap since we last knew you had laps to run, so reaching zero
@@ -1838,14 +2046,25 @@ pub(crate) fn focus_standing(s: &Snapshot) -> Option<&Standing> {
     standing_of(s, focus)
 }
 
-/// A lap or more behind the leader in the classification. `gap_laps` counts laps behind
-/// the leader, so the leader's own is 0. Gated on a running race because a practice or
-/// warmup field has no leader to be a lap behind.
+/// A lap or more behind the leader. Classification `gap_laps` only moves at the line, so
+/// this also latches the moment the lap-up leader goes past you on track. Gated on a
+/// running race because a practice or warmup field has no leader to be a lap behind.
+/// The game often leaves `gap_laps` at 0 when you are waved off a lap short, so
+/// `leader_finished` with a lap deficit also counts.
 pub(crate) fn lapped(s: &Snapshot) -> bool {
     if s.on_track == 0 || is_warmup(s) || prestart(s) {
         return false;
     }
-    focus_standing(s).is_some_and(|st| st.gap_laps >= 1)
+    note_lapped_by_leader(s);
+    if LAPPED_LATCH.load(Ordering::Relaxed) == 1 {
+        return true;
+    }
+    if focus_standing(s).is_some_and(|st| st.gap_laps >= 1) {
+        return true;
+    }
+    // Two or more completed laps behind after the finish: a single lap is you still
+    // out on the last lap the leader just took.
+    leader_finished(s) && leader_lap_lead(s) >= 2
 }
 
 

@@ -241,7 +241,11 @@ void ShmWriter::publish(const PluginState& state, const PluginConfig& config)
         std::memcpy(local.poly, m_poly.data(), static_cast<size_t>(local.polyCount) * sizeof(MxboShmPoint));
     }
 
-    const int nRiders = std::min(static_cast<int>(state.trackPositions().size()), MXBO_MAX_RIDERS);
+    // Leftover RaceTrackPosition after spectate (garage) is not a session.
+    const bool liveRiders = state.hasTelemetry() || state.spectating();
+    const int nRiders = liveRiders
+        ? std::min(static_cast<int>(state.trackPositions().size()), MXBO_MAX_RIDERS)
+        : 0;
     local.riderCount = nRiders;
     for (int i = 0; i < nRiders; ++i)
     {

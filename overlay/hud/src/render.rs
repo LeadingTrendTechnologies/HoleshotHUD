@@ -12,7 +12,7 @@ pub use crate::race_store::{ClockSample, clock_sample};
 pub(crate) use crate::race_store::{
     class_position, extras_started, extra_laps, finish_earned, focus_num_laps,
     focus_standing, format_countdown, format_gap, format_lap, format_session_clock,
-    i_finished, note_laps_to_run,
+    i_finished, note_laps_to_run, skip_last_lap_white,
     interval_text, interval_text_from_row, is_lap_race, is_warmup, lapped, laps_done, laps_left,
     leader_finished, leader_num_laps, live_leader, live_position, local_overtime_done,
     local_overtime_taken, moving, norm_lap_pos as norm_track_pos,
@@ -66,6 +66,7 @@ thread_local! {
         start: 0.0,
         init: false,
     });
+    static HS_SLIDE: RefCell<TableSlides> = RefCell::new(TableSlides { rows: Vec::new() });
     static CLICK_RIDERS: RefCell<Vec<ClickRider>> = RefCell::new(Vec::new());
 }
 
@@ -177,7 +178,7 @@ fn ease_out_cubic(t: f32) -> f32 {
 }
 
 impl TableSlides {
-    fn step(&mut self, ids: &[i32], body_y: f32, row_h: f32, now: f32) -> Vec<f32> {
+    fn indices(&mut self, ids: &[i32], now: f32) -> Vec<f32> {
         const DUR: f32 = 0.30;
         let displayed = |e: &RowSlide| {
             let t = ((now - e.start) / DUR).clamp(0.0, 1.0);
@@ -194,7 +195,7 @@ impl TableSlides {
                     e.to = target;
                     e.start = now;
                 }
-                out.push(body_y + displayed(e) * row_h);
+                out.push(displayed(e));
             } else {
                 self.rows.push(RowSlide {
                     id,
@@ -202,11 +203,18 @@ impl TableSlides {
                     to: target,
                     start: now,
                 });
-                out.push(body_y + target * row_h);
+                out.push(target);
             }
         }
         self.rows.retain(|e| ids.contains(&e.id));
         out
+    }
+
+    fn step(&mut self, ids: &[i32], body_y: f32, row_h: f32, now: f32) -> Vec<f32> {
+        self.indices(ids, now)
+            .into_iter()
+            .map(|i| body_y + i * row_h)
+            .collect()
     }
 }
 
@@ -398,8 +406,12 @@ pub fn draw(px: &mut Pixmap, fonts: &Fonts, snap: Option<&Snapshot>, cfg: &HudCo
         let (flag, flag_grow) = if cfg[WidgetId::Dash].show || cfg[WidgetId::Flag].show {
             tick_display_flag(
                 s,
-                cfg[WidgetId::Flag].show && cfg.flag_yellow,
-                cfg[WidgetId::Flag].show && cfg.flag_blue,
+                (cfg[WidgetId::Flag].show && cfg.flag_yellow)
+                    || (cfg[WidgetId::Dash].show && cfg.dash_yellow),
+                (cfg[WidgetId::Flag].show && cfg.flag_blue)
+                    || (cfg[WidgetId::Dash].show && cfg.dash_blue),
+                (cfg[WidgetId::Flag].show && cfg.flag_red)
+                    || (cfg[WidgetId::Dash].show && cfg.dash_red),
             )
         } else {
             (DashFlag::None, 0.0)
@@ -455,7 +467,8 @@ fn draw_widgets(
     }
     if cfg[WidgetId::Dash].show {
         let _g = push_style(fonts, cfg[WidgetId::Dash].bold, cfg[WidgetId::Dash].font);
-        let (dash_flag, dash_grow) = dash_wrap_flag(flag, flag_grow);
+        let (dash_flag, dash_grow) =
+            dash_wrap_flag(flag, flag_grow, cfg.dash_yellow, cfg.dash_blue, cfg.dash_red);
         draw_dash(px, fonts, s, cfg, sw, sh, dash_flag, dash_grow);
     }
     if cfg[WidgetId::Ticker].show {
@@ -476,6 +489,8 @@ fn draw_widgets(
     }
     if cfg[WidgetId::Flag].show {
         let _g = push_style(fonts, cfg[WidgetId::Flag].bold, cfg[WidgetId::Flag].font);
+        let (flag, flag_grow) =
+            flag_widget_flag(flag, flag_grow, cfg.flag_yellow, cfg.flag_blue, cfg.flag_red);
         draw_flag(px, fonts, cfg, sw, sh, flag, flag_grow);
     }
     if cfg.stance_visible() {
@@ -671,6 +686,36 @@ pub fn text(px: &mut Pixmap, fonts: &Fonts, s: &str, size: f32, x: f32, y: f32, 
     draw_text(px, style_font(fonts), s, size, x, y, color, center, FAKE_BOLD.with(|c| c.get()));
 }
 
+/// 1px night-ink border around glyphs. Not a drop-shadow: same 8-neighbor rim as radar numbers.
+fn text_halo(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    s: &str,
+    size: f32,
+    x: f32,
+    y: f32,
+    color: Color,
+    center: bool,
+    glass: bool,
+) {
+    if glass {
+        let ink = Color::from_rgba8(10, 10, 10, 230);
+        for (dx, dy) in [
+            (-1.0, 0.0),
+            (1.0, 0.0),
+            (0.0, -1.0),
+            (0.0, 1.0),
+            (-1.0, -1.0),
+            (1.0, -1.0),
+            (-1.0, 1.0),
+            (1.0, 1.0),
+        ] {
+            text(px, fonts, s, size, x + dx, y + dy, ink, center);
+        }
+    }
+    text(px, fonts, s, size, x, y, color, center);
+}
+
 fn text_bold(px: &mut Pixmap, fonts: &Fonts, s: &str, size: f32, x: f32, y: f32, color: Color, center: bool) {
     draw_text(px, &fonts.bold, s, size, x, y, color, center, fonts.bold_is_fake);
 }
@@ -845,13 +890,15 @@ fn table_font_k(pct: i32) -> f32 {
     (pct.clamp(70, 160) as f32) / 100.0
 }
 
-fn table_stack_h(k: f32, vis_rows: usize, has_foot: bool, max_h: f32) -> f32 {
+fn table_stack_h(k: f32, vis_rows: usize, has_foot: bool) -> f32 {
     let head_h = 26.0 * k;
     let col_h = 16.0 * k;
     let track_h = 20.0 * k;
     let row_h = 22.0 * k;
     let foot_h = if has_foot { 20.0 * k } else { 0.0 };
-    (head_h + col_h + track_h + vis_rows as f32 * row_h + foot_h + 8.0).min(max_h)
+    // Follow the row stack, not a stale widget box. Ctrl+move can save a
+    // hugged 1-row height; Rows can grow without rewriting standings_h.
+    head_h + col_h + track_h + vis_rows as f32 * row_h + foot_h + 8.0
 }
 
 fn standings_vis_rows(s: &Snapshot) -> usize {
@@ -938,7 +985,7 @@ pub fn table_layout_rect(
     let idxs: Vec<usize> = (0..widths.len()).collect();
     let slots = col_slots(0.0, pad, max_w, &idxs, |i| widths[i], |i| i == flex);
     let w = hug_board_w(0.0, pad, max_w, &slots);
-    let h = table_stack_h(k, vis, has_foot, rect.h * sh);
+    let h = table_stack_h(k, vis, has_foot);
     crate::shm::Rect {
         x: rect.x,
         y: rect.y,
@@ -1580,6 +1627,8 @@ const FLAG_LINE_MIN_M: f32 = 4.0;
 const FLAG_YELLOW_SPAN_M: f32 = 50.0;
 /// Lapper closing from behind — shorter than `catch_span_m` so blue is not a whole-stretch warning.
 const FLAG_BLUE_SPAN_M: f32 = 40.0;
+/// Rider you are coming to lap, ahead and close — same window as blue.
+const FLAG_RED_SPAN_M: f32 = 40.0;
 
 fn approaching_line(s: &Snapshot) -> bool {
     meters_to_sf(s).is_some_and(|m| m > FLAG_LINE_MIN_M && m <= FLAG_LINE_M)
@@ -1683,6 +1732,7 @@ fn flag_code(flag: DashFlag) -> i32 {
         DashFlag::Checkered => 2,
         DashFlag::Yellow => 3,
         DashFlag::Blue => 4,
+        DashFlag::Red => 5,
     }
 }
 
@@ -1692,6 +1742,7 @@ fn flag_from_code(code: i32) -> DashFlag {
         2 => DashFlag::Checkered,
         3 => DashFlag::Yellow,
         4 => DashFlag::Blue,
+        5 => DashFlag::Red,
         _ => DashFlag::None,
     }
 }
@@ -1730,8 +1781,8 @@ fn now_ms() -> i32 {
 }
 
 /// White from the first frame this lap that calls for it — the crossing onto your last
-/// lap, or the moment the leader's finish makes the lap you are on your last — and for
-/// `WHITE_WAVE_MS` after, so it is not held up all the way to the finish.
+/// lap of the distance you are still running — and for `WHITE_WAVE_MS` after, so it is
+/// not held up all the way to the finish. A lapped wave-off skips this (`skip_last_lap_white`).
 fn white_wave(s: &Snapshot) -> DashFlag {
     let lap = focus_num_laps(s);
     let now = now_ms();
@@ -1753,7 +1804,8 @@ fn latch_checkered() -> DashFlag {
 
 /// One path for lap motos and timed extras. Both flags go up on the run-in to the line:
 /// white onto your final lap, checkered onto the finish. Only the crossing latches the
-/// checkered, and the white comes down a few seconds into the lap.
+/// checkered, and the white comes down a few seconds into the lap. Checkered is your
+/// finish — the leader taking the flag does not wave you off a lap short.
 fn dash_race_flag(s: &Snapshot) -> DashFlag {
     if s.on_track == 0 {
         return reset_flag_state();
@@ -1786,6 +1838,7 @@ fn dash_race_flag(s: &Snapshot) -> DashFlag {
     }
     let left = laps_left(s);
     note_laps_to_run(s, left);
+    let no_white = skip_last_lap_white(s, left);
     let flag = match left {
         // You crossed the line with nothing left to run. Never gated on speed, so a
         // slow roll over the line still gets waved off. `finish_earned` keeps a single
@@ -1793,17 +1846,17 @@ fn dash_race_flag(s: &Snapshot) -> DashFlag {
         Some(0) if finish_earned(s) => latch_checkered(),
         // Coming to the line with nothing left to run: the checkered is already out.
         Some(1) if line_approach(s) => DashFlag::Checkered,
+        Some(0) | Some(1) if no_white => DashFlag::None,
         Some(0) | Some(1) => white_wave(s),
+        Some(2) if line_approach(s) && no_white => DashFlag::None,
         Some(2) if line_approach(s) => DashFlag::White,
-        // The leader is done, so whatever lap you are on is your last.
-        _ if leader_finished(s) => white_wave(s),
         _ => DashFlag::None,
     };
     hold_across_line(s, flag)
     })
 }
 
-/// Website demo: 0 none, 1 white, 2 checkered, 3 yellow, 4 blue. Negative = live.
+/// Website demo: 0 none, 1 white, 2 checkered, 3 yellow, 4 blue, 5 red. Negative = live.
 static FLAG_PREVIEW: AtomicI32 = AtomicI32::new(-1);
 
 pub fn set_flag_preview(code: i32) {
@@ -1829,21 +1882,22 @@ pub(crate) fn reset_flag_display() {
     };
 }
 
-fn tick_display_flag(s: &Snapshot, yellow: bool, blue: bool) -> (DashFlag, f32) {
-    flag_anim_step(wanted_flag(s, yellow, blue))
+fn tick_display_flag(s: &Snapshot, yellow: bool, blue: bool, red: bool) -> (DashFlag, f32) {
+    flag_anim_step(wanted_flag(s, yellow, blue, red))
 }
 
-fn wanted_flag(s: &Snapshot, yellow: bool, blue: bool) -> DashFlag {
+fn wanted_flag(s: &Snapshot, yellow: bool, blue: bool, red: bool) -> DashFlag {
     match FLAG_PREVIEW.load(Ordering::Relaxed) {
         0 => DashFlag::None,
         1 => DashFlag::White,
         2 => DashFlag::Checkered,
         3 => DashFlag::Yellow,
         4 => DashFlag::Blue,
+        5 => DashFlag::Red,
         _ => {
             let race = dash_race_flag(s);
-            if yellow || blue {
-                merge_caution(race, caution_flag(s, yellow, blue))
+            if yellow || blue || red {
+                merge_caution(race, caution_flag(s, yellow, blue, red))
             } else {
                 race
             }
@@ -1859,8 +1913,9 @@ fn merge_caution(race: DashFlag, caution: DashFlag) -> DashFlag {
 }
 
 /// Inferred only. The game has no marshal flag field. Yellow is a nearby crash;
-/// blue is someone a lap up closing from behind (`LapRel::LappingMe`).
-fn caution_flag(s: &Snapshot, yellow: bool, blue: bool) -> DashFlag {
+/// blue is someone a lap up closing from behind (`LapRel::LappingMe`);
+/// red is someone you are coming to lap (`LapRel::LappedByMe`).
+fn caution_flag(s: &Snapshot, yellow: bool, blue: bool, red: bool) -> DashFlag {
     if s.on_track == 0 || is_warmup(s) || prestart(s) {
         return DashFlag::None;
     }
@@ -1868,6 +1923,8 @@ fn caution_flag(s: &Snapshot, yellow: bool, blue: bool) -> DashFlag {
         DashFlag::Yellow
     } else if blue && being_lapped(s) {
         DashFlag::Blue
+    } else if red && lapping_them(s) {
+        DashFlag::Red
     } else {
         DashFlag::None
     }
@@ -1925,11 +1982,46 @@ fn being_lapped(s: &Snapshot) -> bool {
         })
 }
 
-fn dash_wrap_flag(flag: DashFlag, grow: f32) -> (DashFlag, f32) {
+fn lapping_them(s: &Snapshot) -> bool {
+    let focus = if s.focus_race_num > 0 {
+        s.focus_race_num
+    } else {
+        s.local_race_num
+    };
+    s.riders
+        .iter()
+        .take(s.rider_count.max(0) as usize)
+        .any(|r| {
+            if r.race_num <= 0 || r.race_num == focus {
+                return false;
+            }
+            if lap_rel(s, r.race_num) != LapRel::LappedByMe {
+                return false;
+            }
+            let Some(op) = rider_norm_pos(s, r.race_num) else {
+                return false;
+            };
+            let Some(mp) = rider_norm_pos(s, focus) else {
+                return false;
+            };
+            let w = wrap_frac(op, mp);
+            let ahead_m = if w > 0.0 { closing_m(s, w) } else { 0.0 };
+            ahead_m > 2.0 && ahead_m <= FLAG_RED_SPAN_M
+        })
+}
+
+fn dash_wrap_flag(flag: DashFlag, grow: f32, yellow: bool, blue: bool, red: bool) -> (DashFlag, f32) {
     match flag {
-        DashFlag::Yellow | DashFlag::Blue => (DashFlag::None, 0.0),
+        DashFlag::Yellow if yellow => (flag, grow),
+        DashFlag::Blue if blue => (flag, grow),
+        DashFlag::Red if red => (flag, grow),
+        DashFlag::Yellow | DashFlag::Blue | DashFlag::Red => (DashFlag::None, 0.0),
         other => (other, grow),
     }
+}
+
+fn flag_widget_flag(flag: DashFlag, grow: f32, yellow: bool, blue: bool, red: bool) -> (DashFlag, f32) {
+    dash_wrap_flag(flag, grow, yellow, blue, red)
 }
 
 
@@ -2196,7 +2288,7 @@ fn draw_table_board<C: BoardCol>(
     let track_h = 20.0 * k;
     let row_h = 22.0 * k;
     let foot_h = if BoardField::any(look.foot) { 20.0 * k } else { 0.0 };
-    let h = table_stack_h(k, vis_rows, BoardField::any(look.foot), rect.h * sh);
+    let h = table_stack_h(k, vis_rows, BoardField::any(look.foot));
     let pad = 8.0;
     let slots = col_slots(x, pad, max_w, cols, |c| c.width(cfg) as f32, |c| c.is_name());
     let w = hug_board_w(x, pad, max_w, &slots);
@@ -2581,26 +2673,161 @@ fn ticker_title(s: &Snapshot) -> String {
     }
 }
 
-fn sector_col_fracs(fresh: i32) -> [f32; 3] {
-    if (0..=2).contains(&fresh) {
-        let mut f = [0.22, 0.22, 0.22];
-        f[fresh as usize] = 0.56;
-        f
-    } else {
-        [1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0]
-    }
-}
-
 fn sector_hero_index(s: &Snapshot) -> i32 {
     crate::sector::hero_index(s)
 }
 
+fn sector_live_type(live_h: f32, hero: bool) -> (f32, f32, f32) {
+    let label_fs = if hero {
+        (live_h * 0.18).clamp(10.0, 14.0)
+    } else {
+        (live_h * 0.16).clamp(9.0, 12.0)
+    };
+    let delta_fs = if hero {
+        (live_h * 0.42).max(16.0)
+    } else {
+        (live_h * 0.28).max(12.0)
+    };
+    let time_fs = if hero {
+        (live_h * 0.16).clamp(10.0, 15.0)
+    } else {
+        (live_h * 0.14).clamp(9.0, 12.0)
+    };
+    (label_fs, delta_fs, time_fs)
+}
+
+fn sector_probe_max(fonts: &Fonts, fs: f32, probes: &[&str]) -> f32 {
+    let mut w = 0.0_f32;
+    for p in probes {
+        w = w.max(measure(fonts, p, fs));
+    }
+    w
+}
+
+fn sector_fit_probe(fonts: &Fonts, probes: &[&str], fs: f32, max_w: f32) -> f32 {
+    if max_w <= 1.0 {
+        return fs;
+    }
+    let w = sector_probe_max(fonts, fs, probes);
+    if w <= max_w {
+        fs
+    } else {
+        (fs * (max_w / w)).max(8.0)
+    }
+}
+
+/// Right edge of a probe-wide slot centered in the column. Live digits grow left, not sideways.
+fn sector_num_x(fonts: &Fonts, s: &str, fs: f32, col_x: f32, col_w: f32, slot_w: f32) -> f32 {
+    let tw = measure(fonts, s, fs);
+    col_x + col_w * 0.5 + slot_w * 0.5 - tw
+}
+
+fn draw_sector_num(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    s: &str,
+    fs: f32,
+    col_x: f32,
+    col_w: f32,
+    slot_w: f32,
+    y: f32,
+    color: Color,
+    glass: bool,
+) {
+    text_halo(
+        px,
+        fonts,
+        s,
+        fs,
+        sector_num_x(fonts, s, fs, col_x, col_w, slot_w),
+        y,
+        color,
+        false,
+        glass,
+    );
+}
+
+const SECTOR_PILL_PAD_X: f32 = 14.0;
+const SECTOR_COL_PAD: f32 = 12.0;
+/// Fat probes so columns do not jump as live digits grow (`9.123` → `1:10.000`).
+const SECTOR_PROBE_SPLIT: &str = "88.888";
+const SECTOR_PROBE_SPLIT_LONG: &str = "8:88.888";
+const SECTOR_PROBE_DELTA: &str = "+88.888";
+const SECTOR_PROBE_DELTA_LONG: &str = "+8:88.8";
+const SECTOR_PROBE_LAP: &str = "88:88.888";
+const SECTOR_SPLIT_PROBES: &[&str] = &[SECTOR_PROBE_SPLIT, SECTOR_PROBE_SPLIT_LONG];
+const SECTOR_DELTA_PROBES: &[&str] = &[SECTOR_PROBE_DELTA, SECTOR_PROBE_DELTA_LONG];
+const SECTOR_LAP_PROBES: &[&str] = &[SECTOR_PROBE_LAP];
+
+fn sector_col_need(
+    fonts: &Fonts,
+    s: &Snapshot,
+    cfg: &HudConfig,
+    live_h: f32,
+    hist_fs: f32,
+    show_hist: bool,
+) -> [f32; 4] {
+    let mut need = [0.0; 4];
+    for i in 0..3 {
+        let row = sector_row(s, i, cfg.sector_live, cfg.sector_session);
+        let (label_fs, delta_fs, time_fs) = sector_live_type(live_h, row.fresh);
+        let plaque = if row.fresh { 22.0 } else { 0.0 };
+        let mut w = measure(fonts, row.label, label_fs) + plaque;
+        w = w.max(measure(fonts, SECTOR_PROBE_DELTA, delta_fs));
+        w = w.max(measure(fonts, SECTOR_PROBE_DELTA_LONG, delta_fs));
+        w = w.max(measure(fonts, SECTOR_PROBE_SPLIT, time_fs) + SECTOR_PILL_PAD_X);
+        w = w.max(measure(fonts, SECTOR_PROBE_SPLIT_LONG, time_fs) + SECTOR_PILL_PAD_X);
+        if show_hist {
+            w = w.max(measure(fonts, SECTOR_PROBE_SPLIT, hist_fs));
+            w = w.max(measure(fonts, SECTOR_PROBE_SPLIT_LONG, hist_fs));
+        }
+        need[i] = w + SECTOR_COL_PAD;
+    }
+    let lap_label_fs = (live_h * 0.16).clamp(9.0, 12.0);
+    let lap_time_fs = (live_h * 0.28).max(12.0);
+    let lap_delta_fs = (live_h * 0.18).clamp(10.0, 14.0);
+    let pill_fs = (live_h * 0.14).clamp(9.0, 12.0);
+    let mut lw = measure(fonts, "LAP", lap_label_fs);
+    lw = lw.max(measure(fonts, SECTOR_PROBE_LAP, lap_time_fs));
+    lw = lw.max(measure(fonts, SECTOR_PROBE_DELTA, lap_delta_fs));
+    lw = lw.max(measure(fonts, SECTOR_PROBE_DELTA_LONG, lap_delta_fs));
+    lw = lw.max(measure(fonts, SECTOR_PROBE_LAP, pill_fs) + SECTOR_PILL_PAD_X);
+    if show_hist {
+        lw = lw.max(measure(fonts, SECTOR_PROBE_LAP, hist_fs));
+        lw = lw.max(measure(fonts, SECTOR_PROBE_DELTA, hist_fs));
+    }
+    need[3] = lw + SECTOR_COL_PAD;
+    need
+}
+
+/// Give each column its measured text width. Extra space goes to the current sector, never LAP.
+fn sector_col_widths(need: [f32; 4], cols_w: f32, hero: i32) -> [f32; 4] {
+    let sum: f32 = need.iter().sum();
+    if sum <= 0.0 || cols_w <= 0.0 {
+        return [cols_w * 0.25; 4];
+    }
+    if sum >= cols_w {
+        return need.map(|n| n * cols_w / sum);
+    }
+    let mut w = need;
+    let extra = cols_w - sum;
+    if (0..=2).contains(&hero) {
+        w[hero as usize] += extra;
+    } else {
+        let share = extra / 3.0;
+        for slot in w.iter_mut().take(3) {
+            *slot += share;
+        }
+    }
+    w
+}
+
 fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) {
-    // THESIS: live delta stays the glance; last completed laps hang as a split board under the same S1–S3 columns.
-    // OWN-WORLD: night-ink 6px plaque, orange skew S# on the current cell, you-row gold on the fastest log lap, green/red times vs best. No purple, no glow.
-    // STORY: rider reads up/down vs best on top, drops their eyes for LAST / -2 / -3 times.
-    // FIRST VIEWPORT: live strip on top (hero ~56%); hairline; LAST / -2 / -3 aligned under the columns. Short boxes stay live-only.
-    // FORM: Underboard · approved .impeccable/mocks/sector-history-underboard.png
+    // THESIS: live sector delta stays the glance; LAP hangs the whole lap beside it; last laps share those columns.
+    // OWN-WORLD: night-ink 6px plaque, orange skew S# on the current cell, you-row gold on the fastest log lap, green/red times vs best. No purple, no drop-shadow. Glass (bg < 40) rims floating type in night-ink.
+    // STORY: rider reads up/down vs best on top, drops their eyes for LAST / -2 / -3 times and the lap total.
+    // FIRST VIEWPORT: live strip on top (hero ~46%, LAP ~22% stacked time/delta); hairline; LAST / -2 / -3 aligned under the same four columns. Short boxes stay live-only.
+    // FORM: Underboard · approved .impeccable/mocks/sector-lap-column.png
     // FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
     let r = cfg[WidgetId::Sector].rect;
     let x = r.x * sw;
@@ -2611,6 +2838,7 @@ fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
         return;
     }
     let a = bg_a(cfg[WidgetId::Sector].bg);
+    let glass = cfg[WidgetId::Sector].bg < 40;
     let n = 3usize;
     let pad_x = (w * 0.03).clamp(6.0, 12.0);
     let pad_y = (h * 0.06).clamp(5.0, 10.0);
@@ -2636,7 +2864,7 @@ fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
     let inner_w = (w - pad_x * 2.0).max(60.0);
     let cap_fs = (h * 0.11).clamp(11.0, 16.0);
     let cap_y = y + (pad_y * 0.25).max(2.0);
-    text(
+    text_halo(
         px,
         fonts,
         if cfg.sector_session {
@@ -2649,6 +2877,7 @@ fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
         cap_y,
         text_dim(),
         true,
+        glass,
     );
     let body_y = cap_y + cap_fs + 4.0;
     let want = if cfg.sector_hist {
@@ -2662,14 +2891,25 @@ fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
         Vec::new()
     };
     let has_hist = hist.first().is_some_and(|r| r.cells.iter().any(|c| c.time_ms > 0));
-    let hist_row_h = (h * 0.095).clamp(14.0, 20.0);
+    let ideal = crate::sector::ideal(s, cfg.sector_session);
+    let hist_row_h = (h * 0.13).clamp(22.0, 32.0);
     let live_min = 52.0;
     let avail = (y + h - pad_y - body_y - live_min).max(0.0);
     let fit = (avail / hist_row_h).floor() as usize;
-    let n_hist = if has_hist { want.min(fit).min(hist.len()) } else { 0 };
+    let (n_hist, show_ideal) = if has_hist {
+        if ideal.ready() && fit >= 2 {
+            let n = want.min(fit - 1).min(hist.len());
+            (n, n >= 1)
+        } else {
+            (want.min(fit).min(hist.len()), false)
+        }
+    } else {
+        (0, false)
+    };
     let show_hist = n_hist >= 1;
+    let n_rows = n_hist + usize::from(show_ideal);
     let hist_band = if show_hist {
-        hist_row_h * n_hist as f32 + 5.0
+        hist_row_h * n_rows as f32 + 5.0
     } else {
         0.0
     };
@@ -2679,16 +2919,22 @@ fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
         y + h - pad_y
     };
     let live_h = (live_bottom - body_y).max(8.0);
-    let fracs = sector_col_fracs(sector_hero_index(s));
-    let mut col_x = [0.0; 3];
-    let mut col_w = [0.0; 3];
-    let mut acc = x + pad_x;
-    for i in 0..n {
+    let hist_fs = (hist_row_h * 0.48).clamp(10.0, 14.0);
+    let hist_delta_fs = (hist_row_h * 0.38).clamp(8.0, 11.0);
+    let hist_label_fs = (hist_row_h * 0.42).clamp(8.0, 11.0);
+    let gutter = 36.0_f32.min(inner_w * 0.12);
+    let cols_w = (inner_w - gutter).max(40.0);
+    let need = sector_col_need(fonts, s, cfg, live_h, hist_fs, show_hist);
+    let widths = sector_col_widths(need, cols_w, sector_hero_index(s));
+    let mut col_x = [0.0; 4];
+    let mut col_w = [0.0; 4];
+    let mut acc = x + pad_x + gutter;
+    for i in 0..4 {
         col_x[i] = acc;
-        col_w[i] = inner_w * fracs[i];
+        col_w[i] = widths[i];
         acc += col_w[i];
     }
-    for i in 1..n {
+    for i in 1..4 {
         if let Some(line) = rr(col_x[i], body_y, 1.0, live_h) {
             fill_rect(px, line, Color::from_rgba8(42, 42, 46, a.max(90)));
         }
@@ -2712,21 +2958,15 @@ fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
             ahead_col()
         };
         let time_c = if hero { text_col() } else { text_dim() };
-        let label_fs = if hero {
-            (live_h * 0.18).clamp(10.0, 14.0)
-        } else {
-            (live_h * 0.16).clamp(9.0, 12.0)
-        };
-        let delta_fs = if hero {
-            (live_h * 0.42).max(16.0).min(cw * 0.52)
-        } else {
-            (live_h * 0.28).max(12.0).min(cw * 0.72)
-        };
-        let time_fs = if hero {
-            (live_h * 0.16).clamp(10.0, 15.0)
-        } else {
-            (live_h * 0.14).clamp(9.0, 12.0)
-        };
+        let (label_fs, mut delta_fs, mut time_fs) = sector_live_type(live_h, hero);
+        let text_max = (cw - 8.0).max(8.0);
+        delta_fs = sector_fit_probe(fonts, SECTOR_DELTA_PROBES, delta_fs, text_max);
+        time_fs = sector_fit_probe(
+            fonts,
+            SECTOR_SPLIT_PROBES,
+            time_fs,
+            (text_max - SECTOR_PILL_PAD_X).max(8.0),
+        );
         let mid = cx + cw * 0.5;
         let label_y = body_y;
         if hero {
@@ -2746,39 +2986,92 @@ fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
                 true,
             );
         } else {
-            text(px, fonts, row.label, label_fs, mid, label_y, text_dim(), true);
+            text_halo(px, fonts, row.label, label_fs, mid, label_y, text_dim(), true, glass);
         }
         let delta_y = body_y + (live_h - delta_fs) * 0.38;
-        text(px, fonts, &row.delta, delta_fs, mid, delta_y, delta_c, true);
+        let delta_slot = sector_probe_max(fonts, delta_fs, SECTOR_DELTA_PROBES);
+        draw_sector_num(
+            px,
+            fonts,
+            &row.delta,
+            delta_fs,
+            cx,
+            cw,
+            delta_slot,
+            delta_y,
+            delta_c,
+            glass,
+        );
         let time_y = live_bottom - time_fs - 3.0;
-        let tw = measure(fonts, &row.time, time_fs);
+        let time_slot = sector_probe_max(fonts, time_fs, SECTOR_SPLIT_PROBES);
         let chip_x = 7.0;
         let chip_y = 3.0;
+        let pill_w = time_slot + chip_x * 2.0;
         fill_night_pill(
             px,
-            mid - tw * 0.5 - chip_x,
+            mid - pill_w * 0.5,
             time_y - chip_y,
-            tw + chip_x * 2.0,
+            pill_w,
             time_fs + chip_y * 2.0,
         );
-        text(px, fonts, &row.time, time_fs, mid, time_y, time_c, true);
+        draw_sector_num(
+            px,
+            fonts,
+            &row.time,
+            time_fs,
+            cx,
+            cw,
+            time_slot,
+            time_y,
+            time_c,
+            false,
+        );
     }
+    draw_sector_lap_live(
+        px,
+        fonts,
+        s,
+        cfg,
+        col_x[3],
+        col_w[3],
+        body_y,
+        live_h,
+        live_bottom,
+        ideal,
+        glass,
+    );
     if !show_hist {
         return;
     }
     if let Some(rule) = rr(x + pad_x, live_bottom, inner_w, 1.0) {
         fill_rect(px, rule, Color::from_rgba8(42, 42, 46, a.max(90)));
     }
-    let hist_fs = (hist_row_h * 0.72).clamp(10.0, 14.0);
-    let hist_label_fs = (hist_row_h * 0.62).clamp(8.0, 11.0);
+    let mut row_i = 0usize;
+    if show_ideal {
+        let ry = live_bottom + 4.0;
+        draw_sector_ideal_row(
+            px,
+            fonts,
+            &ideal,
+            x + pad_x,
+            ry,
+            hist_row_h,
+            hist_fs,
+            hist_label_fs,
+            &col_x,
+            &col_w,
+            glass,
+        );
+        row_i = 1;
+    }
     for (ri, row) in hist.iter().take(n_hist).enumerate() {
-        let ry = live_bottom + 4.0 + ri as f32 * hist_row_h;
+        let ry = live_bottom + 4.0 + (row_i + ri) as f32 * hist_row_h;
         if row.fastest {
             if let Some(wash) = rr(x + pad_x, ry, inner_w, hist_row_h - 1.0) {
                 fill_rect(px, wash, you_row_bg(72));
             }
         }
-        text(
+        text_halo(
             px,
             fonts,
             row.label,
@@ -2787,6 +3080,7 @@ fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
             ry + (hist_row_h - hist_label_fs) * 0.35,
             if row.fastest { text_col() } else { text_dim() },
             false,
+            glass,
         );
         for i in 0..n {
             let cell = row.cells[i];
@@ -2804,18 +3098,232 @@ fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
             } else {
                 text_dim()
             };
-            text(
+            let cell_fs = sector_fit_probe(fonts, SECTOR_SPLIT_PROBES, hist_fs, (col_w[i] - 8.0).max(8.0));
+            let slot = sector_probe_max(fonts, cell_fs, SECTOR_SPLIT_PROBES);
+            draw_sector_num(
                 px,
                 fonts,
                 &label,
-                hist_fs,
-                col_x[i] + col_w[i] * 0.5,
-                ry + (hist_row_h - hist_fs) * 0.32,
+                cell_fs,
+                col_x[i],
+                col_w[i],
+                slot,
+                ry + (hist_row_h - cell_fs) * 0.18,
                 col,
-                true,
+                glass,
             );
         }
+        let lap_time = if row.lap_ms > 0 {
+            format_lap(row.lap_ms)
+        } else {
+            "--".into()
+        };
+        let lap_delta = if row.has_lap_delta {
+            format_delta_ms(row.lap_delta_ms)
+        } else {
+            "--".into()
+        };
+        let lap_time_c = if row.fastest { text_col() } else { text_dim() };
+        let lap_delta_c = if !row.has_lap_delta {
+            text_dim()
+        } else if row.lap_slower {
+            behind_col()
+        } else if row.lap_faster {
+            ahead_col()
+        } else {
+            lap_time_c
+        };
+        let lap_max = (col_w[3] - 8.0).max(8.0);
+        let lap_fs = sector_fit_probe(fonts, SECTOR_LAP_PROBES, hist_fs, lap_max);
+        let lap_dfs = sector_fit_probe(fonts, SECTOR_DELTA_PROBES, hist_delta_fs, lap_max);
+        let lap_slot = sector_probe_max(fonts, lap_fs, SECTOR_LAP_PROBES);
+        let d_slot = sector_probe_max(fonts, lap_dfs, SECTOR_DELTA_PROBES);
+        draw_sector_num(
+            px,
+            fonts,
+            &lap_time,
+            lap_fs,
+            col_x[3],
+            col_w[3],
+            lap_slot,
+            ry + 1.0,
+            lap_time_c,
+            glass,
+        );
+        draw_sector_num(
+            px,
+            fonts,
+            &lap_delta,
+            lap_dfs,
+            col_x[3],
+            col_w[3],
+            d_slot,
+            ry + lap_fs + 2.0,
+            lap_delta_c,
+            glass,
+        );
     }
+}
+
+fn draw_sector_lap_live(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    s: &Snapshot,
+    cfg: &HudConfig,
+    cx: f32,
+    cw: f32,
+    body_y: f32,
+    live_h: f32,
+    live_bottom: f32,
+    ideal: crate::sector::IdealLap,
+    glass: bool,
+) {
+    let lap = crate::sector::live_lap(s, cfg.sector_session);
+    let mid = cx + cw * 0.5;
+    let label_fs = (live_h * 0.16).clamp(9.0, 12.0);
+    text_halo(px, fonts, "LAP", label_fs, mid, body_y, text_dim(), true, glass);
+    let time = if lap.time_ms > 0 {
+        format_lap(lap.time_ms)
+    } else {
+        "--".into()
+    };
+    let delta = if lap.pending || !lap.has_delta {
+        "--".into()
+    } else {
+        format_delta_ms(lap.delta_ms)
+    };
+    let pill = if ideal.ready() {
+        format_lap(ideal.lap_ms)
+    } else {
+        "--".into()
+    };
+    let text_max = (cw - 8.0).max(8.0);
+    let time_fs = sector_fit_probe(fonts, SECTOR_LAP_PROBES, (live_h * 0.28).max(12.0), text_max);
+    let delta_fs = sector_fit_probe(
+        fonts,
+        SECTOR_DELTA_PROBES,
+        (live_h * 0.18).clamp(10.0, 14.0),
+        text_max,
+    );
+    let pill_fs = sector_fit_probe(
+        fonts,
+        SECTOR_LAP_PROBES,
+        (live_h * 0.14).clamp(9.0, 12.0),
+        (text_max - SECTOR_PILL_PAD_X).max(8.0),
+    );
+    let time_c = text_col();
+    let delta_c = if lap.pending || !lap.has_delta {
+        text_dim()
+    } else if lap.slower {
+        behind_col()
+    } else {
+        ahead_col()
+    };
+    let pill_band = pill_fs + 8.0;
+    let stack_h = time_fs + delta_fs + 2.0;
+    let time_y = body_y + ((live_h - pill_band - stack_h).max(0.0)) * 0.42;
+    let time_slot = sector_probe_max(fonts, time_fs, SECTOR_LAP_PROBES);
+    let delta_slot = sector_probe_max(fonts, delta_fs, SECTOR_DELTA_PROBES);
+    draw_sector_num(px, fonts, &time, time_fs, cx, cw, time_slot, time_y, time_c, glass);
+    draw_sector_num(
+        px,
+        fonts,
+        &delta,
+        delta_fs,
+        cx,
+        cw,
+        delta_slot,
+        time_y + time_fs + 1.0,
+        delta_c,
+        glass,
+    );
+    let time_y_pill = live_bottom - pill_fs - 3.0;
+    let pill_slot = sector_probe_max(fonts, pill_fs, SECTOR_LAP_PROBES);
+    let pill_w = pill_slot + SECTOR_PILL_PAD_X;
+    fill_night_pill(
+        px,
+        mid - pill_w * 0.5,
+        time_y_pill - 3.0,
+        pill_w,
+        pill_fs + 6.0,
+    );
+    draw_sector_num(
+        px,
+        fonts,
+        &pill,
+        pill_fs,
+        cx,
+        cw,
+        pill_slot,
+        time_y_pill,
+        text_dim(),
+        false,
+    );
+}
+
+fn draw_sector_ideal_row(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    ideal: &crate::sector::IdealLap,
+    label_x: f32,
+    ry: f32,
+    row_h: f32,
+    hist_fs: f32,
+    hist_label_fs: f32,
+    col_x: &[f32; 4],
+    col_w: &[f32; 4],
+    glass: bool,
+) {
+    text_halo(
+        px,
+        fonts,
+        "IDEAL",
+        hist_label_fs,
+        label_x + 2.0,
+        ry + (row_h - hist_label_fs) * 0.35,
+        text_dim(),
+        false,
+        glass,
+    );
+    for i in 0..3 {
+        let t = ideal.sectors[i];
+        let label = if t > 0 {
+            format_lap(t)
+        } else {
+            "--".into()
+        };
+        let slot = sector_probe_max(fonts, hist_fs, SECTOR_SPLIT_PROBES);
+        draw_sector_num(
+            px,
+            fonts,
+            &label,
+            hist_fs,
+            col_x[i],
+            col_w[i],
+            slot,
+            ry + (row_h - hist_fs) * 0.32,
+            text_col(),
+            glass,
+        );
+    }
+    let lap = if ideal.ready() {
+        format_lap(ideal.lap_ms)
+    } else {
+        "--".into()
+    };
+    let lap_slot = sector_probe_max(fonts, hist_fs, SECTOR_LAP_PROBES);
+    draw_sector_num(
+        px,
+        fonts,
+        &lap,
+        hist_fs,
+        col_x[3],
+        col_w[3],
+        lap_slot,
+        ry + (row_h - hist_fs) * 0.32,
+        text_col(),
+        glass,
+    );
 }
 
 struct SectorRowView {
@@ -4444,8 +4952,21 @@ fn flag_label(flag: DashFlag) -> &'static str {
         DashFlag::White => "WHITE FLAG",
         DashFlag::Yellow => "YELLOW FLAG",
         DashFlag::Blue => "BLUE FLAG",
+        DashFlag::Red => "RED FLAG",
         _ => "Checkered Flag",
     }
+}
+
+fn flag_yellow_cloth(a: u8) -> Color {
+    Color::from_rgba8(204, 176, 70, a)
+}
+
+fn flag_blue_cloth(a: u8) -> Color {
+    Color::from_rgba8(82, 118, 172, a)
+}
+
+fn flag_red_cloth(a: u8) -> Color {
+    Color::from_rgba8(186, 82, 82, a)
 }
 
 fn paint_flag_fill(px: &mut Pixmap, path: &Path, x: f32, y: f32, w: f32, h: f32, flag: DashFlag, a: u8) {
@@ -4466,8 +4987,9 @@ fn paint_flag_fill(px: &mut Pixmap, path: &Path, x: f32, y: f32, w: f32, h: f32,
                 clip.as_ref(),
             );
         }
-        DashFlag::Yellow => fill_path(px, path, Color::from_rgba8(244, 214, 36, a)),
-        DashFlag::Blue => fill_path(px, path, Color::from_rgba8(59, 130, 246, a)),
+        DashFlag::Yellow => fill_path(px, path, flag_yellow_cloth(a)),
+        DashFlag::Blue => fill_path(px, path, flag_blue_cloth(a)),
+        DashFlag::Red => fill_path(px, path, flag_red_cloth(a)),
         _ => {
             fill_path(px, path, Color::from_rgba8(236, 236, 240, a));
             let rows = ((h / 16.0).round() as i32).clamp(3, 8);
@@ -4852,23 +5374,27 @@ fn draw_ticker(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
     };
     let gap = HS_CARD_GAP;
     let stride = card_w + gap;
+    let now = anim_now();
+    let ids = row_ids(board.iter().take(n).map(|card| card.race_num));
+    let slots = HS_SLIDE.with(|a| a.borrow_mut().indices(&ids, now));
     let scroll = if cfg.ticker_autoscroll && n > vis {
-        (anim_now() * HS_AUTO_SPEED).rem_euclid(n as f32)
+        (now * HS_AUTO_SPEED).rem_euclid(n as f32)
     } else {
         let target = hstand_scroll_start(fi, vis, n);
-        HS_SCROLL.with(|a| a.borrow_mut().step(target, anim_now()))
+        HS_SCROLL.with(|a| a.borrow_mut().step(target, now))
     };
     let lw = cards_w.ceil().max(1.0) as u32;
     let lh = card_h.ceil().max(1.0) as u32;
     if let Some(mut layer) = Pixmap::new(lw, lh) {
         for (i, card) in board.iter().enumerate().take(n) {
+            let slot = slots.get(i).copied().unwrap_or(i as f32);
             let x = if cfg.ticker_autoscroll && n > vis {
-                match hstand_loop_x(i as f32, scroll, n as f32, stride, cards_w, card_w) {
+                match hstand_loop_x(slot, scroll, n as f32, stride, cards_w, card_w) {
                     Some(x) => x,
                     None => continue,
                 }
             } else {
-                let x = hstand_card_x(i as f32, scroll, 0.0, stride);
+                let x = hstand_card_x(slot, scroll, 0.0, stride);
                 if x + card_w < -2.0 || x > cards_w + 2.0 {
                     continue;
                 }
@@ -5156,6 +5682,7 @@ enum DashFlag {
     Checkered,
     Yellow,
     Blue,
+    Red,
 }
 
 struct FlagAnim {
@@ -5261,6 +5788,7 @@ struct DashLay {
     ptxt: String,
     lap_txt: String,
     lapped: bool,
+    lead: bool,
     tag_sz: f32,
     foot: Vec<(char, String)>,
 }
@@ -5295,6 +5823,7 @@ fn dash_layout(fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32, f
         s.local_race_num
     };
     let pos = Some(standing_pos(s, focus_num)).filter(|p| *p > 0);
+    let lead = pos == Some(1);
     let ptxt = pos.map(|p| format!("P{p}")).unwrap_or_else(|| "P--".into());
     let lap_txt = race_progress_text(s);
     let lapped = lapped(s);
@@ -5401,6 +5930,7 @@ fn dash_layout(fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32, f
         ptxt,
         lap_txt,
         lapped,
+        lead,
         tag_sz,
         foot,
     }
@@ -5494,6 +6024,7 @@ fn dash_layout_simple(
         ptxt: String::new(),
         lap_txt: String::new(),
         lapped: false,
+        lead: false,
         tag_sz: 0.0,
         foot: Vec::new(),
     }
@@ -5970,6 +6501,32 @@ fn draw_checkered_banner(px: &mut Pixmap, fonts: &Fonts, band: &Path, ox: f32, t
     }
 }
 
+fn draw_solid_wrap(px: &mut Pixmap, d: &DashLay, border: f32, cloth: Color) {
+    let Some(frame) = dash_wrap_frame_path(d, border) else {
+        return;
+    };
+    fill_path_rule(px, &frame, cloth, FillRule::EvenOdd, None);
+}
+
+fn draw_solid_banner(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    band: &Path,
+    ox: f32,
+    top_y: f32,
+    ow: f32,
+    top_h: f32,
+    grow: f32,
+    cloth: Color,
+    ink: Color,
+    label: &str,
+) {
+    fill_path(px, band, cloth);
+    if grow > 0.42 {
+        draw_flag_caption(px, fonts, ox, top_y, ow, top_h, grow, label, ink);
+    }
+}
+
 /// Sides and bottom of the dash wrap for white flag — diagonal stripes, same frame as checkered.
 fn draw_white_wrap(px: &mut Pixmap, d: &DashLay, border: f32, ox: f32, ow: f32) {
     let Some(frame) = dash_wrap_frame_path(d, border) else {
@@ -6021,17 +6578,35 @@ fn draw_dash_wrap(px: &mut Pixmap, fonts: &Fonts, d: &DashLay) {
     let Some(band) = dash_flag_top_path(ox, top_y, ow, top_h + 0.75, top_cut) else {
         return;
     };
-    if d.flag == DashFlag::White {
-        draw_white_wrap(px, d, border, ox, ow);
-        draw_white_banner(px, fonts, &band, ox, top_y, ow, top_h, grow);
-        return;
+    match d.flag {
+        DashFlag::White => {
+            draw_white_wrap(px, d, border, ox, ow);
+            draw_white_banner(px, fonts, &band, ox, top_y, ow, top_h, grow);
+        }
+        DashFlag::Yellow => {
+            let cloth = flag_yellow_cloth(255);
+            let ink = Color::from_rgba8(24, 20, 8, 255);
+            draw_solid_wrap(px, d, border, cloth);
+            draw_solid_banner(px, fonts, &band, ox, top_y, ow, top_h, grow, cloth, ink, "YELLOW FLAG");
+        }
+        DashFlag::Blue => {
+            let cloth = flag_blue_cloth(255);
+            let ink = Color::from_rgba8(248, 248, 250, 255);
+            draw_solid_wrap(px, d, border, cloth);
+            draw_solid_banner(px, fonts, &band, ox, top_y, ow, top_h, grow, cloth, ink, "BLUE FLAG");
+        }
+        DashFlag::Red => {
+            let cloth = flag_red_cloth(255);
+            let ink = Color::from_rgba8(248, 248, 250, 255);
+            draw_solid_wrap(px, d, border, cloth);
+            draw_solid_banner(px, fonts, &band, ox, top_y, ow, top_h, grow, cloth, ink, "RED FLAG");
+        }
+        DashFlag::Checkered => {
+            draw_checkered_wrap(px, d, border, ox, ow);
+            draw_checkered_banner(px, fonts, &band, ox, top_y, ow, top_h, grow);
+        }
+        DashFlag::None => {}
     }
-    if d.flag != DashFlag::Checkered {
-        return;
-    }
-
-    draw_checkered_wrap(px, d, border, ox, ow);
-    draw_checkered_banner(px, fonts, &band, ox, top_y, ow, top_h, grow);
 }
 
 fn draw_unit_stack(
@@ -6111,6 +6686,32 @@ fn draw_simple_dash(px: &mut Pixmap, fonts: &Fonts, d: &DashLay, a: u8) {
     draw_dash_wrap(px, fonts, d);
 }
 
+fn draw_dash_lead_crown(px: &mut Pixmap, fonts: &Fonts, d: &DashLay, pos_y: f32) {
+    let size = (d.pos_n * 0.38).clamp(11.0, 17.0);
+    let cx = d.right_x + measure(fonts, &d.ptxt, d.pos_n) * 0.5;
+    let cy = pos_y - size * 0.88;
+    icon(
+        px,
+        fonts,
+        '\u{f521}',
+        size,
+        cx + 0.7,
+        cy + 0.7,
+        Color::from_rgba8(8, 8, 10, 220),
+        true,
+    );
+    icon(
+        px,
+        fonts,
+        '\u{f521}',
+        size,
+        cx,
+        cy,
+        Color::from_rgba8(255, 196, 48, 255),
+        true,
+    );
+}
+
 fn draw_dash(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32, flag: DashFlag, grow: f32) {
     let d = dash_layout(fonts, s, cfg, sw, sh, flag, grow);
     if d.simple {
@@ -6163,8 +6764,16 @@ fn draw_dash(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: 
     text(px, fonts, d.speed_label, d.label, d.mid_x, d.main_y + d.main_h * 0.62, dim, false);
     text(px, fonts, &d.speed, d.val, d.mid_x + d.mid_w - measure(fonts, &d.speed, d.val), d.main_y + d.main_h * 0.58, white, false);
 
-    text_bold(px, fonts, &d.ptxt, d.pos_n, d.right_x + 1.0, d.main_y + d.main_h * 0.10 + 1.0, Color::from_rgba8(20, 12, 6, 160), false);
-    text_bold(px, fonts, &d.ptxt, d.pos_n, d.right_x, d.main_y + d.main_h * 0.10, dash_pos_col(), false);
+    let pos_y = if d.lead {
+        d.main_y + d.main_h * 0.22
+    } else {
+        d.main_y + d.main_h * 0.10
+    };
+    if d.lead {
+        draw_dash_lead_crown(px, fonts, &d, pos_y);
+    }
+    text_bold(px, fonts, &d.ptxt, d.pos_n, d.right_x + 1.0, pos_y + 1.0, Color::from_rgba8(20, 12, 6, 160), false);
+    text_bold(px, fonts, &d.ptxt, d.pos_n, d.right_x, pos_y, dash_pos_col(), false);
     let lap_y = d.main_y + d.main_h * 0.68;
     text(px, fonts, &d.lap_txt, d.lap_sz, d.right_x, lap_y, white, false);
     if d.lapped {
@@ -7162,14 +7771,31 @@ fn fill_round(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, r: f32, c: Color)
 }
 
 const RADAR_FWD_AHEAD: f32 = 3.0;
-const RADAR_FWD_REAR: f32 = 12.0;
-const RADAR_LAT: f32 = 6.0;
 const RADAR_SIDE_LAT: f32 = 0.4;
 const RADAR_REAR_FWD: f32 = -0.6;
 const RADAR_STRETCH_M: f32 = 20.0;
+const RADAR_RINGS_M: [f32; 3] = [3.0, 6.0, 12.0];
+const RADAR_RING_OUTER_M: f32 = 12.0;
 
-fn radar_in_view(fwd: f32, lat: f32, sides: bool, rear: bool) -> bool {
-    if fwd < -RADAR_FWD_REAR || fwd > RADAR_FWD_AHEAD || lat.abs() > RADAR_LAT {
+fn radar_range_m(cfg: &HudConfig) -> f32 {
+    cfg.radar_range.clamp(crate::config::RADAR_RANGE_MIN, crate::config::RADAR_RANGE_MAX) as f32
+}
+
+fn radar_extents(range: f32) -> (f32, f32) {
+    let rear = range.max(1.0);
+    (rear, rear * 0.5)
+}
+
+fn radar_fit_range(range: f32) -> f32 {
+    range.max(RADAR_RING_OUTER_M)
+}
+
+fn radar_rings_m() -> [f32; 3] {
+    RADAR_RINGS_M
+}
+
+fn radar_in_view(fwd: f32, lat: f32, sides: bool, rear: bool, rear_m: f32, lat_m: f32) -> bool {
+    if fwd < -rear_m || fwd > RADAR_FWD_AHEAD || lat.abs() > lat_m {
         return false;
     }
     let behind = fwd < RADAR_REAR_FWD;
@@ -7177,16 +7803,17 @@ fn radar_in_view(fwd: f32, lat: f32, sides: bool, rear: bool) -> bool {
     (rear && behind) || (sides && beside)
 }
 
-fn radar_you_frac() -> f32 {
-    RADAR_FWD_AHEAD / (RADAR_FWD_AHEAD + RADAR_FWD_REAR)
+fn radar_you_frac(rear_m: f32) -> f32 {
+    RADAR_FWD_AHEAD / (RADAR_FWD_AHEAD + rear_m.max(1.0))
 }
 
 fn radar_to_screen(fwd: f32, lat: f32, ox: f32, oy: f32, sx: f32, sy: f32) -> (f32, f32) {
     (ox + lat * sx, oy - fwd * sy)
 }
 
-fn radar_blip_heat(dist: f32) -> f32 {
-    ((8.0 - dist) / 7.0).clamp(0.0, 1.0)
+fn radar_blip_heat(dist: f32, range: f32) -> f32 {
+    let far = (range * (8.0 / 12.0)).max(4.0);
+    ((far - dist) / (far - 1.0)).clamp(0.0, 1.0)
 }
 
 fn radar_blip_radius(heat: f32, size: f32) -> f32 {
@@ -7212,11 +7839,12 @@ fn draw_radar_blip(px: &mut Pixmap, x: f32, y: f32, rad: f32, heat: f32) {
     fill_circle(px, x, y, rad, col);
 }
 
-fn radar_fit_scale(w: f32, h: f32, ox: f32, oy: f32, x: f32, y: f32, inset: f32) -> f32 {
+fn radar_fit_scale(w: f32, h: f32, ox: f32, oy: f32, x: f32, y: f32, inset: f32, rear_m: f32) -> f32 {
+    let rear = rear_m.max(1.0);
     let to_side = (ox - x - inset).min(x + w - inset - ox).max(1.0);
     let to_bottom = (y + h - inset - oy).max(1.0);
-    (to_side / RADAR_FWD_REAR)
-        .min(to_bottom / RADAR_FWD_REAR)
+    (to_side / rear)
+        .min(to_bottom / rear)
         .max(0.5)
 }
 
@@ -7244,6 +7872,46 @@ fn radar_ring_label_color(bg_pct: i32) -> Color {
 fn radar_ring_stroke(size: f32, bg_pct: i32) -> f32 {
     let t = radar_ring_lift(bg_pct);
     (size * (0.0042 + 0.0022 * t)).clamp(1.15 + 0.25 * t, 1.35 + 0.55 * t)
+}
+
+fn radar_you_fill() -> Color {
+    Color::from_rgba8(248, 248, 252, 255)
+}
+
+fn radar_you_ink() -> Color {
+    Color::from_rgba8(14, 14, 16, 255)
+}
+
+fn radar_you_stroke(size: f32) -> f32 {
+    (size * 0.018).clamp(2.4, 3.6)
+}
+
+fn radar_you_nose(ox: f32, body_y: f32) -> Option<Path> {
+    let mut nose = PathBuilder::new();
+    nose.move_to(ox, body_y - 4.0);
+    nose.line_to(ox - 3.6, body_y + 1.0);
+    nose.line_to(ox + 3.6, body_y + 1.0);
+    nose.close();
+    nose.finish()
+}
+
+fn draw_radar_you(px: &mut Pixmap, ox: f32, oy: f32, bw: f32, bh: f32, size: f32) {
+    let x = ox - bw * 0.5;
+    let y = oy - bh * 0.5;
+    let ink = radar_you_ink();
+    let cream = radar_you_fill();
+    let sw = radar_you_stroke(size);
+    let mut paint = Paint::default();
+    paint.set_color(cream);
+    paint.anti_alias = true;
+    if let Some(body) = round_rect_path(x, y, bw, bh, 2.2) {
+        stroke_path(px, &body, ink, sw);
+        px.fill_path(&body, &paint, FillRule::Winding, Transform::identity(), None);
+    }
+    if let Some(nose) = radar_you_nose(ox, y) {
+        stroke_path(px, &nose, ink, sw);
+        px.fill_path(&nose, &paint, FillRule::Winding, Transform::identity(), None);
+    }
 }
 
 fn stroke_circle_gap(
@@ -7324,8 +7992,11 @@ fn draw_radar_range_rings(
     let stroke_w = radar_ring_stroke(size, bg_pct);
     let label_sz = (size * 0.048).clamp(9.0, 13.0);
     let show_labels = size >= 72.0;
-    let labeled = [(6.0_f32, "6"), (12.0, "12")];
-    for meters in [3.0_f32, 6.0, 12.0] {
+    let rings = radar_rings_m();
+    let mid_label = format!("{}", rings[1] as i32);
+    let outer_label = format!("{}", rings[2] as i32);
+    let labeled = [(rings[1], mid_label.as_str()), (rings[2], outer_label.as_str())];
+    for meters in rings {
         let r = radar_ring_radius(meters, scale);
         let mut gap = 0.0;
         if show_labels {
@@ -7353,7 +8024,7 @@ fn pad_from_size(size: f32) -> f32 {
 
 fn draw_radar(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32, age: f32) {
     // THESIS: distance is a graphic — hairline arcs on the bike, not empty glass.
-    // OWN-WORLD: night-ink 6px plaque, hairline frame, white bike, heat blips, range circles that lift off a solid plaque.
+    // OWN-WORLD: night-ink 6px plaque, hairline frame, white bike with a night-ink outline, heat blips, range circles that lift off a solid plaque.
     // STORY: rider glances behind and beside; 6 and 12 say how far without reading a table.
     // FIRST VIEWPORT: square plaque, bike in the upper third, three circles inside the glass, 6/12 in stroke gaps, blips on top.
     // FORM: Range Arcs, user-locked radar-arcs.png. No wedges, no sweep, no title bar.
@@ -7375,11 +8046,14 @@ fn draw_radar(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw:
         }
     }
 
+    let range = radar_range_m(cfg);
+    let (rear_m, lat_m) = radar_extents(range);
+    let fit_m = radar_fit_range(range);
     let ox = x + w * 0.5;
     let usable_h = (h - pad * 2.0).max(16.0);
-    let oy = y + pad + usable_h * radar_you_frac();
+    let oy = y + pad + usable_h * radar_you_frac(fit_m);
     let inset = (size * 0.028).max(4.0);
-    let scale = radar_fit_scale(w, h, ox, oy, x, y, inset);
+    let scale = radar_fit_scale(w, h, ox, oy, x, y, inset, fit_m);
 
     if cfg.radar_rings {
         draw_radar_range_rings(px, fonts, ox, oy, scale, x, y, w, h, size, cfg[WidgetId::Radar].bg);
@@ -7387,18 +8061,7 @@ fn draw_radar(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw:
 
     let bw = (size * 0.075).max(6.5);
     let bh = (size * 0.185).max(13.0);
-    fill_round(px, ox - bw * 0.5, oy - bh * 0.5, bw, bh, 2.2, Color::from_rgba8(248, 248, 252, 255));
-    let mut nose = PathBuilder::new();
-    nose.move_to(ox, oy - bh * 0.5 - 4.0);
-    nose.line_to(ox - 3.6, oy - bh * 0.5 + 1.0);
-    nose.line_to(ox + 3.6, oy - bh * 0.5 + 1.0);
-    nose.close();
-    if let Some(path) = nose.finish() {
-        let mut p = Paint::default();
-        p.set_color(Color::from_rgba8(248, 248, 252, 255));
-        p.anti_alias = true;
-        px.fill_path(&path, &p, FillRule::Winding, Transform::identity(), None);
-    }
+    draw_radar_you(px, ox, oy, bw, bh, size);
 
     if s.has_telemetry == 0 {
         return;
@@ -7418,10 +8081,10 @@ fn draw_radar(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw:
         let dz = rider.z - pred_z;
         let fwd = dx * fx + dz * fz;
         let lat = dx * rx + dz * rz;
-        if !radar_same_stretch(s, rider.track_pos, RADAR_STRETCH_M) {
+        if !radar_same_stretch(s, rider.track_pos, RADAR_STRETCH_M.max(range)) {
             continue;
         }
-        if !radar_in_view(fwd, lat, cfg.radar_sides, cfg.radar_rear) {
+        if !radar_in_view(fwd, lat, cfg.radar_sides, cfg.radar_rear, rear_m, lat_m) {
             continue;
         }
         let dist = (fwd * fwd + lat * lat).sqrt();
@@ -7430,7 +8093,7 @@ fn draw_radar(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw:
     blips.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
     for (fwd, lat, dist, race_num, crashed) in blips {
         let (bx, by) = radar_to_screen(fwd, lat, ox, oy, scale, scale);
-        let heat = radar_blip_heat(dist);
+        let heat = radar_blip_heat(dist, RADAR_RING_OUTER_M);
         let rad = radar_blip_radius(heat, size);
         draw_radar_blip(px, bx, by, rad, heat);
         draw_state_mark(px, fonts, bx, by, rad.max(6.5), rider_mark(s, race_num, crashed));

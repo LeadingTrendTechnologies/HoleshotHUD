@@ -269,7 +269,7 @@ Modest rounds: 4px pills and Download under-clip, 6px HUD boards / steppers / se
 
 HUD bars skew ~4px. Sectors delta plaques skew 4–8px (14% of plaque height) and size to the delta string (measure + 20px, min 48px), centered in the row. Settings heading plaques skew 6–8px and size to the label (measure + 36px, min 72px), left-aligned. Web Download uses a clip-path parallelogram (`polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%)`; 6px cut when stacked), 12px Windows four-square mark, uppercase ExtraBold Italic. Bike pills are short stadium-rectangles, padded 10×4, vertically centered in the row.
 
-Map is a thin Track Line polyline, not a filled region. Radar is a square panel, white bike silhouette, 3/6/12 m range circles that lift off a solid plaque (togglable), circular blips (closer = larger, more orange). Flags are full-width banners (white flag: diagonal stripes into a white plaque; checkered: wrap the dash).
+Map is a thin Track Line polyline, not a filled region. Radar is a square panel, white bike silhouette with a night-ink outline, 3/6/12 m range circles that lift off a solid plaque (togglable), circular blips (closer = larger, more orange). Flags are full-width banners (white flag: diagonal stripes into a white plaque; checkered: wrap the dash).
 
 **The TV Plaque Rule.** Skewed bars and manufacturer pills are broadcast hardware. Do not replace them with cards, chips-in-a-row, or Material buttons.
 
@@ -312,7 +312,7 @@ Settings left rail and the web twin rail share one grammar: 8px rounded row, 4px
 Tight classification boards. Alternating near-black rows. Your row = You Row tint. Session-best time = Best Lap Violet. Position is followed by a manufacturer skew bar. Headers uppercase dim. Rows slide when live order changes.
 
 ### Sectors (signature)
-Regular Cockpit widget. Night Ink 6px plaque, three columns. The current sector is the wide hero (~56%) with a Holeshot Orange skew **S#** plaque and a large ExtraBold Italic delta. Flanks stay quiet. Under a hairline, LAST / -2 / -3 completed laps share those columns; the fastest of those laps has the You Row gold wash. Green (`ahead-green`) is faster / personal best. Red is slower. Dim `--` is pending. Orange is you (the live cell), never a second meaning color. No Best Lap Violet. No drop-shadow glow. A short box stays live-only.
+Regular Cockpit widget. Night Ink 6px plaque, four columns sized to the widest time format so live digits do not move the grid. The current sector is the wide hero (leftover width after each column covers its type) with a Holeshot Orange skew **S#** plaque and a large ExtraBold Italic delta. LAP on the right is never the hero: stacked lap time over full-lap delta (same tape as Delta Bar); the night-ink pill is the ideal (best S1+S2+S3). Flanks stay quiet. Under a hairline, IDEAL then LAST / -2 / -3 share those columns; the fastest complete lap has the You Row gold wash. Green (`ahead-green`) is faster / personal best. Red is slower. Dim `--` is pending. Orange is you (the live cell), never a second meaning color. No Best Lap Violet. No drop-shadow glow. When panel opacity is under 40%, floating type (caption, deltas, live LAP, log cells) gets a 1px night-ink rim so it still reads on a bright sky. Times already on night-ink pills and the orange S# plaque stay as they are. A short box stays live-only.
 
 ### Delta Bar (signature)
 Hair lockup: no plaque, no border. Orange Δ as a letter, huge ExtraBold Italic signed time, a 2px center-zero hairline, BEST and LAST capping the ends. When panel opacity is under 40%, those captions sit on night-ink pills. Green fill left of the tick is faster; red right is slower. Saturates at ±2.0 s. New installs start with panel opacity 0.
@@ -341,7 +341,7 @@ Web-only CTA in the top bar. Clip-path orange parallelogram, Windows four-square
 - **Do** start every widget hidden on a fresh install.
 - **Do** treat map fill as transparent unless the rider raises opacity.
 - **Do** size Settings heading plaques to the label (text + 36px), left-aligned.
-- **Do** draw Sectors as a three-column strip whose current sector is the wide hero, with LAST / -2 / -3 under it when the box is tall; green = faster / PB, red = slower.
+- **Do** draw Sectors as a four-column strip whose current sector is the wide hero, LAP on the right with stacked lap time over full-lap delta and an ideal pill (best S1+S2+S3), and IDEAL / LAST / -2 / -3 under it when the box is tall; green = faster / PB, red = slower.
 - **Do** mark that hero with a Holeshot Orange skew S# plaque.
 - **Do** draw Delta Bar as Hair: Δ letter, signed time, 2px center-zero line, BEST/LAST on the ends.
 - **Do** draw Lean as Figure (rear-view white rider, orange skew 32° bug, 2px steer under the boots, 2px pitch on the right) or Minimal (huge orange signed lean, cream pitch degrees, steer hairline). Steer and pitch only while riding.

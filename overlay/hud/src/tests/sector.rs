@@ -214,6 +214,59 @@ fn split_duration_reads_cumulative_or_raw() {
 }
 
 #[test]
+fn last_lap_s2_is_duration_when_plugin_sends_cumulative() {
+    let mut s = snap();
+    s.sector_last_lap = [40_367, 81_157, 58_045];
+    s.last_lap_ms = 139_202;
+    assert_eq!(last_lap_time(&s, 0), 40_367);
+    assert_eq!(last_lap_time(&s, 1), 40_790);
+    assert_eq!(last_lap_time(&s, 2), 58_045);
+}
+
+#[test]
+fn history_board_converts_cumulative_s2() {
+    let _lock = tmp();
+    let mut s = snap();
+    s.sector_last_lap = [40_367, 81_157, 58_045];
+    s.last_lap_ms = 139_202;
+    s.sector_best = [35_379, 51_088, 58_045];
+    let board = history_board(&s, false, 1);
+    assert_eq!(board[0].cells[0].time_ms, 40_367);
+    assert_eq!(board[0].cells[1].time_ms, 40_790);
+    assert_eq!(board[0].cells[2].time_ms, 58_045);
+    assert!(
+        board[0].cells[1].faster,
+        "40.790 vs 51.088 best must not stay a 1:21 LAST"
+    );
+}
+
+#[test]
+fn clock_off_does_not_replace_duration_hist_with_cumulative() {
+    let _lock = tmp();
+    seed_tape();
+    let mut s = snap();
+    s.current_lap_ms = 40_367;
+    s.local_track_pos = 0.33;
+    s.sector_cur = [40_367, 0, 0];
+    tick(&s);
+    s.current_lap_ms = 81_157;
+    s.local_track_pos = 0.66;
+    s.sector_cur = [40_367, 81_157, 0];
+    tick(&s);
+    s.current_lap_ms = 139_202;
+    s.last_lap_ms = 139_202;
+    s.local_track_pos = 0.99;
+    s.sector_cur = [40_367, 81_157, 58_045];
+    tick(&s);
+    s.current_lap_ms = 0;
+    s.sector_cur = [0, 0, 0];
+    s.sector_last_lap = [40_367, 81_157, 58_045];
+    tick(&s);
+    assert_eq!(history_times()[0], [40_367, 40_790, 58_045]);
+    assert_eq!(history_times()[1], [0, 0, 0], "cumulative last-lap must not shift a second row");
+}
+
+#[test]
 fn plugin_delta_is_preferred_over_tape() {
     let _lock = tmp();
     seed_tape();
@@ -508,6 +561,96 @@ fn history_gold_is_fastest_lap_not_always_last() {
     assert!(!board[0].fastest, "slower LAST must not take the gold wash");
     assert!(board[1].fastest, "-2 is the fastest lap in the log");
     assert!(!board[2].fastest);
+}
+
+#[test]
+fn ideal_sums_best_sectors() {
+    let _lock = tmp();
+    track_pb::bind("LiveTrack", "");
+    track_pb::commit_sector("LiveTrack", "", 0, 24_180);
+    track_pb::commit_sector("LiveTrack", "", 1, 25_640);
+    track_pb::commit_sector("LiveTrack", "", 2, 20_147);
+    let s = snap();
+    tick(&s);
+    let i = ideal(&s, false);
+    assert_eq!(i.sectors, [24_180, 25_640, 20_147]);
+    assert_eq!(i.lap_ms, 69_967);
+    assert!(!ideal(&s, true).ready(), "session ideal waits for this visit's splits");
+}
+
+fn sector_ref_lap(ref_ms: i32, live_delta: i32) {
+    crate::delta::set_preview(Some(crate::delta::DeltaView {
+        ready: true,
+        recording: false,
+        has_delta: true,
+        delta_ms: live_delta,
+        ref_lap_ms: ref_ms,
+        last_lap_ms: ref_ms,
+        cover: 100,
+        new_best: false,
+    }));
+}
+
+#[test]
+fn history_board_lap_delta_vs_ref_lap() {
+    let _lock = tmp();
+    crate::delta::set_preview(None);
+    set_history([
+        [24_180, 25_640, 20_147],
+        [24_410, 25_890, 20_400],
+        [24_250, 25_710, 20_220],
+        [0, 0, 0],
+        [0, 0, 0],
+    ]);
+    sector_ref_lap(70_140, 210);
+    let s = snap();
+    let board = history_board(&s, false, 2);
+    assert_eq!(board[0].lap_ms, 69_967);
+    assert!(board[0].has_lap_delta);
+    assert_eq!(board[0].lap_delta_ms, -173);
+    assert!(board[0].lap_faster);
+    assert_eq!(board[1].lap_ms, 70_700);
+    assert_eq!(board[1].lap_delta_ms, 560);
+    assert!(board[1].lap_slower);
+    crate::delta::set_preview(None);
+}
+
+#[test]
+fn live_lap_uses_tape_delta_while_clock_runs() {
+    let _lock = tmp();
+    crate::delta::set_preview(None);
+    sector_ref_lap(70_140, 210);
+    let mut s = snap();
+    s.current_lap_ms = 70_000;
+    let lap = live_lap(&s, false);
+    assert_eq!(lap.time_ms, 70_000);
+    assert!(lap.has_delta);
+    assert_eq!(lap.delta_ms, 210);
+    assert!(lap.slower);
+    assert!(!lap.pending);
+    crate::delta::set_preview(None);
+}
+
+#[test]
+fn live_lap_holds_last_when_clock_off() {
+    let _lock = tmp();
+    crate::delta::set_preview(None);
+    set_history([
+        [24_180, 25_640, 20_147],
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+    ]);
+    sector_ref_lap(70_140, 210);
+    let mut s = snap();
+    s.current_lap_ms = 0;
+    let lap = live_lap(&s, false);
+    assert_eq!(lap.time_ms, 69_967);
+    assert_eq!(lap.delta_ms, -173);
+    assert!(lap.has_delta);
+    assert!(!lap.slower);
+    crate::delta::set_preview(None);
 }
 
 #[test]

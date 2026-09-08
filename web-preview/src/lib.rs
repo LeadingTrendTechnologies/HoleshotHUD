@@ -220,7 +220,25 @@ impl Preview {
         animate(&mut self.snap, self.t, dt.max(0.0).min(0.08));
         self.cfg.apply_to_snapshot(&mut self.snap);
         sync_delta_preview(&self.active, self.t);
-        sync_flag_preview(&self.active, self.t, self.cfg.flag_yellow, self.cfg.flag_blue);
+        sync_flag_preview(
+            &self.active,
+            self.t,
+            if self.active == "dash" {
+                self.cfg.dash_yellow
+            } else {
+                self.cfg.flag_yellow
+            },
+            if self.active == "dash" {
+                self.cfg.dash_blue
+            } else {
+                self.cfg.flag_blue
+            },
+            if self.active == "dash" {
+                self.cfg.dash_red
+            } else {
+                self.cfg.flag_red
+            },
+        );
         sync_gamepad_preview(&self.active, self.t);
     }
 
@@ -429,12 +447,13 @@ fn sync_delta_preview(active: &str, t: f32) {
     }));
 }
 
-fn sync_flag_preview(active: &str, t: f32, yellow: bool, blue: bool) {
-    if active != "flag" {
+fn sync_flag_preview(active: &str, t: f32, yellow: bool, blue: bool, red: bool) {
+    let dash_caution = active == "dash" && (yellow || blue || red);
+    if active != "flag" && !dash_caution {
         mxbo_hud::set_flag_preview(-1);
         return;
     }
-    let mut codes = [2i32, 1, 0, 0, 0];
+    let mut codes = [2i32, 1, 0, 0, 0, 0];
     let mut n = 2;
     if yellow {
         codes[n] = 3;
@@ -442,6 +461,10 @@ fn sync_flag_preview(active: &str, t: f32, yellow: bool, blue: bool) {
     }
     if blue {
         codes[n] = 4;
+        n += 1;
+    }
+    if red {
+        codes[n] = 5;
         n += 1;
     }
     codes[n] = 0;
@@ -504,6 +527,9 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "radar_bold" => cfg[WidgetId::Radar].bold,
         "dash_bold" => cfg[WidgetId::Dash].bold,
         "dash_rev" => cfg.dash_rev,
+        "dash_yellow" => cfg.dash_yellow,
+        "dash_blue" => cfg.dash_blue,
+        "dash_red" => cfg.dash_red,
         "dash_simple" => cfg.dash_simple,
         "ticker_bold" => cfg[WidgetId::Ticker].bold,
         "sys_bold" => cfg[WidgetId::Sys].bold,
@@ -518,6 +544,7 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "gamepad_bold" => cfg[WidgetId::Gamepad].bold,
         "flag_yellow" => cfg.flag_yellow,
         "flag_blue" => cfg.flag_blue,
+        "flag_red" => cfg.flag_red,
         "flag_text" => cfg.flag_text,
         "ticker_title" => cfg.ticker_title,
         "ticker_autoscroll" => cfg.ticker_autoscroll,
@@ -578,6 +605,9 @@ fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
         "radar_bold" => cfg[WidgetId::Radar].bold = on,
         "dash_bold" => cfg[WidgetId::Dash].bold = on,
         "dash_rev" => cfg.dash_rev = on,
+        "dash_yellow" => cfg.dash_yellow = on,
+        "dash_blue" => cfg.dash_blue = on,
+        "dash_red" => cfg.dash_red = on,
         "dash_simple" => cfg.dash_simple = on,
         "ticker_bold" => cfg[WidgetId::Ticker].bold = on,
         "sys_bold" => cfg[WidgetId::Sys].bold = on,
@@ -592,6 +622,7 @@ fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
         "gamepad_bold" => cfg[WidgetId::Gamepad].bold = on,
         "flag_yellow" => cfg.flag_yellow = on,
         "flag_blue" => cfg.flag_blue = on,
+        "flag_red" => cfg.flag_red = on,
         "flag_text" => cfg.flag_text = on,
         "ticker_title" => cfg.ticker_title = on,
         "ticker_autoscroll" => cfg.ticker_autoscroll = on,
@@ -610,6 +641,7 @@ fn int_val(cfg: &HudConfig, key: &str) -> Option<i32> {
         "map_bg" => cfg[WidgetId::Map].bg,
         "mini_bg" => cfg[WidgetId::Minimap].bg,
         "mini_zoom" => cfg.mini_zoom,
+        "radar_range" => cfg.radar_range,
         "radar_bg" => cfg[WidgetId::Radar].bg,
         "dash_bg" => cfg[WidgetId::Dash].bg,
         "ticker_bg" => cfg[WidgetId::Ticker].bg,
@@ -649,6 +681,7 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "map_bg" => cfg[WidgetId::Map].bg = value.clamp(0, 100),
         "mini_bg" => cfg[WidgetId::Minimap].bg = value.clamp(0, 100),
         "mini_zoom" => cfg.mini_zoom = value.clamp(0, 100),
+        "radar_range" => cfg.radar_range = value.clamp(mxbo_hud::config::RADAR_RANGE_MIN, mxbo_hud::config::RADAR_RANGE_MAX),
         "radar_bg" => cfg[WidgetId::Radar].bg = value.clamp(0, 100),
         "dash_bg" => cfg[WidgetId::Dash].bg = value.clamp(0, 100),
         "ticker_bg" => cfg[WidgetId::Ticker].bg = value.clamp(0, 100),

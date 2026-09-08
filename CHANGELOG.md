@@ -1,5 +1,58 @@
 # Changelog
 
+## 0.8.0
+
+Practice, warmup, race, and spectate each keep their own HUD. The overlay follows the game window.
+
+### Overlay
+
+- Four presets store the full widget setup (show, place, columns, look). Font, units, the settings key, and Labs stay shared. The overlay switches when the session does.
+- Spectating and replay use the Spectate layout even during a race.
+- Leaving spectate for the garage hides the HUD. Leftover rider dots are not a session.
+- Your current `Holeshot-HUD.ini` is copied into all four slots the first time, so nothing disappears.
+- Standings and Relative glass follows the visible rows. A short saved widget box no longer leaves later names on the game.
+- The HUD follows the MX Bikes window. Windowed stays on that window — we do not stretch the game. Borderless stays 1px short of exclusive fullscreen so Windows still draws the overlay; the HUD paints to the bottom edge so that strip is not a hole.
+- The game-monitor taskbar hides only while the game covers that screen. A smaller windowed session keeps the Windows bar.
+- Warmup no longer shows blue or red lapping colors. Leaked extras used to look like a race.
+- OBS Game Capture and Discord “share this window” do not include the HUD. Use Display Capture, or Window Capture of **Holeshot HUD**.
+
+### Dash
+
+- Lapped riders no longer flash white before the checkered. Being waved off on 4/5 (or a first-lap crash that is not a last lap) is checkered only.
+- P1 puts a gold crown above the place number.
+- **Red flag** wrap when you are a lap up and closing on a rider ahead (~40 m). Own toggle, off by default.
+- Yellow, blue, and red flag cloth is quieter — ochre, slate, and brick instead of neon.
+- 8:00+1 checkered waits until **you** finish the extra. Being a lap down, or the leader taking the flag, does not wave you off.
+- 2–8 lap races show `1 / N` after the gate. A glitched clock that jumps to 16:00 and counts up is ignored.
+- Timed races from 5:00 to 60:00 with +1…+4 extras stay a countdown, including `60:00 +4`. A leftover 8:00 on a 4-lap moto is still `1 / 4`.
+
+### Sectors
+
+- A LAP column on the right shows the whole lap: running time over full-lap delta while you are out, last lap in the log. Same tape as Delta Bar.
+- **Ideal** is best S1 + S2 + S3 (maybe from different laps): a night-ink pill in LAP, and an IDEAL row in the log.
+- LAST S2 is the sector time, not time from the line. A cumulative plugin split no longer shows as `1:21` when S2 was `40`.
+- On glass (opacity under 40%), floating type gets a 1px night-ink rim so it still reads on a bright sky. Split pills stay.
+- Columns reserve the widest time format, and times right-align in that slot so ticking digits do not slide.
+
+### Radar
+
+- **Range** (6–30 m, default 12) sets how far beside and behind dots show. Rings stay 6 m and 12 m; a longer range just puts those riders further out.
+- The bike mark has a night-ink outline so it still reads on a light sky when the panel is glass.
+
+### H-Standings
+
+- Cards ease into their new slot when someone passes, same motion as Standings rows.
+
+### Flags
+
+- Same white/checkered timing as Dash: no white flash when you are lapped and the next line is checkered.
+- **Red flag** for the same infer. Own toggle, off by default. Old `flag_caution` still only turns yellow and blue on.
+- Same muted yellow, blue, and red cloth as Dash.
+
+### Settings
+
+- On track, F8 edits the live preset. The other chips stay visible but locked — “On track — Spectate only. Others in the garage.” In the garage, pick Practice / Warmup / Race / Spectate, or **Copy to all**.
+
 ## 0.7.2
 
 Ctrl-drag to the bottom of the game no longer opens Start or freezes the HUD. Win+Tab still shows the taskbar.
@@ -43,6 +96,9 @@ Controller is a new Labs widget for live pad inputs. Delta Bar and Sectors snap 
 
 - **Setup** is a footer option — the bike setup you loaded. Restart MX Bikes after this update so the name can load.
 - 15:00+1 (and 10/12/20/25/30) no longer treats late-published extras as a new session. The dash was sitting on `0/1` with the checkered while you still had laps to run.
+- Getting lapped on extras `0/1` now goes to `1/1`, shows **~Lapped**, and waves the checkered at the next line instead of another white.
+- Last lap of a lap moto no longer shows **~Lapped** just because the leader finished. That extra completed lap is you still out on the same last lap.
+- **Yellow flag** and **Blue flag** are Dash toggles, off by default. Same nearby-crash / being-lapped infer as the Flags widget. They do not share those toggles.
 
 ### Standings
 

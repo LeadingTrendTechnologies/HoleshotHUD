@@ -1,6 +1,8 @@
 use super::*;
-use crate::config::{BoardField, DashField, FontFamily, HudConfig, LeanStyle, RelField, StField, StanceStyle, WidgetId};
-use crate::race_store::{effective_extra_laps, effective_race_laps, ClockMode};
+use crate::config::{BoardField, DashField, FontFamily, HudConfig, LeanStyle, RelField, SessionPreset, StField, StanceStyle, WidgetId};
+use crate::race_store::{
+    effective_extra_laps, effective_race_laps, live_session, session_preset, ClockMode,
+};
 use crate::shm::{write_name, Point, Rider, Snapshot, Standing, MAGIC, TRACK_NAME, VERSION};
 use std::sync::{Mutex, OnceLock};
 use tiny_skia::{Color, Pixmap, Rect};
@@ -25,6 +27,7 @@ fn reset_session() {
             init: false,
         };
     });
+    HS_SLIDE.with(|a| *a.borrow_mut() = TableSlides { rows: Vec::new() });
     ST_SLIDE.with(|a| *a.borrow_mut() = TableSlides { rows: Vec::new() });
     REL_SLIDE.with(|a| *a.borrow_mut() = TableSlides { rows: Vec::new() });
 }
@@ -328,6 +331,7 @@ fn hairline_fill_rect_does_not_panic() {
 fn formatters_cover_clock_gap_and_penalty() {
     assert_eq!(format_countdown(0), "00:00");
     assert_eq!(format_countdown(125_000), "02:05");
+    assert_eq!(format_countdown(3600_000), "01:00:00");
     assert_eq!(format_session_clock(0), "--:--:--");
     assert_eq!(format_session_clock(3661_000), "01:01:01");
     assert_eq!(session_len_ms(8), 8 * 60_000);
@@ -455,6 +459,34 @@ fn simple_dash_is_gear_and_speed_only() {
     assert_eq!(d.rev_h, 0.0);
     assert_eq!(d.footer_h, 0.0);
     assert!((d.w - cfg[WidgetId::Dash].rect.w * 1280.0).abs() < 1.0, "simple dash should fill the widget width, got {}", d.w);
+    assert!(!d.lead);
+}
+
+#[test]
+fn dash_p1_sets_lead_and_p2_does_not() {
+    let _g = session_lock();
+    reset_session();
+    let p2 = live_snap();
+    let mut cfg = HudConfig::new();
+    cfg[WidgetId::Dash].show = true;
+    let d2 = dash_layout(&fonts(), &p2, &cfg, 1280.0, 720.0, DashFlag::None, 0.0);
+    assert_eq!(d2.ptxt, "P2");
+    assert!(!d2.lead);
+
+    let mut p1 = live_snap();
+    p1.standings[0] = standing(12, 1, 5);
+    p1.standings[1] = standing(1, 2, 5);
+    p1.riders[0].track_pos = 0.40;
+    p1.riders[1].track_pos = 0.70;
+    p1.local_track_pos = 0.70;
+    let d1 = dash_layout(&fonts(), &p1, &cfg, 1280.0, 720.0, DashFlag::None, 0.0);
+    assert_eq!(d1.ptxt, "P1");
+    assert!(d1.lead);
+
+    p1.show_standings = 0;
+    p1.show_relative = 0;
+    p1.show_map = 0;
+    draw_widget_golden("dash-p1", &golden_snap(&p1, &cfg), &cfg, cfg[WidgetId::Dash].rect);
 }
 
 #[test]
@@ -659,10 +691,88 @@ fn lap_rel_off_in_warmup() {
     s.riders[1].track_pos = 0.92;
     assert!(is_warmup(&s));
     assert_eq!(lap_rel(&s, 1), LapRel::Same);
+    s.session_kind = 5;
+    s.session_laps = 2;
+    s.session_length = 15;
+    assert!(is_warmup(&s), "kind 5 is warmup even with leaked extras");
+    assert_eq!(lap_rel(&s, 1), LapRel::Same);
+    s.session_kind = -1;
     s.session_length = 8;
     s.session_laps = 0;
     assert!(!is_warmup(&s));
     assert_eq!(lap_rel(&s, 1), LapRel::LappingMe);
+}
+
+#[test]
+fn session_preset_from_live_state() {
+    let _g = session_lock();
+    reset_session();
+    assert_eq!(session_preset(&Snapshot::default(), false), None);
+
+    let mut s = live_snap();
+    s.session_kind = 5;
+    s.session_length = 15;
+    s.session_laps = 0;
+    assert_eq!(session_preset(&s, false), Some(SessionPreset::Warmup));
+    assert_eq!(session_preset(&s, true), Some(SessionPreset::Spectate));
+
+    reset_session();
+    s = live_snap();
+    s.session_kind = 5;
+    s.session_length = 15;
+    s.session_laps = 2;
+    assert_eq!(
+        session_preset(&s, false),
+        Some(SessionPreset::Warmup),
+        "kind 5 stays warmup when extras leak"
+    );
+
+    reset_session();
+    s = live_snap();
+    s.session_kind = 5;
+    s.session_length = 30;
+    s.session_laps = 0;
+    assert_eq!(session_preset(&s, false), Some(SessionPreset::Warmup));
+
+    reset_session();
+    s = live_snap();
+    s.session_kind = -1;
+    s.session_length = 40;
+    s.session_laps = 0;
+    assert_eq!(session_preset(&s, false), Some(SessionPreset::Practice));
+
+    reset_session();
+    s = live_snap();
+    s.session_kind = 7;
+    s.session_length = 8;
+    s.session_laps = 0;
+    assert_eq!(session_preset(&s, false), Some(SessionPreset::Race));
+
+    reset_session();
+    s = live_snap();
+    s.session_kind = -1;
+    s.session_length = 0;
+    s.session_laps = 4;
+    assert_eq!(session_preset(&s, false), Some(SessionPreset::Race));
+
+    reset_session();
+    s = live_snap();
+    s.session_kind = -1;
+    s.session_length = 15;
+    s.session_laps = 0;
+    assert_eq!(session_preset(&s, false), Some(SessionPreset::Warmup));
+
+    reset_session();
+    s = live_snap();
+    s.has_telemetry = 0;
+    s.rider_count = 3;
+    assert!(s.has_session_data(), "replay payload is still in the snapshot");
+    assert!(
+        !live_session(&s, false),
+        "leftover spectate dots in the garage are not a session"
+    );
+    assert_eq!(session_preset(&s, false), None);
+    assert_eq!(session_preset(&s, true), Some(SessionPreset::Spectate));
 }
 
 fn col_right(slots: &[(StField, f32, f32)]) -> f32 {
@@ -1141,7 +1251,7 @@ fn long_timed_plus_one_late_extras(minutes: i32) {
     reset_session();
     let mut s = live_snap();
     s.session_kind = 7;
-    s.session_length = minutes;
+    s.session_length = session_length_for_minutes(minutes);
     s.session_laps = 0;
     s.session_time_ms = 30_000;
     s.current_lap = 1;
@@ -1229,6 +1339,18 @@ fn twenty_five_minute_plus_one_late_extras_and_standings_reset() {
 fn thirty_minute_plus_one_late_extras_and_standings_reset() {
     let _g = session_lock();
     long_timed_plus_one_late_extras(30);
+}
+
+#[test]
+fn forty_minute_plus_one_late_extras_and_standings_reset() {
+    let _g = session_lock();
+    long_timed_plus_one_late_extras(40);
+}
+
+#[test]
+fn sixty_minute_plus_one_late_extras_and_standings_reset() {
+    let _g = session_lock();
+    long_timed_plus_one_late_extras(60);
 }
 
 #[test]
@@ -1447,10 +1569,10 @@ fn four_lap_race_white_on_last_lap_start_not_checkered() {
     );
 }
 
-/// A lap down when the leader takes the finish: the race is over, so you are waved off
-/// at the line even though you never completed the distance.
+/// A lap down when the leader takes the finish: you still run your remaining laps.
+/// Checkered waits until you complete the distance, not until they take the flag.
 #[test]
-fn lapped_rider_gets_checkered_when_leader_finishes() {
+fn lapped_rider_checkered_when_they_finish_not_the_leader() {
     let _g = session_lock();
     reset_session();
     let mut s = live_snap();
@@ -1470,32 +1592,79 @@ fn lapped_rider_gets_checkered_when_leader_finishes() {
         "two of your own laps still to run"
     );
 
-    // Leader crosses to finish while you are still out on track. The lap you are on is
-    // now your last, so the total drops to the four laps you will actually run.
     s.standings[0].num_laps = 5;
     assert!(leader_finished(&s));
-    assert!(!race_over_for_me(&s), "not until you reach the line");
-    assert_eq!(effective_race_laps(&s), 4);
-    assert_eq!(session_banner(&s).1, "4 / 4");
-    // The lap you are on has just become your last, so the white is waved there and then.
-    assert_eq!(ride_to(&mut s, 0.60), DashFlag::White);
-    age_white_wave();
+    assert_eq!(laps_left(&s), Some(2), "leader finishing does not cut your distance");
     assert_eq!(
         ride_lap_to_line(&mut s),
-        DashFlag::Checkered,
-        "your next crossing ends it, so the run-in is checkered"
+        DashFlag::White,
+        "run-in onto your last lap"
+    );
+    assert_ne!(cross_line(&mut s, 4, 5), DashFlag::Checkered);
+    age_white_wave();
+    assert_eq!(ride_lap_to_line(&mut s), DashFlag::Checkered);
+    assert_eq!(cross_line(&mut s, 5, 6), DashFlag::Checkered);
+}
+
+/// Lapped on 4/5: that run-in is still onto your last lap, not a wave-off.
+#[test]
+fn lapped_on_four_of_five_run_in_is_white_not_checkered() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_length = 0;
+    s.session_laps = 5;
+    s.session_time_ms = 0;
+    s.local_speed = 18.0;
+    s.standings[0].num_laps = 4;
+    s.standings[1].num_laps = 3;
+    s.current_lap = 4;
+    s.standings[1].gap_laps = 1;
+    ride_to(&mut s, 0.50);
+    assert_eq!(session_banner(&s).1, "4 / 5");
+    assert_eq!(
+        ride_lap_to_line(&mut s),
+        DashFlag::White,
+        "lapped on 4/5: white onto your last lap"
     );
 
-    // Your crossing ends it, one lap short of the moto but the full shortened race.
-    assert_eq!(cross_line(&mut s, 4, 5), DashFlag::Checkered);
-    assert!(race_over_for_me(&s));
-    assert!(i_finished(&s));
-    assert_eq!(
-        session_banner(&s).1,
-        "4 / 4",
-        "the total follows the race you ran, not the moto distance"
+    s.standings[0].num_laps = 5;
+    assert!(leader_finished(&s));
+    assert_ne!(
+        dash_race_flag(&s),
+        DashFlag::Checkered,
+        "leader finished in the window: still your last-lap white"
     );
-    assert_eq!(race_laps_left_text(&s), "0");
+}
+
+/// A first-lap crash (or a frame that collapses remaining laps) must not wave white.
+#[test]
+fn first_lap_crash_does_not_wave_white() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_length = 0;
+    s.session_laps = 5;
+    s.session_time_ms = 0;
+    s.local_speed = 18.0;
+    s.standings[0].num_laps = 0;
+    s.standings[1].num_laps = 0;
+    s.current_lap = 1;
+    LAP_GREEN.store(1, Ordering::Relaxed);
+    assert_eq!(ride_to(&mut s, 0.40), DashFlag::None);
+    assert_eq!(laps_left(&s), Some(5));
+
+    s.local_crashed = 1;
+    s.local_speed = 12.0;
+    assert_eq!(dash_race_flag(&s), DashFlag::None, "crash on lap 1 is not a last lap");
+
+    s.standings[0].num_laps = 5;
+    assert_eq!(
+        dash_race_flag(&s),
+        DashFlag::None,
+        "collapsed laps-left after a crash must not wave white"
+    );
+    assert_ne!(dash_race_flag(&s), DashFlag::White);
 }
 
 /// The `~Lapped` tag follows the classification gap, and must stay off the gate, out of
@@ -1539,6 +1708,31 @@ fn lapped_tag_tracks_the_classification_gap() {
     assert!(!lapped(&warm), "no tag in warmup");
 }
 
+/// The leader taking the flag while you are still on the last lap is not a lap down —
+/// they have one more completed lap because they crossed and you have not.
+#[test]
+fn finishing_last_lap_after_the_leader_is_not_lapped() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_length = 0;
+    s.session_laps = 4;
+    s.session_time_ms = 0;
+    s.local_speed = 18.0;
+    s.standings[0].num_laps = 3;
+    s.standings[1].num_laps = 3;
+    s.current_lap = 4;
+    assert_eq!(session_banner(&s).1, "4 / 4");
+    assert!(!lapped(&s));
+
+    s.standings[0].num_laps = 4;
+    assert!(leader_finished(&s));
+    assert!(!lapped(&s), "still on the last lap the leader just finished");
+    assert_eq!(session_banner(&s).1, "4 / 4");
+    let cfg = HudConfig::new();
+    assert!(!dash_layout(&fonts(), &s, &cfg, 1280.0, 720.0, DashFlag::White, 0.0).lapped);
+}
+
 /// Winning must not stretch the total: your own finish latches the leader base at your
 /// full lap count, and `+1` past it would read `5 / 6` on a 5-lap moto.
 #[test]
@@ -1560,27 +1754,28 @@ fn winner_keeps_the_full_lap_total() {
     assert_eq!(session_banner(&s).1, "5 / 5");
 }
 
-/// Same rule on a timed race: the leader completing their extras ends it for everyone.
+/// Leader completing extras does not wave you off. Checkered is when you finish yours.
 #[test]
-fn lapped_rider_gets_checkered_when_leader_finishes_extras() {
+fn lapped_rider_checkered_when_they_finish_extras() {
     let _g = session_lock();
     let mut s = live_snap();
     expire_timed_extras(&mut s, 1);
     s.local_speed = 18.0;
-    // Leader starts their extra a lap up on you; you are still on the timed lap.
     s.standings[0].num_laps = 6;
     s.standings[1].num_laps = 5;
     s.current_lap = 6;
     assert!(extras_started(&s));
     assert!(!leader_finished(&s));
 
-    // Leader completes the extra and takes the finish.
     s.standings[0].num_laps = 7;
     assert!(leader_finished(&s));
-    assert!(!race_over_for_me(&s));
-    assert_eq!(ride_to(&mut s, 0.40), DashFlag::White);
-    assert_eq!(cross_line(&mut s, 6, 7), DashFlag::Checkered);
-    assert!(i_finished(&s));
+    assert_eq!(laps_left(&s), Some(2), "uncounted + extra still to run");
+    assert_eq!(ride_to(&mut s, 0.40), DashFlag::None);
+    assert_eq!(ride_lap_to_line(&mut s), DashFlag::White, "run-in onto your extra");
+    assert_ne!(cross_line(&mut s, 6, 7), DashFlag::Checkered);
+    age_white_wave();
+    assert_eq!(ride_lap_to_line(&mut s), DashFlag::Checkered);
+    assert_eq!(cross_line(&mut s, 7, 8), DashFlag::Checkered);
 }
 
 /// The game only rescores you a frame or two after you are past the line, so the lap
@@ -1724,28 +1919,130 @@ fn timed_plus_two_uncounted_lap_then_two_extras() {
     assert_eq!(cross_line(&mut s, 9, 10), DashFlag::Checkered);
 }
 
-/// Lapped during the extras of a timed race: the total extras drop the same way a lap
-/// moto's total does, so `1/2` becomes the single extra you will actually run.
+/// Leader completing extras early does not shorten yours. `0/2` still has the uncounted
+/// lap and both extras; checkered is when you finish that distance.
 #[test]
-fn lapped_during_extras_shortens_the_extra_count() {
+fn lapped_during_extras_still_runs_the_extras() {
     let _g = session_lock();
     let mut s = live_snap();
     expire_timed_extras(&mut s, 2);
     s.local_speed = 18.0;
-    // Leader starts the extras while you are mid-lap, so you have three laps to run.
     s.standings[0].num_laps = 6;
     assert_eq!(session_banner(&s).1, "0/2");
     assert_eq!(effective_extra_laps(&s), 2);
     assert_eq!(ride_to(&mut s, 0.40), DashFlag::None);
 
-    // The leader completes both extras before you have taken either. You are waved off
-    // at your next crossing, so only one extra is yours.
     s.standings[0].num_laps = 8;
     assert!(leader_finished(&s));
-    assert_eq!(effective_extra_laps(&s), 1);
-    assert_eq!(session_banner(&s).1, "0/1", "a single remaining extra still uses n/n");
-    assert_eq!(dash_race_flag(&s), DashFlag::White);
-    assert_eq!(cross_line(&mut s, 6, 7), DashFlag::Checkered);
+    assert_eq!(laps_left(&s), Some(3), "uncounted + both extras");
+    assert_eq!(ride_to(&mut s, 0.40), DashFlag::None);
+    assert_ne!(
+        ride_lap_to_line(&mut s),
+        DashFlag::Checkered,
+        "leader finished: you still have extras to run"
+    );
+    assert_ne!(cross_line(&mut s, 6, 7), DashFlag::Checkered);
+    assert_eq!(laps_left(&s), Some(2));
+}
+
+/// +1 extras, still on `0/1`, then someone puts a lap on you. That is ~Lapped, not a
+/// wave-off. The extra still has to be run; checkered a lap early was the SX bug.
+#[test]
+fn lapped_on_uncounted_plus_one_still_runs_the_extra() {
+    let _g = session_lock();
+    let mut s = live_snap();
+    expire_timed_extras(&mut s, 1);
+    s.local_speed = 18.0;
+    s.standings[0].num_laps = 6;
+    s.standings[1].num_laps = 5;
+    s.current_lap = 6;
+    assert!(extras_started(&s));
+    assert!(!leader_finished(&s));
+    assert_eq!(session_banner(&s).1, "0/1");
+    assert!(!lapped(&s));
+    ride_to(&mut s, 0.50);
+    assert_eq!(
+        ride_lap_to_line(&mut s),
+        DashFlag::White,
+        "run-in onto the extra is still white until you are lapped"
+    );
+
+    s.standings[1].gap_laps = 1;
+    assert!(lapped(&s));
+    assert_eq!(session_banner(&s).1, "0/1", "being lapped does not start the extra");
+    assert_eq!(laps_left(&s), Some(2), "uncounted + extra still to run");
+    age_white_wave();
+    assert_ne!(
+        ride_lap_to_line(&mut s),
+        DashFlag::Checkered,
+        "leader has not finished — this line is not the checkered"
+    );
+    assert_ne!(cross_line(&mut s, 6, 7), DashFlag::Checkered);
+    assert_eq!(session_banner(&s).1, "1/1");
+    assert_eq!(laps_left(&s), Some(1));
+
+    // Leader completes their extra. You still finish yours.
+    s.standings[0].num_laps = 7;
+    assert!(leader_finished(&s));
+    assert_eq!(laps_left(&s), Some(1), "leader finishing does not end your extra");
+    assert_eq!(
+        ride_lap_to_line(&mut s),
+        DashFlag::Checkered,
+        "your extra finish is the checkered"
+    );
+    assert_eq!(cross_line(&mut s, 7, 8), DashFlag::Checkered);
+}
+
+/// Already a lap (or more) down when extras start, as in an 8:00+1 SX moto. The
+/// uncounted crossing must not latch checkered while the leader still has the extra.
+#[test]
+fn already_lapped_when_plus_one_starts_is_not_checkered() {
+    let _g = session_lock();
+    let mut s = live_snap();
+    expire_timed_extras(&mut s, 1);
+    s.local_speed = 18.0;
+    s.standings[1].gap_laps = 2;
+    s.standings[0].num_laps = 6;
+    s.standings[1].num_laps = 5;
+    s.current_lap = 6;
+    assert!(extras_started(&s));
+    assert!(!leader_finished(&s));
+    assert!(lapped(&s));
+    assert_eq!(session_banner(&s).1, "0/1");
+    assert_eq!(laps_left(&s), Some(2));
+    assert_eq!(ride_to(&mut s, 0.40), DashFlag::None);
+    assert_ne!(
+        ride_lap_to_line(&mut s),
+        DashFlag::Checkered,
+        "extras starting is not a wave-off"
+    );
+    assert_ne!(cross_line(&mut s, 6, 7), DashFlag::Checkered);
+    assert_eq!(session_banner(&s).1, "1/1");
+    assert_eq!(laps_left(&s), Some(1));
+}
+
+/// `gap_laps` waits for a line crossing. ~Lapped must flip the moment the lap-up
+/// leader goes past you. That pass does not start the extra or wave you off.
+#[test]
+fn lapped_by_leader_on_track_is_not_a_wave_off() {
+    let _g = session_lock();
+    let mut s = live_snap();
+    expire_timed_extras(&mut s, 1);
+    s.local_speed = 18.0;
+    s.standings[0].num_laps = 6;
+    s.standings[1].num_laps = 5;
+    s.current_lap = 6;
+    assert!(extras_started(&s));
+    ride_to(&mut s, 0.50);
+    s.riders[0].track_pos = 0.20;
+    assert_eq!(session_banner(&s).1, "0/1", "leader behind is not a lap yet");
+    assert!(!lapped(&s), "extras starting is not getting lapped");
+
+    s.riders[0].track_pos = 0.54;
+    assert!(lapped(&s), "~Lapped the moment the leader goes past");
+    assert_eq!(session_banner(&s).1, "0/1", "still the uncounted lap");
+    assert_eq!(laps_left(&s), Some(2), "the extra is still ahead");
+    assert_eq!(s.standings[1].gap_laps, 0, "must not wait for the game gap");
 }
 
 /// A frame where the session fields glitch into looking like a lap race puts extras (2)
@@ -2362,6 +2659,33 @@ fn three_lap_race_ignores_practice_session_length() {
     assert_eq!(session_banner(&s).1, "3 / 3");
 }
 
+/// 3-lap moto, length unset. After the gate the plugin can dump a 5–30 min clock
+/// (MXB Test Track jumped 00:01 → 16:20) and then count elapsed. That is still `1 / 3`.
+#[test]
+fn three_lap_unset_length_after_gate_shows_laps_not_elapsed_clock() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_length = 0;
+    s.session_laps = 3;
+    s.session_time_ms = 45_350;
+    s.current_lap = 1;
+    s.local_speed = 0.0;
+    s.standings[0].num_laps = 0;
+    s.standings[1].num_laps = 0;
+    assert_eq!(session_banner(&s).1, "00:45");
+    s.session_time_ms = 1_970;
+    assert_eq!(session_banner(&s).1, "00:01");
+    s.session_time_ms = 980_000;
+    s.local_speed = 4.0;
+    assert_eq!(session_banner(&s).1, "1 / 3", "glitched 16:20 after the gate is not a timed clock");
+    assert!(is_lap_race(&s));
+    s.session_time_ms = 453_000;
+    s.standings[1].num_laps = 1;
+    s.current_lap = 2;
+    assert_eq!(session_banner(&s).1, "2 / 3", "elapsed clock mid-moto must not replace laps");
+}
+
 #[test]
 fn eight_minute_race_with_three_extras_is_timed() {
     let _g = session_lock();
@@ -2538,6 +2862,162 @@ fn six_minute_plus_two_leftover_start_board_shows_countdown() {
     assert!(
         text.contains(':') && !text.contains('+') && !text.contains('/'),
         "leftover board length must not force 1 / 2, got {text}"
+    );
+}
+
+fn lap_moto_after_gate_glitch_shows_laps(laps: i32, length: i32) {
+    reset_session();
+    let mut s = live_snap();
+    s.session_length = length;
+    s.session_laps = laps;
+    s.session_time_ms = 45_350;
+    s.current_lap = 1;
+    s.local_speed = 0.0;
+    s.standings[0].num_laps = 0;
+    s.standings[1].num_laps = 0;
+    assert_eq!(
+        session_banner(&s).1,
+        "00:45",
+        "{laps}-lap length={length} gate"
+    );
+    s.session_time_ms = 1_970;
+    assert_eq!(session_banner(&s).1, "00:01");
+    s.session_time_ms = 980_000;
+    s.local_speed = 4.0;
+    let want = format!("1 / {laps}");
+    assert_eq!(
+        session_banner(&s).1,
+        want,
+        "{laps}-lap length={length} glitched 16:20 is not a timed clock"
+    );
+    assert!(is_lap_race(&s), "{laps}-lap length={length} must stay a lap race");
+    s.session_time_ms = 453_000;
+    s.standings[1].num_laps = 1;
+    s.current_lap = 2;
+    assert_eq!(
+        session_banner(&s).1,
+        format!("2 / {laps}"),
+        "{laps}-lap elapsed clock must not replace laps"
+    );
+}
+
+#[test]
+fn lap_motos_two_to_eight_keep_count_after_gate_glitch() {
+    let _g = session_lock();
+    // Unset length, leftover 7-min junk, leftover 8:00 on a 4-lap, leftover 10:00 on a 5-lap.
+    for (laps, length) in [
+        (2, 0),
+        (2, 7),
+        (3, 0),
+        (3, 7),
+        (4, 0),
+        (4, 8),
+        (5, 0),
+        (5, 10),
+        (6, 0),
+        (8, 0),
+        (10, 0),
+    ] {
+        lap_moto_after_gate_glitch_shows_laps(laps, length);
+    }
+}
+
+fn session_length_for_minutes(minutes: i32) -> i32 {
+    // 60+ minutes cannot use the integer-minutes encoding: 60 is a 00:60 gate.
+    if minutes >= 60 {
+        minutes * 60 * 1000
+    } else {
+        minutes
+    }
+}
+
+fn timed_plus_n_keeps_countdown(minutes: i32, extras: i32) {
+    reset_session();
+    let mut s = live_snap();
+    s.session_kind = 7;
+    s.session_length = session_length_for_minutes(minutes);
+    s.session_laps = extras;
+    s.session_time_ms = minutes * 60 * 1000;
+    s.current_lap = 1;
+    s.local_speed = 0.0;
+    s.standings[0].num_laps = 0;
+    s.standings[1].num_laps = 0;
+    let start = session_banner(&s).1;
+    assert!(
+        !is_lap_race(&s),
+        "{minutes}:00 +{extras} must be timed, banner {start}"
+    );
+    assert!(
+        start.contains(':') && !start.contains('/'),
+        "{minutes}:00 +{extras} prestart must be a clock, got {start}"
+    );
+    s.session_time_ms = 10_000;
+    let gate = session_banner(&s).1;
+    assert!(
+        gate.starts_with("00:"),
+        "{minutes}:00 +{extras} gate board, got {gate}"
+    );
+    s.session_time_ms = minutes * 60 * 1000 - 30_000;
+    s.local_speed = 18.0;
+    s.current_lap = 2;
+    s.standings[0].num_laps = 1;
+    s.standings[1].num_laps = 1;
+    let text = session_banner(&s).1;
+    assert!(
+        !is_lap_race(&s),
+        "{minutes}:00 +{extras} after gate must stay timed, got {text}"
+    );
+    assert!(
+        text.contains(':') && !text.contains('/'),
+        "{minutes}:00 +{extras} must keep countdown, got {text}"
+    );
+    assert!(
+        !text.contains('+'),
+        "{minutes}:00 +{extras} live clock must not show +extras, got {text}"
+    );
+}
+
+#[test]
+fn timed_races_five_to_sixty_with_one_to_four_extras_keep_countdown() {
+    let _g = session_lock();
+    for minutes in [5, 6, 8, 10, 12, 15, 20, 25, 30, 35, 40, 45, 50, 60] {
+        for extras in 1..=4 {
+            timed_plus_n_keeps_countdown(minutes, extras);
+        }
+    }
+}
+
+#[test]
+fn hour_plus_four_unset_length_keeps_countdown_after_gate() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_length = 0;
+    s.session_laps = 4;
+    s.session_time_ms = 60 * 60 * 1000;
+    s.current_lap = 1;
+    s.local_speed = 0.0;
+    s.standings[0].num_laps = 0;
+    s.standings[1].num_laps = 0;
+    let start = session_banner(&s).1;
+    assert!(!is_lap_race(&s), "60:00 +4 unset length is timed, got {start}");
+    assert!(
+        start.contains(':') && !start.contains('/'),
+        "60:00 +4 prestart must be a clock, got {start}"
+    );
+    s.session_time_ms = 10_000;
+    let gate = session_banner(&s).1;
+    assert!(gate.starts_with("00:"), "gate board, got {gate}");
+    s.session_time_ms = 60 * 60 * 1000 - 30_000;
+    s.local_speed = 18.0;
+    s.current_lap = 2;
+    s.standings[0].num_laps = 1;
+    s.standings[1].num_laps = 1;
+    let text = session_banner(&s).1;
+    assert!(!is_lap_race(&s));
+    assert!(
+        text.contains(':') && !text.contains('/'),
+        "60:00 +4 must keep countdown, got {text}"
     );
 }
 
@@ -2791,16 +3271,24 @@ fn radar_same_stretch_wraps_around_the_lap() {
 
 #[test]
 fn radar_in_view_covers_blind_spots() {
-    assert!(radar_in_view(-3.0, -2.0, true, false));
-    assert!(radar_in_view(-3.0, -2.0, false, true));
-    assert!(!radar_in_view(-3.0, -2.0, false, false));
-    assert!(radar_in_view(0.0, 2.0, true, false));
-    assert!(!radar_in_view(0.0, 2.0, false, true));
-    assert!(radar_in_view(-4.0, 0.0, false, true));
-    assert!(!radar_in_view(-4.0, 0.0, true, false));
-    assert!(!radar_in_view(2.0, 0.0, true, true));
-    assert!(!radar_in_view(-13.0, 0.0, true, true));
-    assert!(!radar_in_view(0.0, 7.0, true, true));
+    assert!(radar_in_view(-3.0, -2.0, true, false, 12.0, 6.0));
+    assert!(radar_in_view(-3.0, -2.0, false, true, 12.0, 6.0));
+    assert!(!radar_in_view(-3.0, -2.0, false, false, 12.0, 6.0));
+    assert!(radar_in_view(0.0, 2.0, true, false, 12.0, 6.0));
+    assert!(!radar_in_view(0.0, 2.0, false, true, 12.0, 6.0));
+    assert!(radar_in_view(-4.0, 0.0, false, true, 12.0, 6.0));
+    assert!(!radar_in_view(-4.0, 0.0, true, false, 12.0, 6.0));
+    assert!(!radar_in_view(2.0, 0.0, true, true, 12.0, 6.0));
+    assert!(!radar_in_view(-13.0, 0.0, true, true, 12.0, 6.0));
+    assert!(!radar_in_view(0.0, 7.0, true, true, 12.0, 6.0));
+}
+
+#[test]
+fn radar_in_view_honors_range() {
+    assert!(!radar_in_view(-18.0, 0.0, true, true, 12.0, 6.0));
+    assert!(radar_in_view(-18.0, 0.0, true, true, 24.0, 12.0));
+    assert!(!radar_in_view(0.0, 10.0, true, true, 12.0, 6.0));
+    assert!(radar_in_view(0.0, 10.0, true, true, 24.0, 12.0));
 }
 
 #[test]
@@ -2816,9 +3304,9 @@ fn radar_to_screen_puts_left_rear_below_and_left() {
 
 #[test]
 fn radar_blip_heat_rises_when_closer() {
-    assert_eq!(radar_blip_heat(1.0), 1.0);
-    assert!((radar_blip_heat(7.0) - 1.0 / 7.0).abs() < 1e-6);
-    assert_eq!(radar_blip_heat(8.0), 0.0);
+    assert_eq!(radar_blip_heat(1.0, 12.0), 1.0);
+    assert!((radar_blip_heat(7.0, 12.0) - 1.0 / 7.0).abs() < 1e-6);
+    assert_eq!(radar_blip_heat(8.0, 12.0), 0.0);
 }
 
 #[test]
@@ -2845,6 +3333,219 @@ fn radar_blip_radius_grows_with_heat_and_widget_size() {
 }
 
 #[test]
+fn radar_you_outline_reads_on_a_light_sky() {
+    let mut px = Pixmap::new(48, 56).expect("pixmap");
+    px.fill(Color::from_rgba8(186, 214, 232, 255));
+    draw_radar_you(&mut px, 24.0, 28.0, 12.0, 30.0, 160.0);
+    let cream = sample_px(&px, 24.0, 28.0);
+    assert!(cream[0] > 230 && cream[1] > 230 && cream[2] > 230, "fill {cream:?}");
+    let ink = sample_px(&px, 17.0, 28.0);
+    assert!(ink[0] < 50 && ink[1] < 50 && ink[2] < 50, "outline {ink:?}");
+    let sky = sample_px(&px, 6.0, 28.0);
+    assert!(sky[0] > 160 && sky[2] > 200, "sky {sky:?}");
+}
+
+#[test]
+fn sector_glass_caption_rim_reads_on_a_light_sky() {
+    let _g = session_lock();
+    let _pb = crate::track_pb::exclusive_test();
+    reset_session();
+    crate::track_pb::reset_store();
+    crate::sector::reset_engine();
+    crate::delta::set_preview(None);
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg[WidgetId::Sector].show = true;
+    cfg[WidgetId::Sector].bg = 0;
+    crate::sector::set_history([
+        [24_180, 25_640, 20_147],
+        [24_410, 25_890, 20_400],
+        [24_250, 25_710, 20_220],
+        [24_500, 26_010, 20_550],
+        [24_330, 25_800, 20_310],
+    ]);
+    crate::delta::set_preview(Some(crate::delta::DeltaView {
+        ready: true,
+        recording: false,
+        has_delta: true,
+        delta_ms: 210,
+        ref_lap_ms: 70_140,
+        last_lap_ms: 69_967,
+        cover: 100,
+        new_best: false,
+    }));
+    let s = golden_snap(&sector_snap(live_snap()), &cfg);
+    let mut px = Pixmap::new(1280, 720).expect("pixmap");
+    px.fill(Color::from_rgba8(186, 214, 232, 255));
+    draw(
+        &mut px,
+        &fonts(),
+        Some(&s),
+        &cfg,
+        1280,
+        720,
+        0.0,
+        false,
+        false,
+        false,
+    );
+    crate::delta::set_preview(None);
+    let r = cfg[WidgetId::Sector].rect;
+    let x0 = (r.x * 1280.0).floor() as u32;
+    let y0 = (r.y * 720.0).floor() as u32;
+    let w = (r.w * 1280.0).ceil() as u32;
+    let mut ink = 0u32;
+    for y in y0..y0 + 28 {
+        for x in x0..x0 + w {
+            let p = sample_px(&px, x as f32, y as f32);
+            if p[0] < 40 && p[1] < 40 && p[2] < 40 && p[3] > 100 {
+                ink += 1;
+            }
+        }
+    }
+    assert!(ink > 40, "caption rim missing on sky, ink pixels={ink}");
+}
+
+#[test]
+fn sector_col_widths_cover_need_and_give_extra_to_hero() {
+    let need = [40.0, 40.0, 50.0, 60.0];
+    let w = sector_col_widths(need, 250.0, 2);
+    assert!((w[0] - 40.0).abs() < 0.01);
+    assert!((w[1] - 40.0).abs() < 0.01);
+    assert!((w[2] - 110.0).abs() < 0.01);
+    assert!((w[3] - 60.0).abs() < 0.01);
+    assert!((w.iter().sum::<f32>() - 250.0).abs() < 0.01);
+}
+
+#[test]
+fn sector_col_widths_never_overlap_when_tight() {
+    let need = [80.0, 80.0, 80.0, 80.0];
+    let w = sector_col_widths(need, 200.0, 0);
+    assert!((w.iter().sum::<f32>() - 200.0).abs() < 0.01);
+    for got in w {
+        assert!((got - 50.0).abs() < 0.01);
+    }
+}
+
+#[test]
+fn sector_columns_cover_live_times_at_large_font() {
+    let _g = session_lock();
+    let _pb = crate::track_pb::exclusive_test();
+    reset_session();
+    crate::track_pb::reset_store();
+    crate::sector::reset_engine();
+    crate::delta::set_preview(None);
+    let fonts = fonts();
+    let _style = push_style(&fonts, true, 160);
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg[WidgetId::Sector].show = true;
+    cfg[WidgetId::Sector].font = 160;
+    crate::sector::set_history([
+        [24_180, 25_640, 20_147],
+        [24_410, 25_890, 20_400],
+        [24_250, 25_710, 20_220],
+        [24_500, 26_010, 20_550],
+        [24_330, 25_800, 20_310],
+    ]);
+    crate::delta::set_preview(Some(crate::delta::DeltaView {
+        ready: true,
+        recording: false,
+        has_delta: true,
+        delta_ms: 210,
+        ref_lap_ms: 70_140,
+        last_lap_ms: 69_967,
+        cover: 100,
+        new_best: false,
+    }));
+    let s = golden_snap(&sector_snap(live_snap()), &cfg);
+    let live_h = 72.0;
+    let hist_fs = 14.0;
+    let need = sector_col_need(&fonts, &s, &cfg, live_h, hist_fs, true);
+    let widths = sector_col_widths(need, 720.0, sector_hero_index(&s));
+    crate::delta::set_preview(None);
+    for i in 0..3 {
+        let row = sector_row(&s, i, true, false);
+        let (_, delta_fs, time_fs) = sector_live_type(live_h, row.fresh);
+        let dw = measure(&fonts, SECTOR_PROBE_DELTA, delta_fs);
+        let tw = measure(&fonts, SECTOR_PROBE_SPLIT_LONG, time_fs) + SECTOR_PILL_PAD_X;
+        assert!(
+            widths[i] + 0.5 >= dw.max(tw),
+            "col {i} width {} < probe {}",
+            widths[i],
+            dw.max(tw)
+        );
+    }
+    let lap_w = measure(&fonts, SECTOR_PROBE_LAP, (live_h * 0.28).max(12.0));
+    assert!(
+        widths[3] + 0.5 >= lap_w,
+        "LAP width {} < probe {}",
+        widths[3],
+        lap_w
+    );
+}
+
+#[test]
+fn sector_col_need_ignores_live_digit_growth() {
+    let _g = session_lock();
+    let _pb = crate::track_pb::exclusive_test();
+    reset_session();
+    crate::track_pb::reset_store();
+    crate::sector::reset_engine();
+    crate::delta::set_preview(None);
+    let fonts = fonts();
+    let _style = push_style(&fonts, true, 100);
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg[WidgetId::Sector].show = true;
+    let mut short = sector_snap(live_snap());
+    short.current_lap_ms = 9_123;
+    short.sector_cur = [9_123, 8_000, 0];
+    short.sector_delta = [-12, 34, 0];
+    let mut long = short;
+    long.current_lap_ms = 130_000;
+    long.sector_cur = [70_000, 40_000, 0];
+    long.sector_delta = [12_345, 8_888, 0];
+    crate::delta::set_preview(Some(crate::delta::DeltaView {
+        ready: true,
+        recording: true,
+        has_delta: true,
+        delta_ms: 12_345,
+        ref_lap_ms: 70_140,
+        last_lap_ms: 69_967,
+        cover: 100,
+        new_best: false,
+    }));
+    let a = sector_col_need(&fonts, &golden_snap(&short, &cfg), &cfg, 72.0, 14.0, true);
+    let b = sector_col_need(&fonts, &golden_snap(&long, &cfg), &cfg, 72.0, 14.0, true);
+    crate::delta::set_preview(None);
+    assert_eq!(a, b, "columns must not follow ticking digits");
+}
+
+#[test]
+fn sector_num_x_holds_right_edge_as_digits_grow() {
+    let fonts = fonts();
+    let _style = push_style(&fonts, true, 100);
+    let slot = sector_probe_max(&fonts, 14.0, SECTOR_LAP_PROBES);
+    let short = sector_num_x(&fonts, "9.123", 14.0, 0.0, 200.0, slot);
+    let long = sector_num_x(&fonts, "1:10.000", 14.0, 0.0, 200.0, slot);
+    let short_r = short + measure(&fonts, "9.123", 14.0);
+    let long_r = long + measure(&fonts, "1:10.000", 14.0);
+    assert!(
+        (short_r - long_r).abs() < 0.6,
+        "right edge moved {short_r} -> {long_r}"
+    );
+    assert!(short > long);
+}
+
+#[test]
+fn radar_you_stroke_stays_a_hairline() {
+    assert!((radar_you_stroke(80.0) - 2.4).abs() < 1e-4);
+    assert!((radar_you_stroke(200.0) - 3.6).abs() < 1e-4);
+    assert_eq!(rgba8(radar_you_ink()), (14, 14, 16, 255));
+}
+
+#[test]
 fn radar_rings_lift_off_a_solid_plaque() {
     let glass = radar_ring_color(0);
     let solid = radar_ring_color(100);
@@ -2855,10 +3556,33 @@ fn radar_rings_lift_off_a_solid_plaque() {
 
 #[test]
 fn radar_fit_scale_keeps_the_12m_ring_inside_the_plaque() {
-    let s = radar_fit_scale(160.0, 160.0, 80.0, 40.0, 0.0, 0.0, 8.0);
+    let s = radar_fit_scale(160.0, 160.0, 80.0, 40.0, 0.0, 0.0, 8.0, 12.0);
     assert!((s - 6.0).abs() < 1e-4);
     assert!((radar_ring_radius(12.0, s) - 72.0).abs() < 1e-4);
     assert!((radar_ring_radius(6.0, s) - 36.0).abs() < 1e-4);
+}
+
+#[test]
+fn radar_rings_stay_at_6_and_12() {
+    assert_eq!(radar_rings_m(), [3.0, 6.0, 12.0]);
+}
+
+#[test]
+fn radar_fit_range_only_grows_past_12() {
+    assert_eq!(radar_fit_range(6.0), 12.0);
+    assert_eq!(radar_fit_range(12.0), 12.0);
+    assert_eq!(radar_fit_range(24.0), 24.0);
+}
+
+#[test]
+fn radar_far_blips_sit_outside_the_12m_ring() {
+    let fit = radar_fit_range(24.0);
+    let s = radar_fit_scale(160.0, 160.0, 80.0, 40.0, 0.0, 0.0, 8.0, fit);
+    let ring12 = radar_ring_radius(12.0, s);
+    let (bx, by) = radar_to_screen(-18.0, 0.0, 80.0, 40.0, s, s);
+    let dist = ((bx - 80.0).powi(2) + (by - 40.0).powi(2)).sqrt();
+    assert!(ring12 < radar_ring_radius(12.0, radar_fit_scale(160.0, 160.0, 80.0, 40.0, 0.0, 0.0, 8.0, 12.0)));
+    assert!(dist > ring12);
 }
 
 #[test]
@@ -3089,6 +3813,21 @@ fn horizontal_standings_scrolls_from_the_leader() {
     let (vis_narrow, w_narrow) = hstand_layout(280.0, 1.0, 7, 20);
     assert_eq!(vis_narrow, 3);
     assert!((w_narrow - 274.0 / 3.0).abs() < 0.01);
+}
+
+#[test]
+fn table_slides_eases_a_swap_into_the_new_slot() {
+    let mut slides = TableSlides { rows: Vec::new() };
+    assert_eq!(slides.indices(&[1, 2], 0.0), vec![0.0, 1.0]);
+    let start = slides.indices(&[2, 1], 1.0);
+    assert!((start[0] - 1.0).abs() < 0.01);
+    assert!((start[1] - 0.0).abs() < 0.01);
+    let mid = slides.indices(&[2, 1], 1.15);
+    assert!(mid[0] < 1.0 && mid[0] > 0.0);
+    assert!(mid[1] > 0.0 && mid[1] < 1.0);
+    let done = slides.indices(&[2, 1], 1.30);
+    assert!((done[0] - 0.0).abs() < 0.01);
+    assert!((done[1] - 1.0).abs() < 0.01);
 }
 
 /// Both on the same lap, focus (#12) scored second but `along` metres up the track on the
@@ -3459,6 +4198,55 @@ fn standings_alternating_rows_can_turn_off() {
 }
 
 #[test]
+fn table_plaque_covers_rows_when_saved_box_is_short() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.standing_count = 8;
+    s.rider_count = 8;
+    s.standings_rows = 12;
+    s.relative_count = 4;
+    s.standings_rect.h = 0.12;
+    s.relative.h = 0.10;
+    s.local_race_num = 1;
+    s.focus_race_num = 1;
+    for i in 2..8 {
+        let num = i as i32 + 10;
+        s.standings[i] = standing(num, i as i32 + 1, 5);
+        s.riders[i] = rider(num, 8.0, 3.0, 0.12 + i as f32 * 0.08);
+    }
+    s.show_map = 0;
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg[WidgetId::Standings].show = true;
+    cfg[WidgetId::Relative].show = true;
+    cfg.st_stripe = false;
+    cfg.rel_stripe = false;
+    let st = table_layout_rect(&s, &cfg, WidgetId::Standings, s.standings_rect, 1280.0, 720.0);
+    assert!(
+        st.h > s.standings_rect.h + 0.05,
+        "standings plaque must grow with rows, got {} vs box {}",
+        st.h,
+        s.standings_rect.h
+    );
+    let rel = table_layout_rect(&s, &cfg, WidgetId::Relative, s.relative, 1280.0, 720.0);
+    assert!(
+        rel.h > s.relative.h + 0.04,
+        "relative plaque must grow with rows, got {} vs box {}",
+        rel.h,
+        s.relative.h
+    );
+    let mut px = Pixmap::new(1280, 720).expect("pixmap");
+    draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
+    let mut by_y = click_rider_hits();
+    by_y.sort_by(|a, b| a.y.partial_cmp(&b.y).unwrap());
+    assert!(by_y.len() >= 8, "standings name hits, got {}", by_y.len());
+    let last = by_y.last().unwrap();
+    let p = sample_px(&px, last.x + last.w * 0.85, last.y + last.h * 0.5);
+    assert!(p[3] > 50, "plaque must sit behind the last standings row, got {p:?}");
+}
+
+#[test]
 fn stripe_row_bg_lifts_when_panel_is_opaque() {
     assert_eq!(rgba8(stripe_row_bg(bg_a(78))), (0, 0, 0, 54));
     assert_eq!(rgba8(stripe_row_bg(bg_a(100))), (255, 255, 255, 34));
@@ -3718,7 +4506,7 @@ fn sector_snap(base: Snapshot) -> Snapshot {
     s.sector_last = 1;
     s.sector_cur = [24_093, 25_760, 0];
     s.sector_last_lap = [24_310, 25_820, 23_090];
-    s.sector_best = [24_180, 25_640, 22_910];
+    s.sector_best = [24_180, 25_640, 20_147];
     s.sector_delta = [-87, 120, 0];
     s.sector_delta_valid = 0b011;
     s
@@ -3793,8 +4581,19 @@ fn widget_goldens_pin_paint() {
         [24_500, 26_010, 20_550],
         [24_330, 25_800, 20_310],
     ]);
+    crate::delta::set_preview(Some(crate::delta::DeltaView {
+        ready: true,
+        recording: false,
+        has_delta: true,
+        delta_ms: 210,
+        ref_lap_ms: 70_140,
+        last_lap_ms: 69_967,
+        cover: 100,
+        new_best: false,
+    }));
     let s = golden_snap(&sector_snap(base), &cfg);
     draw_widget_golden("sector", &s, &cfg, cfg[WidgetId::Sector].rect);
+    crate::delta::set_preview(None);
 
     hide_widgets(&mut cfg);
     cfg[WidgetId::Delta].show = true;
@@ -4029,6 +4828,14 @@ fn lapping_from_behind(s: &mut Snapshot) {
     s.riders[1].track_pos = 0.40;
 }
 
+fn lapping_ahead(s: &mut Snapshot) {
+    s.standings[1].num_laps = 3;
+    s.standings[0].num_laps = 2;
+    s.riders[0].track_pos = 0.435;
+    s.local_track_pos = 0.40;
+    s.riders[1].track_pos = 0.40;
+}
+
 fn rect_has(px: &Pixmap, x0: f32, y0: f32, x1: f32, y1: f32, pred: impl Fn([u8; 4]) -> bool) -> bool {
     let mut x = x0;
     while x < x1 {
@@ -4045,11 +4852,15 @@ fn rect_has(px: &Pixmap, x0: f32, y0: f32, x1: f32, y1: f32, pred: impl Fn([u8; 
 }
 
 fn is_yellow(p: [u8; 4]) -> bool {
-    p[3] > 40 && p[0] > 200 && p[1] > 180 && p[2] < 80
+    p[3] > 40 && p[0] > 170 && p[1] > 140 && p[2] < 110 && (p[0] as i16 - p[2] as i16) > 70
 }
 
 fn is_blue(p: [u8; 4]) -> bool {
-    p[3] > 40 && p[2] > 170 && p[0] < 130 && p[1] > 80
+    p[3] > 40 && p[2] > 140 && p[0] < 130 && p[1] > 80 && p[2] > p[0]
+}
+
+fn is_red(p: [u8; 4]) -> bool {
+    p[3] > 40 && p[0] > 150 && p[1] < 120 && p[2] < 120 && (p[0] as i16 - p[1] as i16) > 60
 }
 
 #[test]
@@ -4059,8 +4870,8 @@ fn caution_off_ignores_nearby_crash() {
     let mut s = mid_race_snap();
     crash_ahead(&mut s);
     assert_eq!(dash_race_flag(&s), DashFlag::None);
-    assert_eq!(wanted_flag(&s, false, false), DashFlag::None);
-    assert_eq!(caution_flag(&s, true, true), DashFlag::Yellow);
+    assert_eq!(wanted_flag(&s, false, false, false), DashFlag::None);
+    assert_eq!(caution_flag(&s, true, true, false), DashFlag::Yellow);
 }
 
 #[test]
@@ -4069,16 +4880,16 @@ fn caution_yellow_on_nearby_crash() {
     reset_session();
     let mut s = mid_race_snap();
     crash_ahead(&mut s);
-    assert_eq!(wanted_flag(&s, true, false), DashFlag::Yellow);
-    assert_eq!(wanted_flag(&s, false, true), DashFlag::None);
+    assert_eq!(wanted_flag(&s, true, false, false), DashFlag::Yellow);
+    assert_eq!(wanted_flag(&s, false, true, false), DashFlag::None);
     crash_behind(&mut s);
-    assert_eq!(caution_flag(&s, true, true), DashFlag::None, "crash behind you is not a yellow");
+    assert_eq!(caution_flag(&s, true, true, false), DashFlag::None, "crash behind you is not a yellow");
     crash_ahead(&mut s);
     s.riders[0].track_pos = 0.399;
-    assert_eq!(caution_flag(&s, true, true), DashFlag::None, "crash on top of you is not a yellow");
+    assert_eq!(caution_flag(&s, true, true, false), DashFlag::None, "crash on top of you is not a yellow");
     crash_ahead(&mut s);
     s.riders[0].track_pos = 0.55;
-    assert_eq!(caution_flag(&s, true, true), DashFlag::None, "crash far ahead is not a yellow");
+    assert_eq!(caution_flag(&s, true, true, false), DashFlag::None, "crash far ahead is not a yellow");
 }
 
 #[test]
@@ -4088,12 +4899,44 @@ fn caution_blue_when_being_lapped() {
     let mut s = mid_race_snap();
     lapping_from_behind(&mut s);
     assert_eq!(lap_rel(&s, 1), LapRel::LappingMe);
-    assert_eq!(wanted_flag(&s, false, true), DashFlag::Blue);
-    assert_eq!(wanted_flag(&s, false, false), DashFlag::None);
-    assert_eq!(wanted_flag(&s, true, false), DashFlag::None);
+    assert_eq!(wanted_flag(&s, false, true, false), DashFlag::Blue);
+    assert_eq!(wanted_flag(&s, false, false, false), DashFlag::None);
+    assert_eq!(wanted_flag(&s, true, false, false), DashFlag::None);
     s.riders[0].track_pos = 0.28;
     assert_eq!(lap_rel(&s, 1), LapRel::LappingMe);
-    assert_eq!(wanted_flag(&s, false, true), DashFlag::None, "lapper still too far for blue");
+    assert_eq!(wanted_flag(&s, false, true, false), DashFlag::None, "lapper still too far for blue");
+}
+
+#[test]
+fn caution_red_when_lapping_ahead() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = mid_race_snap();
+    lapping_ahead(&mut s);
+    assert_eq!(lap_rel(&s, 1), LapRel::LappedByMe);
+    assert_eq!(wanted_flag(&s, false, false, true), DashFlag::Red);
+    assert_eq!(wanted_flag(&s, false, false, false), DashFlag::None);
+    assert_eq!(wanted_flag(&s, true, true, false), DashFlag::None);
+    s.riders[0].track_pos = 0.50;
+    assert_eq!(lap_rel(&s, 1), LapRel::LappedByMe);
+    assert_eq!(wanted_flag(&s, false, false, true), DashFlag::None, "lapper still too far for red");
+}
+
+#[test]
+fn caution_blue_and_red_off_in_warmup() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = mid_race_snap();
+    s.session_kind = 5;
+    s.session_laps = 2;
+    s.session_length = 15;
+    lapping_from_behind(&mut s);
+    assert!(is_warmup(&s));
+    assert_eq!(lap_rel(&s, 1), LapRel::Same);
+    assert_eq!(wanted_flag(&s, false, true, true), DashFlag::None);
+    lapping_ahead(&mut s);
+    assert_eq!(lap_rel(&s, 1), LapRel::Same);
+    assert_eq!(wanted_flag(&s, false, true, true), DashFlag::None);
 }
 
 #[test]
@@ -4105,22 +4948,44 @@ fn caution_yellow_beats_blue() {
     s.rider_count = 3;
     s.riders[2] = rider(5, 12.0, 5.0, 0.43);
     s.riders[2].crashed = 1;
-    assert_eq!(caution_flag(&s, true, true), DashFlag::Yellow);
-    assert_eq!(caution_flag(&s, false, true), DashFlag::Blue);
+    assert_eq!(caution_flag(&s, true, true, false), DashFlag::Yellow);
+    assert_eq!(caution_flag(&s, false, true, false), DashFlag::Blue);
+}
+
+#[test]
+fn caution_blue_beats_red() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = mid_race_snap();
+    lapping_ahead(&mut s);
+    s.rider_count = 3;
+    s.standing_count = 3;
+    s.standings[2] = standing(5, 3, 4);
+    s.riders[2] = rider(5, 8.0, 3.0, 0.365);
+    assert_eq!(caution_flag(&s, false, true, true), DashFlag::Blue);
+    assert_eq!(caution_flag(&s, false, false, true), DashFlag::Red);
 }
 
 #[test]
 fn caution_loses_to_white_and_checkered() {
     assert_eq!(merge_caution(DashFlag::White, DashFlag::Yellow), DashFlag::White);
     assert_eq!(merge_caution(DashFlag::Checkered, DashFlag::Blue), DashFlag::Checkered);
+    assert_eq!(merge_caution(DashFlag::White, DashFlag::Red), DashFlag::White);
     assert_eq!(merge_caution(DashFlag::None, DashFlag::Yellow), DashFlag::Yellow);
+    assert_eq!(merge_caution(DashFlag::None, DashFlag::Red), DashFlag::Red);
 }
 
 #[test]
 fn dash_wrap_skips_caution_flags() {
-    assert_eq!(dash_wrap_flag(DashFlag::Yellow, 1.0), (DashFlag::None, 0.0));
-    assert_eq!(dash_wrap_flag(DashFlag::Blue, 1.0), (DashFlag::None, 0.0));
-    assert_eq!(dash_wrap_flag(DashFlag::White, 0.8), (DashFlag::White, 0.8));
+    assert_eq!(dash_wrap_flag(DashFlag::Yellow, 1.0, false, false, false), (DashFlag::None, 0.0));
+    assert_eq!(dash_wrap_flag(DashFlag::Blue, 1.0, false, false, false), (DashFlag::None, 0.0));
+    assert_eq!(dash_wrap_flag(DashFlag::Red, 1.0, false, false, false), (DashFlag::None, 0.0));
+    assert_eq!(dash_wrap_flag(DashFlag::White, 0.8, false, false, false), (DashFlag::White, 0.8));
+    assert_eq!(dash_wrap_flag(DashFlag::Yellow, 1.0, true, false, false), (DashFlag::Yellow, 1.0));
+    assert_eq!(dash_wrap_flag(DashFlag::Blue, 0.7, false, true, false), (DashFlag::Blue, 0.7));
+    assert_eq!(dash_wrap_flag(DashFlag::Red, 0.7, false, false, true), (DashFlag::Red, 0.7));
+    assert_eq!(dash_wrap_flag(DashFlag::Yellow, 1.0, false, true, false), (DashFlag::None, 0.0));
+    assert_eq!(dash_wrap_flag(DashFlag::Red, 1.0, true, true, false), (DashFlag::None, 0.0));
 }
 
 #[test]
@@ -4138,6 +5003,7 @@ fn flag_widget_paints_yellow() {
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
     cfg[WidgetId::Flag].show = true;
+    cfg.flag_yellow = true;
     let s = golden_snap(&live_snap(), &cfg);
     let mut px = Pixmap::new(1280, 720).expect("pixmap");
     draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
@@ -4163,6 +5029,7 @@ fn flag_caption_white_covers_the_label() {
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
     cfg[WidgetId::Flag].show = true;
+    cfg.flag_yellow = true;
     let s = golden_snap(&live_snap(), &cfg);
     let mut px = Pixmap::new(1280, 720).expect("pixmap");
     draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
@@ -4201,6 +5068,7 @@ fn flag_caption_white_leaves_cloth_above_and_below() {
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
     cfg[WidgetId::Flag].show = true;
+    cfg.flag_yellow = true;
     let s = golden_snap(&live_snap(), &cfg);
     let mut px = Pixmap::new(1280, 720).expect("pixmap");
     draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
@@ -4210,7 +5078,7 @@ fn flag_caption_white_leaves_cloth_above_and_below() {
     let h = cfg[WidgetId::Flag].rect.h * 720.0;
     let cx = x0 + w * 0.5;
     let y1 = y0 + h;
-    let cloth = |p: [u8; 4]| p[3] > 40 && p[0] > 200 && p[1] > 180 && p[2] < 80;
+    let cloth = is_yellow;
     assert!(
         (1..4).any(|dy| cloth(sample_px(&px, cx, y0 + dy as f32))),
         "cloth should show above the caption white"
@@ -4236,6 +5104,7 @@ fn flag_text_off_leaves_cloth_with_no_caption() {
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
     cfg[WidgetId::Flag].show = true;
+    cfg.flag_yellow = true;
     cfg.flag_text = false;
     let s = golden_snap(&live_snap(), &cfg);
     let mut px = Pixmap::new(1280, 720).expect("pixmap");
@@ -4268,6 +5137,7 @@ fn flag_widget_paints_blue() {
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
     cfg[WidgetId::Flag].show = true;
+    cfg.flag_blue = true;
     let s = golden_snap(&live_snap(), &cfg);
     let mut px = Pixmap::new(1280, 720).expect("pixmap");
     draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
@@ -4276,6 +5146,32 @@ fn flag_widget_paints_blue() {
     let x1 = x0 + cfg[WidgetId::Flag].rect.w * 1280.0;
     let y1 = y0 + cfg[WidgetId::Flag].rect.h * 720.0;
     assert!(rect_has(&px, x0, y0, x1, y1, is_blue), "blue flag should paint the cloth");
+}
+
+#[test]
+fn flag_widget_paints_red() {
+    let _g = session_lock();
+    reset_session();
+    struct Guard;
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            reset_flag_display();
+        }
+    }
+    let _pg = Guard;
+    set_flag_preview(5);
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg[WidgetId::Flag].show = true;
+    cfg.flag_red = true;
+    let s = golden_snap(&live_snap(), &cfg);
+    let mut px = Pixmap::new(1280, 720).expect("pixmap");
+    draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
+    let x0 = cfg[WidgetId::Flag].rect.x * 1280.0;
+    let y0 = cfg[WidgetId::Flag].rect.y * 720.0;
+    let x1 = x0 + cfg[WidgetId::Flag].rect.w * 1280.0;
+    let y1 = y0 + cfg[WidgetId::Flag].rect.h * 720.0;
+    assert!(rect_has(&px, x0, y0, x1, y1, is_red), "red flag should paint the cloth");
 }
 
 #[test]
@@ -4303,5 +5199,91 @@ fn dash_wrap_does_not_paint_yellow() {
     assert!(
         !rect_has(&px, x0, y0, x1, y1, is_yellow),
         "dash wrap must not paint yellow"
+    );
+}
+
+#[test]
+fn dash_wrap_paints_yellow_when_enabled() {
+    let _g = session_lock();
+    reset_session();
+    struct Guard;
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            reset_flag_display();
+        }
+    }
+    let _pg = Guard;
+    set_flag_preview(3);
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg[WidgetId::Dash].show = true;
+    cfg.dash_yellow = true;
+    let s = golden_snap(&live_snap(), &cfg);
+    let mut px = Pixmap::new(1280, 720).expect("pixmap");
+    draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
+    let x0 = cfg[WidgetId::Dash].rect.x * 1280.0 - 8.0;
+    let y0 = (cfg[WidgetId::Dash].rect.y * 720.0 - 36.0).max(0.0);
+    let x1 = (cfg[WidgetId::Dash].rect.x + cfg[WidgetId::Dash].rect.w) * 1280.0 + 8.0;
+    let y1 = cfg[WidgetId::Dash].rect.y * 720.0;
+    assert!(
+        rect_has(&px, x0, y0, x1, y1, is_yellow),
+        "dash wrap should paint yellow when the toggle is on"
+    );
+}
+
+#[test]
+fn dash_wrap_does_not_paint_red() {
+    let _g = session_lock();
+    reset_session();
+    struct Guard;
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            reset_flag_display();
+        }
+    }
+    let _pg = Guard;
+    set_flag_preview(5);
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg[WidgetId::Dash].show = true;
+    let s = golden_snap(&live_snap(), &cfg);
+    let mut px = Pixmap::new(1280, 720).expect("pixmap");
+    draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
+    let x0 = cfg[WidgetId::Dash].rect.x * 1280.0 - 8.0;
+    let y0 = (cfg[WidgetId::Dash].rect.y * 720.0 - 36.0).max(0.0);
+    let x1 = (cfg[WidgetId::Dash].rect.x + cfg[WidgetId::Dash].rect.w) * 1280.0 + 8.0;
+    let y1 = cfg[WidgetId::Dash].rect.y * 720.0;
+    assert!(
+        !rect_has(&px, x0, y0, x1, y1, is_red),
+        "dash wrap must not paint red"
+    );
+}
+
+#[test]
+fn dash_wrap_paints_red_when_enabled() {
+    let _g = session_lock();
+    reset_session();
+    struct Guard;
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            reset_flag_display();
+        }
+    }
+    let _pg = Guard;
+    set_flag_preview(5);
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg[WidgetId::Dash].show = true;
+    cfg.dash_red = true;
+    let s = golden_snap(&live_snap(), &cfg);
+    let mut px = Pixmap::new(1280, 720).expect("pixmap");
+    draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
+    let x0 = cfg[WidgetId::Dash].rect.x * 1280.0 - 8.0;
+    let y0 = (cfg[WidgetId::Dash].rect.y * 720.0 - 36.0).max(0.0);
+    let x1 = (cfg[WidgetId::Dash].rect.x + cfg[WidgetId::Dash].rect.w) * 1280.0 + 8.0;
+    let y1 = cfg[WidgetId::Dash].rect.y * 720.0;
+    assert!(
+        rect_has(&px, x0, y0, x1, y1, is_red),
+        "dash wrap should paint red when the toggle is on"
     );
 }

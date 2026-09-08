@@ -58,6 +58,16 @@ fn main() {
             size_show(c, "sector", 0.42, 0.28);
             c[WidgetId::Sector].show = true;
             c.sector_live = true;
+            mxbo_hud::delta::set_preview(Some(mxbo_hud::delta::DeltaView {
+                ready: true,
+                recording: false,
+                has_delta: true,
+                delta_ms: 210,
+                ref_lap_ms: 70_140,
+                last_lap_ms: 69_967,
+                cover: 100,
+                new_best: false,
+            }));
             mxbo_hud::sector::set_history([
                 [24_180, 25_640, 20_147],
                 [24_410, 25_890, 20_400],
@@ -112,7 +122,7 @@ fn main() {
             snap.sector_last = 1;
             snap.sector_cur = [24_093, 25_760, 0];
             snap.sector_last_lap = [24_310, 25_820, 23_090];
-            snap.sector_best = [24_180, 25_640, 22_910];
+            snap.sector_best = [24_180, 25_640, 20_147];
             snap.sector_delta = [-87, 120, 0];
             snap.sector_delta_valid = 0b011;
         }

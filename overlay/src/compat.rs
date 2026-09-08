@@ -116,18 +116,44 @@ pub fn is_one_px_shy(window: RECT, monitor: RECT) -> bool {
         && window.bottom - window.top == h - 1
 }
 
+pub fn is_full_monitor(window: RECT, monitor: RECT) -> bool {
+    let w = monitor.right - monitor.left;
+    let h = monitor.bottom - monitor.top;
+    window.left == monitor.left
+        && window.top == monitor.top
+        && window.right - window.left == w
+        && window.bottom - window.top == h
+}
+
+/// Borderless (or leftover 1px-shy). A smaller windowed game must not match.
+pub fn covers_monitor(window: RECT, monitor: RECT) -> bool {
+    is_full_monitor(window, monitor) || is_one_px_shy(window, monitor)
+}
+
 const OVERLAY_MIN: i32 = 64;
 
 /// Keep the HUD (and the top-right icon) on the game's monitor when the
-/// game window spans extra screens.
+/// game window spans extra screens. A 1–2px bottom shortfall (borderless
+/// kept shy of exclusive fullscreen) still paints to the monitor edge.
 pub fn overlay_rect_on_monitor(client: RECT, monitor: RECT) -> Option<(i32, i32, i32, i32)> {
     let left = client.left.max(monitor.left);
     let top = client.top.max(monitor.top);
     let right = client.right.min(monitor.right);
-    let bottom = client.bottom.min(monitor.bottom);
+    let mut bottom = client.bottom.min(monitor.bottom);
+    if flush_to_monitor_except_bottom_gap(client, monitor) {
+        bottom = monitor.bottom;
+    }
     let w = right - left;
     let h = bottom - top;
     (w >= OVERLAY_MIN && h >= OVERLAY_MIN).then_some((left, top, w, h))
+}
+
+pub fn flush_to_monitor_except_bottom_gap(client: RECT, monitor: RECT) -> bool {
+    client.left <= monitor.left
+        && client.top <= monitor.top
+        && client.right >= monitor.right
+        && client.bottom <= monitor.bottom
+        && monitor.bottom - client.bottom <= 2
 }
 
 /// Game client in screen coords, clipped to the monitor MX Bikes is on.
@@ -147,7 +173,8 @@ pub fn overlay_screen_rect(hwnd: HWND) -> Option<(i32, i32, i32, i32)> {
     }
 }
 
-/// Undo the 1px shrink and keep the taskbar off the game until MX Bikes exits.
+/// Undo a leftover 1px shrink from older builds and keep the taskbar off
+/// a borderless game until MX Bikes exits.
 pub fn on_quit(game: Option<HWND>, game_pid: Option<u32>) {
     unsafe {
         hide_hud_overlays();
@@ -185,6 +212,7 @@ pub fn wait_then_restore_taskbar(pid: u32) {
                     true,
                     pointer_on_game_monitor(hwnd),
                     foreground_is_shell_ui(),
+                    window_covers_its_monitor(hwnd),
                 );
                 let mon = unsafe { monitor_id(hwnd) }.unwrap_or(0);
                 if mon != game_mon {
@@ -417,9 +445,12 @@ pub struct FullscreenFix {
     /// Monitor MX Bikes was on when we last hid/showed the taskbar.
     game_mon: isize,
     last_show_retry: Instant,
-    /// Game HWND we already shrank 1px. Do not SetWindowPos it again on a
-    /// foreground flicker — that hitch freezes MX Bikes mid-moto.
-    shy_hwnd: isize,
+    /// Game HWND we already pinned under the HUD. Do not SetWindowPos it
+    /// again on a foreground flicker — that hitch freezes MX Bikes mid-moto.
+    fitted_hwnd: isize,
+    /// Last `covers_monitor` we pinned for. Re-pin if the game goes
+    /// windowed ↔ borderless on the same HWND.
+    fitted_covers: bool,
 }
 
 impl FullscreenFix {
@@ -441,15 +472,16 @@ impl FullscreenFix {
                 taskbar_want_hide: false,
                 game_mon: 0,
                 last_show_retry: Instant::now() - Duration::from_secs(10),
-                shy_hwnd: 0,
+                fitted_hwnd: 0,
+                fitted_covers: false,
             }
         }
     }
 
     pub fn set_layout_mode(&mut self, overlay: HWND, on: bool) {
         if on {
-            // Stay on the HUD. The 1px shy gap under the game is a Start
-            // hot-edge; unclipping into it opens Start and freezes the HUD.
+            // Stay on the HUD. The real screen edge is a Start hot-edge;
+            // unclipping into it opens Start and freezes the HUD.
             unsafe {
                 let mut wr = RECT::default();
                 let _ = GetWindowRect(overlay, &mut wr);
@@ -492,14 +524,22 @@ impl FullscreenFix {
                         true,
                         pointer_on_game_monitor(game),
                         foreground_is_shell_ui(),
+                        window_covers_its_monitor(game),
                     );
                     let mon = monitor_id(game).unwrap_or(0);
                     if mon != self.game_mon {
                         self.game_mon = mon;
                         restore_all_taskbars_async();
                         self.taskbar_want_hide = false;
-                        keep_just_shy_of_fullscreen(game);
-                        self.shy_hwnd = game.0 as isize;
+                        self.fitted_hwnd = 0;
+                        self.fitted_covers = false;
+                    }
+                    let covers = window_covers_its_monitor(game);
+                    let id = game.0 as isize;
+                    if self.fitted_hwnd != id || self.fitted_covers != covers {
+                        pin_game_for_overlay(game);
+                        self.fitted_hwnd = id;
+                        self.fitted_covers = covers;
                     }
                     // Ctrl-drag must not ShowWindow the bar. Start on this
                     // screen + Explorer poke is what freezes the HUD.
@@ -516,10 +556,12 @@ impl FullscreenFix {
                 }
                 if became || now.duration_since(self.last_raise) > Duration::from_secs(2) {
                     if let Some(game) = game {
+                        let covers = window_covers_its_monitor(game);
                         let id = game.0 as isize;
-                        if self.shy_hwnd != id {
-                            keep_just_shy_of_fullscreen(game);
-                            self.shy_hwnd = id;
+                        if self.fitted_hwnd != id || self.fitted_covers != covers {
+                            pin_game_for_overlay(game);
+                            self.fitted_hwnd = id;
+                            self.fitted_covers = covers;
                         }
                     }
                     if let Some(set_band) = self.set_window_band {
@@ -551,7 +593,8 @@ impl FullscreenFix {
                         self.hide_after = None;
                         self.taskbar_want_hide = false;
                         self.game_mon = 0;
-                        self.shy_hwnd = 0;
+                        self.fitted_hwnd = 0;
+                        self.fitted_covers = false;
                         return false;
                     }
                     self.hide_after = Some(now + Duration::from_millis(1500));
@@ -684,16 +727,23 @@ fn overlay_stays_for_game(game: HWND) -> bool {
         || !pointer_on_game_monitor(game)
 }
 
-/// Hide the game-monitor taskbar only while the pointer is on that screen
-/// and Start / Task View / flyouts are not up. Win+Tab and the Win key
-/// need the bar back. Ctrl-drag skips this path so a hot-edge Start
-/// does not ShowWindow Explorer and freeze the HUD.
-fn should_hide_game_taskbar(same_monitor: bool, pointer_on_game: bool, shell_ui: bool) -> bool {
-    same_monitor && pointer_on_game && !shell_ui
+/// Hide the game-monitor taskbar only while the game covers that screen
+/// (borderless), the pointer is on that screen, and Start / Task View /
+/// flyouts are not up. A smaller windowed game keeps the bar. Win+Tab
+/// and the Win key need the bar back. Ctrl-drag skips this path so a
+/// hot-edge Start does not ShowWindow Explorer and freeze the HUD.
+fn should_hide_game_taskbar(
+    same_monitor: bool,
+    pointer_on_game: bool,
+    shell_ui: bool,
+    covers_monitor: bool,
+) -> bool {
+    same_monitor && pointer_on_game && !shell_ui && covers_monitor
 }
 
 /// HUD stays composited when the game, Settings, shell UI, another
 /// monitor, or the pointer on another screen is in front.
+#[cfg(test)]
 fn overlay_stays_up(
     game_foreground: bool,
     settings_foreground: bool,
@@ -970,17 +1020,53 @@ unsafe fn set_click_through(hwnd: HWND, through: bool) {
     );
 }
 
-unsafe fn keep_just_shy_of_fullscreen(game: HWND) {
+fn window_covers_its_monitor(game: HWND) -> bool {
+    unsafe {
+        let mut wr = RECT::default();
+        let _ = GetWindowRect(game, &mut wr);
+        let Some(mr) = monitor_rect(game) else {
+            return false;
+        };
+        covers_monitor(wr, mr)
+    }
+}
+
+/// Borderless stays 1px short of the monitor so DWM still composites the
+/// HUD (true fullscreen hides layered windows). Windowed is not resized.
+/// Always drop the game to NOTOPMOST once so the overlay can sit on it.
+unsafe fn pin_game_for_overlay(game: HWND) {
     let mut wr = RECT::default();
     let _ = GetWindowRect(game, &mut wr);
     let Some(mr) = monitor_rect(game) else {
         return;
     };
-    let w = mr.right - mr.left;
-    let h = (mr.bottom - mr.top - 1).max(600);
-    if wr.left != mr.left || wr.top != mr.top || wr.right - wr.left != w || wr.bottom - wr.top != h
-    {
-        let _ = SetWindowPos(game, HWND_NOTOPMOST, mr.left, mr.top, w, h, SWP_NOACTIVATE);
+    if covers_monitor(wr, mr) {
+        let w = mr.right - mr.left;
+        let h = (mr.bottom - mr.top - 1).max(600);
+        if wr.left != mr.left || wr.top != mr.top || wr.right - wr.left != w || wr.bottom - wr.top != h
+        {
+            let _ = SetWindowPos(game, HWND_NOTOPMOST, mr.left, mr.top, w, h, SWP_NOACTIVATE);
+        } else {
+            let _ = SetWindowPos(
+                game,
+                HWND_NOTOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            );
+        }
+    } else {
+        let _ = SetWindowPos(
+            game,
+            HWND_NOTOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        );
     }
 }
 

@@ -35,8 +35,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use crate::config::{
     update_config, with_config, BoardField, DashField, DotLabel, FontFamily, HudConfig, RelField,
-    SettingsKey, SnapAlign, StField, StanceBind, StanceMode, StanceStyle, GamepadStyle, LeanStyle, SYS_PRESETS, SYS_PROC_MAX, TableText, Units, WidgetId, COL_W_MAX,
-    COL_W_MIN,
+    SessionPreset, SettingsKey, SnapAlign, StField, StanceBind, StanceMode, StanceStyle, GamepadStyle, LeanStyle, SYS_PRESETS, SYS_PROC_MAX, TableText, Units, WidgetId, COL_W_MAX,
+    COL_W_MIN, RADAR_RANGE_MAX, RADAR_RANGE_MIN,
 };
 use crate::render::{fill_rect, icon, measure, text, Fonts};
 
@@ -269,6 +269,8 @@ enum Hit {
     TabFlag,
     TabLean,
     TabGamepad,
+    Preset(SessionPreset),
+    PresetCopyAll,
     StShow,
     RelShow,
     MapShow,
@@ -276,6 +278,9 @@ enum Hit {
     RadarShow,
     DashShow,
     DashRev,
+    DashYellow,
+    DashBlue,
+    DashRed,
     DashSimple,
     TickerShow,
     SysShow,
@@ -300,6 +305,7 @@ enum Hit {
     GamepadShow,
     FlagYellow,
     FlagBlue,
+    FlagRed,
     FlagText,
     TickerTitle,
     TickerAutoscroll,
@@ -351,6 +357,7 @@ enum Hit {
     RadarSides,
     RadarRear,
     RadarRings,
+    RadarRange,
     StBg,
     StHl,
     StStripe,
@@ -562,6 +569,7 @@ thread_local! {
 
 const SIDE_W: f32 = 204.0;
 const TOP_H: f32 = 52.0;
+const PRESET_STRIP_H: f32 = 52.0;
 const UPDATE_BANNER_H: f32 = 46.0;
 const UPDATE_BANNER_H_ADMIN: f32 = 64.0;
 
@@ -930,7 +938,7 @@ pub fn handle_message(msg: u32, wp: WPARAM, lp: LPARAM) -> bool {
                 let sliding = ui.and_then(|u| u.slide).is_some() || hover.is_some_and(is_slider);
                 let grip = matches!(hover, Some(Hit::StDrag(_)) | Some(Hit::RelDrag(_)));
                 (
-                    hover.is_some(),
+                    hover.is_some_and(|h| !preset_hit_locked(h)),
                     dragging || grip || sliding,
                     hover == Some(Hit::FbText) || hover == Some(Hit::ReplyText),
                 )
@@ -1017,6 +1025,7 @@ fn is_slider(hit: Hit) -> bool {
             | Hit::MapBg
             | Hit::MiniBg
             | Hit::MiniZoom
+            | Hit::RadarRange
             | Hit::RadarBg
             | Hit::DashBg
             | Hit::TickerBg
@@ -1054,6 +1063,7 @@ fn slide_range(hit: Hit) -> (i32, i32) {
             (COL_W_MIN, max)
         }
         Hit::Font(_) => (70, 160),
+        Hit::RadarRange => (RADAR_RANGE_MIN, RADAR_RANGE_MAX),
         _ => (0, 100),
     }
 }
@@ -1101,6 +1111,7 @@ fn apply_slide(hit: Hit, mx: f32, x: f32, w: f32, min: i32, max: i32) {
         Hit::MapBg => c[WidgetId::Map].bg = v,
         Hit::MiniBg => c[WidgetId::Minimap].bg = v,
         Hit::MiniZoom => c.mini_zoom = v,
+        Hit::RadarRange => c.radar_range = v,
         Hit::RadarBg => c[WidgetId::Radar].bg = v,
         Hit::DashBg => c[WidgetId::Dash].bg = v,
         Hit::TickerBg => c[WidgetId::Ticker].bg = v,
@@ -1296,6 +1307,24 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         }
         Hit::TabGamepad => {
             set_tab(Tab::Gamepad);
+            return;
+        }
+        Hit::Preset(p) => {
+            close_drop();
+            update_config(|c| {
+                if !c.session_live {
+                    c.settings_preset = p;
+                }
+            });
+            return;
+        }
+        Hit::PresetCopyAll => {
+            close_drop();
+            update_config(|c| {
+                if !c.session_live {
+                    c.copy_settings_to_all();
+                }
+            });
             return;
         }
         Hit::MapDotOpen => {
@@ -1566,6 +1595,9 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::RadarShow => c[WidgetId::Radar].show ^= true,
         Hit::DashShow => c[WidgetId::Dash].show ^= true,
         Hit::DashRev => c.dash_rev = !c.dash_rev,
+        Hit::DashYellow => c.dash_yellow = !c.dash_yellow,
+        Hit::DashBlue => c.dash_blue = !c.dash_blue,
+        Hit::DashRed => c.dash_red = !c.dash_red,
         Hit::DashSimple => c.dash_simple = !c.dash_simple,
         Hit::TickerShow => c[WidgetId::Ticker].show ^= true,
         Hit::SysShow => c[WidgetId::Sys].show ^= true,
@@ -1594,6 +1626,7 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         }
         Hit::FlagYellow => c.flag_yellow = !c.flag_yellow,
         Hit::FlagBlue => c.flag_blue = !c.flag_blue,
+        Hit::FlagRed => c.flag_red = !c.flag_red,
         Hit::FlagText => c.flag_text = !c.flag_text,
         Hit::StanceShowSit => c.stance_show_sit = !c.stance_show_sit,
         Hit::TickerTitle => c.ticker_title = !c.ticker_title,
@@ -1711,8 +1744,9 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::AutoUpdateOnLaunch | Hit::QuitApp | Hit::Uninstall | Hit::GameFolder | Hit::SysAppBrowse
         | Hit::FbRate | Hit::FbBug | Hit::FbFeature | Hit::FbStar(_) | Hit::FbText | Hit::FbAttach | Hit::FbSend
         | Hit::StDrag(_) | Hit::RelDrag(_)
-        | Hit::StBg | Hit::StHl | Hit::RelBg | Hit::RelHl | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg | Hit::FlagBg | Hit::LeanBg | Hit::GamepadBg
-        | Hit::StW(_) | Hit::RelW(_) | Hit::Font(_) | Hit::StanceReset | Hit::TrackPbClear => {}
+        | Hit::StBg | Hit::StHl | Hit::RelBg | Hit::RelHl | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarRange | Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg | Hit::FlagBg | Hit::LeanBg | Hit::GamepadBg
+        | Hit::StW(_) | Hit::RelW(_) | Hit::Font(_) | Hit::StanceReset | Hit::TrackPbClear
+        | Hit::Preset(_) | Hit::PresetCopyAll => {}
     });
     if id == Hit::FeatureSector && !with_config(|c| c.experimental_unlocked()) {
         let on_labs = UI.lock().unwrap().as_ref().is_some_and(|u| u.tab.is_labs());
@@ -1797,6 +1831,14 @@ fn hit_label(hit: Hit) -> String {
         Hit::TabFlag => "Flags".into(),
         Hit::TabLean => "Lean".into(),
         Hit::TabGamepad => "Controller".into(),
+        Hit::Preset(p) => {
+            if preset_hit_locked(Hit::Preset(p)) {
+                format!("{} — switch in the garage", p.label())
+            } else {
+                p.label().into()
+            }
+        }
+        Hit::PresetCopyAll => "Copy to all presets".into(),
         Hit::FeatureSector => "Experimental widgets".into(),
         Hit::StShow | Hit::RelShow | Hit::MapShow | Hit::MiniShow | Hit::RadarShow | Hit::DashShow
         | Hit::TickerShow | Hit::SysShow | Hit::SectorShow | Hit::DeltaShow | Hit::StanceShow | Hit::FlagShow | Hit::LeanShow | Hit::GamepadShow => "Show on overlay".into(),
@@ -1833,11 +1875,16 @@ fn hit_label(hit: Hit) -> String {
         Hit::StanceShowSit => "Show sitting".into(),
         Hit::FlagYellow => "Yellow flag".into(),
         Hit::FlagBlue => "Blue flag".into(),
+        Hit::FlagRed => "Red flag".into(),
         Hit::FlagText => "Text".into(),
         Hit::RadarSides => "Side proximity".into(),
         Hit::RadarRear => "Rear proximity".into(),
         Hit::RadarRings => "Range rings".into(),
+        Hit::RadarRange => "Range".into(),
         Hit::DashRev => "Rev indicator".into(),
+        Hit::DashYellow => "Yellow flag".into(),
+        Hit::DashBlue => "Blue flag".into(),
+        Hit::DashRed => "Red flag".into(),
         Hit::DashSimple => "Simple dash".into(),
         Hit::MapSectors => "Sector lines".into(),
         Hit::MiniSectors => "Sector lines".into(),
@@ -2058,6 +2105,7 @@ fn nudge_slider(hit: Hit, delta: i32) {
         Hit::MapBg => c[WidgetId::Map].bg,
         Hit::MiniBg => c[WidgetId::Minimap].bg,
         Hit::MiniZoom => c.mini_zoom,
+        Hit::RadarRange => c.radar_range,
         Hit::RadarBg => c[WidgetId::Radar].bg,
         Hit::DashBg => c[WidgetId::Dash].bg,
         Hit::TickerBg => c[WidgetId::Ticker].bg,
@@ -2082,6 +2130,7 @@ fn nudge_slider(hit: Hit, delta: i32) {
         Hit::MapBg => c[WidgetId::Map].bg = v,
         Hit::MiniBg => c[WidgetId::Minimap].bg = v,
         Hit::MiniZoom => c.mini_zoom = v,
+        Hit::RadarRange => c.radar_range = v,
         Hit::RadarBg => c[WidgetId::Radar].bg = v,
         Hit::DashBg => c[WidgetId::Dash].bg = v,
         Hit::TickerBg => c[WidgetId::Ticker].bg = v,
@@ -2238,7 +2287,11 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
 
     let x = side_w + 28.0;
     let cw = (w - x - 28.0).max(200.0);
-    let py = clip_top + 20.0 - scroll;
+    let preset_h = if widgets { PRESET_STRIP_H } else { 0.0 };
+    if widgets {
+        draw_preset_strip(px, fonts, &cfg, hover, &mut hits, x, clip_top + 10.0, cw);
+    }
+    let py = clip_top + 20.0 + preset_h - scroll;
     let bottom = match tab {
         Tab::App => pane_app(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
         Tab::Feedback => pane_feedback_tab(px, fonts, hover, &mut hits, x, py, cw),
@@ -2600,6 +2653,99 @@ fn draw_top_bar(
     let hw = measure(fonts, &hint, 10.0);
     text(px, fonts, &hint, 10.0, qx - 16.0 - hw, y + 20.0, dim(), false);
     sidebar_quit(px, fonts, qx, qy, quit_w, quit_h, hover, hits);
+}
+
+fn draw_preset_strip(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    cfg: &HudConfig,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+    x: f32,
+    y: f32,
+    w: f32,
+) {
+    let live = cfg.session_live;
+    let selected = if live { cfg.active_preset } else { cfg.settings_preset };
+    let status = preset_strip_status(live, selected);
+    text(px, fonts, &status, 11.0, x, y + 2.0, muted(), false);
+    let mut mx = x;
+    let cy = y + 18.0;
+    for p in SessionPreset::ALL {
+        let hit = Hit::Preset(p);
+        let on = p == selected;
+        let locked = preset_chip_locked(live, selected, p);
+        mx += preset_chip(px, fonts, mx, cy, p.label(), on, locked, hit, hover, hits);
+    }
+    if !live {
+        let copy = "Copy to all";
+        let tw = measure(fonts, copy, 12.0);
+        let bw = tw + 20.0;
+        let hit = Hit::PresetCopyAll;
+        hits.push(HitBox { id: hit, x: mx + 8.0, y: cy, w: bw, h: 28.0 });
+        if hover == Some(hit) {
+            fill_round(px, mx + 8.0, cy, bw, 28.0, 8.0, Color::from_rgba8(255, 255, 255, 10));
+        }
+        text(px, fonts, copy, 12.0, mx + 18.0, cy + 6.0, Color::from_rgba8(210, 210, 216, 255), false);
+    }
+    let _ = w;
+}
+
+fn preset_strip_status(live: bool, selected: SessionPreset) -> String {
+    if live {
+        format!("On track — {} only. Others in the garage.", selected.label())
+    } else {
+        format!("Editing {} — garage", selected.label())
+    }
+}
+
+fn preset_chip_locked(live: bool, selected: SessionPreset, p: SessionPreset) -> bool {
+    live && p != selected
+}
+
+fn preset_hit_locked(hit: Hit) -> bool {
+    match hit {
+        Hit::Preset(p) => with_config(|c| c.session_live && c.active_preset != p),
+        _ => false,
+    }
+}
+
+fn preset_chip(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    x: f32,
+    y: f32,
+    label: &str,
+    selected: bool,
+    locked: bool,
+    hit: Hit,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+) -> f32 {
+    let size = 13.0;
+    let tw = measure(fonts, label, size);
+    let h = 28.0;
+    let skew = 6.0;
+    let bw = (tw + 22.0).max(72.0);
+    hits.push(HitBox { id: hit, x, y, w: bw + skew, h });
+    if selected {
+        fill_skew(px, x, y, (bw - skew).max(48.0), h, skew, accent());
+        text(px, fonts, label, size, x + 12.0, y + 6.0, Color::from_rgba8(20, 12, 4, 255), false);
+    } else if locked {
+        let well = if high_contrast_on() {
+            btn_bg()
+        } else {
+            Color::from_rgba8(0, 0, 0, 36)
+        };
+        fill_round(px, x, y, bw, h, 8.0, well);
+        text(px, fonts, label, size, x + 12.0, y + 6.0, track_off(), false);
+    } else {
+        if hover == Some(hit) {
+            fill_round(px, x, y, bw, h, 8.0, Color::from_rgba8(255, 255, 255, 10));
+        }
+        text(px, fonts, label, size, x + 12.0, y + 6.0, Color::from_rgba8(210, 210, 216, 255), false);
+    }
+    bw + 8.0
 }
 
 fn mode_tab(
@@ -4145,7 +4291,7 @@ fn widget_pane_spec(id: WidgetId) -> WidgetPaneSpec {
         WidgetId::Sector => WidgetPaneSpec {
             id,
             title: "Sectors",
-            subtitle: "Split times vs your best, plus a lap log under the strip",
+            subtitle: "Split times vs your best, plus lap time, delta, and ideal",
             show: Hit::SectorShow,
             bg: Hit::SectorBg,
             bg_label: "Panel opacity",
@@ -4610,6 +4756,7 @@ fn pane_radar(
         }
         let mut y = pane_style(px, fonts, spec, cfg, hover, hits, x, y, w);
         y = section(px, fonts, x, y, "On the radar");
+        y = slider_row(px, fonts, x, y, w, "Range", cfg.radar_range, RADAR_RANGE_MIN, RADAR_RANGE_MAX, "m", Hit::RadarRange, hover, hits);
         y = toggle_row(px, fonts, x, y, w, "Side proximity", cfg.radar_sides, Hit::RadarSides, hover, hits);
         y = toggle_row(px, fonts, x, y, w, "Rear proximity", cfg.radar_rear, Hit::RadarRear, hover, hits);
         toggle_row(px, fonts, x, y, w, "Range rings", cfg.radar_rings, Hit::RadarRings, hover, hits)
@@ -4634,6 +4781,9 @@ fn pane_dash(
         }
         let mut y = pane_style(px, fonts, spec, cfg, hover, hits, x, y, w);
         y = toggle_row(px, fonts, x, y, w, "Simple dash", cfg.dash_simple, Hit::DashSimple, hover, hits);
+        y = toggle_row(px, fonts, x, y, w, "Yellow flag", cfg.dash_yellow, Hit::DashYellow, hover, hits);
+        y = toggle_row(px, fonts, x, y, w, "Blue flag", cfg.dash_blue, Hit::DashBlue, hover, hits);
+        y = toggle_row(px, fonts, x, y, w, "Red flag", cfg.dash_red, Hit::DashRed, hover, hits);
         if !cfg.dash_simple {
             y = toggle_row(px, fonts, x, y, w, "Rev indicator", cfg.dash_rev, Hit::DashRev, hover, hits);
             y = slots_section(
@@ -4769,7 +4919,7 @@ fn pane_sector(
             x,
             y,
             w,
-            "The wide cell is the sector you are in. Live sector ticks vs your best at this point; off waits until the split. Lap log puts LAST / -2 / … under the strip when the box is tall enough; gold is the fastest of those laps. Same tape as Delta Bar. Saved per track and class (250 vs 450). Session best is this visit only.",
+            "The wide cell is the sector you are in. Live sector ticks vs your best at this point; off waits until the split. LAP on the right is the whole lap — running time over full-lap delta while you are out, last lap when the clock is off. The night-ink pill in LAP is the ideal (best S1 + S2 + S3, maybe from different laps). Lap log puts IDEAL / LAST / -2 / … under the strip when the box is tall enough; gold is the fastest of those laps. Same tape as Delta Bar. Saved per track and class (250 vs 450). Session best is this visit only.",
         );
         y = toggle_row(px, fonts, x, y, w, "Live sector", cfg.sector_live, Hit::SectorLive, hover, hits);
         y = toggle_row(px, fonts, x, y, w, "Compare to session best", cfg.sector_session, Hit::SectorSession, hover, hits);
@@ -5037,6 +5187,7 @@ fn pane_flag(
         let mut y = toggle_row(px, fonts, x, y, w, "Text", cfg.flag_text, Hit::FlagText, hover, hits);
         y = toggle_row(px, fonts, x, y, w, "Yellow flag", cfg.flag_yellow, Hit::FlagYellow, hover, hits);
         y = toggle_row(px, fonts, x, y, w, "Blue flag", cfg.flag_blue, Hit::FlagBlue, hover, hits);
+        y = toggle_row(px, fonts, x, y, w, "Red flag", cfg.flag_red, Hit::FlagRed, hover, hits);
         pane_style(px, fonts, spec, cfg, hover, hits, x, y, w)
     })
 }

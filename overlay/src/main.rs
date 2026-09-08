@@ -531,7 +531,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
             editor.apply(s);
         }
         let preview_cfg = if editor.has_preview() {
-            let mut cfg = crate::config::with_config(|c| c.clone());
+            let mut cfg = crate::config::with_config(|c| c.for_overlay());
             editor.apply_cfg(&mut cfg);
             Some(cfg)
         } else {
@@ -543,6 +543,12 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
             .unwrap_or(999.0);
         let age = raw_age.clamp(0.0, 0.08);
         let live = raw_age < 2.5;
+        let spectating = cmd.as_ref().is_some_and(|c| c.spectating()) && raw_age < 2.5;
+        crate::config::sync_session_preset(
+            last_snap
+                .as_ref()
+                .and_then(|s| mxbo_hud::session_preset(s, spectating)),
+        );
         let settings_open = crate::settings::is_open();
         crate::feedback::tick(settings_open);
         if live {
@@ -550,23 +556,28 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
                 crate::record::tick(s);
             }
         }
-        // Replay never sets plugin on_track. Telemetry / rider positions are the session.
-        if last_snap.as_ref().is_some_and(|s| s.has_session_data()) {
-            if let Some(s) = last_snap.as_mut() {
-                s.on_track = 1;
-            }
-        }
+        // Replay never sets plugin on_track. Telemetry is a ride; rider
+        // positions only count while SpectateVehicles is live.
         if let Some(s) = last_snap.as_mut() {
-            let spectating = cmd.as_ref().is_some_and(|c| c.spectating());
             if spectating {
                 // Replay still publishes leftover bike data. Drop it so the map follows
                 // the camera subject, and so Delta / Sectors do not tape a replay.
                 s.has_telemetry = 0;
-            } else if s.has_telemetry != 0 || s.local_race_num > 0 {
+            } else if s.has_telemetry == 0 {
+                // Leftover spectate dots after the camera stops (garage).
+                s.rider_count = 0;
+            } else {
                 s.focus_race_num = s.local_race_num;
             }
         }
-        let in_session = last_snap.as_ref().is_some_and(|s| s.has_session_data());
+        let in_session = last_snap
+            .as_ref()
+            .is_some_and(|s| mxbo_hud::live_session(s, spectating));
+        if in_session {
+            if let Some(s) = last_snap.as_mut() {
+                s.on_track = 1;
+            }
+        }
         // Plugin publish can pause for a few seconds during a hitch. Keep the last
         // session HUD instead of blanking at 2.5s; drop after 15s so garage/menus
         // still hide if SHM stops.
@@ -595,6 +606,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
                 cfg.gamepad_visible(),
             ),
             None => crate::config::with_config(|cfg| {
+                let cfg = cfg.for_overlay();
                 (
                     cfg[crate::config::WidgetId::Sys].show,
                     cfg.sys_apps.clone(),
@@ -638,7 +650,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         if let Some(cfg) = preview_cfg.as_ref() {
             paint(cfg);
         } else {
-            let cfg = crate::config::with_config(|c| c.clone());
+            let cfg = crate::config::with_config(|c| c.for_overlay());
             paint(&cfg);
         }
         if overlay_on {

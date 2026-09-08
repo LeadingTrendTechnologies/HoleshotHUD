@@ -32,16 +32,19 @@ Default columns on: Number, Name, Gap, Fastest, Last lap.
 - Do not sort Relative by standings position. It is on-track neighbors.
 - Keep the wrap (`d > 0.5` subtract 1, `d < -0.5` add 1) or the “nearest” set jumps across S/F.
 - Empty / no telemetry shows “Waiting for positions”.
-- No blue/red lapping row tints in warmup.
+- No blue/red lapping row tints in warmup. `session_kind` 5 wins even when extras leak.
 - Two laps down must not tint a better-placed rider red. `gap_laps` wins over `num_laps`.
 - Missing `rel_stripe` in the ini keeps alternating rows on.
 - Alternating rows must still read at **Background** 100% (lift, not extra black on night-ink).
 - Fuel header/footer is liters/US gallons (`Fuel`) or tank percent (`Fuel %`). Empty volume is `0.0`; `--` / `--%` only when tank size is missing.
 - Setup header/footer is the loaded bike setup filename stem. `--` when `RunInit` has not sent it. Restart MX Bikes after the V13 plugin.
 - Ctrl+resize chrome is the hugged plaque (column pack × row stack), not leftover widget glass. Dragging it larger grows Name / nearby count.
+- The night-ink plaque must cover every visible row. Do not clamp stack height to a shorter saved `relative_h`.
 
 ## Change log
 
+- 2026-09-07 — Warmup (`session_kind` 5) keeps rows slate even when leaked extras make the lap field look like a race.
+- 2026-09-06 — Plaque height follows the visible nearby set. A short saved widget box no longer leaves later rows on the game with no glass.
 - 2026-09-03 — **Setup** is a header/footer option (shared `BoardField::Setup` with Standings). Restart MX Bikes after this plugin so SHM `Local\MXBOHudV13` loads.
 - 2026-08-31 — Ctrl+resize of the hugged plaque grows Name width and nearby-rider count, so the table can get larger instead of the orange box being a no-op.
 - 2026-08-31 — Ctrl+resize orange box (and grab handles) follow the hugged plaque, not leftover widget glass.

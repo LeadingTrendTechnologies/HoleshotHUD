@@ -38,6 +38,12 @@ Layout is saved to `Documents\PiBoSo\MX Bikes\Holeshot-HUD.ini`. Uninstall delet
 
 Restart MX Bikes after installing or updating the plugin.
 
+The HUD matches the game window: windowed stays on that window; borderless covers that screen (the game stays 1px short of exclusive fullscreen so the overlay can draw).
+
+## Streaming
+
+OBS **Game Capture** and Discord **Share this window** (MX Bikes) do not include the HUD — it is a separate window on top of the game. Use **Display Capture**, or add a second OBS **Window Capture** source for **Holeshot HUD** and stack it over the game.
+
 ## Build from source
 
 Needs Visual Studio 2022 (C++ desktop) and [Rust](https://rustup.rs/).
@@ -77,8 +83,8 @@ Dev builds optimize crates like tiny-skia (`opt-level = 3`) so the HUD stays smo
 Push a tag to publish a downloadable release:
 
 ```bat
-git tag v0.7.2
-git push origin v0.7.2
+git tag v0.8.0
+git push origin v0.8.0
 ```
 
 ## Data wiki

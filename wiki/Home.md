@@ -52,7 +52,7 @@ Rust overlay structure and possible refactors (suggestions only): **[rust-patter
 - [Minimap](widgets/minimap.md): circular zoomed track
 - [Radar](widgets/radar.md): side / rear proximity
 - [Dash](widgets/dash.md): gear, speed, session clock, flags (optional simple gear+speed lockup)
-- [Sectors](widgets/sector.md): S1–S3 times (labs flag)
+- [Sectors](widgets/sector.md): S1–S3 plus LAP (lap time, full-lap delta, and ideal)
 - [Delta Bar](widgets/delta-bar.md): time vs your best at this track position (recorded lap, not the ghost)
 - [Systems](widgets/systems.md): CPU / mem / FPS / ping / GPU, plus apps you pick
 - [Stance](widgets/stance.md): sit / stand from a local bind (not plugin telemetry)
@@ -392,7 +392,7 @@ This is **not** full telemetry. Other players do not get temps, fuel, clutch, su
 | `m_iRaceNum` | int | Cached as `focusRaceNum` |
 | `m_szName` | char[100] | Unused (we already have names from entries) |
 
-Return `0` = do not change the game’s selection. Return `1` and write the vehicle **index** into `_piSelect` to switch the camera (one-shot). While this callback is running we set `spectating=1` on `Local\MXBOHudCmdV1` and treat that race number as `focusRaceNum`. If `SpectateVehicles` stops (garage / riding), `spectating` drops after ~250 ms, focus falls back to `localRaceNum` (also cleared on `RunInit` / `RunDeinit`), and overlay clicks pass through to the game. Do not keep a replay camera target after the session ends — that highlights the wrong rider and feeds the dash their RPM.
+Return `0` = do not change the game’s selection. Return `1` and write the vehicle **index** into `_piSelect` to switch the camera (one-shot). While this callback is running we set `spectating=1` on `Local\MXBOHudCmdV1` and treat that race number as `focusRaceNum`. If `SpectateVehicles` stops (garage / riding), `spectating` drops after ~250 ms, focus falls back to `localRaceNum` (also cleared on `RunInit` / `RunDeinit`), and overlay clicks pass through to the game. Leftover `RaceTrackPosition` after that must not keep the HUD up — spectate never gets `RunDeinit`, so those dots would otherwise look like a live session in the garage. Do not keep a replay camera target after the session ends — that highlights the wrong rider and feeds the dash their RPM.
 
 ### `SpectateCameras` — **Unused**
 

@@ -75,16 +75,18 @@ None.
 Operate · overlay HUD widget `draw_sector` in `overlay/hud/src/render.rs`.
 
 ## Audience / job
-MX Bikes racer mid-session. Glance: am I up or down vs my best in this sector. Drop eyes for LAST / -2 / -3 times.
+MX Bikes racer mid-session. Glance: am I up or down vs my best in this sector. Drop eyes for LAST / -2 / -3 times and the lap total.
 
 ## Direction
-Underboard. Night-ink 6px plaque. Live three-column strip on top (current sector ~56% hero, orange skew S#). Hairline. LAST / -2 / -3 completed laps aligned under the same columns. You-row gold on the fastest log lap. History times green/red vs best. Short boxes stay live-only.
+Underboard. Night-ink 6px plaque. Live four-column strip on top (columns size to their times, leftover on the current sector, orange skew S#, LAP stacked time/delta, ideal pill). Hairline. IDEAL then LAST / -2 / -3 aligned under the same columns. You-row gold on the fastest log lap, not IDEAL. History times green/red vs best. Short boxes stay live-only.
 
 ## Memorable moment
-LAST S2 in green sitting under this-lap's red +0.120 — the sector you just lost, you had last lap.
+LAST lap total in green sitting under this-lap's red live LAP delta — you were faster last time. IDEAL is the stitched best sectors.
 
 ## Approved comp
-`.impeccable/mocks/sector-history-underboard.png`
+`.impeccable/mocks/sector-lap-column.png`
+
+Glass rim: `.impeccable/mocks/sector-glass-halo.png`
 
 ## Unresolved
 None.
@@ -94,12 +96,14 @@ None.
 | --- | --- | --- |
 | Panel | tiny-skia fill_round | night-ink #0A0A0A @ sector_bg, 6px |
 | Frame | 1px stroke round_rect | hairline #2A2A2E, alpha from panel |
-| Live columns | fill_rect splits | S1/S2/S3; current ~56% |
+| Live columns | fill_rect splits | S1/S2/S3/LAP sized to measured type; leftover on current sector; LAP never hero |
 | Hero wash | fill_rect | orange #FF9430 @ 28 |
 | S# plaque | fill_skew | Holeshot Orange parallelogram |
-| Live delta | Exo 2 ExtraBold Italic | green / red / dim -- |
-| Split pills | fill_night_pill | this-lap times |
-| History rows | type + you-row wash | LAST / -2 / -3; LAST @ 72% you-row |
+| Live delta | Exo 2 ExtraBold Italic | green / red / dim -- ; 1px night-ink rim when bg < 40 |
+| Split pills | fill_night_pill | this-lap sector times |
+| Live LAP | stacked type | running lap time over full-lap delta; no pill on the stack; rim when bg < 40 |
+| Ideal pill | fill_night_pill | best S1+S2+S3 in the LAP column |
+| History rows | type + you-row wash | IDEAL then LAST / -2 / -3; LAP stacks total over delta; rim when bg < 40 |
 | Type | existing HUD face | ExtraBold Italic via push_style |
 
 # Lean widget

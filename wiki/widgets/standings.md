@@ -22,7 +22,7 @@ Status labels: `1` DNS, `3` OUT, `4` DSQ, else PIT if `pit != 0`.
 
 ## Behavior
 
-- Height grows with visible rows. If the field is larger than **Rows**, the window centers on you.
+- Height grows with visible rows, even when the saved widget box is shorter (a Ctrl+move can write a hugged 1-row `standings_h`). If the field is larger than **Rows**, the window centers on you.
 - Your row is highlighted. OUT / DNS / DSQ rows dim. **Row highlight** opacity is adjustable in settings (`st_hl`). **Text color** is White or Black (`st_text`); bike pills keep brand colors. **Alternating rows** (`st_stripe`, default on) paints every other row near-black. On a solid panel the stripe lifts to a slightly lighter charcoal so it still reads; at lower background opacity it darkens (game shows through even rows).
 - In replay / spectate, clicking a rider's **name** moves the game camera to them (`SpectateVehicles`). The overlay only captures that click while hovering a name; riding is not affected.
 - Best lap in the field is purple.
@@ -41,14 +41,18 @@ Default columns on: Position, Number, Name, Gap, Fastest, Last lap.
 - Rows and places come from the live order, not the raw `s.standings` array. The row window and slide animation follow it.
 - Click-to-follow only runs while the plugin sees `SpectateVehicles` (replay / spectate). It must not steal the camera while you are riding.
 - Leaving replay must drop camera focus back to you. A stuck spectate target keeps their row highlighted and starves the dash of your telemetry.
+- Leaving spectate for the garage must hide the board. Leftover rider positions are not a session once `SpectateVehicles` stops.
 - Missing `st_stripe` in the ini keeps alternating rows on.
 - Alternating rows must still read at **Background** 100% (lift, not extra black on night-ink).
 - Fuel header/footer is liters/US gallons (`Fuel`) or tank percent (`Fuel %`). Empty volume is `0.0`; `--` / `--%` only when tank size is missing.
 - Setup header/footer is the loaded bike setup filename stem. `--` when `RunInit` has not sent it. Restart MX Bikes after the V13 plugin.
 - Ctrl+resize chrome is the hugged plaque (column pack × row stack), not leftover widget glass. Dragging it larger still grows Name / Rows — do not leave the orange box as a no-op hug.
+- The night-ink plaque must cover every visible row. Do not clamp stack height to a shorter saved `standings_h`.
 
 ## Change log
 
+- 2026-09-06 — Plaque height follows the visible row stack. A short saved widget box no longer leaves later rows on the game with no glass.
+- 2026-09-06 — Spectate → garage hides the board. Leftover rider dots after `SpectateVehicles` stops are not a session (`live_session`).
 - 2026-09-03 — **Setup** is a header/footer option (`BoardField::Setup`). Same `RunInit` filename as Dash / Relative / H-Standings. Restart MX Bikes after this plugin so SHM `Local\MXBOHudV13` loads.
 - 2026-08-31 — Ctrl+resize of the hugged plaque grows Name width and **Rows**, so the table can get larger instead of the orange box being a no-op.
 - 2026-08-31 — Ctrl+resize orange box (and grab handles) follow the hugged plaque, not leftover widget glass.

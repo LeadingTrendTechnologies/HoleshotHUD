@@ -8,7 +8,7 @@ Plugin field status lives in [Home.md](../Home.md). **Overlay** = already in SHM
 | --- | --- | --- |
 | [G-Force](#g-force) | — | Need SHM (`m_fAccelerationX/Y/Z`) |
 | [Fuel calculator](#fuel-calculator) | Dash / table **Fuel** and **Fuel %** | Overlay (`fuel` / `maxFuel`) |
-| [Ideal Lap](#ideal-lap) | [Sectors](sector.md) | Overlay splits + `track_pb` |
+| [Ideal Lap](#ideal-lap) | [Sectors](sector.md) — shipped as IDEAL on that widget | Overlay splits + `track_pb` |
 | [Lap consistency](#lap-consistency) | [Delta Bar](delta-bar.md) | Overlay last/best lap; need a lap ring |
 | [Telemetry](#telemetry) | — | Need SHM (throttle / brake / clutch / susp) |
 | [Pitboard](#pitboard) | [Dash](dash.md) + [Sectors](sector.md) | Overlay (lap / split / gap) |
@@ -34,12 +34,7 @@ Consumption tracking, not just a tank readout.
 
 ## Ideal Lap
 
-Best sector times plus a theoretical purple lap.
-
-- [Sectors](sector.md) already freezes S1–S3 vs **your best at that point** on the saved tape. Ideal Lap is the other comparison: **best S1 + best S2 + best S3** (possibly from different laps) and gap vs that sum.
-- Data is already in `track_pb` (`bikes.<class>.s`) plus live `RunSplit` / `RaceSplit`. No new plugin field.
-- No purple on Sectors or Delta Bar today; standings uses violet for session-best lap. If this widget uses purple, keep it here only.
-- Do not mix 250 and 450 tapes. Same class key as Sectors / Delta Bar.
+Shipped on [Sectors](sector.md): best S1 + S2 + S3 (possibly from different laps). Night-ink pill in the LAP column; **IDEAL** row in the lap log. Not a separate widget. No purple (standings still owns Best Lap Violet).
 
 ## Lap consistency
 

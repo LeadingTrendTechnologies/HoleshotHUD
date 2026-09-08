@@ -1,6 +1,6 @@
 # Sectors
 
-Your last split times and delta vs. **your best at this point in the sector** (same saved tape as Delta Bar). **Lap log** (default on) puts LAST / -2 / … under the live strip; **Laps back** is 1–5 (default 3). Settings subtitle: “Split times vs your best, plus a lap log under the strip”.
+Your last split times and delta vs. **your best at this point in the sector** (same saved tape as Delta Bar). A **LAP** column on the right shows the whole lap: running time over full-lap delta while you are out, last lap when the clock is off. The night-ink pill in LAP is the **ideal** — best S1 + S2 + S3, possibly from different laps. **Lap log** (default on) puts **IDEAL**, then LAST / -2 / … under the live strip, with lap time and full-lap delta stacked in LAP; **Laps back** is 1–5 (default 3). Settings subtitle: “Split times vs your best, plus lap time, delta, and ideal”.
 
 This widget is a regular Cockpit widget. Turn it on with **Show on overlay**. Same tape as Delta Bar.
 
@@ -20,13 +20,14 @@ Split index: `0` or first `1` is S1; a later `1` or `2` is S2. That covers 0-bas
 
 ## Layout
 
-Three columns: **S1**, **S2**, **S3**. The **current** sector is the **hero** (~56% width) with an orange skew **S#** plaque and a large delta. The other two stay quiet. When the box is tall enough, **Lap log** (default on) draws **LAST**, **-2**, … under a hairline, same columns, up to **Laps back** (1–5, default 3). You-row gold is only on the fastest lap in that log. History times tint green/red vs the same comparison as the live strip. Short boxes stay live-only. Off hides the log; splits still record.
+Three columns **S1**, **S2**, **S3**, plus **LAP** on the right. Each column is at least as wide as its times (live delta, split pill, lap log). Leftover width goes to the **current** sector — the hero with an orange skew **S#** plaque and a large delta. LAP is never the hero: live it stacks running lap time over the full-lap delta (same tape as Delta Bar); when the clock is off it holds last lap. The LAP night-ink pill is the ideal lap (best S1 + best S2 + best S3). Flank sectors stay quiet. When the box is tall enough, **Lap log** (default on) draws **IDEAL**, then **LAST**, **-2**, … under a hairline, same four columns, up to **Laps back** (1–5, default 3). IDEAL shows each best sector and their sum. LAP in completed rows stacks lap total over that lap’s full delta vs the saved (or session) best **complete** lap. You-row gold is only on the fastest lap in that log, not IDEAL. History times tint green/red vs the same comparison as the live strip. Short boxes stay live-only (including LAP + ideal pill). Off hides the log; splits still record.
 
 - Current sector: live delta vs your saved tape **at this `local_track_pos`** (S2/S3 ignore time already lost or gained in earlier sectors). The night-ink pill is the **target** (saved or session-best duration for that sector) until you leave; the large number is the location delta. S1 until the first split, then S2, then S3 until the line. **Live sector** (default on) in Settings. Off: `--` until that split completes.
 - Leave a sector: that cell shrinks and **freezes** the official split duration vs the saved (or session) best. Do not keep ticking it. Freeze is not tape-at-the-line.
 - Not yet reached this lap: `--`.
 - After you cross: S3 stays hero (frozen last lap) until the next lap clock runs, then S1 is hero again.
 - Split times at the bottom of each cell sit on night-ink pills (same chip as Delta Bar BEST / LAST).
+- When **panel opacity** is under 40%, floating type (caption, live deltas, live LAP stack, log cells) gets a 1px night-ink rim. Not extra chips. Not a drop-shadow. Pill times and the orange S# plaque are unchanged.
 - Green: faster. Red: slower. Dim `--` until there is a comparison. Caption: **vs. your best**.
 - No purple on this widget (standings still uses violet for session-best lap).
 
@@ -45,6 +46,10 @@ No column picker; show, **Live sector**, **Compare to session best**, **Lap log*
 - **Live sector** off still records and freezes on leave; the current cell stays `--` until the split. Default on (`sector_live=1`).
 - Freeze on leave. Do not write the PB file every live frame — only when a frozen duration is faster than saved **for this class**, or when visiting a track whose file is missing/stale `used` (at most hourly). Do not create a file just to stamp a date.
 - LAST / -2 / … are completed laps, newest first, up to five. Push when S3 freezes. Do not shift the same lap twice. Empty first laps stay `--` and hide the underboard until LAST exists. You-row gold is only on the fastest complete lap in the log, not always LAST.
+- LAP is a fourth column, never the hero. Live LAP is running clock over tape delta (`delta::view_for`); clock off holds last completed total over that lap vs the same best **complete** lap. Log LAP on LAST / -2 is that complete-lap delta. The LAP pill and the IDEAL row are theoretical: best S1 + S2 + S3, possibly from different laps. Same saved/session splits as the strip. No Best Lap Violet on IDEAL.
+- Column widths reserve the widest time formats (`88.888`, `8:88.888`, `+88.888`, `88:88.888`), not the live ticking string. Times right-align in that slot so growing digits do not slide. Extra space still goes to the current sector. If the box is too narrow, shrink the type against the probe, not the live string.
+- Do not put a live incomplete lap in the LAST / -2 ring.
+- LAST / freeze S2 is the **sector duration**, not time from the line (S1+S2). The plugin may send either; convert the same way freeze already does. A LAST of `1:21` next to an S1 of `40` and a true S2 of `40` is the cumulative slip.
 - **Lap log** (`sector_hist`, default on) only hides the underboard. Keep recording. **Laps back** (`sector_hist_laps`) is 1–5, default 3.
 - Short widgets stay live-only. Do not squash the live delta to fit history. If the box is shorter than the chosen lap count, draw as many rows as fit.
 - History green/red is vs the same tape as the live strip (saved or session). No purple. Orange is still the sector you are in.
@@ -55,9 +60,15 @@ No column picker; show, **Live sector**, **Compare to session best**, **Lap log*
 - `RunSplit` and `RaceSplit` both fire for the same split. Record it once. A second write after the session best is updated stores `0.000` on a faster sector. Overlay freeze vs the **old** saved best so a new PB is negative, not `0.000`. That compare is official duration minus saved, not tape-at-the-line.
 - SHM version must stay in lockstep between `overlay/hud/src/snapshot.rs` and `src/shm/mxbo_shm.h`.
 - Split times at the bottom sit on night-ink pills. Do not leave those captions floating on the game.
+- Under 40% panel opacity, rim floating type in night-ink (1px, 8-neighbor). Do not add chips, row bars, or a log band for that. Do not rim type that already sits on a night-ink pill or the orange S# plaque.
 
 ## Change log
 
+- 2026-09-08 — Times right-align in a fixed-width slot (widest format). Live digits grow left; columns and type size stay put.
+- 2026-09-08 — Glass: floating type gets a 1px night-ink rim when opacity is under 40%, so cream/dim still reads on a bright sky. No extra plaques.
+- 2026-09-08 — **Ideal** is best S1 + S2 + S3 (maybe from different laps). Night-ink pill in the LAP column; IDEAL row in the log. Not purple.
+- 2026-09-08 — **LAP** column on the live strip and lap log: lap time over full-lap delta vs the same tape as Delta Bar. Current sector stays the orange hero.
+- 2026-09-08 — LAST S2 was time-to-S2 (S1+S2) when the plugin sent a cumulative split. Lap log now uses the same duration conversion as freeze, so LAST matches the other sector board.
 - 2026-09-03 — Freeze is official split vs saved/session best (the game's time). Live pill is that target; the large number stays location-in-sector. Live elapsed follows Delta Bar's split-synced clock.
 - 2026-09-01 — Lap-log you-row gold is only on the fastest lap in the log, not always LAST.
 - 2026-09-01 — **Lap log** (default on) and **Laps back** (1–5, default 3). Underboard still LAST / -2 / … vs your best. A short box stays live-only.

@@ -19,6 +19,17 @@ fn shy_window_is_one_pixel_short_of_the_monitor() {
 }
 
 #[test]
+fn covers_monitor_is_full_or_one_pixel_shy_not_windowed() {
+    let monitor = rect(0, 0, 1920, 1080);
+    assert!(is_full_monitor(rect(0, 0, 1920, 1080), monitor));
+    assert!(covers_monitor(rect(0, 0, 1920, 1080), monitor));
+    assert!(covers_monitor(rect(0, 0, 1920, 1079), monitor));
+    assert!(!covers_monitor(rect(100, 100, 1380, 820), monitor));
+    assert!(!is_full_monitor(rect(100, 100, 1380, 820), monitor));
+    assert!(!is_full_monitor(rect(0, 0, 1920, 1079), monitor));
+}
+
+#[test]
 fn quit_defers_taskbar_restore_only_while_the_game_is_up() {
     assert!(should_defer_taskbar_restore(true, true));
     assert!(!should_defer_taskbar_restore(true, false));
@@ -39,10 +50,11 @@ fn restore_taskbar_pid_reads_flag_and_value() {
 
 #[test]
 fn only_the_game_monitor_taskbar_hides_while_the_pointer_is_there() {
-    assert!(should_hide_game_taskbar(true, true, false));
-    assert!(!should_hide_game_taskbar(false, true, false));
-    assert!(!should_hide_game_taskbar(true, false, false));
-    assert!(!should_hide_game_taskbar(true, true, true));
+    assert!(should_hide_game_taskbar(true, true, false, true));
+    assert!(!should_hide_game_taskbar(false, true, false, true));
+    assert!(!should_hide_game_taskbar(true, false, false, true));
+    assert!(!should_hide_game_taskbar(true, true, true, true));
+    assert!(!should_hide_game_taskbar(true, true, false, false));
 }
 
 #[test]
@@ -94,6 +106,18 @@ fn overlay_stays_on_the_game_monitor() {
         overlay_rect_on_monitor(rect(0, 0, 1920, 1080), game),
         Some((0, 0, 1920, 1080))
     );
+    assert_eq!(
+        overlay_rect_on_monitor(rect(0, 0, 1920, 1079), game),
+        Some((0, 0, 1920, 1080))
+    );
+    assert!(flush_to_monitor_except_bottom_gap(
+        rect(0, 0, 1920, 1079),
+        game
+    ));
+    assert!(!flush_to_monitor_except_bottom_gap(
+        rect(100, 80, 1380, 900),
+        game
+    ));
     assert_eq!(
         overlay_rect_on_monitor(rect(100, 80, 1380, 900), game),
         Some((100, 80, 1280, 820))

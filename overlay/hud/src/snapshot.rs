@@ -353,7 +353,9 @@ impl Snapshot {
     /// Race / replay payload is present. Menus with an empty snapshot are not.
     ///
     /// Standings alone are leftover after `RunDeinit` (garage / lobby). Replay and
-    /// spectate still stream rider positions; riding still has telemetry.
+    /// spectate still stream rider positions; riding still has telemetry. Overlay
+    /// `live_session` also needs `SpectateVehicles` for a rider-only snapshot so
+    /// leftover spectate dots cannot keep the HUD up in the garage.
     pub fn has_session_data(&self) -> bool {
         self.has_telemetry != 0 || self.rider_count > 0
     }

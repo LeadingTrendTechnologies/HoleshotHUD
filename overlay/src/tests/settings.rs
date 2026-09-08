@@ -138,3 +138,40 @@ fn wrap_fb_does_not_split_words() {
     }
     assert!(lines.len() > 1, "expected wrapping, got {lines:?}");
 }
+
+#[test]
+fn on_track_preset_strip_names_the_locked_slots() {
+    assert_eq!(
+        preset_strip_status(true, SessionPreset::Spectate),
+        "On track — Spectate only. Others in the garage."
+    );
+    assert_eq!(
+        preset_strip_status(false, SessionPreset::Race),
+        "Editing Race — garage"
+    );
+    assert!(preset_chip_locked(
+        true,
+        SessionPreset::Spectate,
+        SessionPreset::Race
+    ));
+    assert!(!preset_chip_locked(
+        true,
+        SessionPreset::Spectate,
+        SessionPreset::Spectate
+    ));
+    assert!(!preset_chip_locked(
+        false,
+        SessionPreset::Race,
+        SessionPreset::Practice
+    ));
+
+    crate::config::sync_session_preset(Some(SessionPreset::Spectate));
+    assert!(preset_hit_locked(Hit::Preset(SessionPreset::Race)));
+    assert!(!preset_hit_locked(Hit::Preset(SessionPreset::Spectate)));
+    assert_eq!(
+        hit_label(Hit::Preset(SessionPreset::Race)),
+        "Race — switch in the garage"
+    );
+    assert_eq!(hit_label(Hit::Preset(SessionPreset::Spectate)), "Spectate");
+    crate::config::sync_session_preset(None);
+}

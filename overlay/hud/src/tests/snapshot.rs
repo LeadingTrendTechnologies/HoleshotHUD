@@ -82,6 +82,11 @@ fn snapshot_default_layout_is_sane() {
     );
     s.rider_count = 1;
     assert!(s.has_session_data());
+    assert!(
+        !crate::live_session(&s, false),
+        "leftover spectate riders without SpectateVehicles are not a session"
+    );
+    assert!(crate::live_session(&s, true));
 }
 
 #[test]
