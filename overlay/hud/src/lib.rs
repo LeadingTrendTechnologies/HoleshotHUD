@@ -2,6 +2,7 @@ pub mod config;
 pub mod delta;
 pub mod gamepad;
 pub mod lean;
+pub mod telemetry;
 pub mod race_store;
 pub mod render;
 pub mod sector;

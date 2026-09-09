@@ -79,6 +79,17 @@ fn default_hud_hides_every_widget() {
     assert!(!cfg[WidgetId::Flag].show);
     assert!(!cfg[WidgetId::Lean].show);
     assert!(!cfg[WidgetId::Gamepad].show);
+    assert!(!cfg[WidgetId::Telemetry].show);
+    assert!(cfg.telemetry_traces);
+    assert!(cfg.telemetry_trace_throttle);
+    assert!(cfg.telemetry_trace_brake);
+    assert!(!cfg.telemetry_trace_steer);
+    assert!(cfg.telemetry_bars);
+    assert!(cfg.telemetry_bar_clutch);
+    assert!(cfg.telemetry_bar_brake);
+    assert!(cfg.telemetry_bar_throttle);
+    assert!(!cfg.telemetry_bar_steer);
+    assert!(cfg.telemetry_dial);
     assert!(!cfg.flag_yellow);
     assert!(!cfg.flag_blue);
     assert!(!cfg.flag_red);
@@ -106,6 +117,7 @@ fn default_hud_hides_every_widget() {
     assert_eq!(cfg[WidgetId::Dash].rect.w, 0.111);
     assert_eq!(cfg[WidgetId::Dash].rect.h, 0.115);
     assert!(!cfg.dash_simple);
+    assert!(!cfg.dash_shift_color);
     assert!(!cfg.dash_yellow);
     assert!(!cfg.dash_blue);
     assert!(!cfg.dash_red);
@@ -427,6 +439,39 @@ fn flag_text_defaults_on_and_ini_can_turn_it_off() {
     std::env::remove_var("MXBO_TEST_INI");
     let _ = std::fs::remove_dir_all(&dir);
     assert!(!cfg.flag_text);
+}
+
+#[test]
+fn telemetry_toggles_default_on_and_ini_can_turn_them_off() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-telemetry-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    std::fs::write(&path, "first_install_version=0.1.0\nst_last=1\nrel_last=1\n").unwrap();
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let cfg = HudConfig::load_file();
+    assert!(cfg.telemetry_traces);
+    assert!(cfg.telemetry_draw_traces());
+    assert!(cfg.telemetry_draw_bars());
+    assert!(cfg.telemetry_dial);
+    std::fs::write(
+        &path,
+        "telemetry_traces=0\ntelemetry_trace_brake=0\ntelemetry_bar_clutch=0\ntelemetry_dial=0\nfirst_install_version=0.1.0\nst_last=1\nrel_last=1\n",
+    )
+    .unwrap();
+    let cfg = HudConfig::load_file();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(!cfg.telemetry_traces);
+    assert!(!cfg.telemetry_draw_traces());
+    assert!(cfg.telemetry_trace_throttle);
+    assert!(!cfg.telemetry_trace_brake);
+    assert!(!cfg.telemetry_trace_steer);
+    assert!(!cfg.telemetry_bar_steer);
+    assert!(cfg.telemetry_bars);
+    assert!(!cfg.telemetry_bar_clutch);
+    assert!(cfg.telemetry_draw_bars());
+    assert!(!cfg.telemetry_dial);
 }
 
 #[test]

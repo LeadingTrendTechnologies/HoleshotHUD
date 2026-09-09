@@ -18,6 +18,8 @@ const BOARD = [
   ["fuel", "Fuel"],
   ["fuelpct", "Fuel %"],
   ["setup", "Setup"],
+  ["gapahead", "Gap ahead"],
+  ["gapbehind", "Gap behind"],
 ];
 
 const DASH = [
@@ -37,6 +39,7 @@ const DASH = [
   ["eng", "Engine temp"],
   ["gap", "Gap"],
   ["int", "Interval"],
+  ["gapbehind", "Gap behind"],
   ["pen", "Penalty"],
   ["sess", "Session time"],
   ["local", "Local time"],
@@ -111,6 +114,7 @@ const NAMES = {
   delta: "Delta Bar",
   flag: "Flags",
   lean: "Lean",
+  telemetry: "Telemetry",
   gamepad: "Controller",
 };
 
@@ -124,7 +128,7 @@ stageStatus.hidden = false;
 
 let preview;
 try {
-  await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=0.8.0", import.meta.url) });
+  await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=0.9.0", import.meta.url) });
   preview = new Preview();
   stageStatus.hidden = true;
 } catch (err) {
@@ -157,8 +161,8 @@ function selectHtml(key, options) {
     .join("")}</select>`;
 }
 
-function toggleRow(key, label) {
-  return `<div class="row"><label>${label}</label><input class="toggle" type="checkbox" data-bool="${key}" ${preview.get_bool(key) ? "checked" : ""}></div>`;
+function toggleRow(key, label, nested = false) {
+  return `<div class="row${nested ? " nested" : ""}"><label>${label}</label><input class="toggle" type="checkbox" data-bool="${key}" ${preview.get_bool(key) ? "checked" : ""}></div>`;
 }
 
 function stepperRow(key, label, min, max) {
@@ -246,6 +250,7 @@ function renderSettings() {
   } else if (w === "dash") {
     html += styleControls("dash", "Panel opacity");
     html += toggleRow("dash_simple", "Simple dash");
+    html += toggleRow("dash_shift_color", "Shift color");
     html += toggleRow("dash_yellow", "Yellow flag");
     html += toggleRow("dash_blue", "Blue flag");
     html += toggleRow("dash_red", "Red flag");
@@ -281,6 +286,25 @@ function renderSettings() {
     html += toggleRow("flag_blue", "Blue flag");
     html += toggleRow("flag_red", "Red flag");
     html += styleControls("flag", "Panel opacity");
+  } else if (w === "telemetry") {
+    html += `<div class="section">Show</div>`;
+    html += toggleRow("telemetry_traces", "Traces");
+    html += toggleRow("telemetry_bars", "Bars");
+    html += toggleRow("telemetry_dial", "Gear / speed");
+    if (preview.get_bool("telemetry_traces")) {
+      html += `<div class="section">Traces</div>`;
+      html += toggleRow("telemetry_trace_throttle", "Throttle", true);
+      html += toggleRow("telemetry_trace_brake", "Brake", true);
+      html += toggleRow("telemetry_trace_steer", "Steer", true);
+    }
+    if (preview.get_bool("telemetry_bars")) {
+      html += `<div class="section">Bars</div>`;
+      html += toggleRow("telemetry_bar_clutch", "Clutch", true);
+      html += toggleRow("telemetry_bar_brake", "Brake", true);
+      html += toggleRow("telemetry_bar_throttle", "Throttle", true);
+      html += toggleRow("telemetry_bar_steer", "Steer", true);
+    }
+    html += styleControls("telemetry", "Panel opacity");
   } else if (w === "lean") {
     html += fieldRow("lean_style", "Look", [
       ["figure", "Figure"],
@@ -338,7 +362,9 @@ settings.addEventListener("change", (e) => {
       label.textContent = `${t.value}${t.dataset.suffix || ""}`;
     }
   }
-  if (t.dataset.bool === "dash_simple") renderSettings();
+  if (t.dataset.bool === "dash_simple" || t.dataset.bool === "telemetry_traces" || t.dataset.bool === "telemetry_bars") {
+    renderSettings();
+  }
 });
 
 settings.addEventListener("click", (e) => {

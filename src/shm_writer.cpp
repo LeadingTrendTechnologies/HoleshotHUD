@@ -308,6 +308,21 @@ void ShmWriter::publish(const PluginState& state, const PluginConfig& config)
         local.localGear = state.localGear();
         local.localRpm = state.localRpm();
     }
+    // BikeData has clutch + both brakes. Other riders only publish throttle / front brake.
+    if (live && live->active && focus >= 0 && focus != state.localRaceNum())
+    {
+        local.localThrottle = live->throttle;
+        local.localFrontBrake = live->frontBrake;
+        local.localRearBrake = 0.0f;
+        local.localClutch = 0.0f;
+    }
+    else
+    {
+        local.localThrottle = state.localThrottle();
+        local.localFrontBrake = state.localFrontBrake();
+        local.localRearBrake = state.localRearBrake();
+        local.localClutch = state.localClutch();
+    }
     local.engineTemp = state.engineTemp();
     local.airTemp = state.airTemp();
     local.fuel = state.fuel();

@@ -333,6 +333,8 @@ fn center_widget(cfg: &mut HudConfig, name: &str) {
     } else if name == "gamepad" {
         cfg.experimental = true;
         size_demo_gamepad(cfg);
+    } else if name == "telemetry" {
+        size_demo_telemetry(cfg);
     } else if let Some(id) = widget_id(name) {
         cfg.snap(id, SnapAlign::Center);
     }
@@ -363,6 +365,12 @@ fn size_demo_gamepad(cfg: &mut HudConfig) {
     cfg.snap(WidgetId::Gamepad, SnapAlign::Center);
 }
 
+fn size_demo_telemetry(cfg: &mut HudConfig) {
+    cfg[WidgetId::Telemetry].rect.w = 0.62;
+    cfg[WidgetId::Telemetry].rect.h = 0.18;
+    cfg.snap(WidgetId::Telemetry, SnapAlign::Center);
+}
+
 fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg[WidgetId::Standings].show = name == "standings";
     cfg[WidgetId::Relative].show = name == "relative";
@@ -377,6 +385,7 @@ fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg[WidgetId::Flag].show = name == "flag";
     cfg[WidgetId::Lean].show = name == "lean";
     cfg[WidgetId::Gamepad].show = name == "gamepad";
+    cfg[WidgetId::Telemetry].show = name == "telemetry";
     cfg.experimental = name == "gamepad";
 }
 
@@ -395,6 +404,7 @@ fn widget_id(name: &str) -> Option<WidgetId> {
         "flag" => WidgetId::Flag,
         "lean" => WidgetId::Lean,
         "gamepad" => WidgetId::Gamepad,
+        "telemetry" => WidgetId::Telemetry,
         _ => return None,
     })
 }
@@ -531,6 +541,7 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "dash_blue" => cfg.dash_blue,
         "dash_red" => cfg.dash_red,
         "dash_simple" => cfg.dash_simple,
+        "dash_shift_color" => cfg.dash_shift_color,
         "ticker_bold" => cfg[WidgetId::Ticker].bold,
         "sys_bold" => cfg[WidgetId::Sys].bold,
         "sector_live" => cfg.sector_live,
@@ -542,6 +553,17 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "flag_bold" => cfg[WidgetId::Flag].bold,
         "lean_bold" => cfg[WidgetId::Lean].bold,
         "gamepad_bold" => cfg[WidgetId::Gamepad].bold,
+        "telemetry_bold" => cfg[WidgetId::Telemetry].bold,
+        "telemetry_traces" => cfg.telemetry_traces,
+        "telemetry_trace_throttle" => cfg.telemetry_trace_throttle,
+        "telemetry_trace_brake" => cfg.telemetry_trace_brake,
+        "telemetry_trace_steer" => cfg.telemetry_trace_steer,
+        "telemetry_bars" => cfg.telemetry_bars,
+        "telemetry_bar_clutch" => cfg.telemetry_bar_clutch,
+        "telemetry_bar_brake" => cfg.telemetry_bar_brake,
+        "telemetry_bar_throttle" => cfg.telemetry_bar_throttle,
+        "telemetry_bar_steer" => cfg.telemetry_bar_steer,
+        "telemetry_dial" => cfg.telemetry_dial,
         "flag_yellow" => cfg.flag_yellow,
         "flag_blue" => cfg.flag_blue,
         "flag_red" => cfg.flag_red,
@@ -609,6 +631,7 @@ fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
         "dash_blue" => cfg.dash_blue = on,
         "dash_red" => cfg.dash_red = on,
         "dash_simple" => cfg.dash_simple = on,
+        "dash_shift_color" => cfg.dash_shift_color = on,
         "ticker_bold" => cfg[WidgetId::Ticker].bold = on,
         "sys_bold" => cfg[WidgetId::Sys].bold = on,
         "sector_live" => cfg.sector_live = on,
@@ -620,6 +643,17 @@ fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
         "flag_bold" => cfg[WidgetId::Flag].bold = on,
         "lean_bold" => cfg[WidgetId::Lean].bold = on,
         "gamepad_bold" => cfg[WidgetId::Gamepad].bold = on,
+        "telemetry_bold" => cfg[WidgetId::Telemetry].bold = on,
+        "telemetry_traces" => cfg.telemetry_traces = on,
+        "telemetry_trace_throttle" => cfg.telemetry_trace_throttle = on,
+        "telemetry_trace_brake" => cfg.telemetry_trace_brake = on,
+        "telemetry_trace_steer" => cfg.telemetry_trace_steer = on,
+        "telemetry_bars" => cfg.telemetry_bars = on,
+        "telemetry_bar_clutch" => cfg.telemetry_bar_clutch = on,
+        "telemetry_bar_brake" => cfg.telemetry_bar_brake = on,
+        "telemetry_bar_throttle" => cfg.telemetry_bar_throttle = on,
+        "telemetry_bar_steer" => cfg.telemetry_bar_steer = on,
+        "telemetry_dial" => cfg.telemetry_dial = on,
         "flag_yellow" => cfg.flag_yellow = on,
         "flag_blue" => cfg.flag_blue = on,
         "flag_red" => cfg.flag_red = on,
@@ -666,6 +700,8 @@ fn int_val(cfg: &HudConfig, key: &str) -> Option<i32> {
         "lean_bg" => cfg[WidgetId::Lean].bg,
         "gamepad_font" => cfg[WidgetId::Gamepad].font,
         "gamepad_bg" => cfg[WidgetId::Gamepad].bg,
+        "telemetry_font" => cfg[WidgetId::Telemetry].font,
+        "telemetry_bg" => cfg[WidgetId::Telemetry].bg,
         _ => return None,
     })
 }
@@ -691,6 +727,7 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "flag_bg" => cfg[WidgetId::Flag].bg = value.clamp(0, 100),
         "lean_bg" => cfg[WidgetId::Lean].bg = value.clamp(0, 100),
         "gamepad_bg" => cfg[WidgetId::Gamepad].bg = value.clamp(0, 100),
+        "telemetry_bg" => cfg[WidgetId::Telemetry].bg = value.clamp(0, 100),
         "ticker_count" => cfg.ticker_count = value.clamp(3, 15),
         "sector_hist_laps" => cfg.sector_hist_laps = value.clamp(1, 5),
         "st_font" => cfg.set_font_pct(WidgetId::Standings, value),
@@ -706,6 +743,7 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "flag_font" => cfg.set_font_pct(WidgetId::Flag, value),
         "lean_font" => cfg.set_font_pct(WidgetId::Lean, value),
         "gamepad_font" => cfg.set_font_pct(WidgetId::Gamepad, value),
+        "telemetry_font" => cfg.set_font_pct(WidgetId::Telemetry, value),
         _ => {}
     }
 }
@@ -841,6 +879,10 @@ fn demo_snapshot() -> Snapshot {
     s.local_pitch = -18.0;
     s.local_steer = -0.10;
     s.steer_lock = 0.40;
+    s.local_throttle = 0.75;
+    s.local_front_brake = 0.0;
+    s.local_rear_brake = 0.0;
+    s.local_clutch = 0.0;
     let (poly, length, sf, name) = captured_track();
     write_name(&mut s.track_name, &name);
     write_name(&mut s.setup_name, "Washougal Soft");
@@ -1011,6 +1053,11 @@ fn animate(s: &mut Snapshot, t: f32, dt: f32) {
     s.local_rpm = (8200.0 + 3800.0 * (t * 2.4).sin()) as i32;
     s.local_gear = 2 + ((t * 0.35).sin() * 1.6 + 1.6) as i32;
     s.local_speed = 14.0 + 7.0 * (0.5 + 0.5 * (t * 1.1).sin());
+    let phase = (t * 0.85).sin();
+    s.local_throttle = (0.55 + 0.40 * phase).clamp(0.0, 1.0);
+    s.local_front_brake = (0.35 - 0.55 * phase).clamp(0.0, 1.0);
+    s.local_rear_brake = s.local_front_brake * 0.45;
+    s.local_clutch = if s.local_throttle < 0.12 { 0.4 } else { 0.0 };
 
     for i in 0..s.rider_count.max(0) as usize {
         let speed = 0.006 + (i as f32) * 0.00022 + 0.0012 * ((t * 0.35) + i as f32).sin();

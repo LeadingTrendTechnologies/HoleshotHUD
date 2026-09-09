@@ -10,7 +10,7 @@ Plugin field status lives in [Home.md](../Home.md). **Overlay** = already in SHM
 | [Fuel calculator](#fuel-calculator) | Dash / table **Fuel** and **Fuel %** | Overlay (`fuel` / `maxFuel`) |
 | [Ideal Lap](#ideal-lap) | [Sectors](sector.md) — shipped as IDEAL on that widget | Overlay splits + `track_pb` |
 | [Lap consistency](#lap-consistency) | [Delta Bar](delta-bar.md) | Overlay last/best lap; need a lap ring |
-| [Telemetry](#telemetry) | — | Need SHM (throttle / brake / clutch / susp) |
+| [Telemetry](#telemetry) | [Telemetry](telemetry.md) — shipped as traces + bars + gear/speed | Overlay (`localThrottle` / brakes / clutch). Suspension still Need SHM |
 | [Pitboard](#pitboard) | [Dash](dash.md) + [Sectors](sector.md) | Overlay (lap / split / gap) |
 | [Event Log](#event-log) | — | Cached / unused (`RaceCommunication`, laps, holeshot, penalties) |
 
@@ -46,11 +46,7 @@ Lap-time trend across the session (sparkline / rolling delta vs average or best)
 
 ## Telemetry
 
-Throttle / brake / suspension graphs.
-
-- Plugin **Unused**: `m_fThrottle`, `m_fFrontBrake`, `m_fRearBrake`, `m_fClutch`, `m_afSuspLength[2]`, `m_afSuspVelocity[2]`. Scale forks/shock with event `m_afSuspMaxTravel[2]`.
-- Need SHM. Overlay keeps a short ring buffer (time on X, traces on Y). Do not Toolhelp or sample host meters here — that is [Systems](systems.md).
-- Other riders do not get clutch / suspension.
+Shipped as [Telemetry](telemetry.md): throttle / brake traces, clutch / brake / throttle bars, gear and speed. Suspension graphs are still future (`m_afSuspLength` / `m_afSuspVelocity` — Need SHM).
 
 ## Pitboard
 
@@ -70,6 +66,7 @@ Timestamped race-event feed.
 
 ## Change log
 
+- 2026-09-09 — Telemetry shipped (traces + bars + gear/speed). Suspension graphs stay here.
 - 2026-09-04 — Controller (was Gamepad) is Labs-only. See [gamepad.md](gamepad.md).
 - 2026-09-02 — Gamepad shipped. Moved to [gamepad.md](gamepad.md).
 - 2026-09-01 — Lean shipped. Moved to [lean.md](lean.md).

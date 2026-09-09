@@ -2,7 +2,14 @@
 version: 1
 slug: "overlay-hud-src-render-rs"
 primary_target: "overlay/hud/src/render.rs"
-related_targets: ["overlay/hud/src/render_tests.rs","wiki/widgets/radar.md","wiki/widgets/sector.md","wiki/widgets/systems.md"]
+related_targets: ["overlay/hud/src/render_tests.rs","wiki/widgets/radar.md","wiki/widgets/sector.md","wiki/widgets/systems.md","wiki/widgets/telemetry.md"]
+---
+
+---
+version: 1
+slug: "overlay-hud-src-render-rs"
+primary_target: "overlay/hud/src/render.rs"
+related_targets: ["overlay/hud/src/render_tests.rs","wiki/widgets/radar.md","wiki/widgets/sector.md","wiki/widgets/systems.md","wiki/widgets/telemetry.md"]
 ---
 
 # Radar widget
@@ -138,7 +145,32 @@ None.
 | Rider (Figure) | raster `lean-rider.png` rotated | white #F8F8FC silhouette, pivot at rear tire |
 | Lean (Minimal) | ExtraBold Italic | Holeshot Orange #FF9430, signed `+32°`, ~46% of body |
 | Pitch (Minimal) | ExtraBold Italic | cream #F8F8FC, signed degrees of ±60; hidden in spectate |
-| Degree bug (Figure) | fill_skew + type | Holeshot Orange #FF9430, ink-on-accent 32° on the hip |
+| Degree bug (Figure) | fill_skew | Holeshot Orange #FF9430, ink-on-accent 32° on the hip |
 | Steer | 2px hairline + type | orange 4px fill; night-ink halo + percent pill when bg < 40; hidden in spectate |
 | Pitch (Figure) | 2px vertical hairline + type | orange up = nose up, percent of ±60°; same halo/pill; hidden in spectate |
 | Type | existing HUD face | ExtraBold Italic via push_style |
+
+# Telemetry widget
+
+## Scope
+Operate · overlay HUD widget `draw_telemetry` in `overlay/hud/src/render.rs`. New Cockpit widget. Throttle / brake / clutch need SHM (V14).
+
+## Audience / job
+MX Bikes racer mid-session. Glance: how have I been on the gas and brake, what are the live analog levels, and what gear/speed am I in.
+
+## Direction contract
+THESIS: A horizontal input strip whose glance is the throttle/brake traces — not a second Dash and not a generic sim-HUD neon tape.
+OWN-WORLD: Night-ink 6px plaque, 1px hairline. Exo 2 ExtraBold Italic. Ahead-green throttle, behind-red brake, dim clutch. Orange is you (label pip, RPM arc). No dotted grid, no neon, no drop shadow.
+STORY: The rider reads recent throttle/brake without looking at a pad picture, then the live bars and gear/speed.
+FIRST VIEWPORT: No left label. Night-ink well with overlaid green/red traces opens the strip. Three analog bars (clutch / brake / throttle) with the live % on the active one. Right circular gear well hugging the rounded end — huge gear, dim unit, speed, orange RPM arc.
+FORM: Local extension of Broadcast Booth Glass. Reference strip topology, Holeshot language. Narrow request — no concept-seed.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+
+## Memorable moment
+A green throttle drop and a red brake spike sit on the same well — the last corner is a picture, not a guess.
+
+## Approved comp
+`.impeccable/mocks/telemetry-strip.png` — Strip Tape, left TELEMETRY spine removed.
+
+## Unresolved
+Comp approval. Brake bar uses front+rear max. Local rider only (spectate uses focus vehicle throttle/front brake when present).

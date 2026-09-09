@@ -314,6 +314,10 @@ html, body {
   min-height: 32px;
 }
 
+.row.nested {
+  margin-left: 16px;
+}
+
 .row label { font-size: 12px; color: var(--text); }
 .row.stack { display: block; }
 .row.stack label { display: block; margin-bottom: 6px; }

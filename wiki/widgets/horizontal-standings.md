@@ -15,7 +15,7 @@ Settings subtitle: “Your name is highlighted in the field”.
 
 - Height is clamped about 42–64 px. Settings layout handles are **east/west only** (`ew_only`).
 - Optional title: `WARMUP` / `LAP RACE` / `TIMED` / `EXTRA` / `SESSION` plus track name. Warmup is 10:00 (or 12/15/20 / 30+ min practice) with no extras; not a leftover 8-minute race.
-- Side slots (`ticker_left` / `ticker_right`) are `BoardField` (default Lap, Air). **Fuel**, **Fuel %**, and **Setup** are options.
+- Side slots (`ticker_left` / `ticker_right`) are `BoardField` (default Lap, Air). **Fuel**, **Fuel %**, **Setup**, **Gap ahead**, and **Gap behind** are options. Ahead/behind are live-order place neighbors, not the card delta vs you.
 - Cards show position, name, gap vs you (`ticker_delta` = signed gap difference), last/best. Session-best lap is purple.
 - In replay / spectate, clicking a card follows that rider (same camera path as standings names).
 - **Riders shown** (`ticker_count`, 3–15) is a target; `hstand_layout` shrinks to what fits at a minimum card width.
@@ -28,12 +28,16 @@ Settings subtitle: “Your name is highlighted in the field”.
 - Keep the code id `Ticker` in ini (`ticker_x`, `show_ticker`, …). The UI name is Horizontal Standings / H-Standings.
 - Do not add north/south resize; height is a fixed band.
 - Gap on a card is vs **you**, not vs the leader (except you / P1 edge cases via `format_signed_delta`).
+- Side-slot **Gap ahead** / **Gap behind** are live-order P−1 / P+1. Same lap ticks along the track toward that rider; a live lap or more is `1L` / `-1L`. Not the card delta vs you.
 - Cards iterate `RaceField::board()` (live order), not `s.standings`. Scroll index, slide animation, and the focus card follow that order.
 - Click-to-follow only while spectating / replay. Do not capture overlay clicks while riding.
 - Setup side-slot is the loaded bike setup filename stem. `--` when `RunInit` has not sent it.
 
 ## Change log
 
+- 2026-09-09 — Side-slot **Gap ahead** / **Gap behind** use along-track time on the same lap and `1L` / `-1L` when live laps differ. Times have no leading `+`; ahead is an up arrow, behind a down arrow.
+- 2026-09-08 — Side-slot **Gap ahead** / **Gap behind** tick a live running gap to place neighbors. Card gaps stay the signed classification delta vs you.
+- 2026-09-08 — **Gap ahead** and **Gap behind** are side-slot options (shared `BoardField`). Place neighbors, not the signed card gap vs you.
 - 2026-09-07 — A pass slides the cards into the new order (`HS_SLIDE`), same ease as Standings rows. Instant slot jump was unreadable at race speed.
 
 - 2026-09-03 — **Setup** is a side-slot option (`BoardField::Setup`). Restart MX Bikes after this plugin so SHM `Local\MXBOHudV13` loads.

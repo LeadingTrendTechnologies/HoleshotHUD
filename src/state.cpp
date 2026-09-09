@@ -85,6 +85,10 @@ void PluginState::clearRace()
     m_lastSpectate = 0.0;
     m_localGear = 0;
     m_localRpm = 0;
+    m_localThrottle = 0.0f;
+    m_localFrontBrake = 0.0f;
+    m_localRearBrake = 0.0f;
+    m_localClutch = 0.0f;
     m_localRoll = 0.0f;
     m_localPitch = 0.0f;
     m_localSteer = 0.0f;
@@ -841,6 +845,10 @@ void PluginState::setTelemetry(const SPluginsBikeData_t& data, float time, float
     }
     m_localGear = data.m_iGear;
     m_localRpm = data.m_iRPM;
+    m_localThrottle = data.m_fThrottle;
+    m_localFrontBrake = data.m_fFrontBrake;
+    m_localRearBrake = data.m_fRearBrake;
+    m_localClutch = data.m_fClutch;
     m_engineTemp = data.m_fWaterTemperature > 1.0f ? data.m_fWaterTemperature : data.m_fEngineTemperature;
     m_fuel = data.m_fFuel;
     m_localSpeed = data.m_fSpeedometer;

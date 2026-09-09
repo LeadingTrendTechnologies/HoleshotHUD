@@ -1,5 +1,5 @@
 pub const MAGIC: u32 = 0x4F42584D;
-pub const VERSION: u32 = 13;
+pub const VERSION: u32 = 14;
 pub const MAX_POLY: usize = 1024;
 pub const MAX_RIDERS: usize = 64;
 pub const MAX_STANDINGS: usize = 40;
@@ -157,6 +157,10 @@ pub struct Snapshot {
     pub local_steer: f32,
     pub steer_lock: f32,
     pub setup_name: [u8; TRACK_NAME],
+    pub local_throttle: f32,
+    pub local_front_brake: f32,
+    pub local_rear_brake: f32,
+    pub local_clutch: f32,
 }
 
 impl Default for Snapshot {
@@ -240,6 +244,10 @@ impl Default for Snapshot {
             local_steer: 0.0,
             steer_lock: 0.0,
             setup_name: [0; TRACK_NAME],
+            local_throttle: 0.0,
+            local_front_brake: 0.0,
+            local_rear_brake: 0.0,
+            local_clutch: 0.0,
         }
     }
 }
@@ -426,6 +434,11 @@ impl Snapshot {
             o,
             "gear={} rpm={} max_rpm={} shift_rpm={} engine_temp={:.1} air_temp={:.1} fuel={:.2}/{:.2}",
             self.local_gear, self.local_rpm, self.max_rpm, self.shift_rpm, self.engine_temp, self.air_temp, self.fuel, self.max_fuel
+        );
+        let _ = writeln!(
+            o,
+            "throttle={:.2} front_brake={:.2} rear_brake={:.2} clutch={:.2}",
+            self.local_throttle, self.local_front_brake, self.local_rear_brake, self.local_clutch
         );
         let _ = writeln!(
             o,

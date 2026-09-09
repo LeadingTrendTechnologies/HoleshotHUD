@@ -13,7 +13,8 @@ pub(crate) use crate::race_store::{
     class_position, extras_started, extra_laps, finish_earned, focus_num_laps,
     focus_standing, format_countdown, format_gap, format_lap, format_session_clock,
     i_finished, note_laps_to_run, skip_last_lap_white,
-    interval_text, interval_text_from_row, is_lap_race, is_warmup, lapped, laps_done, laps_left,
+    gap_ahead_text, gap_behind_text, interval_text, interval_text_from_row, is_lap_race, is_warmup,
+    lapped, laps_done, laps_left,
     leader_finished, leader_num_laps, live_leader, live_position, local_overtime_done,
     local_overtime_taken, moving, norm_lap_pos as norm_track_pos,
     overtime_active, prestart, race_lap, race_laps_left_text, race_over_for_me,
@@ -44,6 +45,7 @@ fn lapping_col() -> Color { Color::from_rgba8(59, 130, 246, 255) }
 fn lapped_col() -> Color { Color::from_rgba8(239, 68, 68, 255) }
 fn ahead_col() -> Color { Color::from_rgba8(48, 220, 88, 255) }
 fn behind_col() -> Color { Color::from_rgba8(255, 64, 72, 255) }
+fn telemetry_steer_col() -> Color { Color::from_rgba8(214, 214, 220, 230) }
 
 pub struct Fonts {
     pub ui: Font,
@@ -505,6 +507,10 @@ fn draw_widgets(
         let _g = push_style(fonts, cfg[WidgetId::Gamepad].bold, cfg[WidgetId::Gamepad].font);
         draw_gamepad(px, fonts, cfg, sw, sh);
     }
+    if cfg[WidgetId::Telemetry].show {
+        let _g = push_style(fonts, cfg[WidgetId::Telemetry].bold, cfg[WidgetId::Telemetry].font);
+        draw_telemetry(px, fonts, s, cfg, sw, sh);
+    }
 }
 
 fn rr(x: f32, y: f32, w: f32, h: f32) -> Option<Rect> {
@@ -612,6 +618,9 @@ fn draw_layout(px: &mut Pixmap, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32)
     }
     if cfg.gamepad_visible() {
         layout_box(px, cfg[WidgetId::Gamepad].rect.x * sw, cfg[WidgetId::Gamepad].rect.y * sh, cfg[WidgetId::Gamepad].rect.w * sw, cfg[WidgetId::Gamepad].rect.h * sh, false);
+    }
+    if cfg[WidgetId::Telemetry].show {
+        layout_box(px, cfg[WidgetId::Telemetry].rect.x * sw, cfg[WidgetId::Telemetry].rect.y * sh, cfg[WidgetId::Telemetry].rect.w * sw, cfg[WidgetId::Telemetry].rect.h * sh, false);
     }
     if cfg[WidgetId::Flag].show {
         layout_box(px, cfg[WidgetId::Flag].rect.x * sw, cfg[WidgetId::Flag].rect.y * sh, cfg[WidgetId::Flag].rect.w * sw, cfg[WidgetId::Flag].rect.h * sh, false);
@@ -2153,6 +2162,12 @@ fn board_item(s: &Snapshot, cfg: &HudConfig, field: BoardField) -> Option<(char,
                 name
             }
         }
+        BoardField::GapAhead => st
+            .map(|r| gap_ahead_text(s, &race.field, r))
+            .unwrap_or_else(|| "---".into()),
+        BoardField::GapBehind => st
+            .map(|r| gap_behind_text(s, &race.field, r))
+            .unwrap_or_else(|| "---".into()),
     };
     Some((field.icon(), text))
     })
@@ -2649,6 +2664,8 @@ fn ticker_meta_label(field: BoardField, val: &str) -> &'static str {
         BoardField::SessionType => "SESSION",
         BoardField::Fuel | BoardField::FuelPct => "FUEL",
         BoardField::Setup => "SETUP",
+        BoardField::GapAhead => "AHEAD",
+        BoardField::GapBehind => "BEHIND",
         BoardField::None => "",
     }
 }
@@ -2716,10 +2733,10 @@ fn sector_fit_probe(fonts: &Fonts, probes: &[&str], fs: f32, max_w: f32) -> f32 
     }
 }
 
-/// Right edge of a probe-wide slot centered in the column. Live digits grow left, not sideways.
-fn sector_num_x(fonts: &Fonts, s: &str, fs: f32, col_x: f32, col_w: f32, slot_w: f32) -> f32 {
+/// Center the live string in the column. Probe `slot_w` still sizes pills and columns.
+fn sector_num_x(fonts: &Fonts, s: &str, fs: f32, col_x: f32, col_w: f32, _slot_w: f32) -> f32 {
     let tw = measure(fonts, s, fs);
-    col_x + col_w * 0.5 + slot_w * 0.5 - tw
+    col_x + (col_w - tw) * 0.5
 }
 
 fn draw_sector_num(
@@ -4037,6 +4054,303 @@ fn xbox_gamepad_layout() -> GamepadLayout {
         guide: [768.0 / 1536.0, 337.0 / 1024.0],
         guide_r: 22.0,
         touch: None,
+    }
+}
+
+fn telemetry_body_path(x: f32, y: f32, w: f32, h: f32) -> Option<Path> {
+    let rl = 6.0f32.min(h * 0.4);
+    let rr = h * 0.5;
+    let k = 0.5522847498 * rr;
+    let cx = x + w - rr;
+    let cy = y + rr;
+    let mut pb = PathBuilder::new();
+    pb.move_to(x + rl, y);
+    pb.line_to(cx, y);
+    pb.cubic_to(cx + k, y, x + w, cy - k, x + w, cy);
+    pb.cubic_to(x + w, cy + k, cx + k, y + h, cx, y + h);
+    pb.line_to(x + rl, y + h);
+    pb.quad_to(x, y + h, x, y + h - rl);
+    pb.line_to(x, y + rl);
+    pb.quad_to(x, y, x + rl, y);
+    pb.close();
+    pb.finish()
+}
+
+fn draw_telemetry(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) {
+    let r = cfg[WidgetId::Telemetry].rect;
+    let x = r.x * sw;
+    let y = r.y * sh;
+    let w = (r.w * sw).max(220.0);
+    let h = (r.h * sh).max(64.0);
+    let a = bg_a(cfg[WidgetId::Telemetry].bg);
+    if let Some(body) = telemetry_body_path(x, y, w, h) {
+        if a > 0 {
+            let mut paint = Paint::default();
+            paint.set_color(Color::from_rgba8(10, 10, 10, a));
+            paint.anti_alias = true;
+            px.fill_path(&body, &paint, FillRule::Winding, Transform::identity(), None);
+            let edge = ((a as u16 * 170) / 255).max(70) as u8;
+            stroke_path(px, &body, Color::from_rgba8(42, 42, 46, edge), 1.0);
+        }
+    }
+
+    let pad = (h * 0.10).clamp(6.0, 12.0);
+    let show_dial = cfg.telemetry_dial;
+    let show_traces = cfg.telemetry_draw_traces();
+    let show_bars = cfg.telemetry_draw_bars();
+    let dial_d = (h - pad * 2.0).max(40.0);
+    let dial_r = dial_d * 0.5;
+    let gap = (h * 0.06).clamp(4.0, 8.0);
+    let well_y = y + pad;
+    let well_h = h - pad * 2.0;
+    let mut cursor = x + w - pad;
+    let (dial_cx, dial_cy) = if show_dial {
+        let cx = cursor - dial_r;
+        cursor = cx - dial_r - gap;
+        (cx, y + h * 0.5)
+    } else {
+        (0.0, 0.0)
+    };
+    let bar_n = [
+        cfg.telemetry_bar_clutch,
+        cfg.telemetry_bar_brake,
+        cfg.telemetry_bar_throttle,
+        cfg.telemetry_bar_steer,
+    ]
+    .iter()
+    .filter(|on| **on)
+    .count()
+    .max(1) as f32;
+    let bars_w = if bar_n > 3.0 {
+        (h * 0.50).clamp(44.0, 76.0)
+    } else {
+        (h * 0.42).clamp(36.0, 58.0)
+    };
+    let bars_x = if show_bars {
+        let left = x + pad;
+        let bx = if show_traces {
+            (cursor - bars_w).max(left)
+        } else {
+            left + ((cursor - left) - bars_w).max(0.0) * 0.5
+        };
+        if show_traces {
+            cursor = bx - gap;
+        }
+        bx
+    } else {
+        0.0
+    };
+    let well_x = x + pad;
+    let well_w = if show_traces { (cursor - well_x).max(48.0) } else { 0.0 };
+    let well_r = 4.0f32.min(well_h * 0.12);
+
+    if show_traces {
+        if a > 0 {
+            fill_round(px, well_x, well_y, well_w, well_h, well_r, Color::from_rgba8(8, 8, 10, a));
+            if let Some(frame) = round_rect_path(well_x + 0.5, well_y + 0.5, well_w - 1.0, well_h - 1.0, well_r) {
+                let edge = ((a as u16 * 120) / 255).max(50) as u8;
+                stroke_path(px, &frame, Color::from_rgba8(42, 42, 46, edge), 1.0);
+            }
+        }
+        let grid_a = if a > 0 { ((a as u16 * 70) / 255).max(28) as u8 } else { 40 };
+        for i in 1..4 {
+            let gy = well_y + well_h * (i as f32 / 4.0);
+            if let Some(line) = rr(well_x + 4.0, gy, well_w - 8.0, 1.0) {
+                fill_rect(px, line, Color::from_rgba8(42, 42, 46, grid_a));
+            }
+        }
+
+        let ink_w = (h * 0.038).clamp(2.2, 3.6);
+        let y_lo = well_y + 3.0;
+        let y_hi = well_y + well_h - 3.0;
+        crate::telemetry::with(|trace| {
+            if trace.len() >= 2 {
+                let n = trace.len();
+                let mut thr_pts = Vec::with_capacity(n);
+                let mut brk_pts = Vec::with_capacity(n);
+                let mut str_pts = Vec::with_capacity(n);
+                let span = well_w - 6.0;
+                let amp = well_h - 6.0;
+                let mid = well_y + well_h * 0.5;
+                let steer_amp = amp * 0.5;
+                for i in 0..n {
+                    let sample = trace.get(i);
+                    let tx = well_x + 3.0 + span * (i as f32 / (n - 1) as f32);
+                    thr_pts.push((tx, y_hi - amp * sample.throttle));
+                    brk_pts.push((tx, y_hi - amp * sample.brake));
+                    str_pts.push((tx, mid - steer_amp * sample.steer));
+                }
+                if cfg.telemetry_trace_steer {
+                    stroke_smooth_series(px, &str_pts, telemetry_steer_col(), ink_w * 0.92, y_lo, y_hi);
+                }
+                if cfg.telemetry_trace_brake {
+                    stroke_smooth_series(px, &brk_pts, behind_col(), ink_w, y_lo, y_hi);
+                }
+                if cfg.telemetry_trace_throttle {
+                    stroke_smooth_series(px, &thr_pts, ahead_col(), ink_w, y_lo, y_hi);
+                }
+            }
+        });
+    }
+
+    let (thr, brk, clu) = crate::telemetry::inputs(s);
+    let str = crate::telemetry::steer(s);
+    if show_bars {
+        let mut bars: Vec<(f32, Color, bool)> = Vec::with_capacity(4);
+        if cfg.telemetry_bar_clutch {
+            bars.push((clu, Color::from_rgba8(48, 52, 64, 255), false));
+        }
+        if cfg.telemetry_bar_brake {
+            bars.push((brk, behind_col(), false));
+        }
+        if cfg.telemetry_bar_throttle {
+            bars.push((thr, ahead_col(), false));
+        }
+        if cfg.telemetry_bar_steer {
+            bars.push((str, telemetry_steer_col(), true));
+        }
+        let n = bars.len().max(1) as f32;
+        let bar_gap = 4.0;
+        let bar_w = ((bars_w - bar_gap * (n - 1.0)) / n).max(6.0);
+        let bar_h = well_h * 0.78;
+        let bar_y = well_y + well_h - bar_h;
+        for (i, (level, fill, bipolar)) in bars.iter().enumerate() {
+            let bx = bars_x + i as f32 * (bar_w + bar_gap);
+            fill_round(px, bx, bar_y, bar_w, bar_h, 2.0, Color::from_rgba8(24, 24, 28, a.max(160)));
+            if *bipolar {
+                let mid = bar_y + bar_h * 0.5;
+                let fh = (bar_h * 0.5 * level.abs()).max(if level.abs() > 0.02 { 3.0 } else { 0.0 });
+                if fh > 0.5 {
+                    let fy = if *level >= 0.0 { mid - fh } else { mid };
+                    fill_round(px, bx, fy, bar_w, fh, 2.0, *fill);
+                }
+                if let Some(tick) = rr(bx + 1.0, mid - 0.5, (bar_w - 2.0).max(1.0), 1.0) {
+                    fill_rect(px, tick, Color::from_rgba8(90, 90, 96, 200));
+                }
+                if level.abs() > 0.04 {
+                    let label = format!("{:+}", (*level * 100.0).round() as i32);
+                    let n = (h * 0.14).clamp(8.0, 12.0);
+                    text_bold(px, fonts, &label, n, bx + bar_w * 0.5, bar_y - n - 1.0, text_col(), true);
+                }
+            } else {
+                let fh = (bar_h * level).max(if *level > 0.02 { 3.0 } else { 0.0 });
+                if fh > 0.5 {
+                    fill_round(px, bx, bar_y + bar_h - fh, bar_w, fh, 2.0, *fill);
+                }
+                if *level > 0.04 {
+                    let label = format!("{}", (*level * 100.0).round() as i32);
+                    let n = (h * 0.14).clamp(8.0, 12.0);
+                    text_bold(px, fonts, &label, n, bx + bar_w * 0.5, bar_y - n - 1.0, text_col(), true);
+                }
+            }
+        }
+    }
+
+    if !show_dial {
+        return;
+    }
+    let ring_w = (dial_r * 0.10).clamp(3.0, 6.0);
+    stroke_circle(px, dial_cx, dial_cy, dial_r - ring_w * 0.5, Color::from_rgba8(42, 42, 46, a.max(140)), ring_w);
+    let max_rpm = s.max_rpm.max(1) as f32;
+    let rpm_n = (s.local_rpm.max(0) as f32 / max_rpm).clamp(0.0, 1.0);
+    if rpm_n > 0.02 {
+        draw_rpm_arc(px, dial_cx, dial_cy, dial_r - ring_w * 0.5, ring_w, rpm_n, accent());
+    }
+
+    let gear = if s.local_gear <= 0 {
+        "N".to_string()
+    } else {
+        format!("{}", s.local_gear)
+    };
+    let speed = cfg.units.format_speed(s.local_speed);
+    let unit = cfg.units.speed_label().to_ascii_lowercase();
+    let gear_n = (dial_d * 0.40).clamp(18.0, 40.0);
+    let speed_n = (dial_d * 0.20).clamp(10.0, 17.0);
+    let unit_n = (dial_d * 0.10).clamp(6.0, 9.0);
+    let stack_gap = (dial_d * 0.02).clamp(1.0, 2.0);
+    let block = gear_n + stack_gap + speed_n;
+    let gy = dial_cy - block * 0.52;
+    text_bold(
+        px,
+        fonts,
+        &gear,
+        gear_n,
+        dial_cx,
+        gy,
+        shift_gear_col(s, true, text_col()),
+        true,
+    );
+    text_bold(px, fonts, &speed, speed_n, dial_cx, gy + gear_n + stack_gap, text_col(), true);
+    text(px, fonts, &unit, unit_n, dial_cx, gy + gear_n + stack_gap + speed_n + 1.0, text_dim(), true);
+}
+
+fn stroke_smooth_series(px: &mut Pixmap, pts: &[(f32, f32)], color: Color, width: f32, y_lo: f32, y_hi: f32) {
+    if pts.len() < 2 {
+        return;
+    }
+    let n = pts.len();
+    let y_at = |j: i32| pts[j.clamp(0, n as i32 - 1) as usize].1;
+    let mut smooth = Vec::with_capacity(n);
+    for i in 0..n {
+        let t = i as i32;
+        let y = (y_at(t - 2)
+            + y_at(t - 1) * 2.0
+            + y_at(t) * 3.0
+            + y_at(t + 1) * 2.0
+            + y_at(t + 2))
+            / 9.0;
+        smooth.push((pts[i].0, y.clamp(y_lo, y_hi)));
+    }
+    let mut pb = PathBuilder::new();
+    pb.move_to(smooth[0].0, smooth[0].1);
+    if smooth.len() == 2 {
+        pb.line_to(smooth[1].0, smooth[1].1);
+    } else {
+        for i in 0..smooth.len() - 1 {
+            let p0 = smooth[i.saturating_sub(1)];
+            let p1 = smooth[i];
+            let p2 = smooth[i + 1];
+            let p3 = smooth[(i + 2).min(smooth.len() - 1)];
+            let c1x = p1.0 + (p2.0 - p0.0) / 6.0;
+            let c1y = (p1.1 + (p2.1 - p0.1) / 6.0).clamp(y_lo, y_hi);
+            let c2x = p2.0 - (p3.0 - p1.0) / 6.0;
+            let c2y = (p2.1 - (p3.1 - p1.1) / 6.0).clamp(y_lo, y_hi);
+            pb.cubic_to(c1x, c1y, c2x, c2y, p2.0, p2.1);
+        }
+    }
+    if let Some(path) = pb.finish() {
+        stroke_path(px, &path, color, width);
+    }
+}
+
+fn stroke_circle(px: &mut Pixmap, cx: f32, cy: f32, r: f32, color: Color, width: f32) {
+    if r < 1.0 {
+        return;
+    }
+    let mut pb = PathBuilder::new();
+    pb.push_circle(cx, cy, r);
+    if let Some(path) = pb.finish() {
+        stroke_path(px, &path, color, width);
+    }
+}
+
+fn draw_rpm_arc(px: &mut Pixmap, cx: f32, cy: f32, r: f32, width: f32, frac: f32, color: Color) {
+    let start = -std::f32::consts::FRAC_PI_2 - 0.15;
+    let sweep = std::f32::consts::PI * 1.15 * frac.clamp(0.0, 1.0);
+    let steps = ((sweep.abs() * r).max(8.0) as usize).clamp(8, 48);
+    let mut pb = PathBuilder::new();
+    for i in 0..=steps {
+        let a = start + sweep * (i as f32 / steps as f32);
+        let px_ = cx + a.cos() * r;
+        let py_ = cy + a.sin() * r;
+        if i == 0 {
+            pb.move_to(px_, py_);
+        } else {
+            pb.line_to(px_, py_);
+        }
+    }
+    if let Some(path) = pb.finish() {
+        stroke_path(px, &path, color, width);
     }
 }
 
@@ -6296,15 +6610,13 @@ fn dash_foot_item(s: &Snapshot, cfg: &HudConfig, field: DashField) -> Option<(ch
         DashField::Air => cfg.units.format_temp(s.air_temp),
         DashField::Engine => cfg.units.format_temp(s.engine_temp),
         DashField::Gap => st
-            .map(|r| format_board_gap(r.gap_ms, r.gap_laps, r.position <= 1))
-            .unwrap_or_else(|| "--".into()),
+            .map(|r| gap_ahead_text(s, &race.field, r))
+            .unwrap_or_else(|| "---".into()),
         DashField::Interval => st
-            .and_then(|r| {
-                race.field
-                    .row_by_num(r.race_num)
-                    .map(interval_text_from_row)
-                    .or_else(|| Some(interval_text(s, r)))
-            })
+            .map(|r| gap_ahead_text(s, &race.field, r))
+            .unwrap_or_else(|| "---".into()),
+        DashField::GapBehind => st
+            .map(|r| gap_behind_text(s, &race.field, r))
             .unwrap_or_else(|| "--".into()),
         DashField::Penalty => format_penalty(st.map(|r| r.penalty_ms).unwrap_or(0)),
         DashField::Session => race_progress_text(s),
@@ -6630,7 +6942,15 @@ fn draw_unit_stack(
     }
 }
 
-fn draw_simple_dash(px: &mut Pixmap, fonts: &Fonts, d: &DashLay, a: u8) {
+fn shift_gear_col(s: &Snapshot, on: bool, rest: Color) -> Color {
+    if on && crate::telemetry::shift_warn(s) {
+        Color::from_rgba8(232, 132, 138, 255)
+    } else {
+        rest
+    }
+}
+
+fn draw_simple_dash(px: &mut Pixmap, fonts: &Fonts, d: &DashLay, a: u8, shift_warn: bool) {
     if let Some(path) = chamfer_path(d.x, d.y, d.w, d.h, d.cut) {
         if a > 0 {
             fill_path(px, &path, Color::from_rgba8(18, 18, 20, a));
@@ -6654,7 +6974,11 @@ fn draw_simple_dash(px: &mut Pixmap, fonts: &Fonts, d: &DashLay, a: u8) {
         (d.gear_w - skew).max(28.0),
         d.main_h,
         skew,
-        Color::from_rgba8(255, 148, 48, tile_a),
+        if shift_warn {
+            Color::from_rgba8(232, 132, 138, tile_a)
+        } else {
+            Color::from_rgba8(255, 148, 48, tile_a)
+        },
     );
     let ink = ink_on(accent());
     text_bold(
@@ -6715,7 +7039,13 @@ fn draw_dash_lead_crown(px: &mut Pixmap, fonts: &Fonts, d: &DashLay, pos_y: f32)
 fn draw_dash(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32, flag: DashFlag, grow: f32) {
     let d = dash_layout(fonts, s, cfg, sw, sh, flag, grow);
     if d.simple {
-        draw_simple_dash(px, fonts, &d, bg_a(cfg[WidgetId::Dash].bg));
+        draw_simple_dash(
+            px,
+            fonts,
+            &d,
+            bg_a(cfg[WidgetId::Dash].bg),
+            cfg.dash_shift_color && crate::telemetry::shift_warn(s),
+        );
         return;
     }
     let a = bg_a(cfg[WidgetId::Dash].bg);
@@ -6754,7 +7084,16 @@ fn draw_dash(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: 
     if let Some(path) = chamfer_path(d.gear_x, d.main_y, d.gear_w, d.main_h, d.cut * 0.45) {
         stroke_path(px, &path, Color::from_rgba8(236, 236, 240, 210), 1.3);
     }
-    text_bold(px, fonts, &d.gear, d.gear_n, d.gear_x + d.gear_w * 0.5, d.main_y + (d.main_h - d.gear_n) * 0.42, white, true);
+    text_bold(
+        px,
+        fonts,
+        &d.gear,
+        d.gear_n,
+        d.gear_x + d.gear_w * 0.5,
+        d.main_y + (d.main_h - d.gear_n) * 0.42,
+        shift_gear_col(s, cfg.dash_shift_color, white),
+        true,
+    );
 
     text(px, fonts, "RPM", d.label, d.mid_x, d.main_y + d.main_h * 0.12, dim, false);
     text(px, fonts, &d.rpm, d.val, d.mid_x + d.mid_w - measure(fonts, &d.rpm, d.val), d.main_y + d.main_h * 0.10, white, false);

@@ -47,7 +47,7 @@ No column picker; show, **Live sector**, **Compare to session best**, **Lap log*
 - Freeze on leave. Do not write the PB file every live frame — only when a frozen duration is faster than saved **for this class**, or when visiting a track whose file is missing/stale `used` (at most hourly). Do not create a file just to stamp a date.
 - LAST / -2 / … are completed laps, newest first, up to five. Push when S3 freezes. Do not shift the same lap twice. Empty first laps stay `--` and hide the underboard until LAST exists. You-row gold is only on the fastest complete lap in the log, not always LAST.
 - LAP is a fourth column, never the hero. Live LAP is running clock over tape delta (`delta::view_for`); clock off holds last completed total over that lap vs the same best **complete** lap. Log LAP on LAST / -2 is that complete-lap delta. The LAP pill and the IDEAL row are theoretical: best S1 + S2 + S3, possibly from different laps. Same saved/session splits as the strip. No Best Lap Violet on IDEAL.
-- Column widths reserve the widest time formats (`88.888`, `8:88.888`, `+88.888`, `88:88.888`), not the live ticking string. Times right-align in that slot so growing digits do not slide. Extra space still goes to the current sector. If the box is too narrow, shrink the type against the probe, not the live string.
+- Column widths reserve the widest time formats (`88.888`, `8:88.888`, `+88.888`, `88:88.888`), not the live ticking string. Times center in each column. Extra space still goes to the current sector. If the box is too narrow, shrink the type against the probe, not the live string.
 - Do not put a live incomplete lap in the LAST / -2 ring.
 - LAST / freeze S2 is the **sector duration**, not time from the line (S1+S2). The plugin may send either; convert the same way freeze already does. A LAST of `1:21` next to an S1 of `40` and a true S2 of `40` is the cumulative slip.
 - **Lap log** (`sector_hist`, default on) only hides the underboard. Keep recording. **Laps back** (`sector_hist_laps`) is 1–5, default 3.
@@ -64,6 +64,7 @@ No column picker; show, **Live sector**, **Compare to session best**, **Lap log*
 
 ## Change log
 
+- 2026-09-09 — Times center in each column. Columns still reserve the widest format so they do not jump.
 - 2026-09-08 — Times right-align in a fixed-width slot (widest format). Live digits grow left; columns and type size stay put.
 - 2026-09-08 — Glass: floating type gets a 1px night-ink rim when opacity is under 40%, so cream/dim still reads on a bright sky. No extra plaques.
 - 2026-09-08 — **Ideal** is best S1 + S2 + S3 (maybe from different laps). Night-ink pill in the LAP column; IDEAL row in the log. Not purple.

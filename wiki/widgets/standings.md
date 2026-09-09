@@ -27,7 +27,7 @@ Status labels: `1` DNS, `3` OUT, `4` DSQ, else PIT if `pit != 0`.
 - In replay / spectate, clicking a rider's **name** moves the game camera to them (`SpectateVehicles`). The overlay only captures that click while hovering a name; riding is not affected.
 - Best lap in the field is purple.
 - Bike column is a colored badge (`bike_color` from bike name + category). A skew bar after **Position** uses the same accent.
-- Header / footer are three `BoardField` slots each (session time, riders, fuel, setup, etc.).
+- Header / footer are three `BoardField` slots each (session time, riders, fuel, setup, **Gap ahead**, **Gap behind**, etc.). Gap ahead / behind are live-order place neighbors (P−1 / P+1). A pass switches who. Same lap is a live running time along the track toward that rider; a lap or more is `1L` / `-1L` from completed laps, so a crashed rider you keep passing is not a ticking wrap.
 - Name column uses its configured width (and only shrinks when the table is too narrow); other columns keep configured widths. The plaque hugs that column pack, so leftover widget width is not empty glass. Ctrl+resize width grows the Name column so the plaque actually gets bigger; height grows **Rows** (3–40).
 - Rows slide when order changes (`ST_SLIDE`).
 
@@ -36,6 +36,7 @@ Default columns on: Position, Number, Name, Gap, Fastest, Last lap.
 ## Do not regress
 
 - Gap to P1 uses `gap_ms` / `gap_laps`. Interval is gap to the rider one place ahead, not to the leader.
+- Header/footer **Gap ahead** / **Gap behind** are live-order P−1 / P+1. A pass switches the rider immediately. Same lap is seconds along the track toward them, not Interval’s line time and not Relative’s shortest wrap. A live lap or more is `1L` / `-1L`.
 - Last lap for you can fall back to `s.last_lap_ms` when the row has no last lap yet.
 - Empty field shows “Waiting for race data”, not a blank panel.
 - Rows and places come from the live order, not the raw `s.standings` array. The row window and slide animation follow it.
@@ -51,6 +52,8 @@ Default columns on: Position, Number, Name, Gap, Fastest, Last lap.
 
 ## Change log
 
+- 2026-09-09 — **Gap ahead** / **Gap behind** stay live-order P−1 / P+1. A pass switches who. Same lap ticks along the track toward that rider; a live lap or more is `1L` / `-1L` so a crashed rider you keep passing is not a shortest-wrap blip. Not the nearest on-track rider. Times have no leading `+`; ahead is an up arrow, behind a down arrow.
+- 2026-09-08 — **Gap ahead** and **Gap behind** are header/footer options (`BoardField::GapAhead` / `GapBehind`). Live-order P−1 / P+1, not the riders around you on track.
 - 2026-09-06 — Plaque height follows the visible row stack. A short saved widget box no longer leaves later rows on the game with no glass.
 - 2026-09-06 — Spectate → garage hides the board. Leftover rider dots after `SpectateVehicles` stops are not a session (`live_session`).
 - 2026-09-03 — **Setup** is a header/footer option (`BoardField::Setup`). Same `RunInit` filename as Dash / Relative / H-Standings. Restart MX Bikes after this plugin so SHM `Local\MXBOHudV13` loads.

@@ -19,7 +19,7 @@ Classification is joined by race number for position, laps, bike, best/last, pen
 
 ## Behavior
 
-- Same chrome as Standings (header bar, track name, column headers, optional footer). Header/footer slots include **Fuel** and **Setup**.
+- Same chrome as Standings (header bar, track name, column headers, optional footer). Header/footer slots include **Fuel**, **Setup**, **Gap ahead**, and **Gap behind**. Those gaps are race place (P−1 / P+1), not the riders in this table. Same lap ticks along the track toward that rider; a live lap or more is `1L` / `-1L`.
 - Your row is highlighted. Lapping colors on **other** rows: blue if they are a lap ahead and closing from behind, red if you are a lap ahead and closing on them (`lap_rel` / `lap_row_bg`). Off in warmup. **Row highlight** opacity (`rel_hl`) scales your row and the blue/red lapping tints. **Text color** is White or Black (`rel_text`); bike pills keep brand colors. **Alternating rows** (`rel_stripe`, default on) paints every other row near-black. Same opaque-panel lift as Standings.
 - **Gap column is not classification gap.** It is `|wrapped_frac * track_length / local_speed|` in seconds (you show `0.0`). Speed floor is 4 so a stopped rider does not explode the number.
 - Rows slide when the nearby set changes (`REL_SLIDE`).
@@ -30,6 +30,7 @@ Default columns on: Number, Name, Gap, Fastest, Last lap.
 ## Do not regress
 
 - Do not sort Relative by standings position. It is on-track neighbors.
+- Header/footer **Gap ahead** / **Gap behind** are live-order place neighbors (P−1 / P+1). Same lap is seconds along the track toward that rider; a live lap or more is `1L` / `-1L`.
 - Keep the wrap (`d > 0.5` subtract 1, `d < -0.5` add 1) or the “nearest” set jumps across S/F.
 - Empty / no telemetry shows “Waiting for positions”.
 - No blue/red lapping row tints in warmup. `session_kind` 5 wins even when extras leak.
@@ -43,6 +44,8 @@ Default columns on: Number, Name, Gap, Fastest, Last lap.
 
 ## Change log
 
+- 2026-09-09 — Header/footer **Gap ahead** / **Gap behind** are live-order P−1 / P+1. Same lap ticks along the track toward that rider; a live lap or more is `1L` / `-1L`. A pass switches the rider. Times have no leading `+`; ahead is an up arrow, behind a down arrow.
+- 2026-09-08 — **Gap ahead** and **Gap behind** are header/footer options (shared `BoardField` with Standings). They use classification place, not the nearby riders in this table.
 - 2026-09-07 — Warmup (`session_kind` 5) keeps rows slate even when leaked extras make the lap field look like a race.
 - 2026-09-06 — Plaque height follows the visible nearby set. A short saved widget box no longer leaves later rows on the game with no glass.
 - 2026-09-03 — **Setup** is a header/footer option (shared `BoardField::Setup` with Standings). Restart MX Bikes after this plugin so SHM `Local\MXBOHudV13` loads.

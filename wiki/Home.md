@@ -3,7 +3,7 @@
 Everything the PiBoSo plugin API can send this project, and whether we already keep it.
 
 Source of truth: `src/vendor/piboso/mxb_api.h` (data version **8**, interface **9**).  
-The game loads `Holeshot-HUD.dlo` and calls the exported functions below. The plugin may copy fields into `PluginState`, then into shared memory `Local\MXBOHudV13` for the Rust overlay.
+The game loads `Holeshot-HUD.dlo` and calls the exported functions below. The plugin may copy fields into `PluginState`, then into shared memory `Local\MXBOHudV14` for the Rust overlay.
 
 **Status**
 
@@ -52,6 +52,7 @@ Rust overlay structure and possible refactors (suggestions only): **[rust-patter
 - [Minimap](widgets/minimap.md): circular zoomed track
 - [Radar](widgets/radar.md): side / rear proximity
 - [Dash](widgets/dash.md): gear, speed, session clock, flags (optional simple gear+speed lockup)
+- [Telemetry](widgets/telemetry.md): throttle / brake traces, analog bars, gear and speed
 - [Sectors](widgets/sector.md): S1–S3 plus LAP (lap time, full-lap delta, and ideal)
 - [Delta Bar](widgets/delta-bar.md): time vs your best at this track position (recorded lap, not the ghost)
 - [Systems](widgets/systems.md): CPU / mem / FPS / ping / GPU, plus apps you pick
@@ -156,10 +157,10 @@ This is the richest per-frame feed. **Only a handful of fields are kept.**
 | `m_afSuspVelocity[2]` | float | Unused | Compression speed |
 | `m_iCrashed` | int | Overlay | Crash flag on local marker |
 | `m_fSteer` | float | Overlay | Steer input ([Lean](widgets/lean.md)) |
-| `m_fThrottle` | float | Unused | 0–1 style input bar |
-| `m_fFrontBrake` | float | Unused | Front brake input |
-| `m_fRearBrake` | float | Unused | Rear brake input |
-| `m_fClutch` | float | Unused | Clutch |
+| `m_fThrottle` | float | Overlay | 0–1. Telemetry traces + throttle bar |
+| `m_fFrontBrake` | float | Overlay | Telemetry brake bar is `max(front, rear)` |
+| `m_fRearBrake` | float | Overlay | Combined with front on the brake bar |
+| `m_fClutch` | float | Overlay | Telemetry clutch bar. Local BikeData only |
 | `m_afWheelSpeed[2]` | float | Unused | Wheel speed vs GPS → slip |
 | `m_aiWheelMaterial[2]` | int | Unused | Surface type under each wheel |
 | `m_afBrakePressure[2]` | float | Unused | Hydraulic pressure |
@@ -418,12 +419,13 @@ Already published (version **1**):
 - Session: length, laps, remaining clock, **kind** (`m_iSession`), **state** (`m_iSessionState`) — SHM version **9**
 - Fuel: `fuel` / `maxFuel` — SHM version **10**
 - Lean: `localRoll` / `localPitch` / `localSteer` / `steerLock`; per-rider `lean` — SHM version **12**
-- Setup: `setupName` — SHM version **13** (`Local\MXBOHudV13`). Filename from `RunInit`
+- Setup: `setupName` — SHM version **13**. Filename from `RunInit`
+- Inputs: `localThrottle` / `localFrontBrake` / `localRearBrake` / `localClutch` — SHM version **14** (`Local\MXBOHudV14`). [Telemetry](widgets/telemetry.md)
 - Layout: map / standings / relative rects + show flags + row counts
 
 Command mapping `Local\MXBOHudCmdV1` (`MxboShmCmd`): overlay writes `spectateRaceNum`; plugin writes `spectating` while `SpectateVehicles` is live. Not part of the snapshot seqlock.
 
-**Not published yet** (but available in the API or `PluginState`): penalty, bike names, laps/splits, holeshot, comms, RPM/gear/inputs/temps/suspension, per-rider throttle/brake (lean is Overlay), spectate camera list.
+**Not published yet** (but available in the API or `PluginState`): penalty, bike names, laps/splits, holeshot, comms, temps/suspension, spectate camera list. Local throttle / brakes / clutch are Overlay (V14). Other riders still only send throttle / front brake / lean.
 
 Bump `MXBO_SHM_VERSION` when you add fields; keep C and Rust `#[repr(C)]` layouts identical.
 
@@ -458,7 +460,7 @@ Existing overlay widgets: [widgets.md](widgets.md) (behavior + change logs). Fie
 | [Sectors](widgets/sector.md) | `RunSplit` / `RaceSplit` | Overlay (labs flag) |
 | [Delta Bar](widgets/delta-bar.md) | overlay tape at `local_track_pos` | Overlay |
 | Shift light | `m_iRPM` vs `m_iShiftRPM` | Need SHM |
-| Throttle / brakes / clutch | telemetry inputs | Need SHM |
+| Throttle / brakes / clutch | telemetry inputs | Overlay (V14) |
 | [Lean](widgets/lean.md) | `m_fRoll` / `m_fPitch` / `m_fSteer` / `m_fSteerLock` + `m_fLean` | Overlay |
 | [Controller](widgets/gamepad.md) | local XInput / DualShock HID | Overlay (not plugin). Labs. |
 | Fuel | `m_fFuel` / `m_fMaxFuel` | Overlay (dash / standings / relative / ticker) |

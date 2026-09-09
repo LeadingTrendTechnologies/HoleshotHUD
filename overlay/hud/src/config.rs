@@ -593,10 +593,11 @@ pub enum WidgetId {
     Flag,
     Lean,
     Gamepad,
+    Telemetry,
 }
 
 impl WidgetId {
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 15] = [
         Self::Standings,
         Self::Relative,
         Self::Map,
@@ -611,8 +612,9 @@ impl WidgetId {
         Self::Flag,
         Self::Lean,
         Self::Gamepad,
+        Self::Telemetry,
     ];
-    pub const COUNT: usize = 14;
+    pub const COUNT: usize = 15;
 
     pub fn idx(self) -> usize {
         self as usize
@@ -644,6 +646,7 @@ impl WidgetId {
             Self::Flag => Rect { x: 0.447, y: 0.026, w: 0.107, h: 0.019 },
             Self::Lean => Rect { x: 0.318, y: 0.755, w: 0.11, h: 0.20 },
             Self::Gamepad => Rect { x: 0.38, y: 0.76, w: 0.24, h: 0.20 },
+            Self::Telemetry => Rect { x: 0.22, y: 0.80, w: 0.56, h: 0.145 },
         }
     }
 
@@ -652,7 +655,7 @@ impl WidgetId {
             Self::Standings | Self::Relative => 78,
             Self::Radar | Self::Ticker | Self::Stance | Self::Lean => 86,
             Self::Gamepad | Self::Map | Self::Minimap | Self::Delta => 0,
-            Self::Dash | Self::Sys | Self::Sector => 82,
+            Self::Dash | Self::Sys | Self::Sector | Self::Telemetry => 82,
             Self::Flag => 100,
         }
     }
@@ -674,6 +677,7 @@ impl WidgetId {
             Self::Flag => WidgetIni { rect: "flag", show: "show_flag", font: "flag_font", bold: "flag_bold", bg: "flag_bg" },
             Self::Lean => WidgetIni { rect: "lean", show: "show_lean", font: "lean_font", bold: "lean_bold", bg: "lean_bg" },
             Self::Gamepad => WidgetIni { rect: "gamepad", show: "show_gamepad", font: "gamepad_font", bold: "gamepad_bold", bg: "gamepad_bg" },
+            Self::Telemetry => WidgetIni { rect: "telemetry", show: "show_telemetry", font: "telemetry_font", bold: "telemetry_bold", bg: "telemetry_bg" },
         }
     }
 }
@@ -1357,6 +1361,8 @@ pub struct HudLayout {
     pub dash_red: bool,
     /// Gear + speed lockup; hides RPM, place, footer, and the rev bar.
     pub dash_simple: bool,
+    /// Flush Dash gear faint red at the shift light or limiter. Off by default.
+    pub dash_shift_color: bool,
     pub dash_left: DashField,
     pub dash_mid: DashField,
     pub dash_right: DashField,
@@ -1371,6 +1377,19 @@ pub struct HudLayout {
     pub stance_show_sit: bool,
     pub lean_style: LeanStyle,
     pub gamepad_style: GamepadStyle,
+    /// Throttle / brake history well.
+    pub telemetry_traces: bool,
+    pub telemetry_trace_throttle: bool,
+    pub telemetry_trace_brake: bool,
+    pub telemetry_trace_steer: bool,
+    /// Clutch / brake / throttle analog bars.
+    pub telemetry_bars: bool,
+    pub telemetry_bar_clutch: bool,
+    pub telemetry_bar_brake: bool,
+    pub telemetry_bar_throttle: bool,
+    pub telemetry_bar_steer: bool,
+    /// Gear, speed, and RPM dial.
+    pub telemetry_dial: bool,
     /// Process rows on Systems. Built-ins stay; extras can be added and removed.
     pub sys_apps: Vec<SysApp>,
     pub st_order: Vec<StField>,
@@ -1478,6 +1497,7 @@ impl HudLayout {
             dash_blue: false,
             dash_red: false,
             dash_simple: false,
+            dash_shift_color: false,
             dash_left: DashField::Engine,
             dash_mid: DashField::Air,
             dash_right: DashField::Best,
@@ -1492,6 +1512,16 @@ impl HudLayout {
             stance_show_sit: false,
             lean_style: LeanStyle::Figure,
             gamepad_style: GamepadStyle::Auto,
+            telemetry_traces: true,
+            telemetry_trace_throttle: true,
+            telemetry_trace_brake: true,
+            telemetry_trace_steer: false,
+            telemetry_bars: true,
+            telemetry_bar_clutch: true,
+            telemetry_bar_brake: true,
+            telemetry_bar_throttle: true,
+            telemetry_bar_steer: false,
+            telemetry_dial: true,
             sys_apps: default_sys_apps(),
             st_order: StField::ALL.to_vec(),
             rel_order: RelField::ALL.to_vec(),
@@ -1930,6 +1960,19 @@ impl HudConfig {
         self.sector_hist_laps.clamp(1, 5) as usize
     }
 
+    pub fn telemetry_draw_traces(&self) -> bool {
+        self.telemetry_traces
+            && (self.telemetry_trace_throttle || self.telemetry_trace_brake || self.telemetry_trace_steer)
+    }
+
+    pub fn telemetry_draw_bars(&self) -> bool {
+        self.telemetry_bars
+            && (self.telemetry_bar_clutch
+                || self.telemetry_bar_brake
+                || self.telemetry_bar_throttle
+                || self.telemetry_bar_steer)
+    }
+
     pub fn delta_visible(&self) -> bool {
         self[WidgetId::Delta].show
     }
@@ -2110,6 +2153,7 @@ fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last
         "dash_blue" => cfg.dash_blue = b,
         "dash_red" => cfg.dash_red = b,
         "dash_simple" => cfg.dash_simple = b,
+        "dash_shift_color" => cfg.dash_shift_color = b,
         "dash_left" => cfg.dash_left = DashField::parse(val),
         "dash_mid" => cfg.dash_mid = DashField::parse(val),
         "dash_right" => cfg.dash_right = DashField::parse(val),
@@ -2157,6 +2201,16 @@ fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last
         "rel_w_crashed" => cfg.rel_w_crashed = clamp_w(val),
         "rel_w_best" => cfg.rel_w_best = clamp_w(val),
         "rel_w_last" => cfg.rel_w_last = clamp_w(val),
+        "telemetry_traces" => cfg.telemetry_traces = b,
+        "telemetry_trace_throttle" => cfg.telemetry_trace_throttle = b,
+        "telemetry_trace_brake" => cfg.telemetry_trace_brake = b,
+        "telemetry_trace_steer" => cfg.telemetry_trace_steer = b,
+        "telemetry_bars" => cfg.telemetry_bars = b,
+        "telemetry_bar_clutch" => cfg.telemetry_bar_clutch = b,
+        "telemetry_bar_brake" => cfg.telemetry_bar_brake = b,
+        "telemetry_bar_throttle" => cfg.telemetry_bar_throttle = b,
+        "telemetry_bar_steer" => cfg.telemetry_bar_steer = b,
+        "telemetry_dial" => cfg.telemetry_dial = b,
         _ => {}
     }
 }
@@ -2215,6 +2269,7 @@ fn layout_ini(l: &HudLayout) -> String {
     let flag = l[WidgetId::Flag];
     let lean = l[WidgetId::Lean];
     let gamepad = l[WidgetId::Gamepad];
+    let telemetry = l[WidgetId::Telemetry];
     format!(
         "standings_x={}\nstandings_y={}\nstandings_w={}\nstandings_h={}\n\
          relative_x={}\nrelative_y={}\nrelative_w={}\nrelative_h={}\n\
@@ -2230,9 +2285,10 @@ fn layout_ini(l: &HudLayout) -> String {
          flag_x={}\nflag_y={}\nflag_w={}\nflag_h={}\n\
          lean_x={}\nlean_y={}\nlean_w={}\nlean_h={}\n\
          gamepad_x={}\ngamepad_y={}\ngamepad_w={}\ngamepad_h={}\n\
+         telemetry_x={}\ntelemetry_y={}\ntelemetry_w={}\ntelemetry_h={}\n\
          show_standings={}\nshow_relative={}\nshow_map={}\nshow_minimap={}\nshow_radar={}\n\
          show_dash={}\nshow_ticker={}\nshow_sys={}\nshow_sector={}\nshow_delta={}\n\
-         show_stance={}\nshow_flag={}\nshow_lean={}\nshow_gamepad={}\n\
+         show_stance={}\nshow_flag={}\nshow_lean={}\nshow_gamepad={}\nshow_telemetry={}\n\
          standings_rows={}\nrelative_count={}\nticker_count={}\n\
          st_pos={}\nst_num={}\nst_name={}\nst_gap={}\nst_interval={}\nst_laps={}\nst_current={}\n\
          st_best={}\nst_last={}\nst_status={}\nst_bike={}\nst_penalty={}\nst_crashed={}\n\
@@ -2253,7 +2309,7 @@ fn layout_ini(l: &HudLayout) -> String {
          mini_others={}\nmini_sf={}\nmini_sectors={}\nmini_numbers={}\nmini_arrows={}\nmini_crown={}\n\
          mini_place={}\nmini_dot={}\nmini_bg={}\nmini_zoom={}\nmini_font={}\nmini_bold={}\n\
          radar_sides={}\nradar_rear={}\nradar_rings={}\nradar_range={}\nradar_bg={}\nradar_font={}\nradar_bold={}\n\
-         dash_rev={}\ndash_yellow={}\ndash_blue={}\ndash_red={}\ndash_simple={}\ndash_left={}\ndash_mid={}\ndash_right={}\n\
+         dash_rev={}\ndash_yellow={}\ndash_blue={}\ndash_red={}\ndash_simple={}\ndash_shift_color={}\ndash_left={}\ndash_mid={}\ndash_right={}\n\
          dash_bg={}\ndash_font={}\ndash_bold={}\n\
          ticker_left={}\nticker_right={}\nticker_title={}\nticker_autoscroll={}\n\
          ticker_bg={}\nticker_font={}\nticker_bold={}\n\
@@ -2265,7 +2321,11 @@ fn layout_ini(l: &HudLayout) -> String {
          stance_bg={}\nstance_font={}\nstance_bold={}\n\
          flag_bg={}\nflag_yellow={}\nflag_blue={}\nflag_red={}\nflag_text={}\nflag_font={}\nflag_bold={}\n\
          lean_style={}\nlean_bg={}\nlean_font={}\nlean_bold={}\n\
-         gamepad_style={}\ngamepad_bg={}\ngamepad_font={}\ngamepad_bold={}",
+         gamepad_style={}\ngamepad_bg={}\ngamepad_font={}\ngamepad_bold={}\n\
+         telemetry_traces={}\ntelemetry_trace_throttle={}\ntelemetry_trace_brake={}\ntelemetry_trace_steer={}\n\
+         telemetry_bars={}\ntelemetry_bar_clutch={}\ntelemetry_bar_brake={}\ntelemetry_bar_throttle={}\ntelemetry_bar_steer={}\n\
+         telemetry_dial={}\n\
+         telemetry_bg={}\ntelemetry_font={}\ntelemetry_bold={}",
         st.rect.x, st.rect.y, st.rect.w, st.rect.h,
         rel.rect.x, rel.rect.y, rel.rect.w, rel.rect.h,
         map.rect.x, map.rect.y, map.rect.w, map.rect.h,
@@ -2280,9 +2340,10 @@ fn layout_ini(l: &HudLayout) -> String {
         flag.rect.x, flag.rect.y, flag.rect.w, flag.rect.h,
         lean.rect.x, lean.rect.y, lean.rect.w, lean.rect.h,
         gamepad.rect.x, gamepad.rect.y, gamepad.rect.w, gamepad.rect.h,
+        telemetry.rect.x, telemetry.rect.y, telemetry.rect.w, telemetry.rect.h,
         b(st.show), b(rel.show), b(map.show), b(mini.show), b(radar.show),
         b(dash.show), b(ticker.show), b(sys.show), b(sector.show), b(delta.show),
-        b(stance.show), b(flag.show), b(lean.show), b(gamepad.show),
+        b(stance.show), b(flag.show), b(lean.show), b(gamepad.show), b(telemetry.show),
         l.standings_rows, l.relative_count, l.ticker_count,
         b(l.st_pos), b(l.st_num), b(l.st_name), b(l.st_gap), b(l.st_interval), b(l.st_laps), b(l.st_current),
         b(l.st_best), b(l.st_last), b(l.st_status), b(l.st_bike), b(l.st_penalty), b(l.st_crashed),
@@ -2303,7 +2364,7 @@ fn layout_ini(l: &HudLayout) -> String {
         b(l.mini_others), b(l.mini_sf), b(l.mini_sectors), b(l.mini_numbers), b(l.mini_arrows), b(l.mini_crown),
         b(l.mini_place), l.mini_dot.key(), mini.bg, l.mini_zoom, mini.font, b(mini.bold),
         b(l.radar_sides), b(l.radar_rear), b(l.radar_rings), l.radar_range, radar.bg, radar.font, b(radar.bold),
-        b(l.dash_rev), b(l.dash_yellow), b(l.dash_blue), b(l.dash_red), b(l.dash_simple), l.dash_left.key(), l.dash_mid.key(), l.dash_right.key(),
+        b(l.dash_rev), b(l.dash_yellow), b(l.dash_blue), b(l.dash_red), b(l.dash_simple), b(l.dash_shift_color), l.dash_left.key(), l.dash_mid.key(), l.dash_right.key(),
         dash.bg, dash.font, b(dash.bold),
         l.ticker_left.key(), l.ticker_right.key(), b(l.ticker_title), b(l.ticker_autoscroll),
         ticker.bg, ticker.font, b(ticker.bold),
@@ -2316,6 +2377,10 @@ fn layout_ini(l: &HudLayout) -> String {
         flag.bg, b(l.flag_yellow), b(l.flag_blue), b(l.flag_red), b(l.flag_text), flag.font, b(flag.bold),
         l.lean_style.key(), lean.bg, lean.font, b(lean.bold),
         l.gamepad_style.key(), gamepad.bg, gamepad.font, b(gamepad.bold),
+        b(l.telemetry_traces), b(l.telemetry_trace_throttle), b(l.telemetry_trace_brake), b(l.telemetry_trace_steer),
+        b(l.telemetry_bars), b(l.telemetry_bar_clutch), b(l.telemetry_bar_brake), b(l.telemetry_bar_throttle), b(l.telemetry_bar_steer),
+        b(l.telemetry_dial),
+        telemetry.bg, telemetry.font, b(telemetry.bold),
     )
 }
 
@@ -2453,10 +2518,12 @@ pub enum BoardField {
     Fuel,
     FuelPct,
     Setup,
+    GapAhead,
+    GapBehind,
 }
 
 impl BoardField {
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 19] = [
         Self::None,
         Self::Position,
         Self::ClassPos,
@@ -2474,6 +2541,8 @@ impl BoardField {
         Self::Fuel,
         Self::FuelPct,
         Self::Setup,
+        Self::GapAhead,
+        Self::GapBehind,
     ];
 
     pub const DEFAULT_HEAD: [Self; 3] = [Self::Session, Self::None, Self::Riders];
@@ -2498,6 +2567,8 @@ impl BoardField {
             Self::Fuel => "fuel",
             Self::FuelPct => "fuelpct",
             Self::Setup => "setup",
+            Self::GapAhead => "gapahead",
+            Self::GapBehind => "gapbehind",
         }
     }
 
@@ -2520,6 +2591,8 @@ impl BoardField {
             Self::Fuel => "Fuel",
             Self::FuelPct => "Fuel %",
             Self::Setup => "Setup",
+            Self::GapAhead => "Gap ahead",
+            Self::GapBehind => "Gap behind",
         }
     }
 
@@ -2542,6 +2615,8 @@ impl BoardField {
             "fuel" => Self::Fuel,
             "fuelpct" | "fuel%" | "fuelpercent" => Self::FuelPct,
             "setup" => Self::Setup,
+            "gapahead" | "gap_ahead" | "ahead" => Self::GapAhead,
+            "gapbehind" | "gap_behind" | "behind" => Self::GapBehind,
             _ => Self::None,
         }
     }
@@ -2555,6 +2630,8 @@ impl BoardField {
             Self::Track | Self::Riders => '\u{f553}',
             Self::Air => '\u{f72e}',
             Self::Best | Self::SessionBest => '\u{f2f2}',
+            Self::GapAhead => '\u{f062}',
+            Self::GapBehind => '\u{f063}',
             Self::SessionType => '\u{f11e}',
             Self::Fuel | Self::FuelPct => '\u{f52f}',
             Self::Setup => '\u{f0ad}',
@@ -2584,6 +2661,7 @@ pub enum DashField {
     Engine,
     Gap,
     Interval,
+    GapBehind,
     Penalty,
     Session,
     LocalTime,
@@ -2595,7 +2673,7 @@ pub enum DashField {
 }
 
 impl DashField {
-    pub const ALL: [Self; 24] = [
+    pub const ALL: [Self; 25] = [
         Self::None,
         Self::Speed,
         Self::Rpm,
@@ -2612,6 +2690,7 @@ impl DashField {
         Self::Engine,
         Self::Gap,
         Self::Interval,
+        Self::GapBehind,
         Self::Penalty,
         Self::Session,
         Self::LocalTime,
@@ -2640,6 +2719,7 @@ impl DashField {
             Self::Engine => "eng",
             Self::Gap => "gap",
             Self::Interval => "int",
+            Self::GapBehind => "gapbehind",
             Self::Penalty => "pen",
             Self::Session => "sess",
             Self::LocalTime => "local",
@@ -2669,6 +2749,7 @@ impl DashField {
             Self::Engine => "Engine temp",
             Self::Gap => "Gap",
             Self::Interval => "Interval",
+            Self::GapBehind => "Gap behind",
             Self::Penalty => "Penalty",
             Self::Session => "Session time",
             Self::LocalTime => "Local time",
@@ -2698,6 +2779,7 @@ impl DashField {
             "eng" | "engine" => Self::Engine,
             "gap" => Self::Gap,
             "int" | "interval" => Self::Interval,
+            "gapbehind" | "gap_behind" | "behind" => Self::GapBehind,
             "pen" | "penalty" => Self::Penalty,
             "sess" | "session" => Self::Session,
             "local" | "localtime" => Self::LocalTime,
@@ -2723,7 +2805,8 @@ impl DashField {
             Self::Delta => '\u{f362}',
             Self::Air => '\u{f72e}',
             Self::Engine => '\u{f2c9}',
-            Self::Gap | Self::Interval => '\u{f362}',
+            Self::Gap | Self::Interval => '\u{f062}',
+            Self::GapBehind => '\u{f063}',
             Self::Penalty => '\u{f06a}',
             Self::Bike => '\u{f21c}',
             Self::Class => '\u{f0c0}',

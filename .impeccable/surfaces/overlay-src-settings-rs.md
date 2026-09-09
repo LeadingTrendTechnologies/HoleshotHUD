@@ -28,6 +28,8 @@ None.
 | Rail / tabs | grouped nav_tab + orange pip; hidden on Settings/Feedback |
 | Look controls | existing sliders/toggles/dropdowns, two-column on Standings/Relative |
 | Simple dash | existing toggle_row on Dash pane; hides rev + footer slots while on |
+| Shift color | existing toggle_row on Dash pane; off by default |
+| Telemetry channels | Show masters (traces / bars / dial); nested channel toggles only while that section is on |
 | Header / Footer | 3 dropdown slots (Left, Middle, Right) |
 | Columns | field_row: grip, name, width slider, show/hide toggle |
 | Snap grid | existing look_section |

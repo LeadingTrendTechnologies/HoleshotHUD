@@ -242,6 +242,7 @@ fn hide_widgets(cfg: &mut HudConfig) {
     cfg[WidgetId::Flag].show = false;
     cfg[WidgetId::Lean].show = false;
     cfg[WidgetId::Gamepad].show = false;
+    cfg[WidgetId::Telemetry].show = false;
 }
 
 fn golden_snap(s: &Snapshot, cfg: &HudConfig) -> Snapshot {
@@ -388,6 +389,9 @@ fn dash_footer_fields_fill_from_live_snapshot() {
     assert_eq!(dash_foot_item(&s, &cfg, DashField::Bike).unwrap().1, "YZ450");
     assert_eq!(dash_foot_item(&s, &cfg, DashField::Class).unwrap().1, "MX1");
     assert_eq!(dash_foot_item(&s, &cfg, DashField::Setup).unwrap().1, "Washougal Soft");
+    assert_eq!(dash_foot_item(&s, &cfg, DashField::Interval).unwrap().1, "10.000");
+    assert_eq!(dash_foot_item(&s, &cfg, DashField::Gap).unwrap().1, "10.000");
+    assert_eq!(dash_foot_item(&s, &cfg, DashField::GapBehind).unwrap().1, "---");
     let clock = dash_foot_item(&s, &cfg, DashField::LocalTime).unwrap().1;
     assert!(
         clock.contains("AM") || clock.contains("PM"),
@@ -568,9 +572,167 @@ fn standings_and_relative_board_fields() {
         }
         assert!(board_item(&s, &cfg, field).is_some(), "{field:?}");
     }
+    assert_eq!(board_item(&s, &cfg, BoardField::GapAhead).unwrap().1, "10.000");
+    assert_eq!(board_item(&s, &cfg, BoardField::GapBehind).unwrap().1, "---");
+    assert_eq!(ticker_meta_label(BoardField::GapAhead, "10.000"), "AHEAD");
+    assert_eq!(ticker_meta_label(BoardField::GapBehind, "---"), "BEHIND");
     assert!(!cfg.standings_cols().is_empty());
     assert!(cfg.standings_cols().contains(&StField::Name));
     assert!(cfg.relative_cols().contains(&RelField::Name));
+}
+
+#[test]
+fn board_gap_ahead_behind_use_live_place_neighbors() {
+    let _g = session_lock();
+    reset_session();
+    let cfg = HudConfig::new();
+    let s = live_snap();
+    RaceStore::refresh(&s);
+    assert_eq!(board_item(&s, &cfg, BoardField::GapAhead).unwrap(), ('\u{f062}', "10.000".into()));
+    assert_eq!(board_item(&s, &cfg, BoardField::GapBehind).unwrap().0, '\u{f063}');
+    assert_eq!(board_item(&s, &cfg, BoardField::GapBehind).unwrap().1, "---");
+    assert_eq!(dash_foot_item(&s, &cfg, DashField::Interval).unwrap(), ('\u{f062}', "10.000".into()));
+    assert_eq!(dash_foot_item(&s, &cfg, DashField::GapBehind).unwrap().0, '\u{f063}');
+    assert_eq!(dash_foot_item(&s, &cfg, DashField::Gap).unwrap().1, "10.000");
+    assert_eq!(dash_foot_item(&s, &cfg, DashField::GapBehind).unwrap().1, "---");
+
+    let mut three = s;
+    three.standing_count = 3;
+    three.rider_count = 3;
+    three.standings[2] = standing(7, 3, 5);
+    three.standings[2].gap_ms = 5_100;
+    three.riders[2] = rider(7, 5.0, 2.0, 0.80);
+    RaceStore::refresh(&three);
+    assert_eq!(board_item(&three, &cfg, BoardField::GapAhead).unwrap().1, "10.000");
+    assert_eq!(board_item(&three, &cfg, BoardField::GapBehind).unwrap().1, "6.667");
+    assert_eq!(dash_foot_item(&three, &cfg, DashField::GapBehind).unwrap().1, "6.667");
+}
+
+#[test]
+fn board_gap_ahead_follows_a_pass() {
+    let _g = session_lock();
+    reset_session();
+    let cfg = HudConfig::new();
+    let mut s = live_snap();
+    s.local_track_pos = 0.50;
+    s.riders[1].track_pos = 0.50;
+    s.riders[0].track_pos = 0.70;
+    s.standing_count = 3;
+    s.rider_count = 3;
+    s.standings[2] = standing(7, 3, 5);
+    s.riders[2] = rider(7, 5.0, 2.0, 0.50);
+    RaceStore::refresh(&s);
+    assert_eq!(board_item(&s, &cfg, BoardField::GapAhead).unwrap().1, "11.111");
+
+    s.riders[2].track_pos = 0.506;
+    RaceStore::refresh(&s);
+    assert_eq!(live_position(7), 2);
+    assert_eq!(live_position(12), 3);
+    assert_eq!(
+        board_item(&s, &cfg, BoardField::GapAhead).unwrap().1,
+        "0.333",
+        "a pass must switch gap ahead to the new P−1"
+    );
+}
+
+#[test]
+fn board_gap_ahead_behind_tick_with_track_pos() {
+    let _g = session_lock();
+    reset_session();
+    let cfg = HudConfig::new();
+    let mut s = live_snap();
+    RaceStore::refresh(&s);
+    assert_eq!(board_item(&s, &cfg, BoardField::GapAhead).unwrap().1, "10.000");
+
+    s.riders[0].track_pos = 0.95;
+    RaceStore::refresh(&s);
+    assert_eq!(board_item(&s, &cfg, BoardField::GapAhead).unwrap().1, "1.667");
+
+    s.standings[0].gap_laps = 0;
+    s.standings[1].gap_laps = 1;
+    RaceStore::refresh(&s);
+    assert_eq!(
+        board_item(&s, &cfg, BoardField::GapAhead).unwrap().1,
+        "1.667",
+        "a stale +1L must not hide the live running gap"
+    );
+
+    // Half a lap of shortest wrap (same as Relative).
+    s.riders[1].track_pos = 0.25;
+    s.local_track_pos = 0.25;
+    s.riders[0].track_pos = 0.75;
+    s.standings[1].gap_laps = 0;
+    RaceStore::refresh(&s);
+    assert_eq!(board_item(&s, &cfg, BoardField::GapAhead).unwrap().1, "27.778");
+}
+
+/// A crashed last-place rider sitting on the track is still P+1. Shortest wrap
+/// would read them as nearby every pass; once you have a lap on them it is `-1L`.
+#[test]
+fn board_gap_behind_lapped_crashed_rider_is_laps_not_wrap() {
+    let _g = session_lock();
+    reset_session();
+    let cfg = HudConfig::new();
+    let mut s = live_snap();
+    s.standing_count = 3;
+    s.rider_count = 3;
+    s.standings[2] = standing(7, 3, 5);
+    s.standings[2].crashed = 1;
+    s.riders[2] = rider(7, 5.0, 2.0, 0.50);
+    s.riders[2].crashed = 1;
+    s.local_track_pos = 0.51;
+    s.riders[1].track_pos = 0.51;
+    RaceStore::refresh(&s);
+    assert_eq!(
+        board_item(&s, &cfg, BoardField::GapBehind).unwrap().1,
+        "0.556",
+        "same lap: time to the crashed rider, not a lap"
+    );
+
+    s.standings[1].num_laps = 6;
+    s.current_lap = 7;
+    RaceStore::refresh(&s);
+    assert_eq!(
+        board_item(&s, &cfg, BoardField::GapBehind).unwrap().1,
+        "-1L",
+        "a lap up must not tick the on-track wrap through a lapping pass"
+    );
+    assert_eq!(dash_foot_item(&s, &cfg, DashField::GapBehind).unwrap().1, "-1L");
+
+    s.local_track_pos = 0.40;
+    s.riders[1].track_pos = 0.40;
+    RaceStore::refresh(&s);
+    assert_eq!(
+        board_item(&s, &cfg, BoardField::GapBehind).unwrap().1,
+        "-1L",
+        "approaching a lapped rider is still a lap, not a shrinking wrap"
+    );
+
+    s.standings[1].num_laps = 7;
+    s.current_lap = 8;
+    RaceStore::refresh(&s);
+    assert_eq!(board_item(&s, &cfg, BoardField::GapBehind).unwrap().1, "-2L");
+}
+
+/// Gap behind is how far they must ride to catch you, not the short way round.
+#[test]
+fn board_gap_behind_does_not_flip_at_half_a_lap() {
+    let _g = session_lock();
+    reset_session();
+    let cfg = HudConfig::new();
+    let mut s = live_snap();
+    s.standing_count = 3;
+    s.rider_count = 3;
+    s.standings[2] = standing(7, 3, 5);
+    s.riders[2] = rider(7, 5.0, 2.0, 0.20);
+    s.local_track_pos = 0.90;
+    s.riders[1].track_pos = 0.90;
+    RaceStore::refresh(&s);
+    assert_eq!(
+        board_item(&s, &cfg, BoardField::GapBehind).unwrap().1,
+        "38.889",
+        "0.70 lap forward, not the 0.30 shortest wrap"
+    );
 }
 
 #[test]
@@ -3523,19 +3685,19 @@ fn sector_col_need_ignores_live_digit_growth() {
 }
 
 #[test]
-fn sector_num_x_holds_right_edge_as_digits_grow() {
+fn sector_num_x_centers_in_column() {
     let fonts = fonts();
     let _style = push_style(&fonts, true, 100);
     let slot = sector_probe_max(&fonts, 14.0, SECTOR_LAP_PROBES);
     let short = sector_num_x(&fonts, "9.123", 14.0, 0.0, 200.0, slot);
     let long = sector_num_x(&fonts, "1:10.000", 14.0, 0.0, 200.0, slot);
-    let short_r = short + measure(&fonts, "9.123", 14.0);
-    let long_r = long + measure(&fonts, "1:10.000", 14.0);
+    let short_mid = short + measure(&fonts, "9.123", 14.0) * 0.5;
+    let long_mid = long + measure(&fonts, "1:10.000", 14.0) * 0.5;
     assert!(
-        (short_r - long_r).abs() < 0.6,
-        "right edge moved {short_r} -> {long_r}"
+        (short_mid - 100.0).abs() < 0.6,
+        "short mid {short_mid}"
     );
-    assert!(short > long);
+    assert!((long_mid - 100.0).abs() < 0.6, "long mid {long_mid}");
 }
 
 #[test]
@@ -4678,6 +4840,65 @@ fn lean_min_golden() {
     lean.steer_lock = 0.40;
     let s = golden_snap(&lean, &cfg);
     draw_widget_golden("lean-min", &s, &cfg, cfg[WidgetId::Lean].rect);
+}
+
+#[test]
+fn telemetry_golden() {
+    let _g = session_lock();
+    reset_session();
+    crate::telemetry::seed_corner();
+    let mut s = live_snap();
+    s.local_gear = 4;
+    s.local_speed = 124.0 / 3.6;
+    s.local_rpm = 9800;
+    s.max_rpm = 13500;
+    s.local_throttle = 0.75;
+    s.local_front_brake = 0.18;
+    s.local_rear_brake = 0.0;
+    s.local_clutch = 0.0;
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg[WidgetId::Telemetry].show = true;
+    cfg[WidgetId::Telemetry].bg = 82;
+    cfg[WidgetId::Telemetry].rect.x = 0.18;
+    cfg[WidgetId::Telemetry].rect.y = 0.38;
+    cfg[WidgetId::Telemetry].rect.w = 0.64;
+    cfg[WidgetId::Telemetry].rect.h = 0.20;
+    draw_widget_golden("telemetry", &golden_snap(&s, &cfg), &cfg, cfg[WidgetId::Telemetry].rect);
+}
+
+#[test]
+fn telemetry_can_hide_each_section() {
+    let _g = session_lock();
+    reset_session();
+    crate::telemetry::seed_corner();
+    let mut s = live_snap();
+    s.local_gear = 2;
+    s.local_speed = 20.0;
+    s.local_throttle = 0.5;
+    s.local_front_brake = 0.2;
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg[WidgetId::Telemetry].show = true;
+    cfg.telemetry_traces = false;
+    cfg.telemetry_bars = false;
+    cfg.telemetry_dial = false;
+    let mut px = Pixmap::new(1280, 720).expect("pixmap");
+    draw(&mut px, &fonts(), Some(&golden_snap(&s, &cfg)), &cfg, 1280, 720, 0.0, false, false, false);
+    cfg.telemetry_traces = true;
+    cfg.telemetry_trace_throttle = false;
+    cfg.telemetry_bars = true;
+    cfg.telemetry_bar_clutch = false;
+    cfg.telemetry_bar_brake = false;
+    cfg.telemetry_dial = true;
+    cfg.telemetry_trace_steer = true;
+    cfg.telemetry_bar_steer = true;
+    s.local_steer = -0.22;
+    s.steer_lock = 0.40;
+    s.shift_rpm = 9000;
+    s.max_rpm = 13500;
+    s.local_rpm = 9800;
+    draw(&mut px, &fonts(), Some(&golden_snap(&s, &cfg)), &cfg, 1280, 720, 0.0, false, false, false);
 }
 
 #[test]

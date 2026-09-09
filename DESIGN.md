@@ -318,7 +318,10 @@ Regular Cockpit widget. Night Ink 6px plaque, four columns sized to the widest t
 Hair lockup: no plaque, no border. Orange Δ as a letter, huge ExtraBold Italic signed time, a 2px center-zero hairline, BEST and LAST capping the ends. When panel opacity is under 40%, those captions sit on night-ink pills. Green fill left of the tick is faster; red right is slower. Saturates at ±2.0 s. New installs start with panel opacity 0.
 
 ### Dash (signature)
-Horizontal plaque: gear box, RPM/speed stack, large italic orange P#, flag wrap on checkered/white. Shift lights are a green → yellow → red capsule row.
+Horizontal plaque: gear box, RPM/speed stack, large italic orange P#, flag wrap on checkered/white. Shift lights are a green → yellow → red capsule row. Optional faint-red gear at shift or limiter (off by default).
+
+### Telemetry (signature)
+Horizontal input strip. Night-ink plaque, 6px left, circular right. Overlaid ahead-green throttle and behind-red brake traces (smooth curves), optional cream steer at mid-zero, analog bars (clutch / brake / throttle, optional center-zero steer), circular gear well with an orange RPM arc, huge ExtraBold Italic gear that flushes faint red at shift or limiter, speed stacked under it, dim unit under speed. Sections and channels can hide; the rest reflow. No left title. No dotted grid. Dash still owns place / clock / flags.
 
 ### Map / Minimap / Radar (signature)
 You = larger Holeshot Orange dot. Others = Field Slate unless lapping/closing. Leader crown and ahead/behind rings are overlays, not recodes of the whole field. Radar: no blind-spot wedges — panel, bike, optional 3/6/12 m circles (lighter on a solid plaque), blips.
@@ -345,6 +348,7 @@ Web-only CTA in the top bar. Clip-path orange parallelogram, Windows four-square
 - **Do** mark that hero with a Holeshot Orange skew S# plaque.
 - **Do** draw Delta Bar as Hair: Δ letter, signed time, 2px center-zero line, BEST/LAST on the ends.
 - **Do** draw Lean as Figure (rear-view white rider, orange skew 32° bug, 2px steer under the boots, 2px pitch on the right) or Minimal (huge orange signed lean, cream pitch degrees, steer hairline). Steer and pitch only while riding.
+- **Do** draw Telemetry as traces + analog bars + a gear/speed dial. Green is throttle, red is brake, orange is the RPM arc only. Cream is optional steer. Gear flushes faint red at shift or limiter.
 - **Do** treat the website as an F8 Twin pit-box: settings, widget rail (204px), live stage, Download in the top bar.
 
 ### Don't:
@@ -360,4 +364,5 @@ Web-only CTA in the top bar. Clip-path orange parallelogram, Windows four-square
 - **Don't** ship Sectors until **Show on overlay** is on.
 - **Don't** draw Delta Bar as an orange Δ plaque or a fat capsule bar — Hair is type plus a 2px line.
 - **Don't** infer sit / stand from Lean — that is Stance. Steer and pitch hide in spectate. Do not leave those hairlines as 2px charcoal on the game; under 40% opacity they get a night-ink halo and percent pills. Do not draw Minimal as a gyro.
+- **Don't** draw a TELEMETRY spine, dotted grid, or neon lime on Telemetry. Do not steal Dash’s place / clock / flags.
 - **Don't** wrap the live HUD in a boxed canvas inside a left-rail dashboard.

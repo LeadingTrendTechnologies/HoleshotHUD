@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.9.0
+
+A Telemetry strip for throttle and brake, plus analog bars and gear/speed. Header and footer slots can show gap to the rider ahead or behind you. Restart MX Bikes after install so the V14 plugin can publish those inputs.
+
+### Telemetry
+
+- New Cockpit widget: overlaid throttle (green) and brake (red) traces, clutch / brake / throttle bars, and a gear/speed dial with an orange RPM arc. Traces are smooth curves. Speed sits under gear. Gear flushes faint red at the shift light or limiter. Optional steer trace and bar (off by default). Settings groups Show, then channels under the open section. Riding uses your bike inputs. Spectate follows that rider’s throttle and front brake.
+
+### Dash
+
+- **Shift color** (off by default) flushes the gear faint red at the shift light or limiter. Simple dash flushes the gear plaque.
+- Footer **Gap**, **Interval**, and **Gap behind** are live running gaps to the riders one live place ahead and behind. Same lap ticks along the track; a live lap or more is `1L` / `-1L`. A pass switches who. Standings’ Gap / Interval columns are still line times.
+
+### Standings
+
+- **Gap ahead** and **Gap behind** are header/footer options. Ahead is the rider one live place in front of you; behind is the rider one place back. A pass switches who that is immediately. Same lap is a live running time along the track; a lap or more is `1L` / `-1L`.
+
+### Relative
+
+- The same header/footer options use race place, not the riders in the Relative table. Same lap ticks along the track toward that rider; a live lap or more is `1L` / `-1L`.
+
+### H-Standings
+
+- Side slots can show **Gap ahead** and **Gap behind** (place neighbors). Card gaps stay vs you.
+
 ## 0.8.0
 
 Practice, warmup, race, and spectate each keep their own HUD. The overlay follows the game window.
@@ -32,7 +57,7 @@ Practice, warmup, race, and spectate each keep their own HUD. The overlay follow
 - **Ideal** is best S1 + S2 + S3 (maybe from different laps): a night-ink pill in LAP, and an IDEAL row in the log.
 - LAST S2 is the sector time, not time from the line. A cumulative plugin split no longer shows as `1:21` when S2 was `40`.
 - On glass (opacity under 40%), floating type gets a 1px night-ink rim so it still reads on a bright sky. Split pills stay.
-- Columns reserve the widest time format, and times right-align in that slot so ticking digits do not slide.
+- Columns reserve the widest time format so they do not jump. Times sit centered in each column.
 
 ### Radar
 

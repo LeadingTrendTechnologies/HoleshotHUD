@@ -101,6 +101,10 @@ fn main() {
             size_show(c, "gamepad", 0.28, 0.22);
             mxbo_hud::gamepad::set(mxbo_hud::gamepad::demo_sony());
         }),
+        ("telemetry.png", W, H, |c| {
+            mxbo_hud::telemetry::seed_corner();
+            size_show(c, "telemetry", 0.62, 0.18);
+        }),
         ("hero.png", W, HERO_H, layout_hero),
     ];
 
@@ -181,6 +185,7 @@ fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg[WidgetId::Flag].show = name == "flag";
     cfg[WidgetId::Lean].show = name == "lean";
     cfg[WidgetId::Gamepad].show = name == "gamepad";
+    cfg[WidgetId::Telemetry].show = name == "telemetry";
 }
 
 fn size_show(cfg: &mut HudConfig, name: &str, w: f32, h: f32) {
@@ -199,6 +204,7 @@ fn size_show(cfg: &mut HudConfig, name: &str, w: f32, h: f32) {
         "flag" => WidgetId::Flag,
         "lean" => WidgetId::Lean,
         "gamepad" => WidgetId::Gamepad,
+        "telemetry" => WidgetId::Telemetry,
         _ => return,
     };
     cfg[id].rect.w = w;
@@ -298,6 +304,10 @@ fn demo_snapshot() -> Snapshot {
     s.local_pitch = -18.0;
     s.local_steer = -0.12;
     s.steer_lock = 0.40;
+    s.local_throttle = 0.75;
+    s.local_front_brake = 0.18;
+    s.local_rear_brake = 0.0;
+    s.local_clutch = 0.0;
     s.current_lap_ms = 12_000;
     s.sector_count = 3;
     s.sector_last = 2;

@@ -238,6 +238,7 @@ enum Tab {
     Flag,
     Lean,
     Gamepad,
+    Telemetry,
 }
 
 impl Tab {
@@ -269,6 +270,7 @@ enum Hit {
     TabFlag,
     TabLean,
     TabGamepad,
+    TabTelemetry,
     Preset(SessionPreset),
     PresetCopyAll,
     StShow,
@@ -282,6 +284,7 @@ enum Hit {
     DashBlue,
     DashRed,
     DashSimple,
+    DashShiftColor,
     TickerShow,
     SysShow,
     SysAppShow(u8),
@@ -303,6 +306,17 @@ enum Hit {
     FlagShow,
     LeanShow,
     GamepadShow,
+    TelemetryShow,
+    TelemetryTraces,
+    TelemetryTraceThrottle,
+    TelemetryTraceBrake,
+    TelemetryTraceSteer,
+    TelemetryBars,
+    TelemetryBarClutch,
+    TelemetryBarBrake,
+    TelemetryBarThrottle,
+    TelemetryBarSteer,
+    TelemetryDial,
     FlagYellow,
     FlagBlue,
     FlagRed,
@@ -383,6 +397,7 @@ enum Hit {
     FlagBg,
     LeanBg,
     GamepadBg,
+    TelemetryBg,
     StDec,
     StInc,
     RelDec,
@@ -1036,6 +1051,7 @@ fn is_slider(hit: Hit) -> bool {
             | Hit::FlagBg
             | Hit::LeanBg
             | Hit::GamepadBg
+            | Hit::TelemetryBg
             | Hit::StW(_)
             | Hit::RelW(_)
             | Hit::Font(_)
@@ -1122,6 +1138,7 @@ fn apply_slide(hit: Hit, mx: f32, x: f32, w: f32, min: i32, max: i32) {
         Hit::FlagBg => c[WidgetId::Flag].bg = v,
         Hit::LeanBg => c[WidgetId::Lean].bg = v,
         Hit::GamepadBg => c[WidgetId::Gamepad].bg = v,
+        Hit::TelemetryBg => c[WidgetId::Telemetry].bg = v,
         Hit::StW(i) => {
             if let Some(f) = c.st_order.get(i as usize).copied() {
                 f.set_width(c, v);
@@ -1307,6 +1324,10 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         }
         Hit::TabGamepad => {
             set_tab(Tab::Gamepad);
+            return;
+        }
+        Hit::TabTelemetry => {
+            set_tab(Tab::Telemetry);
             return;
         }
         Hit::Preset(p) => {
@@ -1599,6 +1620,7 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::DashBlue => c.dash_blue = !c.dash_blue,
         Hit::DashRed => c.dash_red = !c.dash_red,
         Hit::DashSimple => c.dash_simple = !c.dash_simple,
+        Hit::DashShiftColor => c.dash_shift_color = !c.dash_shift_color,
         Hit::TickerShow => c[WidgetId::Ticker].show ^= true,
         Hit::SysShow => c[WidgetId::Sys].show ^= true,
         Hit::SysAppShow(i) => c.toggle_sys_app(i as usize),
@@ -1617,6 +1639,17 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::StanceShow => c[WidgetId::Stance].show ^= true,
         Hit::FlagShow => c[WidgetId::Flag].show ^= true,
         Hit::LeanShow => c[WidgetId::Lean].show ^= true,
+        Hit::TelemetryShow => c[WidgetId::Telemetry].show ^= true,
+        Hit::TelemetryTraces => c.telemetry_traces = !c.telemetry_traces,
+        Hit::TelemetryTraceThrottle => c.telemetry_trace_throttle = !c.telemetry_trace_throttle,
+        Hit::TelemetryTraceBrake => c.telemetry_trace_brake = !c.telemetry_trace_brake,
+        Hit::TelemetryTraceSteer => c.telemetry_trace_steer = !c.telemetry_trace_steer,
+        Hit::TelemetryBars => c.telemetry_bars = !c.telemetry_bars,
+        Hit::TelemetryBarClutch => c.telemetry_bar_clutch = !c.telemetry_bar_clutch,
+        Hit::TelemetryBarBrake => c.telemetry_bar_brake = !c.telemetry_bar_brake,
+        Hit::TelemetryBarThrottle => c.telemetry_bar_throttle = !c.telemetry_bar_throttle,
+        Hit::TelemetryBarSteer => c.telemetry_bar_steer = !c.telemetry_bar_steer,
+        Hit::TelemetryDial => c.telemetry_dial = !c.telemetry_dial,
         Hit::GamepadShow => c[WidgetId::Gamepad].show ^= true,
         Hit::FeatureSector => {
             c.experimental = !c.experimental;
@@ -1724,7 +1757,7 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::SectorHistDec => c.sector_hist_laps = (c.sector_hist_laps - 1).max(1),
         Hit::SectorHistInc => c.sector_hist_laps = (c.sector_hist_laps + 1).min(5),
         Hit::TabWidgets | Hit::TabApp | Hit::TabFeedback | Hit::TabSt | Hit::TabRel | Hit::TabMap | Hit::TabMini | Hit::TabRadar | Hit::TabDash
-        | Hit::TabTicker | Hit::TabSys | Hit::TabSector | Hit::TabDelta | Hit::TabStance | Hit::TabFlag | Hit::TabLean | Hit::TabGamepad
+        | Hit::TabTicker | Hit::TabSys | Hit::TabSector | Hit::TabDelta | Hit::TabStance | Hit::TabFlag | Hit::TabLean | Hit::TabGamepad | Hit::TabTelemetry
         | Hit::MapDotOpen | Hit::MiniDotOpen | Hit::FontOpen | Hit::UnitsOpen | Hit::StTextOpen | Hit::RelTextOpen
         | Hit::SettingsKeyOpen
         | Hit::StanceBindOpen
@@ -1744,7 +1777,7 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::AutoUpdateOnLaunch | Hit::QuitApp | Hit::Uninstall | Hit::GameFolder | Hit::SysAppBrowse
         | Hit::FbRate | Hit::FbBug | Hit::FbFeature | Hit::FbStar(_) | Hit::FbText | Hit::FbAttach | Hit::FbSend
         | Hit::StDrag(_) | Hit::RelDrag(_)
-        | Hit::StBg | Hit::StHl | Hit::RelBg | Hit::RelHl | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarRange | Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg | Hit::FlagBg | Hit::LeanBg | Hit::GamepadBg
+        | Hit::StBg | Hit::StHl | Hit::RelBg | Hit::RelHl | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarRange | Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg | Hit::FlagBg | Hit::LeanBg | Hit::GamepadBg | Hit::TelemetryBg
         | Hit::StW(_) | Hit::RelW(_) | Hit::Font(_) | Hit::StanceReset | Hit::TrackPbClear
         | Hit::Preset(_) | Hit::PresetCopyAll => {}
     });
@@ -1831,6 +1864,7 @@ fn hit_label(hit: Hit) -> String {
         Hit::TabFlag => "Flags".into(),
         Hit::TabLean => "Lean".into(),
         Hit::TabGamepad => "Controller".into(),
+        Hit::TabTelemetry => "Telemetry".into(),
         Hit::Preset(p) => {
             if preset_hit_locked(Hit::Preset(p)) {
                 format!("{} — switch in the garage", p.label())
@@ -1841,12 +1875,12 @@ fn hit_label(hit: Hit) -> String {
         Hit::PresetCopyAll => "Copy to all presets".into(),
         Hit::FeatureSector => "Experimental widgets".into(),
         Hit::StShow | Hit::RelShow | Hit::MapShow | Hit::MiniShow | Hit::RadarShow | Hit::DashShow
-        | Hit::TickerShow | Hit::SysShow | Hit::SectorShow | Hit::DeltaShow | Hit::StanceShow | Hit::FlagShow | Hit::LeanShow | Hit::GamepadShow => "Show on overlay".into(),
+        | Hit::TickerShow | Hit::SysShow | Hit::SectorShow | Hit::DeltaShow | Hit::StanceShow | Hit::FlagShow | Hit::LeanShow | Hit::GamepadShow | Hit::TelemetryShow => "Show on overlay".into(),
         Hit::QuitApp => "Quit overlay".into(),
         Hit::Font(_) => "Font size".into(),
         Hit::Bold(_) => "Bold text".into(),
         Hit::StBg | Hit::RelBg | Hit::MapBg | Hit::MiniBg => "Background".into(),
-        Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg | Hit::FlagBg | Hit::LeanBg | Hit::GamepadBg => "Panel opacity".into(),
+        Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg | Hit::FlagBg | Hit::LeanBg | Hit::GamepadBg | Hit::TelemetryBg => "Panel opacity".into(),
         Hit::StHl | Hit::RelHl => "Row highlight".into(),
         Hit::StStripe | Hit::RelStripe => "Alternating rows".into(),
         Hit::StDec | Hit::StInc => "Rows".into(),
@@ -1886,8 +1920,19 @@ fn hit_label(hit: Hit) -> String {
         Hit::DashBlue => "Blue flag".into(),
         Hit::DashRed => "Red flag".into(),
         Hit::DashSimple => "Simple dash".into(),
+        Hit::DashShiftColor => "Shift color".into(),
         Hit::MapSectors => "Sector lines".into(),
         Hit::MiniSectors => "Sector lines".into(),
+        Hit::TelemetryTraces => "Traces".into(),
+        Hit::TelemetryTraceThrottle => "Throttle trace".into(),
+        Hit::TelemetryTraceBrake => "Brake trace".into(),
+        Hit::TelemetryTraceSteer => "Steer trace".into(),
+        Hit::TelemetryBars => "Analog bars".into(),
+        Hit::TelemetryBarClutch => "Clutch bar".into(),
+        Hit::TelemetryBarBrake => "Brake bar".into(),
+        Hit::TelemetryBarThrottle => "Throttle bar".into(),
+        Hit::TelemetryBarSteer => "Steer bar".into(),
+        Hit::TelemetryDial => "Gear / speed".into(),
         Hit::SectorLive => "Live sector".into(),
         Hit::SectorSession | Hit::DeltaSession => "Compare to session best".into(),
         Hit::SectorHist => "Lap log".into(),
@@ -2116,6 +2161,7 @@ fn nudge_slider(hit: Hit, delta: i32) {
         Hit::FlagBg => c[WidgetId::Flag].bg,
         Hit::LeanBg => c[WidgetId::Lean].bg,
         Hit::GamepadBg => c[WidgetId::Gamepad].bg,
+        Hit::TelemetryBg => c[WidgetId::Telemetry].bg,
         Hit::StW(i) => c.st_order.get(i as usize).map(|f| f.width(c)).unwrap_or(min),
         Hit::RelW(i) => c.rel_order.get(i as usize).map(|f| f.width(c)).unwrap_or(min),
         Hit::Font(id) => c.font_pct(id),
@@ -2141,6 +2187,7 @@ fn nudge_slider(hit: Hit, delta: i32) {
         Hit::FlagBg => c[WidgetId::Flag].bg = v,
         Hit::LeanBg => c[WidgetId::Lean].bg = v,
         Hit::GamepadBg => c[WidgetId::Gamepad].bg = v,
+        Hit::TelemetryBg => c[WidgetId::Telemetry].bg = v,
         Hit::StW(i) => {
             if let Some(f) = c.st_order.get(i as usize).copied() {
                 f.set_width(c, v);
@@ -2309,6 +2356,7 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
         Tab::Flag => pane_flag(px, fonts, &cfg, hover, &mut hits, x, py, cw),
         Tab::Lean => pane_lean(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
         Tab::Gamepad => pane_gamepad(px, fonts, &cfg, hover, &mut hits, x, py, cw, open_drop),
+        Tab::Telemetry => pane_telemetry(px, fonts, &cfg, hover, &mut hits, x, py, cw),
     };
     draw_top_bar(px, fonts, w, top_y, tab, cfg.settings_key.label(), hover, &mut hits);
 
@@ -2396,6 +2444,7 @@ fn widget_short_name(id: WidgetId) -> &'static str {
         WidgetId::Flag => "Flags",
         WidgetId::Lean => "Lean",
         WidgetId::Gamepad => "Controller",
+        WidgetId::Telemetry => "Telemetry",
     }
 }
 
@@ -2541,6 +2590,7 @@ fn paint_focus(px: &mut Pixmap, hits: &[HitBox], focus: Option<Hit>) {
 fn widget_groups(cfg: &HudConfig) -> Vec<(&'static str, Vec<(Tab, Hit, &'static str, bool)>)> {
     let cockpit = vec![
         (Tab::Dash, Hit::TabDash, "Dash", cfg[WidgetId::Dash].show),
+        (Tab::Telemetry, Hit::TabTelemetry, "Telemetry", cfg[WidgetId::Telemetry].show),
         (Tab::Lean, Hit::TabLean, "Lean", cfg[WidgetId::Lean].show),
         (Tab::Delta, Hit::TabDelta, "Delta Bar", cfg[WidgetId::Delta].show),
         (Tab::Sector, Hit::TabSector, "Sectors", cfg[WidgetId::Sector].show),
@@ -3451,6 +3501,11 @@ fn nav_icon(px: &mut Pixmap, hit: Hit, cx: f32, cy: f32, c: Color) {
             fill_circle(px, cx - 3.2, cy + 1.6, 1.6, Color::from_rgba8(12, 12, 16, 255));
             fill_circle(px, cx + 3.2, cy + 1.6, 1.6, Color::from_rgba8(12, 12, 16, 255));
         }
+        Hit::TabTelemetry => {
+            icon_stroke_line(px, cx - 6.0, cy + 2.0, cx - 2.0, cy - 3.2, c, 1.5);
+            icon_stroke_line(px, cx - 2.0, cy - 3.2, cx + 1.4, cy + 3.4, c, 1.5);
+            icon_stroke_line(px, cx + 1.4, cy + 3.4, cx + 6.2, cy - 2.4, c, 1.5);
+        }
         Hit::QuitApp => {
             icon_stroke_circle(px, cx, cy, 6.2, c);
             icon_stroke_line(px, cx, cy - 7.2, cx, cy - 1.2, c, 1.7);
@@ -4336,6 +4391,14 @@ fn widget_pane_spec(id: WidgetId) -> WidgetPaneSpec {
             bg: Hit::GamepadBg,
             bg_label: "Panel opacity",
         },
+        WidgetId::Telemetry => WidgetPaneSpec {
+            id,
+            title: "Telemetry",
+            subtitle: "Throttle and brake traces, analog bars, gear and speed",
+            show: Hit::TelemetryShow,
+            bg: Hit::TelemetryBg,
+            bg_label: "Panel opacity",
+        },
     }
 }
 
@@ -4781,6 +4844,7 @@ fn pane_dash(
         }
         let mut y = pane_style(px, fonts, spec, cfg, hover, hits, x, y, w);
         y = toggle_row(px, fonts, x, y, w, "Simple dash", cfg.dash_simple, Hit::DashSimple, hover, hits);
+        y = toggle_row(px, fonts, x, y, w, "Shift color", cfg.dash_shift_color, Hit::DashShiftColor, hover, hits);
         y = toggle_row(px, fonts, x, y, w, "Yellow flag", cfg.dash_yellow, Hit::DashYellow, hover, hits);
         y = toggle_row(px, fonts, x, y, w, "Blue flag", cfg.dash_blue, Hit::DashBlue, hover, hits);
         y = toggle_row(px, fonts, x, y, w, "Red flag", cfg.dash_red, Hit::DashRed, hover, hits);
@@ -5070,6 +5134,50 @@ fn pane_stance(
         y += 24.0;
         action_btn(px, fonts, x, y, 168.0, 32.0, "Reset to standing", Hit::StanceReset, hover, hits, false);
         y += 40.0;
+        pane_style(px, fonts, spec, cfg, hover, hits, x, y, w)
+    })
+}
+
+fn pane_telemetry(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    cfg: &HudConfig,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+    x: f32,
+    y: f32,
+    w: f32,
+) -> f32 {
+    let spec = widget_pane_spec(WidgetId::Telemetry);
+    open_widget_pane(px, fonts, cfg, hover, hits, x, y, w, spec, |px, fonts, y, shown, hits| {
+        let mut y = note_lines(
+            px,
+            fonts,
+            x,
+            y,
+            w,
+            "Spectate has throttle and front brake only. Clutch, rear, and steer stay off.",
+        );
+        if !shown {
+            return y;
+        }
+        y = section(px, fonts, x, y, "Show");
+        y = toggle_row(px, fonts, x, y, w, "Traces", cfg.telemetry_traces, Hit::TelemetryTraces, hover, hits);
+        y = toggle_row(px, fonts, x, y, w, "Bars", cfg.telemetry_bars, Hit::TelemetryBars, hover, hits);
+        y = toggle_row(px, fonts, x, y, w, "Gear / speed", cfg.telemetry_dial, Hit::TelemetryDial, hover, hits);
+        if cfg.telemetry_traces {
+            y = section(px, fonts, x, y, "Traces");
+            y = toggle_nested(px, fonts, x, y, w, "Throttle", cfg.telemetry_trace_throttle, Hit::TelemetryTraceThrottle, hover, hits);
+            y = toggle_nested(px, fonts, x, y, w, "Brake", cfg.telemetry_trace_brake, Hit::TelemetryTraceBrake, hover, hits);
+            y = toggle_nested(px, fonts, x, y, w, "Steer", cfg.telemetry_trace_steer, Hit::TelemetryTraceSteer, hover, hits);
+        }
+        if cfg.telemetry_bars {
+            y = section(px, fonts, x, y, "Bars");
+            y = toggle_nested(px, fonts, x, y, w, "Clutch", cfg.telemetry_bar_clutch, Hit::TelemetryBarClutch, hover, hits);
+            y = toggle_nested(px, fonts, x, y, w, "Brake", cfg.telemetry_bar_brake, Hit::TelemetryBarBrake, hover, hits);
+            y = toggle_nested(px, fonts, x, y, w, "Throttle", cfg.telemetry_bar_throttle, Hit::TelemetryBarThrottle, hover, hits);
+            y = toggle_nested(px, fonts, x, y, w, "Steer", cfg.telemetry_bar_steer, Hit::TelemetryBarSteer, hover, hits);
+        }
         pane_style(px, fonts, spec, cfg, hover, hits, x, y, w)
     })
 }
@@ -5711,6 +5819,21 @@ fn toggle_row(
     text(px, fonts, label, 13.0, x + 16.0, y + 16.0, text_col(), false);
     switch(px, x + w - 52.0, y + 14.0, on, hit, hover, hits);
     y + h + ROW_GAP
+}
+
+fn toggle_nested(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    x: f32,
+    y: f32,
+    w: f32,
+    label: &str,
+    on: bool,
+    hit: Hit,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+) -> f32 {
+    toggle_row(px, fonts, x + 16.0, y, (w - 16.0).max(80.0), label, on, hit, hover, hits)
 }
 
 fn sys_app_row(

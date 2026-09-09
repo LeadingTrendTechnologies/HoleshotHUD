@@ -148,6 +148,10 @@ public:
     double telemetryStamp() const { return m_telemetryStamp; }
     int localGear() const { return m_localGear; }
     int localRpm() const { return m_localRpm; }
+    float localThrottle() const { return m_localThrottle; }
+    float localFrontBrake() const { return m_localFrontBrake; }
+    float localRearBrake() const { return m_localRearBrake; }
+    float localClutch() const { return m_localClutch; }
     float engineTemp() const { return m_engineTemp; }
     float airTemp() const { return m_airTemp; }
     float fuel() const { return m_fuel; }
@@ -227,6 +231,10 @@ private:
     double m_trackPosStamp = 0.0;
     int m_localGear = 0;
     int m_localRpm = 0;
+    float m_localThrottle = 0.0f;
+    float m_localFrontBrake = 0.0f;
+    float m_localRearBrake = 0.0f;
+    float m_localClutch = 0.0f;
     float m_engineTemp = 0.0f;
     float m_airTemp = 0.0f;
     float m_fuel = 0.0f;

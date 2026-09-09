@@ -72,7 +72,7 @@ cmd.exe //c "taskkill /IM Holeshot-HUD.exe /F"
 
 ### Local debug
 
-`cargo run` and `build.bat` keep every overlay widget off until **Show on overlay** is on. **Sectors**, **Delta Bar**, **Lean**, **Stance**, and **Flags** are regular Cockpit widgets. **Controller** is behind Settings → Labs → Experimental widgets.
+`cargo run` and `build.bat` keep every overlay widget off until **Show on overlay** is on. **Sectors**, **Delta Bar**, **Lean**, **Stance**, **Flags**, and **Telemetry** are regular Cockpit widgets. **Controller** is behind Settings → Labs → Experimental widgets.
 
 ```bash
 cmd.exe //c "cargo run --manifest-path overlay\Cargo.toml --bin Holeshot-HUD"
@@ -83,8 +83,8 @@ Dev builds optimize crates like tiny-skia (`opt-level = 3`) so the HUD stays smo
 Push a tag to publish a downloadable release:
 
 ```bat
-git tag v0.8.0
-git push origin v0.8.0
+git tag v0.9.0
+git push origin v0.9.0
 ```
 
 ## Data wiki

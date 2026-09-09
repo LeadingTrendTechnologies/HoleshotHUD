@@ -469,6 +469,10 @@ impl RaceStore {
         // Clock first, and only it may mutate session state: the field reads the result.
         let clock = build_clock(s);
         let field = build_field(s, &clock);
+        if s.has_telemetry != 0 {
+            let (thr, brk, _) = crate::telemetry::inputs(s);
+            crate::telemetry::note(thr, brk, crate::telemetry::steer(s));
+        }
         if let Ok(mut g) = VIEW.lock() {
             g.clock = clock;
             g.field = field;
@@ -2077,6 +2081,105 @@ pub(crate) fn interval_text_from_row(row: &RaceRow) -> String {
     } else {
         format_gap(row.interval_ms, 0)
     }
+}
+
+/// Live seconds from a wrapped lap fraction (Relative's Gap math).
+fn live_track_gap_ms(s: &Snapshot, wrap_frac: f32) -> Option<i32> {
+    if s.track_length <= 10.0 {
+        return None;
+    }
+    let meters = wrap_frac.abs() * s.track_length;
+    let speed = s.local_speed.max(4.0);
+    Some((meters / speed * 1000.0).round() as i32)
+}
+
+fn format_live_wrap(s: &Snapshot, wrap: f32) -> String {
+    match live_track_gap_ms(s, wrap) {
+        Some(ms) if ms <= 0 => "0.000".into(),
+        Some(ms) => format_gap(ms, 0).trim_start_matches('+').to_string(),
+        None => "---".into(),
+    }
+}
+
+/// Distance along the lap from `from` to `to` in race direction, 0..1. Not the
+/// shortest wrap: a rider a long way behind must not flip to looking close.
+fn wrap_along(s: &Snapshot, from: i32, to: i32) -> Option<f32> {
+    let (Some(pa), Some(pb)) = (rider_lap_pos(s, from), rider_lap_pos(s, to)) else {
+        return None;
+    };
+    Some((pb - pa).rem_euclid(1.0))
+}
+
+fn rider_laps_on(s: &Snapshot, field: &RaceField, race_num: i32) -> i32 {
+    if let Some(r) = field.row_by_num(race_num) {
+        return r.current_lap;
+    }
+    standing_of(s, race_num)
+        .map(|st| rider_current_lap(s, race_num, st.num_laps))
+        .unwrap_or(0)
+}
+
+/// Place-neighbor gap: live laps when they differ, else seconds along the track
+/// toward that rider. Shortest wrap would treat a crashed last-place rider as
+/// nearby every time you come around to pass them.
+fn gap_to_num(s: &Snapshot, field: &RaceField, me: i32, other: i32, behind: bool) -> String {
+    let d = rider_laps_on(s, field, me) - rider_laps_on(s, field, other);
+    if behind && d >= 1 {
+        return format!("-{d}L");
+    }
+    if !behind && d <= -1 {
+        return format!("{}L", -d);
+    }
+    let (from, to) = if behind { (other, me) } else { (me, other) };
+    match wrap_along(s, from, to) {
+        Some(w) => format_live_wrap(s, w),
+        None => "---".into(),
+    }
+}
+
+fn classified_neighbor<'a>(s: &'a Snapshot, position: i32) -> Option<&'a Standing> {
+    if position <= 0 {
+        return None;
+    }
+    let n = s.standing_count.max(0) as usize;
+    s.standings[..n].iter().find(|st| st.position == position)
+}
+
+/// Gap to the rider one live-order place ahead (P−1). Time is a live running gap.
+pub(crate) fn gap_ahead_text(s: &Snapshot, field: &RaceField, row: &Standing) -> String {
+    if let Some(i) = field
+        .rows
+        .iter()
+        .position(|r| r.standing.race_num == row.race_num)
+    {
+        if i == 0 {
+            return "---".into();
+        }
+        return gap_to_num(s, field, row.race_num, field.rows[i - 1].standing.race_num, false);
+    }
+    if row.position <= 1 {
+        return "---".into();
+    }
+    classified_neighbor(s, row.position - 1)
+        .map(|ahead| gap_to_num(s, field, row.race_num, ahead.race_num, false))
+        .unwrap_or_else(|| "---".into())
+}
+
+/// Gap to the rider one live-order place behind (P+1). Time is a live running gap.
+pub(crate) fn gap_behind_text(s: &Snapshot, field: &RaceField, row: &Standing) -> String {
+    if let Some(i) = field
+        .rows
+        .iter()
+        .position(|r| r.standing.race_num == row.race_num)
+    {
+        return match field.rows.get(i + 1) {
+            Some(behind) => gap_to_num(s, field, row.race_num, behind.standing.race_num, true),
+            None => "---".into(),
+        };
+    }
+    classified_neighbor(s, row.position + 1)
+        .map(|behind| gap_to_num(s, field, row.race_num, behind.race_num, true))
+        .unwrap_or_else(|| "---".into())
 }
 
 pub(crate) fn ticker_delta_from_row(row: &RaceRow) -> String {
