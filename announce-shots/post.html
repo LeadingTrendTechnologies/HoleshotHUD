@@ -1,6 +1,6 @@
 <div>
     <div><span style="text-decoration: underline"><strong>Holeshot HUD</strong></span> — a free, fully customizable overlay for MX Bikes</div>
-    <div>MX Bikes does not give you much on-screen. Holeshot HUD sits on top of the game and shows live race data the way *you* want it: standings, gaps, a dash, maps, and who’s around you.</div>
+    <div>MX Bikes does not give you much on-screen. Holeshot HUD sits on top of the game and shows live race data the way *you* want it: standings, gaps, a dash, telemetry, maps, and who’s around you.</div>
     <div><span style="text-decoration: underline"><strong>It is fully customizable.</strong></span> Nothing is locked in. Every widget can be turned on or off, moved, resized, restyled, and filled with the data you actually use. Build a tiny race HUD, a full broadcast layout, or anything in between.</div>
     <div>Try the widgets in the browser first (demo data), then download for Windows:</div>
     <div>https://holeshot-hud.vercel.app/</div>
@@ -8,7 +8,8 @@
     <hr />
     <h3>🏁 Why use it</h3>
     <ul>
-         <li><strong>See the race, not just the bike.</strong> Place, gap (time or laps), interval, best/last lap, who is ahead and behind you, and where everyone is on the track.</li>
+         <li><strong>See the race, not just the bike.</strong> Place, gap (time or laps), interval, best/last lap, who is ahead and behind you, and where everyone is on the track. Header and footer slots can show live gap to the rider one place ahead or behind.</li>
+         <li><strong>See your inputs.</strong> Telemetry traces throttle and brake over the last few seconds, with clutch / brake / throttle bars and gear plus speed.</li>
          <li><strong>Passes update live.</strong> Order on the boards follows the track, so you don’t wait on the game classification to catch up.</li>
          <li><strong>White / checkered flags</strong> on the dash or as their own Flags widget, plus a `~Lapped` tag when you’re a lap down.</li>
          <li><strong>Proximity.</strong> Radar with range rings so close vs far is a glance; Relative for the battle you’re actually in.</li>
@@ -26,7 +27,7 @@
          <li><strong>Look</strong> — Font family (Exo 2, Teko, Goldman, Montserrat, Segoe, Arial, Tahoma, Roboto), per-widget font size, bold, and panel opacity.</li>
          <li><strong>Units</strong> — Metric or imperial for the whole HUD.</li>
          <li><strong>Columns</strong> — Standings and Relative: turn columns on/off, drag to reorder, slide widths. Position, number, name, gap, interval, laps, best/last, bike, status, penalty, and more.</li>
-         <li><strong>Headers and footers</strong> — Three slots each on Standings / Relative (session time, riders, track, fuel, fuel %, etc.). Dash footer is three slots you pick (temps, laps, gap, bike, class, fuel, …). Optional rev bar.</li>
+         <li><strong>Headers and footers</strong> — Three slots each on Standings / Relative (session time, riders, track, fuel, fuel %, gap ahead, gap behind, etc.). Dash footer is three slots you pick (temps, laps, gap, interval, gap behind, bike, class, fuel, …). Optional rev bar.</li>
          <li><strong>Maps</strong> — Toggle other riders, start/finish, sector lines (S1 at the line), direction arrows, leader crown, nearest ahead/behind, and numbers or position in the dots.</li>
          <li><strong>Horizontal Standings</strong> — Broadcast-style bar: how many riders, track name, autoscroll, side info.</li>
          <li><strong>Radar</strong> — Side and/or rear proximity, with optional 3 / 6 / 12 m range rings.</li>
@@ -35,13 +36,14 @@
     <hr />
     <h3>🧩 Widgets</h3>
     <ul>
-         <li><strong>Standings</strong> — Who is ahead and by how much. Place, number, name, gap (time or laps), best/last lap, fuel, and more. Your row is highlighted. In replay, click a name to follow that rider.</li>
-         <li><strong>Relative</strong> — Riders just ahead and behind you, so you can see the battle you’re actually in without scanning the full board. Fuel can sit in the header or footer.</li>
-         <li><strong>Horizontal Standings</strong> — Broadcast-style bar: leader on the left, your name highlighted. Optional track name, autoscroll, and fuel in a side slot. In replay, click a card to follow that rider.</li>
+         <li><strong>Standings</strong> — Who is ahead and by how much. Place, number, name, gap (time or laps), best/last lap, fuel, and more. Header and footer can show live gap to the rider one place ahead or behind. Your row is highlighted. In replay, click a name to follow that rider.</li>
+         <li><strong>Relative</strong> — Riders just ahead and behind you, so you can see the battle you’re actually in without scanning the full board. Fuel, gap ahead, and gap behind can sit in the header or footer (those gaps use race place, not the riders in the table).</li>
+         <li><strong>Horizontal Standings</strong> — Broadcast-style bar: leader on the left, your name highlighted. Optional track name, autoscroll, and fuel / gap ahead / gap behind in a side slot. Card gaps stay vs you. In replay, click a card to follow that rider.</li>
          <li><strong>Map</strong> — Full track outline with you and other riders, start/finish, optional S1/S2/S3 sector lines (S1 at the line), direction arrows, leader crown, and optional numbers or position in the dots. Blue if they’re a lap ahead and closing, red if you’re a lap up and closing.</li>
          <li><strong>Minimap</strong> — Zoomed circular view of the track around you, same rider markers and sector lines.</li>
          <li><strong>Radar</strong> — Who is beside and behind you, with optional range rings so close vs far is a glance.</li>
-         <li><strong>Dash</strong> — Gear, speed, RPM, position, and a footer you can set (including fuel). Optional rev bar, or Simple dash (gear and speed only). Session clock and race flags (white / checkered) sit with the dash.</li>
+         <li><strong>Dash</strong> — Gear, speed, RPM, position, and a footer you can set (including fuel, gap, interval, and gap behind). Optional rev bar, or Simple dash (gear and speed only). Optional Shift color flushes the gear faint red at the shift light or limiter (off by default). Session clock and race flags (white / checkered) sit with the dash.</li>
+         <li><strong>Telemetry</strong> — Throttle (green) and brake (red) traces, clutch / brake / throttle bars, and a gear/speed dial with an orange RPM arc. Turn sections or channels off; hidden parts reflow. Optional steer is off until you turn it on. Riding uses your bike inputs. Spectate follows that rider’s throttle and front brake. Restart MX Bikes after install so the plugin can publish those inputs.</li>
          <li><strong>Lean</strong> — Bike roll, pitch, and steering for the rider the camera is on. Figure (rear-view rider) or Minimal (numbers). Not sit / stand.</li>
          <li><strong>Controller</strong> — Live DualShock or Xbox on the overlay (Labs). Sticks follow your hands. Triggers fill with squeeze. Bumpers light when held.</li>
          <li><strong>Delta Bar</strong> — Time vs your best at this point on the lap, per class on that track. Not the in-game ghost.</li>
@@ -112,6 +114,8 @@
     <a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/lean-min.png"><img class="aligncenter size-large" src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/lean-min.png?raw=true" alt="Lean Minimal" width="600" height="338" /></a>
     
     <a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/gamepad.png"><img class="aligncenter size-large" src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/gamepad.png?raw=true" alt="Controller" width="600" height="338" /></a>
+    
+    <a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/telemetry.png"><img class="aligncenter size-large" src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/telemetry.png?raw=true" alt="Telemetry" width="600" height="338" /></a>
     
     <hr />
     <h3>🔗 Links</h3>
