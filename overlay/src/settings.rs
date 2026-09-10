@@ -35,7 +35,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use crate::config::{
     update_config, with_config, BoardField, DashField, DotLabel, FontFamily, HudConfig, RelField,
-    SessionPreset, SettingsKey, SnapAlign, StField, StanceBind, StanceMode, StanceStyle, GamepadStyle, LeanStyle, SYS_PRESETS, SYS_PROC_MAX, TableText, Units, WidgetId, COL_W_MAX,
+    SessionPreset, SettingsKey, SnapAlign, StField, StanceBind, StanceMode, StanceStyle, GamepadStyle, LeanStyle, SYS_PRESETS, SYS_PROC_MAX, TableText, UnitKind, Units, WidgetId, COL_W_MAX,
     COL_W_MIN, RADAR_RANGE_MAX, RADAR_RANGE_MIN,
 };
 use crate::render::{fill_rect, icon, measure, text, Fonts};
@@ -272,6 +272,8 @@ enum Hit {
     TabGamepad,
     TabTelemetry,
     Preset(SessionPreset),
+    PresetCopyOpen,
+    PresetCopyTo(SessionPreset),
     PresetCopyAll,
     StShow,
     RelShow,
@@ -420,9 +422,8 @@ enum Hit {
     FontTeko,
     FontGoldman,
     FontMontserrat,
-    UnitsOpen,
-    UnitsMetric,
-    UnitsImperial,
+    UnitsOpen(UnitKind),
+    UnitsPick(UnitKind, Units),
     SettingsKeyOpen,
     SettingsKeyPick(SettingsKey),
     StanceBindOpen,
@@ -494,7 +495,7 @@ enum Drop {
     MapDot,
     MiniDot,
     FontFamily,
-    Units,
+    Units(UnitKind),
     SettingsKey,
     StanceMode,
     StanceStyle,
@@ -506,6 +507,7 @@ enum Drop {
     DashFoot(u8),
     TickerFoot(u8),
     Info(InfoBar, u8),
+    PresetCopy,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -953,7 +955,7 @@ pub fn handle_message(msg: u32, wp: WPARAM, lp: LPARAM) -> bool {
                 let sliding = ui.and_then(|u| u.slide).is_some() || hover.is_some_and(is_slider);
                 let grip = matches!(hover, Some(Hit::StDrag(_)) | Some(Hit::RelDrag(_)));
                 (
-                    hover.is_some_and(|h| !preset_hit_locked(h)),
+                    hover.is_some(),
                     dragging || grip || sliding,
                     hover == Some(Hit::FbText) || hover == Some(Hit::ReplyText),
                 )
@@ -1330,22 +1332,8 @@ fn dispatch(id: Hit, p: (f32, f32)) {
             set_tab(Tab::Telemetry);
             return;
         }
-        Hit::Preset(p) => {
-            close_drop();
-            update_config(|c| {
-                if !c.session_live {
-                    c.settings_preset = p;
-                }
-            });
-            return;
-        }
-        Hit::PresetCopyAll => {
-            close_drop();
-            update_config(|c| {
-                if !c.session_live {
-                    c.copy_settings_to_all();
-                }
-            });
+        Hit::PresetCopyOpen => {
+            toggle_drop(Drop::PresetCopy);
             return;
         }
         Hit::MapDotOpen => {
@@ -1360,8 +1348,8 @@ fn dispatch(id: Hit, p: (f32, f32)) {
             toggle_drop(Drop::FontFamily);
             return;
         }
-        Hit::UnitsOpen => {
-            toggle_drop(Drop::Units);
+        Hit::UnitsOpen(kind) => {
+            toggle_drop(Drop::Units(kind));
             return;
         }
         Hit::StTextOpen => {
@@ -1725,8 +1713,7 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::FontTeko => c.font_family = FontFamily::Teko,
         Hit::FontGoldman => c.font_family = FontFamily::Goldman,
         Hit::FontMontserrat => c.font_family = FontFamily::Montserrat,
-        Hit::UnitsMetric => c.units = Units::Metric,
-        Hit::UnitsImperial => c.units = Units::Imperial,
+        Hit::UnitsPick(kind, units) => c.units.set(kind, units),
         Hit::StTextWhite => c.st_text = TableText::White,
         Hit::StTextBlack => c.st_text = TableText::Black,
         Hit::RelTextWhite => c.rel_text = TableText::White,
@@ -1748,6 +1735,12 @@ fn dispatch(id: Hit, p: (f32, f32)) {
             _ => {}
         },
         Hit::InfoPick(bar, slot, field) => set_info_slot(c, bar, slot, field),
+        Hit::Preset(p) => c.settings_preset = p,
+        Hit::PresetCopyTo(p) => {
+            c.copy_settings_to(p);
+            c.settings_preset = p;
+        }
+        Hit::PresetCopyAll => c.copy_settings_to_all(),
         Hit::StDec => c.standings_rows = (c.standings_rows - 1).max(3),
         Hit::StInc => c.standings_rows = (c.standings_rows + 1).min(40),
         Hit::RelDec => c.relative_count = (c.relative_count - 1).max(1),
@@ -1758,7 +1751,7 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::SectorHistInc => c.sector_hist_laps = (c.sector_hist_laps + 1).min(5),
         Hit::TabWidgets | Hit::TabApp | Hit::TabFeedback | Hit::TabSt | Hit::TabRel | Hit::TabMap | Hit::TabMini | Hit::TabRadar | Hit::TabDash
         | Hit::TabTicker | Hit::TabSys | Hit::TabSector | Hit::TabDelta | Hit::TabStance | Hit::TabFlag | Hit::TabLean | Hit::TabGamepad | Hit::TabTelemetry
-        | Hit::MapDotOpen | Hit::MiniDotOpen | Hit::FontOpen | Hit::UnitsOpen | Hit::StTextOpen | Hit::RelTextOpen
+        | Hit::MapDotOpen | Hit::MiniDotOpen | Hit::FontOpen | Hit::UnitsOpen(_) | Hit::StTextOpen | Hit::RelTextOpen
         | Hit::SettingsKeyOpen
         | Hit::StanceBindOpen
         | Hit::StanceModeOpen
@@ -1769,6 +1762,7 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::DashFootOpen(_)
         | Hit::TickerFootOpen(_)
         | Hit::InfoOpen(_, _)
+        | Hit::PresetCopyOpen
         | Hit::UpdateCheck | Hit::UpdateInstall | Hit::UpdateBanner | Hit::UpdateBannerDismiss
         | Hit::WhatsNewOpen | Hit::WhatsNewDismiss | Hit::WhatsNewScrim | Hit::WhatsNewPanel
         | Hit::ReplyDismiss | Hit::ReplySend | Hit::ReplyText | Hit::ReplyScrim | Hit::ReplyPanel
@@ -1778,8 +1772,7 @@ fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::FbRate | Hit::FbBug | Hit::FbFeature | Hit::FbStar(_) | Hit::FbText | Hit::FbAttach | Hit::FbSend
         | Hit::StDrag(_) | Hit::RelDrag(_)
         | Hit::StBg | Hit::StHl | Hit::RelBg | Hit::RelHl | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarRange | Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg | Hit::FlagBg | Hit::LeanBg | Hit::GamepadBg | Hit::TelemetryBg
-        | Hit::StW(_) | Hit::RelW(_) | Hit::Font(_) | Hit::StanceReset | Hit::TrackPbClear
-        | Hit::Preset(_) | Hit::PresetCopyAll => {}
+        | Hit::StW(_) | Hit::RelW(_) | Hit::Font(_) | Hit::StanceReset | Hit::TrackPbClear => {}
     });
     if id == Hit::FeatureSector && !with_config(|c| c.experimental_unlocked()) {
         let on_labs = UI.lock().unwrap().as_ref().is_some_and(|u| u.tab.is_labs());
@@ -1808,8 +1801,7 @@ fn is_drop_pick(hit: Hit) -> bool {
             | Hit::FontTeko
             | Hit::FontGoldman
             | Hit::FontMontserrat
-            | Hit::UnitsMetric
-            | Hit::UnitsImperial
+            | Hit::UnitsPick(_, _)
             | Hit::SettingsKeyPick(_)
             | Hit::StanceModePick(_)
             | Hit::StanceStylePick(_)
@@ -1819,6 +1811,8 @@ fn is_drop_pick(hit: Hit) -> bool {
             | Hit::DashFootPick(_, _)
             | Hit::TickerFootPick(_, _)
             | Hit::InfoPick(_, _, _)
+            | Hit::PresetCopyTo(_)
+            | Hit::PresetCopyAll
     )
 }
 
@@ -1866,13 +1860,19 @@ fn hit_label(hit: Hit) -> String {
         Hit::TabGamepad => "Controller".into(),
         Hit::TabTelemetry => "Telemetry".into(),
         Hit::Preset(p) => {
-            if preset_hit_locked(Hit::Preset(p)) {
-                format!("{} — switch in the garage", p.label())
+            let (live, active, editing) = with_config(|c| (c.session_live, c.active_preset, c.settings_preset));
+            if live && p == active && p != editing {
+                format!("{} — live HUD", p.label())
             } else {
                 p.label().into()
             }
         }
-        Hit::PresetCopyAll => "Copy to all presets".into(),
+        Hit::PresetCopyOpen => {
+            let src = with_config(|c| c.settings_preset);
+            format!("Copy {} to another preset", src.label())
+        }
+        Hit::PresetCopyTo(p) => format!("Replace {} with this layout", p.label()),
+        Hit::PresetCopyAll => "Replace all presets with this layout".into(),
         Hit::FeatureSector => "Experimental widgets".into(),
         Hit::StShow | Hit::RelShow | Hit::MapShow | Hit::MiniShow | Hit::RadarShow | Hit::DashShow
         | Hit::TickerShow | Hit::SysShow | Hit::SectorShow | Hit::DeltaShow | Hit::StanceShow | Hit::FlagShow | Hit::LeanShow | Hit::GamepadShow | Hit::TelemetryShow => "Show on overlay".into(),
@@ -1889,7 +1889,8 @@ fn hit_label(hit: Hit) -> String {
         Hit::Snap(_, align) => snap_align_label(align).into(),
         Hit::StW(_) | Hit::RelW(_) => "Column width".into(),
         Hit::FontOpen => "Font".into(),
-        Hit::UnitsOpen => "Units".into(),
+        Hit::UnitsOpen(kind) => kind.label().into(),
+        Hit::UnitsPick(_, units) => units.label().into(),
         Hit::SettingsKeyOpen => "Settings key".into(),
         Hit::StanceBindOpen => {
             if UI.lock().unwrap().as_ref().is_some_and(|u| u.bind_listen) {
@@ -2335,9 +2336,6 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
     let x = side_w + 28.0;
     let cw = (w - x - 28.0).max(200.0);
     let preset_h = if widgets { PRESET_STRIP_H } else { 0.0 };
-    if widgets {
-        draw_preset_strip(px, fonts, &cfg, hover, &mut hits, x, clip_top + 10.0, cw);
-    }
     let py = clip_top + 20.0 + preset_h - scroll;
     let bottom = match tab {
         Tab::App => pane_app(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
@@ -2358,6 +2356,19 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
         Tab::Gamepad => pane_gamepad(px, fonts, &cfg, hover, &mut hits, x, py, cw, open_drop),
         Tab::Telemetry => pane_telemetry(px, fonts, &cfg, hover, &mut hits, x, py, cw),
     };
+    if widgets {
+        let sticky_bottom = clip_top + 10.0 + PRESET_STRIP_H;
+        clip_content_hits(&mut hits, side_w, sticky_bottom);
+        if let Some(r) = Rect::from_xywh(
+            side_w + 1.0,
+            clip_top,
+            (w - side_w - 1.0).max(0.0),
+            (sticky_bottom - clip_top).max(0.0),
+        ) {
+            fill_rect(px, r, bg());
+        }
+        draw_preset_strip(px, fonts, &cfg, hover, open_drop, &mut hits, x, clip_top + 10.0, cw);
+    }
     draw_top_bar(px, fonts, w, top_y, tab, cfg.settings_key.label(), hover, &mut hits);
 
     if let Some(kind) = banner {
@@ -2705,58 +2716,99 @@ fn draw_top_bar(
     sidebar_quit(px, fonts, qx, qy, quit_w, quit_h, hover, hits);
 }
 
+fn clip_content_hits(hits: &mut Vec<HitBox>, left: f32, top: f32) {
+    hits.retain(|h| h.x + h.w <= left || h.y + h.h > top);
+    for h in hits.iter_mut() {
+        if h.x + h.w > left && h.y < top {
+            let bottom = h.y + h.h;
+            h.h = (bottom - top).max(0.0);
+            h.y = top;
+        }
+    }
+}
+
 fn draw_preset_strip(
     px: &mut Pixmap,
     fonts: &Fonts,
     cfg: &HudConfig,
     hover: Option<Hit>,
+    open_drop: Option<Drop>,
     hits: &mut Vec<HitBox>,
     x: f32,
     y: f32,
     w: f32,
 ) {
     let live = cfg.session_live;
-    let selected = if live { cfg.active_preset } else { cfg.settings_preset };
-    let status = preset_strip_status(live, selected);
+    let selected = cfg.settings_preset;
+    let status = preset_strip_status(live, selected, cfg.active_preset);
     text(px, fonts, &status, 11.0, x, y + 2.0, muted(), false);
     let mut mx = x;
     let cy = y + 18.0;
     for p in SessionPreset::ALL {
         let hit = Hit::Preset(p);
         let on = p == selected;
-        let locked = preset_chip_locked(live, selected, p);
-        mx += preset_chip(px, fonts, mx, cy, p.label(), on, locked, hit, hover, hits);
+        let live_mark = live && p == cfg.active_preset && !on;
+        mx += preset_chip(px, fonts, mx, cy, p.label(), on, live_mark, hit, hover, hits);
     }
-    if !live {
-        let copy = "Copy to all";
-        let tw = measure(fonts, copy, 12.0);
-        let bw = tw + 20.0;
-        let hit = Hit::PresetCopyAll;
-        hits.push(HitBox { id: hit, x: mx + 8.0, y: cy, w: bw, h: 28.0 });
-        if hover == Some(hit) {
-            fill_round(px, mx + 8.0, cy, bw, 28.0, 8.0, Color::from_rgba8(255, 255, 255, 10));
-        }
-        text(px, fonts, copy, 12.0, mx + 18.0, cy + 6.0, Color::from_rgba8(210, 210, 216, 255), false);
-    }
+    let _ = preset_copy_btn(px, fonts, mx + 8.0, cy, selected, open_drop, hover, hits);
     let _ = w;
 }
 
-fn preset_strip_status(live: bool, selected: SessionPreset) -> String {
+fn preset_copy_btn(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    x: f32,
+    y: f32,
+    src: SessionPreset,
+    open_drop: Option<Drop>,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+) -> f32 {
+    let copy = "Copy to";
+    let tw = measure(fonts, copy, 12.0);
+    let bw = tw + 32.0;
+    let h = 28.0;
+    let hit = Hit::PresetCopyOpen;
+    let open = open_drop == Some(Drop::PresetCopy);
+    hits.push(HitBox { id: hit, x, y, w: bw, h });
+    if open || hover == Some(hit) {
+        fill_round(px, x, y, bw, h, 8.0, Color::from_rgba8(255, 255, 255, 10));
+    }
+    text(px, fonts, copy, 12.0, x + 10.0, y + 6.0, Color::from_rgba8(210, 210, 216, 255), false);
+    chevron(px, x + bw - 12.0, y + h * 0.5, open, muted());
+    if open {
+        let mut options: Vec<(Hit, &'static str, bool)> = SessionPreset::ALL
+            .into_iter()
+            .filter(|p| *p != src)
+            .map(|p| (Hit::PresetCopyTo(p), p.label(), false))
+            .collect();
+        options.push((Hit::PresetCopyAll, "All", false));
+        let item_h = 28.0;
+        let pad = 5.0;
+        let content_h = pad * 2.0 + item_h * options.len() as f32;
+        DROP_MENUS.with(|menus| {
+            menus.borrow_mut().push(PendingDrop {
+                mx: x,
+                my: y + h + 6.0,
+                bw: bw.max(108.0),
+                content_h,
+                open_hit: hit,
+                options,
+            });
+        });
+    }
+    bw
+}
+
+fn preset_strip_status(live: bool, selected: SessionPreset, live_preset: SessionPreset) -> String {
     if live {
-        format!("On track — {} only. Others in the garage.", selected.label())
+        if selected == live_preset {
+            format!("On track — editing {}", selected.label())
+        } else {
+            format!("Editing {} — {} is live", selected.label(), live_preset.label())
+        }
     } else {
         format!("Editing {} — garage", selected.label())
-    }
-}
-
-fn preset_chip_locked(live: bool, selected: SessionPreset, p: SessionPreset) -> bool {
-    live && p != selected
-}
-
-fn preset_hit_locked(hit: Hit) -> bool {
-    match hit {
-        Hit::Preset(p) => with_config(|c| c.session_live && c.active_preset != p),
-        _ => false,
     }
 }
 
@@ -2767,7 +2819,7 @@ fn preset_chip(
     y: f32,
     label: &str,
     selected: bool,
-    locked: bool,
+    live_mark: bool,
     hit: Hit,
     hover: Option<Hit>,
     hits: &mut Vec<HitBox>,
@@ -2776,24 +2828,29 @@ fn preset_chip(
     let tw = measure(fonts, label, size);
     let h = 28.0;
     let skew = 6.0;
-    let bw = (tw + 22.0).max(72.0);
+    let pip = if live_mark { 10.0 } else { 0.0 };
+    let bw = (tw + 22.0 + pip).max(72.0);
     hits.push(HitBox { id: hit, x, y, w: bw + skew, h });
     if selected {
         fill_skew(px, x, y, (bw - skew).max(48.0), h, skew, accent());
         text(px, fonts, label, size, x + 12.0, y + 6.0, Color::from_rgba8(20, 12, 4, 255), false);
-    } else if locked {
-        let well = if high_contrast_on() {
-            btn_bg()
-        } else {
-            Color::from_rgba8(0, 0, 0, 36)
-        };
-        fill_round(px, x, y, bw, h, 8.0, well);
-        text(px, fonts, label, size, x + 12.0, y + 6.0, track_off(), false);
     } else {
         if hover == Some(hit) {
             fill_round(px, x, y, bw, h, 8.0, Color::from_rgba8(255, 255, 255, 10));
         }
-        text(px, fonts, label, size, x + 12.0, y + 6.0, Color::from_rgba8(210, 210, 216, 255), false);
+        if live_mark {
+            fill_circle(px, x + 12.0, y + h * 0.5, 3.0, accent());
+        }
+        text(
+            px,
+            fonts,
+            label,
+            size,
+            x + 12.0 + pip,
+            y + 6.0,
+            Color::from_rgba8(210, 210, 216, 255),
+            false,
+        );
     }
     bw + 8.0
 }
@@ -3631,7 +3688,7 @@ fn pane_app(
         y,
         w,
         "Settings",
-        "Font and units apply to every widget",
+        "Font applies to every widget. Units are per measurement",
         None,
         hover,
         hits,
@@ -3693,23 +3750,26 @@ fn pane_app(
         hover,
         hits,
     );
-    y = dropdown_row(
-        px,
-        fonts,
-        x,
-        y,
-        w,
-        "Units",
-        cfg.units.label(),
-        open_drop == Some(Drop::Units),
-        Hit::UnitsOpen,
-        &[
-            (Hit::UnitsMetric, "Metric", cfg.units == Units::Metric),
-            (Hit::UnitsImperial, "Imperial", cfg.units == Units::Imperial),
-        ],
-        hover,
-        hits,
-    );
+    for kind in UnitKind::ALL {
+        let selected = cfg.units.get(kind);
+        y = dropdown_row(
+            px,
+            fonts,
+            x,
+            y,
+            w,
+            kind.label(),
+            selected.label(),
+            open_drop == Some(Drop::Units(kind)),
+            Hit::UnitsOpen(kind),
+            &[
+                (Hit::UnitsPick(kind, Units::Metric), "Metric", selected == Units::Metric),
+                (Hit::UnitsPick(kind, Units::Imperial), "Imperial", selected == Units::Imperial),
+            ],
+            hover,
+            hits,
+        );
+    }
     y = dropdown_row(
         px,
         fonts,

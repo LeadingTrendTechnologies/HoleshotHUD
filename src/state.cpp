@@ -480,17 +480,31 @@ int PluginState::remainToMs() const
 
 void PluginState::setLocalLap(int lapNum, int lapMs)
 {
-    m_lastLapMs = lapMs;
+    // Invalid / crashed practice laps often arrive with m_iLapTime 0. Keep the
+    // live clock so LAST, sectors, and the next lap still work.
+    int timed = lapMs;
+    if (timed <= 0 && m_lastLapEndTime > 0.0f && m_sessionTime > m_lastLapEndTime + 0.2f)
+    {
+        const float dt = m_sessionTime - m_lastLapEndTime;
+        if (dt > 0.0f && dt < 15.0f * 60.0f)
+        {
+            timed = static_cast<int>(dt * 1000.0f);
+        }
+    }
+    if (timed > 0)
+    {
+        m_lastLapMs = timed;
+        if (m_localRaceNum >= 0)
+        {
+            m_lastLaps[m_localRaceNum] = timed;
+        }
+    }
     if (lapMs > 0 && (m_bestLapMs <= 0 || lapMs < m_bestLapMs))
     {
         m_bestLapMs = lapMs;
     }
     m_currentLap = lapNum + 1;
     m_lastLapEndTime = m_sessionTime;
-    if (m_localRaceNum >= 0)
-    {
-        m_lastLaps[m_localRaceNum] = lapMs;
-    }
 }
 
 void PluginState::setRaceLap(int raceNum, int lapNum, int lapMs, int split0, int split1)
@@ -505,9 +519,10 @@ void PluginState::setRaceLap(int raceNum, int lapNum, int lapMs, int split0, int
         return;
     }
     setLocalLap(lapNum, lapMs);
-    if (lapMs > 0)
+    const int last = lastLapMs();
+    if (last > 0)
     {
-        finishLapSectors(lapNum, lapMs, split0, split1);
+        finishLapSectors(lapNum, last, split0, split1);
     }
 }
 

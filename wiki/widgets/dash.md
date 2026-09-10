@@ -120,7 +120,8 @@ One path for lap motos and timed extras, driven by `laps_left`. Lap motos count 
 - 2026-08-30 — Default size is 11.1%×11.5% (the in-game lockup we settled on). Untouched 11.5%×10.8% factory rects migrate; a custom placement is left alone.
 - 2026-08-30 — 8:00+1 that publishes extras late and resets standings to 0 no longer sticks on `1/1` or latches checkered three laps early. Overtime bases are high-water marks from the timed lap. Banner is `0/1` until you start the extra, `1/1` on that lap.
 
-- 2026-08-29 — Fuel reads as liters or US gallons from Units, not percent.
+- 2026-09-10 — Speed, Liquids, and Temperature units are independent in Settings. Legacy `units=` still seeds all three on upgrade.
+- 2026-08-29 — Fuel reads as liters or US gallons from Liquids units, not percent.
 
 - 2026-08-29 — Fuel level is a footer option (`DashField::Fuel`). Same tank percent as Standings / Relative / H-Standings.
 

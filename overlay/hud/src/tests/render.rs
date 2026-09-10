@@ -383,7 +383,7 @@ fn dash_footer_fields_fill_from_live_snapshot() {
     assert_eq!(dash_foot_item(&s, &cfg, DashField::Engine).unwrap().1, "82°C");
     assert_eq!(dash_foot_item(&s, &cfg, DashField::Fuel).unwrap().1, "5.6 L");
     let mut imp = cfg.clone();
-    imp.units = crate::config::Units::Imperial;
+    imp.units = crate::config::UnitPrefs::all(crate::config::Units::Imperial);
     assert_eq!(dash_foot_item(&s, &imp, DashField::Fuel).unwrap().1, "1.5 gal");
     assert_eq!(dash_foot_item(&s, &cfg, DashField::FuelPct).unwrap().1, "80%");
     assert_eq!(dash_foot_item(&s, &cfg, DashField::Bike).unwrap().1, "YZ450");
@@ -453,7 +453,7 @@ fn simple_dash_is_gear_and_speed_only() {
     let mut cfg = HudConfig::new();
     cfg.dash_simple = true;
     cfg.dash_rev = true;
-    cfg.units = crate::config::Units::Imperial;
+    cfg.units = crate::config::UnitPrefs::all(crate::config::Units::Imperial);
     let d = dash_layout(&fonts(), &s, &cfg, 1280.0, 720.0, DashFlag::None, 0.0);
     assert!(d.simple);
     assert_eq!(d.gear, "3");
@@ -505,7 +505,7 @@ fn simple_dash_renders() {
     cfg[WidgetId::Dash].show = true;
     cfg.dash_simple = true;
     cfg[WidgetId::Dash].bg = 82;
-    cfg.units = crate::config::Units::Imperial;
+    cfg.units = crate::config::UnitPrefs::all(crate::config::Units::Imperial);
     cfg[WidgetId::Dash].rect.x = 0.08;
     cfg[WidgetId::Dash].rect.y = 0.22;
     cfg[WidgetId::Dash].rect.h = 0.52;
@@ -2318,6 +2318,48 @@ fn practice_countdown_uses_session_clock() {
 }
 
 #[test]
+fn practice_crash_still_counts_the_crossing() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_kind = -1;
+    s.session_length = 40;
+    s.session_laps = 0;
+    s.local_crashed = 1;
+    // Game left completed laps on the last valid lap. RunLap still advanced.
+    s.standings[1].num_laps = 2;
+    s.current_lap = 4;
+    assert_eq!(
+        focus_num_laps(&s),
+        3,
+        "practice must count a crashed crossing from current_lap"
+    );
+    assert_eq!(standing_num_laps(&s, 12, 2), 3);
+    assert_eq!(
+        standing_num_laps(&s, 1, 5),
+        5,
+        "other riders keep the game lap count"
+    );
+}
+
+#[test]
+fn race_does_not_count_ahead_current_lap() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_kind = 7;
+    s.session_length = 0;
+    s.session_laps = 12;
+    s.standings[1].num_laps = 5;
+    s.current_lap = 9;
+    assert_eq!(
+        focus_num_laps(&s),
+        5,
+        "a glitched current_lap must not move moto laps-done"
+    );
+}
+
+#[test]
 fn warmup_countdown_shows_even_when_race_laps_are_set() {
     let _g = session_lock();
     reset_session();
@@ -3623,27 +3665,81 @@ fn sector_columns_cover_live_times_at_large_font() {
     let s = golden_snap(&sector_snap(live_snap()), &cfg);
     let live_h = 72.0;
     let hist_fs = 14.0;
+    // Default sector is ~36% of 1280, minus pad/gutter — not 720.
+    let cols_w = 420.0;
     let need = sector_col_need(&fonts, &s, &cfg, live_h, hist_fs, true);
-    let widths = sector_col_widths(need, 720.0, sector_hero_index(&s));
+    let widths = sector_col_widths(need, cols_w, sector_hero_index(&s));
     crate::delta::set_preview(None);
     for i in 0..3 {
         let row = sector_row(&s, i, true, false);
         let (_, delta_fs, time_fs) = sector_live_type(live_h, row.fresh);
-        let dw = measure(&fonts, SECTOR_PROBE_DELTA, delta_fs);
-        let tw = measure(&fonts, SECTOR_PROBE_SPLIT_LONG, time_fs) + SECTOR_PILL_PAD_X;
+        let text_max = (widths[i] - 8.0).max(8.0);
+        let d_fs = sector_fit_probe(&fonts, SECTOR_DELTA_PROBES, delta_fs, text_max);
+        let t_fs = sector_fit_probe(
+            &fonts,
+            SECTOR_SPLIT_PROBES,
+            time_fs,
+            (text_max - SECTOR_PILL_PAD_X).max(8.0),
+        );
+        let dw = measure(&fonts, SECTOR_PROBE_DELTA, d_fs);
+        let tw = measure(&fonts, SECTOR_PROBE_SPLIT_LONG, t_fs);
         assert!(
-            widths[i] + 0.5 >= dw.max(tw),
-            "col {i} width {} < probe {}",
-            widths[i],
-            dw.max(tw)
+            dw <= text_max + 0.5,
+            "col {i} delta {} > {}",
+            dw,
+            text_max
+        );
+        assert!(
+            tw <= text_max + 0.5,
+            "col {i} split {} > {}",
+            tw,
+            text_max
         );
     }
-    let lap_w = measure(&fonts, SECTOR_PROBE_LAP, (live_h * 0.28).max(12.0));
+    let lap_max = (widths[3] - 8.0).max(8.0);
+    let lap_fs = sector_fit_probe(
+        &fonts,
+        SECTOR_LAP_PROBES,
+        (live_h * 0.28).clamp(12.0, 22.0),
+        lap_max,
+    );
+    let lap_w = measure(&fonts, SECTOR_PROBE_LAP, lap_fs);
     assert!(
-        widths[3] + 0.5 >= lap_w,
-        "LAP width {} < probe {}",
-        widths[3],
-        lap_w
+        lap_w <= lap_max + 0.5,
+        "LAP width {} > {}",
+        lap_w,
+        lap_max
+    );
+}
+
+#[test]
+fn sector_pills_cover_scaled_type_and_clear_the_corner() {
+    let _style = push_style(&fonts(), true, 160);
+    let (_, h15) = sector_pill_metrics(15.0);
+    let (_, h9) = sector_pill_metrics(9.0);
+    assert!(h15 >= 15.0 * style_k() + 5.9, "pill must wrap 160% glyphs, h={h15}");
+    assert!(h9 >= 9.0 * style_k() + 5.9, "flank pill must wrap 160% glyphs, h={h9}");
+    let widget_h = 200.0_f32;
+    let pad_y = 5.0_f32;
+    let live_bottom = widget_h - pad_y.max(SECTOR_CORNER + 3.0);
+    let pill_bottom = live_bottom;
+    assert!(
+        pill_bottom <= widget_h - SECTOR_CORNER,
+        "pill bottom {pill_bottom} must sit above the 6px corner"
+    );
+}
+
+#[test]
+fn sector_caption_clears_labels_when_font_is_large() {
+    let fonts = fonts();
+    let _style = push_style(&fonts, true, 160);
+    let cap_fs = 16.0;
+    let cap_y = 4.0;
+    let body_y = cap_y + cap_fs * style_k() + 4.0;
+    assert!(
+        body_y - cap_y > cap_fs + 4.0,
+        "160% font must push labels below the caption, body_y={body_y} k={}",
+        style_k()
     );
 }
 

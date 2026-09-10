@@ -44,6 +44,7 @@ Default columns on: Number, Name, Gap, Fastest, Last lap.
 
 ## Change log
 
+- 2026-09-10 — Practice **Laps** for you follows a crashed crossing the same way Standings does.
 - 2026-09-09 — Header/footer **Gap ahead** / **Gap behind** are live-order P−1 / P+1. Same lap ticks along the track toward that rider; a live lap or more is `1L` / `-1L`. A pass switches the rider. Times have no leading `+`; ahead is an up arrow, behind a down arrow.
 - 2026-09-08 — **Gap ahead** and **Gap behind** are header/footer options (shared `BoardField` with Standings). They use classification place, not the nearby riders in this table.
 - 2026-09-07 — Warmup (`session_kind` 5) keeps rows slate even when leaked extras make the lap field look like a race.
@@ -56,7 +57,8 @@ Default columns on: Number, Name, Gap, Fastest, Last lap.
 - 2026-08-29 — Two laps down no longer tints the leader’s row red. Same `gap_laps` preference as Map.
 - 2026-08-29 — **Fuel %** is a separate header/footer option from volume.
 
-- 2026-08-29 — Fuel reads as liters or US gallons from Units, not percent.
+- 2026-09-10 — Speed, Liquids, and Temperature units are independent in Settings. Legacy `units=` still seeds all three on upgrade.
+- 2026-08-29 — Fuel reads as liters or US gallons from Liquids units, not percent.
 
 - 2026-08-29 — Fuel level is a header/footer option (shared `BoardField::Fuel` with Standings). Tank percent; `--` if max fuel is missing.
 

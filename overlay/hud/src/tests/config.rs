@@ -105,6 +105,7 @@ fn default_hud_hides_every_widget() {
     assert!(cfg.first_install_version.is_empty());
     assert!(cfg.ticker_title);
     assert_eq!(cfg.font_family, FontFamily::Exo2);
+    assert_eq!(cfg.units, UnitPrefs::all(Units::Metric));
     assert!(cfg.st_stripe);
     assert!(cfg.rel_stripe);
     assert_eq!(cfg[WidgetId::Standings].rect, crate::shm::Rect {
@@ -301,7 +302,64 @@ fn units_format_speed_and_temp() {
     assert_eq!(Units::Imperial.format_fuel(5.6, 7.0), "1.5 gal");
     assert_eq!(Units::Metric.format_fuel(0.0, 0.0), "-- L");
     assert_eq!(Units::Imperial.format_fuel(0.0, 0.0), "-- gal");
-    assert_eq!(Units::Metric.format_fuel(0.0, 7.0), "0.0 L");
+    assert_eq!(Units::Imperial.format_fuel(0.0, 7.0), "0.0 gal");
+    let mixed = UnitPrefs {
+        speed: Units::Imperial,
+        liquids: Units::Metric,
+        temperature: Units::Imperial,
+    };
+    assert_eq!(mixed.format_speed(10.0), "22");
+    assert_eq!(mixed.format_fuel(5.6, 7.0), "5.6 L");
+    assert_eq!(mixed.format_temp(21.0), "70°F");
+}
+
+#[test]
+fn legacy_units_key_fills_every_measurement() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-units-legacy-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    std::fs::write(
+        &path,
+        "units=imperial\nfirst_install_version=0.1.0\nst_last=1\nrel_last=1\n",
+    )
+    .unwrap();
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let cfg = HudConfig::load_file();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(cfg.units, UnitPrefs::all(Units::Imperial));
+}
+
+#[test]
+fn per_measurement_units_override_legacy_and_round_trip() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-units-split-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    std::fs::write(
+        &path,
+        "units_speed=imperial\nunits=metric\nunits_liquids=imperial\nfirst_install_version=0.1.0\nst_last=1\nrel_last=1\n",
+    )
+    .unwrap();
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let mut cfg = HudConfig::load_file();
+    assert_eq!(cfg.units.speed, Units::Imperial);
+    assert_eq!(cfg.units.liquids, Units::Imperial);
+    assert_eq!(cfg.units.temperature, Units::Metric);
+    cfg.units.temperature = Units::Imperial;
+    cfg.units.liquids = Units::Metric;
+    cfg.save();
+    let loaded = HudConfig::load_file();
+    std::env::remove_var("MXBO_TEST_INI");
+    let text = std::fs::read_to_string(&path).unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(loaded.units.speed, Units::Imperial);
+    assert_eq!(loaded.units.liquids, Units::Metric);
+    assert_eq!(loaded.units.temperature, Units::Imperial);
+    assert!(text.contains("units_speed=imperial"));
+    assert!(text.contains("units_liquids=metric"));
+    assert!(text.contains("units_temperature=imperial"));
 }
 
 #[test]
@@ -675,4 +733,51 @@ fn settings_slot_does_not_change_live_layout() {
     assert_eq!(s.show_map, 0);
     cfg.copy_settings_to_all();
     assert!(cfg.live()[WidgetId::Map].show);
+}
+
+#[test]
+fn copy_settings_to_one_slot_leaves_the_others() {
+    let mut cfg = HudConfig::new();
+    cfg.settings_preset = SessionPreset::Warmup;
+    cfg[WidgetId::Dash].show = true;
+    cfg.settings_preset = SessionPreset::Race;
+    cfg[WidgetId::Dash].show = false;
+    cfg.settings_preset = SessionPreset::Warmup;
+    cfg.copy_settings_to(SessionPreset::Practice);
+    cfg.settings_preset = SessionPreset::Practice;
+    assert!(cfg[WidgetId::Dash].show);
+    cfg.settings_preset = SessionPreset::Race;
+    assert!(!cfg[WidgetId::Dash].show);
+    cfg.settings_preset = SessionPreset::Spectate;
+    assert!(!cfg[WidgetId::Dash].show);
+    cfg.settings_preset = SessionPreset::Warmup;
+    assert!(cfg[WidgetId::Dash].show);
+}
+
+#[test]
+fn sync_live_holds_a_different_settings_slot() {
+    let mut cfg = HudConfig::new();
+    cfg.active_preset = SessionPreset::Warmup;
+    cfg.settings_preset = SessionPreset::Race;
+    cfg.sync_live(Some(SessionPreset::Warmup), true);
+    assert_eq!(cfg.active_preset, SessionPreset::Warmup);
+    assert_eq!(cfg.settings_preset, SessionPreset::Race);
+    assert!(cfg.session_live);
+
+    cfg.sync_live(Some(SessionPreset::Practice), true);
+    assert_eq!(cfg.active_preset, SessionPreset::Practice);
+    assert_eq!(cfg.settings_preset, SessionPreset::Race);
+
+    cfg.sync_live(Some(SessionPreset::Practice), false);
+    assert_eq!(cfg.settings_preset, SessionPreset::Practice);
+}
+
+#[test]
+fn sync_live_follows_when_settings_is_on_the_live_slot() {
+    let mut cfg = HudConfig::new();
+    cfg.active_preset = SessionPreset::Warmup;
+    cfg.settings_preset = SessionPreset::Warmup;
+    cfg.sync_live(Some(SessionPreset::Race), true);
+    assert_eq!(cfg.active_preset, SessionPreset::Race);
+    assert_eq!(cfg.settings_preset, SessionPreset::Race);
 }

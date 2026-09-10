@@ -327,6 +327,80 @@ fn dab_does_not_block_reference() {
     assert_eq!(eng.ref_lap_ms, 90_000);
 }
 
+/// MX often leaves the lap clock up after a crash. That crossing must still
+/// become LAST, and the next flying lap must keep recording.
+#[test]
+fn crash_crossing_without_clock_drop_still_counts() {
+    let mut eng = DeltaEngine::new();
+    run_lap(&mut eng, "A", 90_000, 1, false);
+    assert_eq!(eng.ref_lap_ms, 90_000);
+    let n = 180;
+    let lap_ms = 95_000;
+    for i in 1..n {
+        let t = i as f32 / n as f32;
+        let mut s = snap("A", t, (lap_ms as f32 * t) as i32, 90_000, 2);
+        if i > n / 2 {
+            s.local_crashed = 1;
+            s.local_speed = 0.4;
+        }
+        if i + 1 == n {
+            s.local_track_pos = 0.999;
+            s.current_lap_ms = lap_ms;
+            s.local_crashed = 0;
+            s.local_speed = 12.0;
+        }
+        eng.tick(&s);
+    }
+    // Same clock, same last-lap, same lap number — the game did not count it.
+    let mut cross = snap("A", 0.02, lap_ms + 180, 90_000, 2);
+    cross.local_speed = 12.0;
+    let v = eng.tick(&cross);
+    assert!(
+        v.last_lap_ms >= MIN_LAP_MS,
+        "crashed crossing must still become LAST, last={}",
+        v.last_lap_ms
+    );
+    assert!(eng.armed, "next flying lap must stay armed after an uncounted cross");
+    let next = eng.tick(&snap("A", 0.08, lap_ms + 800, 90_000, 2));
+    assert!(
+        next.cover > 0 || eng.current.filled > 0,
+        "held clock must still tape the next lap"
+    );
+}
+
+#[test]
+fn remount_jump_does_not_dirty_the_tape() {
+    let mut eng = DeltaEngine::new();
+    run_lap(&mut eng, "A", 90_000, 1, false);
+    let n = 180;
+    let lap_ms = 92_000;
+    for i in 1..n {
+        let t = i as f32 / n as f32;
+        let mut s = snap("A", t, (lap_ms as f32 * t) as i32, 90_000, 2);
+        if i == n / 2 {
+            s.local_crashed = 1;
+            s.local_speed = 0.2;
+            eng.tick(&s);
+            // Remount a chunk down the centerline — looks like a cut if we
+            // keep cut detection on through the crash.
+            s.local_track_pos = (t + 0.12).min(0.98);
+            s.local_crashed = 0;
+            s.local_speed = 10.0;
+            s.current_lap_ms += 400;
+        }
+        if i + 1 == n {
+            s.local_track_pos = 0.999;
+            s.current_lap_ms = lap_ms;
+        }
+        eng.tick(&s);
+    }
+    eng.tick(&snap("A", 0.01, 180, 0, 3));
+    assert!(
+        eng.session.is_some() || eng.shown_last_ms >= MIN_LAP_MS,
+        "remount teleport must not throw the crashed lap away"
+    );
+}
+
 #[test]
 fn plugin_pos_one_does_not_poison_next_lap() {
     let mut eng = DeltaEngine::new();

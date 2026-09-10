@@ -544,12 +544,13 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         let age = raw_age.clamp(0.0, 0.08);
         let live = raw_age < 2.5;
         let spectating = cmd.as_ref().is_some_and(|c| c.spectating()) && raw_age < 2.5;
-        crate::config::sync_session_preset(
+        let settings_open = crate::settings::is_open();
+        crate::config::sync_session_preset_held(
             last_snap
                 .as_ref()
                 .and_then(|s| mxbo_hud::session_preset(s, spectating)),
+            settings_open,
         );
-        let settings_open = crate::settings::is_open();
         crate::feedback::tick(settings_open);
         if live {
             if let Some(s) = last_snap.as_ref() {

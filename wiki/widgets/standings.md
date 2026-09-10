@@ -38,6 +38,7 @@ Default columns on: Position, Number, Name, Gap, Fastest, Last lap.
 - Gap to P1 uses `gap_ms` / `gap_laps`. Interval is gap to the rider one place ahead, not to the leader.
 - Header/footer **Gap ahead** / **Gap behind** are live-order P−1 / P+1. A pass switches the rider immediately. Same lap is seconds along the track toward them, not Interval’s line time and not Relative’s shortest wrap. A live lap or more is `1L` / `-1L`.
 - Last lap for you can fall back to `s.last_lap_ms` when the row has no last lap yet.
+- Practice / warmup **Laps** for you can follow `current_lap - 1` when classification skipped a crashed crossing. Do not do that in a moto.
 - Empty field shows “Waiting for race data”, not a blank panel.
 - Rows and places come from the live order, not the raw `s.standings` array. The row window and slide animation follow it.
 - Click-to-follow only runs while the plugin sees `SpectateVehicles` (replay / spectate). It must not steal the camera while you are riding.
@@ -52,6 +53,7 @@ Default columns on: Position, Number, Name, Gap, Fastest, Last lap.
 
 ## Change log
 
+- 2026-09-10 — Practice **Laps** still increment after a crash when `RunLap` advanced and classification did not.
 - 2026-09-09 — **Gap ahead** / **Gap behind** stay live-order P−1 / P+1. A pass switches who. Same lap ticks along the track toward that rider; a live lap or more is `1L` / `-1L` so a crashed rider you keep passing is not a shortest-wrap blip. Not the nearest on-track rider. Times have no leading `+`; ahead is an up arrow, behind a down arrow.
 - 2026-09-08 — **Gap ahead** and **Gap behind** are header/footer options (`BoardField::GapAhead` / `GapBehind`). Live-order P−1 / P+1, not the riders around you on track.
 - 2026-09-06 — Plaque height follows the visible row stack. A short saved widget box no longer leaves later rows on the game with no glass.
@@ -63,7 +65,8 @@ Default columns on: Position, Number, Name, Gap, Fastest, Last lap.
 
 - 2026-08-29 — **Fuel %** is a separate header/footer option from volume.
 
-- 2026-08-29 — Fuel reads as liters or US gallons from Units, not percent.
+- 2026-09-10 — Speed, Liquids, and Temperature units are independent in Settings. Legacy `units=` still seeds all three on upgrade.
+- 2026-08-29 — Fuel reads as liters or US gallons from Liquids units, not percent.
 
 - 2026-08-29 — Fuel level is a header/footer option (`BoardField::Fuel`). Percent of the tank from SHM `fuel` / `maxFuel`. Restart MX Bikes after this plugin so the V10 mapping is live.
 

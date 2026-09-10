@@ -64,10 +64,10 @@ cmd.exe //c build.bat
 `build.bat` compiles `out\Release\Holeshot-HUD.dlo` and `overlay\target\release\Holeshot-HUD.exe`.  
 `pack.bat` writes `dist\HoleshotHUD-Setup.exe` (needs [Inno Setup 6](https://jrsoftware.org/isinfo.php)).
 
-If cargo fails with **Access is denied** on `Holeshot-HUD.exe`, quit the overlay (tray → **Quit overlay**) or, from Git Bash:
+If cargo fails with **Access is denied** on `Holeshot-HUD.exe`, quit the overlay (tray → **Quit overlay**) or kill, rebuild, and relaunch from Git Bash. `|| true` keeps going when the process is already gone:
 
 ```bash
-cmd.exe //c "taskkill /IM Holeshot-HUD.exe /F"
+cmd.exe //c "taskkill /IM Holeshot-HUD.exe /F" || true && cmd.exe //c build.bat && ./overlay/target/release/Holeshot-HUD.exe
 ```
 
 ### Local debug
@@ -83,8 +83,8 @@ Dev builds optimize crates like tiny-skia (`opt-level = 3`) so the HUD stays smo
 Push a tag to publish a downloadable release:
 
 ```bat
-git tag v0.9.0
-git push origin v0.9.0
+git tag v0.10.0
+git push origin v0.10.0
 ```
 
 ## Data wiki

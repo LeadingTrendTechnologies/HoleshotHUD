@@ -5,7 +5,7 @@
 #[path = "../../../web-preview/src/demo_track.rs"]
 mod demo_track;
 
-use mxbo_hud::config::{FontFamily, HudConfig, LeanStyle, SnapAlign, Units, WidgetId};
+use mxbo_hud::config::{FontFamily, HudConfig, LeanStyle, SnapAlign, UnitPrefs, Units, WidgetId};
 use mxbo_hud::render::{draw, Fonts};
 use mxbo_hud::shm::{
     write_name, Point, Rider, Snapshot, Standing, MAGIC, VERSION,
@@ -155,7 +155,7 @@ fn main() {
 fn base_cfg() -> HudConfig {
     let mut cfg = HudConfig::new();
     cfg.font_family = FontFamily::Exo2;
-    cfg.units = Units::Imperial;
+    cfg.units = UnitPrefs::all(Units::Imperial);
     // Showcase latest table styling.
     cfg.st_bike = true;
     cfg.rel_bike = true;

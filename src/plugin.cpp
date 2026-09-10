@@ -301,12 +301,13 @@ __declspec(dllexport) void RunLap(void* _pData, int _iDataSize)
 {
     onCopied<SPluginsBikeLap_t>(_pData, _iDataSize, [](const SPluginsBikeLap_t& data) {
         g_state.setLocalLap(data.m_iLapNum, data.m_iLapTime);
-        if (data.m_iLapTime > 0)
+        const int last = g_state.lastLapMs();
+        if (last > 0)
         {
             const int focus = g_state.focusRaceNum();
             if (focus < 0 || focus == g_state.localRaceNum())
             {
-                g_state.finishLapSectors(data.m_iLapNum, data.m_iLapTime, 0, 0);
+                g_state.finishLapSectors(data.m_iLapNum, last, 0, 0);
             }
         }
     });

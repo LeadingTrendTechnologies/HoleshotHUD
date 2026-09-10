@@ -16,13 +16,13 @@ Twin columns inside a night-ink 6px plaque with a 1px hairline frame and a hairl
 
 - **Left:** CPU — huge percent, gold heat track, process CPU rows
 - **Right:** MEM — huge percent, gold heat track, process mem rows
-- **Footer:** FPS left (number only, no bar), ping under it, GPU right with the same apps. Same hairline split.
+- **Footer:** FPS left (number only, no bar), ping under it — two equal slots filling the left footer. GPU right with the same apps. Same hairline split.
 
 Default process apps: **HUD**, **MX Bikes**, **MXB App**, **ReShade**, **OBS**. Settings can hide any of those, add more (Discord, Steam, NVIDIA, Afterburner, RTSS, Medal, Spotify, Game Bar), or pick an `.exe`. The overlay paints at most 8 shown apps. Missing process shows `—` and a dim bar. Mem sub-bars scale to the heaviest of those processes, not total RAM.
 
 Watching is by running process **basename** (`obs64.exe` / `obs32.exe`), not the install folder. Steam, portable, and Program Files all count. Browse stores that filename only, so moving the app later still works.
 
-Heat is gold (`#FAB430`), red at ≥90. FPS has no heat track. Ping is ICMP ms. No green bars. No Holeshot orange (that color is you).
+Heat is gold (`#FAB430`), red at ≥90. FPS has no heat track. Ping is ICMP ms (number, with a small `ms` when the column is wide enough). No green bars. No Holeshot orange (that color is you).
 
 No column picker. Show, opacity, font, bold, snap, plus the app list (show/hide, add preset, browse `.exe`, remove extras).
 
@@ -48,9 +48,11 @@ One percent: Task Manager's GPU graph — 3D / Graphics on each card, Compute on
 - Do not sleep the overlay thread to prime PDH. The first GPU sample after show may be 0 until the next 500ms tick.
 - Do not ICMP on the overlay thread. Ping lives on `holeshot-ping`; ICMP blocked or offline shows `—`.
 - Do not take Compute over 3D / Graphics on the same card. Task Manager's GPU graph is 3D; Compute can sit at 100% with hardware-accelerated GPU scheduling.
+- FPS and ping split the left footer into two equal slots and size to that cell. Do not stack them small under the split.
 
 ## Change log
 
+- 2026-09-10 — FPS and ping scale to two equal slots in the left footer so they fill that pane instead of sitting small under the split.
 - 2026-09-02 — Columns leave a gutter at the split so left percents are not on the hairline.
 - 2026-09-02 — OBS is on the default list. Apps are matched by `.exe` name wherever they are installed.
 - 2026-09-02 — Settings can show/hide each app, add common MX Bikes tools (OBS, Discord, …), or pick an `.exe`. Overlay still caps at 8 rows. Built-ins stay on the list.

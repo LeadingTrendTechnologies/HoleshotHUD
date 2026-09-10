@@ -2,7 +2,7 @@ mod demo_track;
 mod edit;
 
 use mxbo_hud::config::{
-    BoardField, DashField, DotLabel, FontFamily, GamepadStyle, HudConfig, LeanStyle, SnapAlign, TableText, Units, WidgetId,
+    BoardField, DashField, DotLabel, FontFamily, GamepadStyle, HudConfig, LeanStyle, SnapAlign, TableText, UnitPrefs, Units, WidgetId,
 };
 use mxbo_hud::render::{draw, Fonts};
 use mxbo_hud::snapshot::{
@@ -55,7 +55,7 @@ impl Preview {
             .ok_or_else(|| JsValue::from_str("failed to load fonts"))?;
         let mut cfg = HudConfig::new();
         cfg.font_family = FontFamily::Exo2;
-        cfg.units = Units::Imperial;
+        cfg.units = UnitPrefs::all(Units::Imperial);
         show_only(&mut cfg, "standings");
         center_widget(&mut cfg, "standings");
         let mut snap = demo_snapshot();

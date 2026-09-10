@@ -33,6 +33,7 @@ Default 56%×14.5%, lower-center. Panel opacity 82. Fresh install: `show_telemet
 
 ## Change log
 
+- 2026-09-10 — Speed unit (KPH / MPH) follows Settings → Speed, independent of Liquids and Temperature.
 - 2026-09-09 — Settings: Show masters first; Throttle / Brake / Steer nest under the open section. Note is one spectate line.
 - 2026-09-09 — Gear flushes faint red at the shift light or limiter. Optional cream steer trace (mid-zero) and center-zero steer bar; both default off.
 - 2026-09-09 — Section toggles (traces / bars / gear-speed) and channel toggles (throttle/brake traces; clutch/brake/throttle bars). Hidden sections reflow.

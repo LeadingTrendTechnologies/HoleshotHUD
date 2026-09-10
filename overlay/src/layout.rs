@@ -308,56 +308,57 @@ impl Editor {
         let gamepad = self.gamepad;
         let telemetry = self.telemetry;
         crate::config::update_config(|cfg| {
-            cfg[WidgetId::Map].rect = map;
-            cfg[WidgetId::Standings].rect = standings;
-            cfg[WidgetId::Relative].rect = relative;
+            let live = cfg.live_mut();
+            live[WidgetId::Map].rect = map;
+            live[WidgetId::Standings].rect = standings;
+            live[WidgetId::Relative].rect = relative;
             if let Some(m) = minimap {
-                cfg[WidgetId::Minimap].rect = m;
+                live[WidgetId::Minimap].rect = m;
             }
             if let Some(r) = radar {
-                cfg[WidgetId::Radar].rect = r;
+                live[WidgetId::Radar].rect = r;
             }
             if let Some(d) = dash {
-                cfg[WidgetId::Dash].rect = d;
+                live[WidgetId::Dash].rect = d;
             }
             if let Some(t) = ticker {
-                cfg[WidgetId::Ticker].rect = t;
+                live[WidgetId::Ticker].rect = t;
             }
             if let Some(s) = sys {
-                cfg[WidgetId::Sys].rect = s;
+                live[WidgetId::Sys].rect = s;
             }
             if let Some(s) = sector {
-                cfg[WidgetId::Sector].rect = s;
+                live[WidgetId::Sector].rect = s;
             }
             if let Some(s) = delta {
-                cfg[WidgetId::Delta].rect = s;
+                live[WidgetId::Delta].rect = s;
             }
             if let Some(s) = stance {
-                cfg[WidgetId::Stance].rect = s;
+                live[WidgetId::Stance].rect = s;
             }
             if let Some(s) = flag {
-                cfg[WidgetId::Flag].rect = s;
+                live[WidgetId::Flag].rect = s;
             }
             if let Some(s) = lean {
-                cfg[WidgetId::Lean].rect = s;
+                live[WidgetId::Lean].rect = s;
             }
             if let Some(s) = gamepad {
-                cfg[WidgetId::Gamepad].rect = s;
+                live[WidgetId::Gamepad].rect = s;
             }
             if let Some(s) = telemetry {
-                cfg[WidgetId::Telemetry].rect = s;
+                live[WidgetId::Telemetry].rect = s;
             }
             if let Some(w) = self.st_w_name {
-                cfg.st_w_name = w;
+                live.st_w_name = w;
             }
             if let Some(w) = self.rel_w_name {
-                cfg.rel_w_name = w;
+                live.rel_w_name = w;
             }
             if let Some(n) = self.standings_rows {
-                cfg.standings_rows = n;
+                live.standings_rows = n;
             }
             if let Some(n) = self.relative_count {
-                cfg.relative_count = n;
+                live.relative_count = n;
             }
         });
     }

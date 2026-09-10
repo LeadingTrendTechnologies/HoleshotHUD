@@ -140,38 +140,112 @@ fn wrap_fb_does_not_split_words() {
 }
 
 #[test]
-fn on_track_preset_strip_names_the_locked_slots() {
+fn on_track_preset_strip_names_the_edit_and_live_slots() {
     assert_eq!(
-        preset_strip_status(true, SessionPreset::Spectate),
-        "On track — Spectate only. Others in the garage."
+        preset_strip_status(true, SessionPreset::Spectate, SessionPreset::Spectate),
+        "On track — editing Spectate"
     );
     assert_eq!(
-        preset_strip_status(false, SessionPreset::Race),
+        preset_strip_status(true, SessionPreset::Race, SessionPreset::Warmup),
+        "Editing Race — Warmup is live"
+    );
+    assert_eq!(
+        preset_strip_status(false, SessionPreset::Race, SessionPreset::Warmup),
         "Editing Race — garage"
     );
-    assert!(preset_chip_locked(
-        true,
-        SessionPreset::Spectate,
-        SessionPreset::Race
-    ));
-    assert!(!preset_chip_locked(
-        true,
-        SessionPreset::Spectate,
-        SessionPreset::Spectate
-    ));
-    assert!(!preset_chip_locked(
-        false,
-        SessionPreset::Race,
-        SessionPreset::Practice
+
+    crate::config::sync_session_preset(Some(SessionPreset::Warmup));
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        g.settings_preset = SessionPreset::Race;
+    }
+    assert_eq!(hit_label(Hit::Preset(SessionPreset::Warmup)), "Warmup — live HUD");
+    assert_eq!(hit_label(Hit::Preset(SessionPreset::Race)), "Race");
+    assert_eq!(
+        hit_label(Hit::PresetCopyOpen),
+        "Copy Race to another preset"
+    );
+    crate::config::sync_session_preset(None);
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        g.settings_preset = g.active_preset;
+    }
+}
+
+#[test]
+fn scrolled_widget_pane_keeps_preset_strip_on_top() {
+    refresh_palette();
+    crate::config::sync_session_preset(None);
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Standings;
+    ui.banner_dismissed = true;
+    ui.scroll = 240.0;
+    *UI.lock().unwrap() = Some(ui);
+    let mut px = Pixmap::new(1000, 720).expect("pixmap");
+    draw(&mut px, &fonts, 1000.0, 720.0);
+    let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
+    *UI.lock().unwrap() = None;
+
+    let race = hits
+        .iter()
+        .find(|h| h.id == Hit::Preset(SessionPreset::Race))
+        .expect("race chip");
+    assert!(
+        race.y > TOP_H && race.y < TOP_H + 10.0 + PRESET_STRIP_H,
+        "preset chip should stay under the top bar, y={}",
+        race.y
+    );
+
+    let hx = race.x + race.w * 0.5;
+    let hy = race.y + race.h * 0.5;
+    assert!(matches!(
+        hit_at(&hits, hx, hy),
+        Some(Hit::Preset(SessionPreset::Race))
     ));
 
-    crate::config::sync_session_preset(Some(SessionPreset::Spectate));
-    assert!(preset_hit_locked(Hit::Preset(SessionPreset::Race)));
-    assert!(!preset_hit_locked(Hit::Preset(SessionPreset::Spectate)));
-    assert_eq!(
-        hit_label(Hit::Preset(SessionPreset::Race)),
-        "Race — switch in the garage"
-    );
-    assert_eq!(hit_label(Hit::Preset(SessionPreset::Spectate)), "Spectate");
+    let sticky_bottom = TOP_H + 10.0 + PRESET_STRIP_H;
+    for h in &hits {
+        if matches!(
+            h.id,
+            Hit::Preset(_) | Hit::PresetCopyOpen | Hit::PresetCopyTo(_) | Hit::PresetCopyAll
+        ) {
+            continue;
+        }
+        assert!(
+            h.x + h.w <= SIDE_W || h.y + h.h <= TOP_H || h.y >= sticky_bottom,
+            "pane hit overlaps pinned preset strip at y={} h={}",
+            h.y,
+            h.h
+        );
+    }
+}
+
+#[test]
+fn on_track_preset_strip_keeps_copy_to_and_other_chips() {
+    refresh_palette();
+    crate::config::sync_session_preset(Some(SessionPreset::Warmup));
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        g.settings_preset = SessionPreset::Race;
+    }
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Standings;
+    ui.banner_dismissed = true;
+    *UI.lock().unwrap() = Some(ui);
+    let mut px = Pixmap::new(1000, 720).expect("pixmap");
+    draw(&mut px, &fonts, 1000.0, 720.0);
+    let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
+    *UI.lock().unwrap() = None;
     crate::config::sync_session_preset(None);
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        g.settings_preset = g.active_preset;
+    }
+
+    assert!(hits.iter().any(|h| h.id == Hit::Preset(SessionPreset::Practice)));
+    assert!(hits.iter().any(|h| h.id == Hit::Preset(SessionPreset::Race)));
+    assert!(hits.iter().any(|h| h.id == Hit::PresetCopyOpen));
+    assert!(!hits.iter().any(|h| h.id == Hit::PresetCopyAll));
 }

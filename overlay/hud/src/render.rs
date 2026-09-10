@@ -11,6 +11,7 @@ pub use crate::race_store::{ClockSample, clock_sample};
 #[allow(unused_imports)]
 pub(crate) use crate::race_store::{
     class_position, extras_started, extra_laps, finish_earned, focus_num_laps,
+    standing_num_laps,
     focus_standing, format_countdown, format_gap, format_lap, format_session_clock,
     i_finished, note_laps_to_run, skip_last_lap_white,
     gap_ahead_text, gap_behind_text, interval_text, interval_text_from_row, is_lap_race, is_warmup,
@@ -2583,7 +2584,11 @@ fn draw_standings(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig,
                                 .unwrap_or_else(|| interval_text(s, standing));
                             (txt, dim, true)
                         }
-                        StField::Laps => (format!("{}", standing.num_laps.max(0)), dim, true),
+                        StField::Laps => (
+                            format!("{}", standing_num_laps(s, standing.race_num, standing.num_laps)),
+                            dim,
+                            true,
+                        ),
                         StField::Current => {
                             let lap = race
                                 .field
@@ -2700,10 +2705,12 @@ fn sector_live_type(live_h: f32, hero: bool) -> (f32, f32, f32) {
     } else {
         (live_h * 0.16).clamp(9.0, 12.0)
     };
+    // Settings font (`style_k`) already scales glyphs. Do not let a tall box
+    // grow the live delta without a cap — that is what ran into the next column.
     let delta_fs = if hero {
-        (live_h * 0.42).max(16.0)
+        (live_h * 0.42).clamp(16.0, 28.0)
     } else {
-        (live_h * 0.28).max(12.0)
+        (live_h * 0.28).clamp(12.0, 20.0)
     };
     let time_fs = if hero {
         (live_h * 0.16).clamp(10.0, 15.0)
@@ -2729,7 +2736,9 @@ fn sector_fit_probe(fonts: &Fonts, probes: &[&str], fs: f32, max_w: f32) -> f32 
     if w <= max_w {
         fs
     } else {
-        (fs * (max_w / w)).max(8.0)
+        // Floor is 8px on screen. `measure` / `text` already multiply `style_k`,
+        // so a raw 8.0 floor stays too big at 160% and the next column eats it.
+        (fs * (max_w / w)).max(8.0 / style_k())
     }
 }
 
@@ -2765,7 +2774,16 @@ fn draw_sector_num(
 }
 
 const SECTOR_PILL_PAD_X: f32 = 14.0;
+const SECTOR_PILL_PAD_Y: f32 = 3.0;
+/// Matches the sector plaque corner. Pills sit above this or the bottom is shaved off.
+const SECTOR_CORNER: f32 = 6.0;
 const SECTOR_COL_PAD: f32 = 12.0;
+
+/// Night-ink chip around a split. Height follows Settings font (`style_k`).
+fn sector_pill_metrics(fs: f32) -> (f32, f32) {
+    let text_h = fs * style_k();
+    (SECTOR_PILL_PAD_Y, text_h + SECTOR_PILL_PAD_Y * 2.0)
+}
 /// Fat probes so columns do not jump as live digits grow (`9.123` → `1:10.000`).
 const SECTOR_PROBE_SPLIT: &str = "88.888";
 const SECTOR_PROBE_SPLIT_LONG: &str = "8:88.888";
@@ -2801,7 +2819,7 @@ fn sector_col_need(
         need[i] = w + SECTOR_COL_PAD;
     }
     let lap_label_fs = (live_h * 0.16).clamp(9.0, 12.0);
-    let lap_time_fs = (live_h * 0.28).max(12.0);
+    let lap_time_fs = (live_h * 0.28).clamp(12.0, 22.0);
     let lap_delta_fs = (live_h * 0.18).clamp(10.0, 14.0);
     let pill_fs = (live_h * 0.14).clamp(9.0, 12.0);
     let mut lw = measure(fonts, "LAP", lap_label_fs);
@@ -2879,24 +2897,22 @@ fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
         }
     }
     let inner_w = (w - pad_x * 2.0).max(60.0);
-    let cap_fs = (h * 0.11).clamp(11.0, 16.0);
-    let cap_y = y + (pad_y * 0.25).max(2.0);
-    text_halo(
-        px,
+    let cap = if cfg.sector_session {
+        "vs. session best"
+    } else {
+        "vs. your best"
+    };
+    let cap_fs = sector_fit_probe(
         fonts,
-        if cfg.sector_session {
-            "vs. session best"
-        } else {
-            "vs. your best"
-        },
-        cap_fs,
-        x + w * 0.5,
-        cap_y,
-        text_dim(),
-        true,
-        glass,
+        &[cap],
+        (h * 0.11).clamp(11.0, 16.0),
+        (inner_w * 0.92).max(40.0),
     );
-    let body_y = cap_y + cap_fs + 4.0;
+    let cap_y = y + (pad_y * 0.25).max(2.0);
+    text_halo(px, fonts, cap, cap_fs, x + w * 0.5, cap_y, text_dim(), true, glass);
+    // Caption glyphs are `cap_fs * style_k`. Spacing from the raw size left
+    // "vs. your best" sitting on S2/S3 when Settings font went up.
+    let body_y = cap_y + cap_fs * style_k() + 4.0;
     let want = if cfg.sector_hist {
         cfg.sector_hist_count()
     } else {
@@ -2909,8 +2925,11 @@ fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
     };
     let has_hist = hist.first().is_some_and(|r| r.cells.iter().any(|c| c.time_ms > 0));
     let ideal = crate::sector::ideal(s, cfg.sector_session);
-    let hist_row_h = (h * 0.13).clamp(22.0, 32.0);
-    let live_min = 52.0;
+    let k = style_k();
+    // LAST stacks lap time over delta. Row height must follow the scaled type
+    // or 1:24.171 / +5.316 land on the next sector time.
+    let hist_row_h = ((h * 0.13).clamp(22.0, 32.0) * k).min(h * 0.20).max(22.0);
+    let live_min = 52.0 * k.max(1.0);
     let avail = (y + h - pad_y - body_y - live_min).max(0.0);
     let fit = (avail / hist_row_h).floor() as usize;
     let (n_hist, show_ideal) = if has_hist {
@@ -2933,7 +2952,7 @@ fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
     let live_bottom = if show_hist {
         y + h - pad_y - hist_band
     } else {
-        y + h - pad_y
+        y + h - pad_y.max(SECTOR_CORNER + 3.0)
     };
     let live_h = (live_bottom - body_y).max(8.0);
     let hist_fs = (hist_row_h * 0.48).clamp(10.0, 14.0);
@@ -3019,17 +3038,17 @@ fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw
             delta_c,
             glass,
         );
-        let time_y = live_bottom - time_fs - 3.0;
+        let (pill_pad, pill_h) = sector_pill_metrics(time_fs);
+        let time_y = live_bottom - pill_h + pill_pad;
         let time_slot = sector_probe_max(fonts, time_fs, SECTOR_SPLIT_PROBES);
         let chip_x = 7.0;
-        let chip_y = 3.0;
         let pill_w = time_slot + chip_x * 2.0;
         fill_night_pill(
             px,
             mid - pill_w * 0.5,
-            time_y - chip_y,
+            time_y - pill_pad,
             pill_w,
-            time_fs + chip_y * 2.0,
+            pill_h,
         );
         draw_sector_num(
             px,
@@ -3215,7 +3234,7 @@ fn draw_sector_lap_live(
         "--".into()
     };
     let text_max = (cw - 8.0).max(8.0);
-    let time_fs = sector_fit_probe(fonts, SECTOR_LAP_PROBES, (live_h * 0.28).max(12.0), text_max);
+    let time_fs = sector_fit_probe(fonts, SECTOR_LAP_PROBES, (live_h * 0.28).clamp(12.0, 22.0), text_max);
     let delta_fs = sector_fit_probe(
         fonts,
         SECTOR_DELTA_PROBES,
@@ -3236,7 +3255,7 @@ fn draw_sector_lap_live(
     } else {
         ahead_col()
     };
-    let pill_band = pill_fs + 8.0;
+    let pill_band = sector_pill_metrics(pill_fs).1 + 2.0;
     let stack_h = time_fs + delta_fs + 2.0;
     let time_y = body_y + ((live_h - pill_band - stack_h).max(0.0)) * 0.42;
     let time_slot = sector_probe_max(fonts, time_fs, SECTOR_LAP_PROBES);
@@ -3254,15 +3273,16 @@ fn draw_sector_lap_live(
         delta_c,
         glass,
     );
-    let time_y_pill = live_bottom - pill_fs - 3.0;
+    let (pill_pad, pill_h) = sector_pill_metrics(pill_fs);
+    let time_y_pill = live_bottom - pill_h + pill_pad;
     let pill_slot = sector_probe_max(fonts, pill_fs, SECTOR_LAP_PROBES);
     let pill_w = pill_slot + SECTOR_PILL_PAD_X;
     fill_night_pill(
         px,
         mid - pill_w * 0.5,
-        time_y_pill - 3.0,
+        time_y_pill - pill_pad,
         pill_w,
-        pill_fs + 6.0,
+        pill_h,
     );
     draw_sector_num(
         px,
@@ -3309,12 +3329,13 @@ fn draw_sector_ideal_row(
         } else {
             "--".into()
         };
-        let slot = sector_probe_max(fonts, hist_fs, SECTOR_SPLIT_PROBES);
+        let cell_fs = sector_fit_probe(fonts, SECTOR_SPLIT_PROBES, hist_fs, (col_w[i] - 8.0).max(8.0));
+        let slot = sector_probe_max(fonts, cell_fs, SECTOR_SPLIT_PROBES);
         draw_sector_num(
             px,
             fonts,
             &label,
-            hist_fs,
+            cell_fs,
             col_x[i],
             col_w[i],
             slot,
@@ -3328,12 +3349,13 @@ fn draw_sector_ideal_row(
     } else {
         "--".into()
     };
-    let lap_slot = sector_probe_max(fonts, hist_fs, SECTOR_LAP_PROBES);
+    let lap_fs = sector_fit_probe(fonts, SECTOR_LAP_PROBES, hist_fs, (col_w[3] - 8.0).max(8.0));
+    let lap_slot = sector_probe_max(fonts, lap_fs, SECTOR_LAP_PROBES);
     draw_sector_num(
         px,
         fonts,
         &lap,
-        hist_fs,
+        lap_fs,
         col_x[3],
         col_w[3],
         lap_slot,
@@ -5430,7 +5452,7 @@ fn draw_sys(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f32, sh: f32) {
     let ping_s = if ping < 0 {
         "—".into()
     } else {
-        format!("{ping} ms")
+        format!("{ping}")
     };
 
     let left_x = x + pad;
@@ -5489,7 +5511,21 @@ fn draw_sys(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f32, sh: f32) {
     let foot_value = (foot_h * 0.16).clamp(13.0, 18.0);
     let foot_track = 3.0;
     let fy = foot_y + 3.0;
-    let after_fps = draw_sys_meter(
+    let foot_bot = y + pad + inner_h - 2.0;
+    let fp_slot = ((foot_bot - fy) * 0.5).max(20.0);
+    let fp_label = (fp_slot * 0.16).clamp(8.0, 14.0);
+    let fp_cap = (fp_slot * 0.72).clamp(16.0, 48.0);
+    let fit_fp = |s: &str| {
+        let w = measure(fonts, s, fp_cap);
+        if w > left_w && w > 1.0 {
+            (fp_cap * left_w / w).max(13.0)
+        } else {
+            fp_cap
+        }
+    };
+    let fps_value = fit_fp(&fps_s);
+    let ping_value = fit_fp(&ping_s);
+    draw_sys_meter(
         px,
         fonts,
         left_x,
@@ -5497,26 +5533,45 @@ fn draw_sys(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f32, sh: f32) {
         left_w,
         "FPS",
         &fps_s,
-        foot_label,
-        foot_value,
+        fp_label,
+        fps_value,
         0.0,
         Color::TRANSPARENT,
         0.0,
     );
+    let ping_y = fy + fp_slot;
     draw_sys_meter(
         px,
         fonts,
         left_x,
-        after_fps + 6.0,
+        ping_y,
         left_w,
         "PING",
         &ping_s,
-        foot_label,
-        foot_value,
+        fp_label,
+        ping_value,
         0.0,
         Color::TRANSPARENT,
         0.0,
     );
+    if ping >= 0 {
+        let ms_fs = (ping_value * 0.36).clamp(7.0, 12.0);
+        let num_w = measure(fonts, &ping_s, ping_value);
+        let ms_w = measure(fonts, "ms", ms_fs);
+        let ms_x = left_x + num_w + ms_fs * 0.22;
+        if ms_x + ms_w <= left_x + left_w + 2.0 {
+            text(
+                px,
+                fonts,
+                "ms",
+                ms_fs,
+                ms_x,
+                ping_y + fp_label * 1.12 + ping_value - ms_fs,
+                text_dim(),
+                false,
+            );
+        }
+    }
     let after_g = draw_sys_meter(
         px,
         fonts,
@@ -7279,7 +7334,10 @@ fn draw_relative(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, 
                             true,
                         ),
                         RelField::Laps => (
-                            st.map(|r| format!("{}", r.num_laps.max(0))).unwrap_or_default(),
+                            st.map(|r| {
+                                format!("{}", standing_num_laps(s, rider.race_num, r.num_laps))
+                            })
+                            .unwrap_or_default(),
                             dim,
                             true,
                         ),

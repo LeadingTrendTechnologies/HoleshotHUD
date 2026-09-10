@@ -43,7 +43,8 @@ Settings subtitle: “Your name is highlighted in the field”.
 - 2026-09-03 — **Setup** is a side-slot option (`BoardField::Setup`). Restart MX Bikes after this plugin so SHM `Local\MXBOHudV13` loads.
 - 2026-08-29 — **Fuel %** is a separate side-slot option from volume.
 
-- 2026-08-29 — Fuel reads as liters or US gallons from Units, not percent.
+- 2026-09-10 — Speed, Liquids, and Temperature units are independent in Settings. Legacy `units=` still seeds all three on upgrade.
+- 2026-08-29 — Fuel reads as liters or US gallons from Liquids units, not percent.
 
 - 2026-08-29 — Fuel level is a side-slot option (`BoardField::Fuel`). Tank percent; `--` if max fuel is missing.
 

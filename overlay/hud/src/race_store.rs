@@ -1671,6 +1671,29 @@ pub(crate) fn laps_done(s: &Snapshot) -> i32 {
     focus_num_laps(s)
 }
 
+/// Practice / warmup: classification often skips a crashed lap. `RunLap` still
+/// advances `current_lap`. Do not use that in a moto — a glitched current_lap
+/// would move flags and laps-left.
+fn practice_open_laps(s: &Snapshot) -> bool {
+    s.session_laps <= 0 && !is_race_session_kind(s.session_kind)
+}
+
+/// Completed laps for a standings / relative row. Practice uses the plugin
+/// crossing when the game left `num_laps` on the last valid lap.
+pub(crate) fn standing_num_laps(s: &Snapshot, race_num: i32, num_laps: i32) -> i32 {
+    let n = num_laps.max(0);
+    let focus = if s.focus_race_num > 0 {
+        s.focus_race_num
+    } else {
+        s.local_race_num
+    };
+    if race_num == focus && practice_open_laps(s) && s.current_lap > 0 {
+        n.max((s.current_lap - 1).max(0))
+    } else {
+        n
+    }
+}
+
 pub(crate) fn rider_current_lap(s: &Snapshot, race_num: i32, num_laps: i32) -> i32 {
     let done = num_laps.max(0);
     let focus = if s.focus_race_num > 0 {
@@ -1691,19 +1714,21 @@ pub(crate) fn focus_num_laps(s: &Snapshot) -> i32 {
     } else {
         s.local_race_num
     };
-    s.standings
+    let from_plugin = if s.current_lap > 0 {
+        (s.current_lap - 1).max(0)
+    } else {
+        0
+    };
+    let standing = s
+        .standings
         .iter()
         .take(s.standing_count.max(0) as usize)
         .find(|row| row.race_num == focus)
-        .map(|row| row.num_laps)
-        .unwrap_or_else(|| {
-            if s.current_lap > 0 {
-                (s.current_lap - 1).max(0)
-            } else {
-                0
-            }
-        })
-        .max(0)
+        .map(|row| row.num_laps);
+    match standing {
+        Some(n) => standing_num_laps(s, focus, n),
+        None => from_plugin,
+    }
 }
 
 pub(crate) fn timed_clock_live(s: &Snapshot) -> bool {

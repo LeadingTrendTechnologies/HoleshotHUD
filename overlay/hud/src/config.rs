@@ -93,7 +93,7 @@ impl FontFamily {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Units {
     Metric,
     Imperial,
@@ -161,6 +161,100 @@ impl Units {
             Self::Metric => format!("{:.1} L", liters.max(0.0)),
             Self::Imperial => format!("{:.1} gal", liters.max(0.0) * 0.264172),
         }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum UnitKind {
+    Speed,
+    Liquids,
+    Temperature,
+}
+
+impl UnitKind {
+    pub const COUNT: usize = 3;
+    pub const ALL: [Self; Self::COUNT] = [Self::Speed, Self::Liquids, Self::Temperature];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Speed => "Speed",
+            Self::Liquids => "Liquids",
+            Self::Temperature => "Temperature",
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Speed => "units_speed",
+            Self::Liquids => "units_liquids",
+            Self::Temperature => "units_temperature",
+        }
+    }
+
+    pub fn idx(self) -> usize {
+        match self {
+            Self::Speed => 0,
+            Self::Liquids => 1,
+            Self::Temperature => 2,
+        }
+    }
+
+    pub fn parse_key(key: &str) -> Option<Self> {
+        match key {
+            "units_speed" => Some(Self::Speed),
+            "units_liquids" | "units_liquid" | "units_fuel" => Some(Self::Liquids),
+            "units_temperature" | "units_temp" => Some(Self::Temperature),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct UnitPrefs {
+    pub speed: Units,
+    pub liquids: Units,
+    pub temperature: Units,
+}
+
+impl UnitPrefs {
+    pub fn all(units: Units) -> Self {
+        Self {
+            speed: units,
+            liquids: units,
+            temperature: units,
+        }
+    }
+
+    pub fn get(self, kind: UnitKind) -> Units {
+        match kind {
+            UnitKind::Speed => self.speed,
+            UnitKind::Liquids => self.liquids,
+            UnitKind::Temperature => self.temperature,
+        }
+    }
+
+    pub fn set(&mut self, kind: UnitKind, units: Units) {
+        match kind {
+            UnitKind::Speed => self.speed = units,
+            UnitKind::Liquids => self.liquids = units,
+            UnitKind::Temperature => self.temperature = units,
+        }
+    }
+
+    pub fn speed_label(self) -> &'static str {
+        self.speed.speed_label()
+    }
+
+    pub fn format_speed(self, mps: f32) -> String {
+        self.speed.format_speed(mps)
+    }
+
+    pub fn format_temp(self, celsius: f32) -> String {
+        self.temperature.format_temp(celsius)
+    }
+
+    pub fn format_fuel(self, liters: f32, max_liters: f32) -> String {
+        self.liquids.format_fuel(liters, max_liters)
     }
 }
 
@@ -1587,14 +1681,14 @@ pub struct HudConfig {
     layouts: [HudLayout; SessionPreset::COUNT],
     pub active_preset: SessionPreset,
     pub settings_preset: SessionPreset,
-    /// True while a session is live so Settings follows the overlay, not the garage picker.
+    /// True while a session is live. The HUD uses `active_preset`; F8 can edit another slot.
     pub session_live: bool,
     /// Kept in the ini for older builds. No widget is gated on this anymore.
     pub experimental: bool,
     /// Plugin-only: when true the in-game HUD draws. Overlay still saves this key.
     pub ingame_hud: bool,
     pub font_family: FontFamily,
-    pub units: Units,
+    pub units: UnitPrefs,
     pub start_with_windows: bool,
     pub minimize_on_close: bool,
     pub close_with_game: bool,
@@ -1626,7 +1720,7 @@ impl HudConfig {
             experimental: false,
             ingame_hud: false,
             font_family: FontFamily::Exo2,
-            units: Units::Metric,
+            units: UnitPrefs::all(Units::Metric),
             start_with_windows: false,
             minimize_on_close: false,
             close_with_game: false,
@@ -1644,6 +1738,10 @@ impl HudConfig {
         &self.layouts[self.active_preset.idx()]
     }
 
+    pub fn live_mut(&mut self) -> &mut HudLayout {
+        &mut self.layouts[self.active_preset.idx()]
+    }
+
     pub fn edit(&self) -> &HudLayout {
         &self.layouts[self.settings_preset.idx()]
     }
@@ -1658,9 +1756,32 @@ impl HudConfig {
         c
     }
 
+    pub fn copy_settings_to(&mut self, dst: SessionPreset) {
+        if dst == self.settings_preset {
+            return;
+        }
+        let src = self.edit().clone();
+        self.layouts[dst.idx()] = src;
+    }
+
     pub fn copy_settings_to_all(&mut self) {
         let src = self.edit().clone();
         self.layouts = [src.clone(), src.clone(), src.clone(), src];
+    }
+
+    /// Follow the live session. When `hold_settings` is set and F8 is on another
+    /// slot, keep editing that slot; otherwise Settings tracks the HUD.
+    pub fn sync_live(&mut self, preset: Option<SessionPreset>, hold_settings: bool) {
+        match preset {
+            Some(p) => {
+                if !hold_settings || self.settings_preset == self.active_preset {
+                    self.settings_preset = p;
+                }
+                self.active_preset = p;
+                self.session_live = true;
+            }
+            None => self.session_live = false,
+        }
     }
 
     pub fn load_file() -> Self {
@@ -1678,6 +1799,7 @@ impl HudConfig {
         cfg.loaded_mtime = fs::metadata(meta_path).and_then(|m| m.modified()).ok();
         let mut saw_last_cols = [false; SessionPreset::COUNT];
         let mut saw_first_install = false;
+        let mut saw_unit = [false; UnitKind::COUNT];
         let mut saw_preset = [false; SessionPreset::COUNT];
         let mut section = IniSection::Legacy;
         let mut legacy_layout = HudLayout::new();
@@ -1701,7 +1823,7 @@ impl HudConfig {
             let b = val == "1" || val.eq_ignore_ascii_case("true") || val.eq_ignore_ascii_case("yes");
             match section {
                 IniSection::App => {
-                    apply_app_key(&mut cfg, key, val, b, &mut saw_first_install);
+                    apply_app_key(&mut cfg, key, val, b, &mut saw_first_install, &mut saw_unit);
                 }
                 IniSection::Preset(p) => {
                     saw_preset[p.idx()] = true;
@@ -1712,7 +1834,7 @@ impl HudConfig {
                     apply_layout_key(layout, key, val, b, &mut saw_last_cols[p.idx()]);
                 }
                 IniSection::Legacy => {
-                    if apply_app_key(&mut cfg, key, val, b, &mut saw_first_install) {
+                    if apply_app_key(&mut cfg, key, val, b, &mut saw_first_install, &mut saw_unit) {
                         continue;
                     }
                     saw_legacy_layout = true;
@@ -1838,12 +1960,16 @@ impl HudConfig {
         let body = format!(
             "# Holeshot HUD layout (normalized 0..1, origin top-left)\n\
              [App]\n\
-             font_family={}\nunits={}\nsettings_key={}\nstart_with_windows={}\nminimize_on_close={}\n\
+             font_family={}\nunits={}\nunits_speed={}\nunits_liquids={}\nunits_temperature={}\n\
+             settings_key={}\nstart_with_windows={}\nminimize_on_close={}\n\
              close_with_game={}\nopen_with_game={}\nauto_update_on_launch={}\nwhats_new_seen={}\n\
              first_install_version={}\nexperimental={}\ningame_hud={}\nstance_bind={}\nactive_preset={}\n\
              \n[Practice]\n{}\n\n[Warmup]\n{}\n\n[Race]\n{}\n\n[Spectate]\n{}\n",
             self.font_family.key(),
-            self.units.key(),
+            self.units.speed.key(),
+            self.units.speed.key(),
+            self.units.liquids.key(),
+            self.units.temperature.key(),
             self.settings_key.key(),
             b(self.start_with_windows),
             b(self.minimize_on_close),
@@ -2044,12 +2170,26 @@ fn parse_ini_section(line: &str) -> IniSection {
     }
 }
 
-fn apply_app_key(cfg: &mut HudConfig, key: &str, val: &str, b: bool, saw_first_install: &mut bool) -> bool {
+fn apply_app_key(
+    cfg: &mut HudConfig,
+    key: &str,
+    val: &str,
+    b: bool,
+    saw_first_install: &mut bool,
+    saw_unit: &mut [bool; UnitKind::COUNT],
+) -> bool {
     match key {
         "experimental" | "feature_experimental" | "feature_sector" => cfg.experimental = b,
         "ingame_hud" => cfg.ingame_hud = b,
         "font_family" => cfg.font_family = FontFamily::parse(val),
-        "units" => cfg.units = Units::parse(val),
+        "units" => {
+            let u = Units::parse(val);
+            for kind in UnitKind::ALL {
+                if !saw_unit[kind.idx()] {
+                    cfg.units.set(kind, u);
+                }
+            }
+        }
         "start_with_windows" => cfg.start_with_windows = b,
         "minimize_on_close" => cfg.minimize_on_close = b,
         "close_with_game" => cfg.close_with_game = b,
@@ -2067,7 +2207,13 @@ fn apply_app_key(cfg: &mut HudConfig, key: &str, val: &str, b: bool, saw_first_i
             cfg.active_preset = p;
             cfg.settings_preset = p;
         }
-        _ => return false,
+        other => {
+            let Some(kind) = UnitKind::parse_key(other) else {
+                return false;
+            };
+            cfg.units.set(kind, Units::parse(val));
+            saw_unit[kind.idx()] = true;
+        }
     }
     true
 }
@@ -2944,15 +3090,13 @@ pub fn update_config(f: impl FnOnce(&mut HudConfig)) {
 
 /// Follow live session mode without writing the ini every frame.
 pub fn sync_session_preset(preset: Option<SessionPreset>) {
+    sync_session_preset_held(preset, false);
+}
+
+/// Same as [`sync_session_preset`], but keep the F8 edit slot when it is not the live one.
+pub fn sync_session_preset_held(preset: Option<SessionPreset>, hold_settings: bool) {
     let mut g = CONFIG.lock().unwrap_or_else(|e| e.into_inner());
-    match preset {
-        Some(p) => {
-            g.active_preset = p;
-            g.settings_preset = p;
-            g.session_live = true;
-        }
-        None => g.session_live = false,
-    }
+    g.sync_live(preset, hold_settings);
 }
 
 #[cfg(test)]

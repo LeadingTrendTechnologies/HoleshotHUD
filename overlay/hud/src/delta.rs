@@ -128,7 +128,12 @@ impl LapTape {
         self.push_at(pos, ms, self.track_m);
     }
 
+    #[cfg(test)]
     fn push_at(&mut self, pos: f32, ms: i32, track_m: f32) {
+        self.push_at_opt(pos, ms, track_m, false);
+    }
+
+    fn push_at_opt(&mut self, pos: f32, ms: i32, track_m: f32, ignore_cut: bool) {
         let pos = if pos >= 1.0 { 0.999_999 } else { pos };
         if !(0.0..1.0).contains(&pos) || ms <= 0 {
             return;
@@ -161,7 +166,12 @@ impl LapTape {
                 return;
             }
         }
-        self.note_progress(pos, ms);
+        if ignore_cut {
+            self.last_move_pos = pos;
+            self.last_move_ms = ms;
+        } else {
+            self.note_progress(pos, ms);
+        }
         let i = ((pos * BINS as f32) as usize).min(BINS - 1);
         if self.bins[i] == 0 {
             self.filled += 1;
@@ -266,6 +276,12 @@ pub(crate) struct DeltaEngine {
     stale_clock: bool,
     /// Flying lap started (S/F cross, or lap clock on near the line). Out-lap is not this.
     armed: bool,
+    /// Crashed during this flying lap. An uncounted crossing still finishes it.
+    crashed_this_lap: bool,
+    /// Last time `local_crashed` was set. Remount teleports must not mark a cut.
+    remount_at: Option<Instant>,
+    /// Crossing did not restart the plugin clock. Elapsed is `cur - plugin_at_snap`.
+    held_clock: bool,
     /// Last official accumulated split (S1, or S1+S2). `0` until a split this lap.
     official_accum: i32,
     /// Plugin `current_lap_ms` when `official_accum` was snapped. `0` at S/F so
@@ -304,6 +320,9 @@ impl DeltaEngine {
             session_smooth_init: false,
             stale_clock: false,
             armed: false,
+            crashed_this_lap: false,
+            remount_at: None,
+            held_clock: false,
             official_accum: 0,
             plugin_at_snap: 0,
             snap_valid: false,
@@ -434,8 +453,27 @@ impl DeltaEngine {
         let cur_ms = s.current_lap_ms;
         let lap_num = s.current_lap;
 
+        if s.local_crashed != 0 && self.armed {
+            self.crashed_this_lap = true;
+            self.remount_at = Some(Instant::now());
+        }
+        let remounting = self
+            .remount_at
+            .is_some_and(|t| t.elapsed().as_secs_f32() < 2.0);
+
         let wrap = wrapped(self.last_seen_pos, pos);
-        let clock_drop = self.last_cur_ms > 8_000 && cur_ms + 2_500 < self.last_cur_ms;
+        let raw_clock_drop = self.last_cur_ms > 8_000 && cur_ms + 2_500 < self.last_cur_ms;
+        // Invalid crossing: we snapped the old clock. A later official restart is
+        // the same flying lap, not a new finish.
+        let adopt_held = self.held_clock && raw_clock_drop && cur_ms < 4_000;
+        if adopt_held {
+            self.resync(self.last_synced.max(0), cur_ms);
+            self.held_clock = false;
+            self.stale_clock = false;
+            self.smooth_init = false;
+            self.session_smooth_init = false;
+        }
+        let clock_drop = raw_clock_drop && !adopt_held;
         let new_last = s.last_lap_ms > 0 && s.last_lap_ms != self.last_last_lap_ms;
         let lap_up = lap_num > self.last_lap_num && self.last_lap_num > 0;
         let finish_wrap = wrap_is_finish(self, pos, cur_ms);
@@ -465,7 +503,7 @@ impl DeltaEngine {
             self.session_smooth_init = false;
         }
 
-        let ended = lap_ended(self, s, pos);
+        let ended = !adopt_held && lap_ended(self, s, pos);
         if ended {
             let done = completed_lap_ms(self, s);
             try_commit(self, done);
@@ -476,8 +514,20 @@ impl DeltaEngine {
             self.smooth_init = false;
             self.session_smooth_init = false;
             self.clear_snap();
-            // S/F starts the next flying lap. A reset only drops the clock.
-            self.armed = crossed_sf;
+            // Invalid / crashed crossing: the game often leaves the old clock up.
+            // Hold elapsed from this sample so the next flying lap still tapes.
+            let uncounted = !clock_drop && wrap && cur_ms > 8_000;
+            self.crashed_this_lap = false;
+            if uncounted {
+                self.held_clock = true;
+                self.resync(0, cur_ms);
+                self.stale_clock = false;
+                self.armed = true;
+            } else {
+                self.held_clock = false;
+                // S/F starts the next flying lap. A reset only drops the clock.
+                self.armed = crossed_sf;
+            }
         } else if !self.armed && (crossed_sf || start_flying_clock) {
             self.armed = true;
             self.current = LapTape::new();
@@ -493,7 +543,7 @@ impl DeltaEngine {
         // Same-frame sample still has the old clock at pos 0 (plugin sends 1.0).
         let moving = s.on_track != 0 && s.local_speed >= 1.5 && cur_ms > 0 && pos >= 0.0;
         if moving && !ended && self.armed && !self.stale_clock {
-            self.current.push_at(pos, clock_ms, track_m(s));
+            self.current.push_at_opt(pos, clock_ms, track_m(s), remounting);
         }
 
         self.last_lap_num = lap_num;
@@ -576,7 +626,16 @@ fn wrap_is_finish(st: &DeltaEngine, pos: f32, cur_ms: i32) -> bool {
     if clock_fits_tape(st, pos, cur_ms) {
         return false;
     }
-    st.reference.is_some() && pos < 0.20 && cur_ms > 4_000
+    if st.reference.is_some() && pos < 0.20 && cur_ms > 4_000 {
+        return true;
+    }
+    // Crashed lap: MX often does not drop the clock or bump last-lap. The wrap
+    // at the line still finishes the tape we already have.
+    st.crashed_this_lap
+        && pos < 0.20
+        && st.last_seen_pos > 0.85
+        && st.last_cur_ms > 8_000
+        && st.current.recorded_ms() >= MIN_LAP_MS
 }
 
 fn clock_fits_tape(st: &DeltaEngine, pos: f32, cur_ms: i32) -> bool {

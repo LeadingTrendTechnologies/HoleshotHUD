@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+## 0.10.0
+
+Pick a different session preset in F8 while you are on track, or copy one layout onto another.
+
+### Settings
+
+- Pick any preset on track — edit Race while you warmup. The HUD still follows the live session. **Copy to** duplicates the open layout onto another preset, or all four.
+- **Speed**, **Liquids**, and **Temperature** each have their own Metric / Imperial toggle. Upgrading copies your old single **Units** choice to all three.
+
+### Sectors / Delta Bar / Standings
+
+- A crash in practice still counts the lap when you cross the line. The game often sends no last-lap time (or leaves the completed-lap count on the last clean lap); LAST, the lap log, and the Laps column now keep that crossing. Restart MX Bikes after install so the plugin can keep that estimate.
+- Raising the Sectors font no longer stacks “vs. your best”, live times, and LAST on the next column.
+- Sector split pills stay whole at a large font — they wrap the scaled type and sit above the rounded bottom.
+
 ## 0.9.0
 
 A Telemetry strip for throttle and brake, plus analog bars and gear/speed. Header and footer slots can show gap to the rider ahead or behind you. Restart MX Bikes after install so the V14 plugin can publish those inputs.

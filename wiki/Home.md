@@ -39,7 +39,7 @@ To add a widget: if the field is **Overlay**, draw it. If **Cached** / **Receive
 
 ## Overlay widget wikis
 
-Per-widget behavior, pitfalls, and change history for agents: **[widgets.md](widgets.md)**. Wishlist (not shipped): **[future.md](widgets/future.md)**.
+Per-widget behavior, pitfalls, and change history for agents: **[widgets.md](widgets.md)**. Wishlist (not shipped): **[future.md](widgets/future.md)**. Streaming (OBS Browser Source, not shipped): **[streaming.md](streaming.md)**.
 
 Rust overlay structure and possible refactors (suggestions only): **[rust-patterns.md](rust-patterns.md)**.
 
@@ -141,7 +141,7 @@ This is the richest per-frame feed. **Only a handful of fields are kept.**
 | `m_fEngineTemperature` | float | Unused | Engine temp |
 | `m_fWaterTemperature` | float | Unused | Water temp |
 | `m_iGear` | int | Unused | Typically 0 = N, 1+ = gears (confirm in-game) |
-| `m_fFuel` | float | Overlay | Liters. Header/footer: L or US gal from Units |
+| `m_fFuel` | float | Overlay | Liters. Header/footer: L or US gal from **Liquids** units |
 | `m_fSpeedometer` | float | Overlay | Speed (game units; treated as speedometer) |
 | `m_fPosX/Y/Z` | float | Overlay (X,Z) | World position. Y unused. Map marker |
 | `m_fVelocityX/Y/Z` | float | Overlay (X,Z) | Used to interpolate the local marker |
@@ -172,14 +172,14 @@ This is the richest per-frame feed. **Only a handful of fields are kept.**
 
 ## 4. Your bike — laps & splits
 
-### `RunLap` → `SPluginsBikeLap_t` — **Unused**
+### `RunLap` → `SPluginsBikeLap_t` — **Overlay**
 
 | Field | Type | Widget ideas |
 | --- | --- | --- |
-| `m_iLapNum` | int | Lap counter |
-| `m_iInvalid` | int | Invalid lap flash |
-| `m_iLapTime` | int | Last lap time (ms) |
-| `m_iBest` | int | Best lap (ms) |
+| `m_iLapNum` | int | Lap counter (`current_lap = lapNum + 1`) |
+| `m_iInvalid` | int | Unused. A 0 `m_iLapTime` still keeps the live clock for LAST / sectors |
+| `m_iLapTime` | int | Last lap time (ms). `0` after a crash uses elapsed `_fTime` |
+| `m_iBest` | int | Best lap (ms). Official times only; a 0-time crash does not replace PB |
 
 ### `RunSplit` → `SPluginsBikeSplit_t` — **Overlay**
 
