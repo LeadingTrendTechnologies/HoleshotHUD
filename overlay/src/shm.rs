@@ -175,3 +175,7 @@ impl Drop for Cmd {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "tests/shm.rs"]
+mod tests;

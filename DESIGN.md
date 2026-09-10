@@ -358,7 +358,7 @@ Web-only CTA in the top bar. Clip-path orange parallelogram, Windows four-square
 - **Don't** add drop shadows under HUD tables, the twin, or the stage.
 - **Don't** let a roman / Segoe shell face into overlay widgets or web chrome.
 - **Don't** recode manufacturer pills to follow White/Black table text.
-- **Don't** draw overlay work into the in-game C++ HUD (`ingame_hud`).
+- **Don't** draw overlay work into the in-game C++ HUD (`ingame_hud`). That path is frozen: standings, relative, and map. The plugin does not write the ini.
 - **Don't** stretch heading plaques into full-width orange bars.
 - **Don't** paint Sectors personal bests in Best Lap Violet — that violet stays on standings/relative lap times.
 - **Don't** ship Sectors until **Show on overlay** is on.

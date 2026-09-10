@@ -90,7 +90,7 @@ Priority is **value vs risk**, not “how textbook.” Skip anything in [Do not 
 
 **Need to know.** Invariants live in [dash.md](widgets/dash.md), [flag.md](widgets/flag.md), and comments on the atomics (run-in held across the line because `laps_left` lags; two S/F sightings must agree; timed-extras hint vs lap moto). Needs on-track tests (lap moto, timed + extras, gate, replay), not only goldens. Do **not** mix this with a visual refactor.
 
-**Verdict.** Separate project. Worth it when flag/clock work is already on the table. Not a drive-by.
+**Verdict.** Separate project. Worth it when flag/clock work is already on the table. Not a drive-by. Clock/flag **fixtures** now live in `overlay/hud/tests/sessions/` (`RaceStore::tick` replay). Add a jsonl there before changing the latches.
 
 ---
 
@@ -124,15 +124,15 @@ Priority is **value vs risk**, not “how textbook.” Skip anything in [Do not 
 
 ### 7. Layout editor in `mxbo-hud` (DRY / facade)
 
-**Pattern.** Move pure geometry (`Target`, `Handle`, `rect_of`, `set_rect`) into the HUD crate. Host adds Win32 cursor; web-preview adds CSS cursors.
+**Pattern.** Move pure geometry (`Handle`, `rect_of`, `set_rect`, hit/resize) into the HUD crate. Host adds Win32 cursor; web-preview adds CSS cursors. `WidgetId` is the edit target.
 
-**Why.** `overlay/src/layout.rs` and `web-preview/src/edit.rs` are the same editor. Web `Target` **omits Stance**, so the demo cannot drag that widget the same way.
+**Why.** `overlay/src/layout.rs` and `web-preview/src/edit.rs` were the same editor. Web `Target` omitted Stance, so the demo could not drag that widget the same way.
 
-**Break logic?** **Low** for the overlay if hit tests stay identical. Unify Stance on the web target list or document that the demo skips it on purpose.
+**Break logic?** **Low** for the overlay if hit tests stay identical.
 
 **Need to know.** Host still owns `GetCursorPos` / `VK_CONTROL`. Do not pull `windows` into `mxbo-hud`.
 
-**Verdict.** Do when touching layout or the website demo.
+**Verdict.** **Done.** Geometry is `overlay/hud/src/layout.rs`. Host keeps `Editor` / snapshot apply / table-column resize. Web `edit.rs` re-exports the HUD crate and the demo rail includes Stance.
 
 ---
 
@@ -208,9 +208,9 @@ Priority is **value vs risk**, not “how textbook.” Skip anything in [Do not 
 | Area | Files |
 | --- | --- |
 | Config / INI | `overlay/hud/src/config.rs` |
-| Draw | `overlay/hud/src/render.rs` (~6.2k), goldens under `overlay/hud/tests/goldens/` |
-| Race / flags | `overlay/hud/src/race_store.rs`, flag/S/F code in `render.rs` |
-| Settings | `overlay/src/settings.rs` (~5.7k) |
+| Draw | `overlay/hud/src/render/` (host `mod.rs` + one file per widget), goldens under `overlay/hud/tests/goldens/` |
+| Race / flags | `overlay/hud/src/race_store.rs`, flag/S/F approach still in `render/mod.rs` |
+| Settings | `overlay/src/settings/` (`mod.rs` host, `widgets.rs`, `app.rs`, `feedback.rs`, `whats_new.rs`, `reply.rs`, `dispatch.rs`) |
 | Frame loop | `overlay/src/main.rs` |
 | SHM (do not restyle) | `overlay/src/shm.rs`, `overlay/hud/src/snapshot.rs`, `src/shm/mxbo_shm.h` |
-| Layout twin | `overlay/src/layout.rs`, `web-preview/src/edit.rs` |
+| Layout | `overlay/hud/src/layout.rs` (geometry); host `overlay/src/layout.rs`; web `web-preview/src/edit.rs` |

@@ -1,0 +1,2 @@
+# Gate: sitting on a 8:00 +2 timed moto, 30s on the board.
+{"len":8,"laps":2,"time":30000,"cur":1,"spd":0,"on":1,"ll":0,"ld":0,"n":2,"pos":0.5,"expect":{"banner":"00:30","gate":true,"mode":"Gate","remain":30000}}

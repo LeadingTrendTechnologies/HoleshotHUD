@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 0.10.1
+
+### Internals
+
+- Auto-update only takes the GitHub `windows-x64.zip`, checks its SHA-256 digest, and replaces the exe with a helper process (no PowerShell).
+- CI fails if the plugin C snapshot and the Rust `Snapshot` layout disagree (`src/shm/abi.txt`).
+- Session clock fixtures under `overlay/hud/tests/sessions/` replay gate, lap, and timed ticks through `RaceStore`.
+- HUD draw lives in `overlay/hud/src/render/*.rs` (one file per widget, static `draw_widgets` list). Settings panes and Hit dispatch live under `overlay/src/settings/`.
+- Layout hit/resize geometry lives in `mxbo-hud` (`overlay/hud/src/layout.rs`). Host and web-preview call it; the demo can drag Stance.
+- CI runs `tools/shm-publish-test` for tessellation, standings copy, garage rider gating, and seqlock write.
+- In-game C++ HUD is frozen: standings, relative, and map only. The plugin reads `Holeshot-HUD.ini` and never writes it.
+
 ## 0.10.0
 
 Pick a different session preset in F8 while you are on track, or copy one layout onto another.

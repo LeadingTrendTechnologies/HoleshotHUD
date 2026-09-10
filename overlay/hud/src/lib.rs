@@ -1,6 +1,7 @@
 pub mod config;
 pub mod delta;
 pub mod gamepad;
+pub mod layout;
 pub mod lean;
 pub mod telemetry;
 pub mod race_store;

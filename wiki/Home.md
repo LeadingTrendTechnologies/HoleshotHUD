@@ -3,7 +3,7 @@
 Everything the PiBoSo plugin API can send this project, and whether we already keep it.
 
 Source of truth: `src/vendor/piboso/mxb_api.h` (data version **8**, interface **9**).  
-The game loads `Holeshot-HUD.dlo` and calls the exported functions below. The plugin may copy fields into `PluginState`, then into shared memory `Local\MXBOHudV14` for the Rust overlay.
+The game loads `Holeshot-HUD.dlo` and calls the exported functions below. The plugin may copy fields into `PluginState`, then into shared memory `Local\MXBOHudV14` for the Rust overlay. Field offsets for that snapshot are locked in [`src/shm/abi.txt`](../src/shm/abi.txt) — `tools/shm-abi.cpp` and the Rust `Snapshot` / `CmdView` must match, or CI fails. Tessellation, standings copy, and seqlock write are checked by `tools/shm-publish-test`. Bump `MXBO_SHM_VERSION` (and the mapping name) when the layout changes; regenerate the abi file with `UPDATE_SHM_ABI=1 cargo test --manifest-path overlay/Cargo.toml rust_shm_layout_matches_checked_in_abi`.
 
 **Status**
 
@@ -72,14 +72,14 @@ Local speed / yaw / crash / track pos are in SHM for the moving marker, not as t
 | `GetModDataVersion` | `8` | — | Struct layout |
 | `GetInterfaceVersion` | `9` | — | Callback set |
 | `Startup` | save path string | — | Returns telemetry Hz. Ini + SHM opened here |
-| `Shutdown` | — | — | Saves ini, closes SHM |
+| `Shutdown` | — | — | Closes SHM. Does not write the ini (overlay owns it) |
 | `EventInit` | `SPluginsBikeEvent_t` | Received | Rider/bike/track constants for **your** bike |
 | `EventDeinit` | — | Cached | Clears event + race |
 | `RunInit` | `SPluginsBikeSession_t` | Overlay | Session at run start. Copies setup filename |
 | `RunDeinit` | — | Overlay | Clears the run (telemetry, positions). Leftover standings are not `onTrack`. |
 | `RunStart` / `RunStop` | — | Unused | Green flag / pause style events |
 | `DrawInit` | sprite/font names | Draw-only | We request **0** sprites/fonts |
-| `Draw` | — | Draw-only | Publishes SHM every frame; in-game HUD optional |
+| `Draw` | — | Draw-only | Publishes SHM every frame. Frozen in-game HUD (`ingame_hud=1`): standings, relative, map only |
 | `SpectateVehicles` | `SPluginsSpectateVehicle_t[]` | Overlay | Reads the current camera target; overlay name/card clicks can change it in replay/spectate |
 | `SpectateCameras` | camera list | Unused | Names only; not a video feed |
 
@@ -404,6 +404,8 @@ Camera name list only. No image, FOV, or matrix.
 ## 13. In-game draw (not overlay data)
 
 `SPluginQuad_t` / `SPluginString_t` are what **we send back** to MX Bikes when `ingame_hud=1`. Colors are packed **ABGR**. Not a source of telemetry.
+
+This path is **frozen**: standings, relative, and map only. Do not add overlay widgets. `PluginConfig` reads a subset of `Holeshot-HUD.ini`; the overlay is the only writer.
 
 ---
 

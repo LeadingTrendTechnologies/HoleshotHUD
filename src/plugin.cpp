@@ -238,7 +238,6 @@ __declspec(dllexport) void Shutdown()
     safeCall([] {
         if (!g_iniPath.empty())
         {
-            g_config.save(g_iniPath);
             const std::string legacy = joinPath(g_savePath.c_str(), "mxbo.ini");
             if (_stricmp(legacy.c_str(), g_iniPath.c_str()) != 0)
             {
@@ -363,6 +362,7 @@ __declspec(dllexport) void Draw(int _iState, int* _piNumQuads, void** _ppQuad, i
         g_layout.update(g_config, g_layoutDirty, g_iniPath);
         g_shm.publish(g_state, g_config);
 
+        // Frozen: standings, relative, and map only. Overlay widgets stay in Rust.
         if (!g_config.ingameHud)
         {
             return;

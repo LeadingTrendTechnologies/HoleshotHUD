@@ -751,6 +751,12 @@ static LAST_LEAD_FRAC: AtomicI32 = AtomicI32::new(-1);
 /// `-1` when the clock is running normally.
 static DIP_FROM_CLOCK: AtomicI32 = AtomicI32::new(-1);
 
+#[cfg(test)]
+pub(crate) fn session_test_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 pub(crate) fn reset_session_clock_track() {
     LAST_SESSION_CLOCK.store(0, Ordering::Relaxed);
     DIP_FROM_CLOCK.store(-1, Ordering::Relaxed);
@@ -2226,3 +2232,7 @@ fn format_signed_delta(ms: i32, laps: i32) -> String {
         format!("{sec:+.3}")
     }
 }
+
+#[cfg(test)]
+#[path = "tests/session_replay.rs"]
+mod session_replay_tests;

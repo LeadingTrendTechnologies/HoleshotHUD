@@ -4,6 +4,8 @@
 #include "../config.h"
 #include "../state.h"
 
+// Frozen in-game HUD. Track map only. Do not add overlay widgets.
+
 #include <vector>
 
 class MapHud

@@ -179,6 +179,12 @@ fn main() {
     if let Some(path) = dump_whats_new_path() {
         dump_whats_new_and_exit(&path);
     }
+    if std::env::args().any(|a| a == "--apply-update") {
+        match crate::update::apply_staged_from_args() {
+            Ok(()) => std::process::exit(0),
+            Err(_) => std::process::exit(1),
+        }
+    }
     if let Some(pid) = crate::compat::restore_taskbar_pid(std::env::args()) {
         crate::compat::wait_then_restore_taskbar(pid);
         return;

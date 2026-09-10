@@ -1685,7 +1685,8 @@ pub struct HudConfig {
     pub session_live: bool,
     /// Kept in the ini for older builds. No widget is gated on this anymore.
     pub experimental: bool,
-    /// Plugin-only: when true the in-game HUD draws. Overlay still saves this key.
+    /// Plugin-only: when true the frozen in-game HUD draws standings / relative / map.
+    /// Overlay still saves this key. The plugin never writes the ini.
     pub ingame_hud: bool,
     pub font_family: FontFamily,
     pub units: UnitPrefs,

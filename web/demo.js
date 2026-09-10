@@ -113,6 +113,7 @@ const NAMES = {
   sector: "Sectors",
   delta: "Delta Bar",
   flag: "Flags",
+  stance: "Stance",
   lean: "Lean",
   telemetry: "Telemetry",
   gamepad: "Controller",
@@ -305,6 +306,17 @@ function renderSettings() {
       html += toggleRow("telemetry_bar_steer", "Steer", true);
     }
     html += styleControls("telemetry", "Panel opacity");
+  } else if (w === "stance") {
+    html += fieldRow("stance_mode", "Sit", [
+      ["toggle", "Toggle"],
+      ["hold", "Hold to sit"],
+    ]);
+    html += fieldRow("stance_style", "Look", [
+      ["text", "Text"],
+      ["icon", "Icon"],
+    ]);
+    html += toggleRow("stance_show_sit", "Show sit");
+    html += styleControls("stance", "Panel opacity");
   } else if (w === "lean") {
     html += fieldRow("lean_style", "Look", [
       ["figure", "Figure"],

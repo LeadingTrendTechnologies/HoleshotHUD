@@ -2,7 +2,8 @@ mod demo_track;
 mod edit;
 
 use mxbo_hud::config::{
-    BoardField, DashField, DotLabel, FontFamily, GamepadStyle, HudConfig, LeanStyle, SnapAlign, TableText, UnitPrefs, Units, WidgetId,
+    BoardField, DashField, DotLabel, FontFamily, GamepadStyle, HudConfig, LeanStyle, SnapAlign, StanceMode,
+    StanceStyle, TableText, UnitPrefs, Units, WidgetId,
 };
 use mxbo_hud::render::{draw, Fonts};
 use mxbo_hud::snapshot::{
@@ -317,7 +318,7 @@ impl Preview {
                     edit::edit_rect(&self.cfg, t, w as f32, h as f32),
                     w as f32,
                     h as f32,
-                    t == edit::Target::Ticker,
+                    t == WidgetId::Ticker,
                 );
             }
         }
@@ -382,6 +383,7 @@ fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg[WidgetId::Sys].show = name == "sys";
     cfg[WidgetId::Sector].show = name == "sector";
     cfg[WidgetId::Delta].show = name == "delta";
+    cfg[WidgetId::Stance].show = name == "stance";
     cfg[WidgetId::Flag].show = name == "flag";
     cfg[WidgetId::Lean].show = name == "lean";
     cfg[WidgetId::Gamepad].show = name == "gamepad";
@@ -390,23 +392,7 @@ fn show_only(cfg: &mut HudConfig, name: &str) {
 }
 
 fn widget_id(name: &str) -> Option<WidgetId> {
-    Some(match name {
-        "standings" => WidgetId::Standings,
-        "relative" => WidgetId::Relative,
-        "map" => WidgetId::Map,
-        "minimap" => WidgetId::Minimap,
-        "radar" => WidgetId::Radar,
-        "dash" => WidgetId::Dash,
-        "ticker" => WidgetId::Ticker,
-        "sys" => WidgetId::Sys,
-        "sector" => WidgetId::Sector,
-        "delta" => WidgetId::Delta,
-        "flag" => WidgetId::Flag,
-        "lean" => WidgetId::Lean,
-        "gamepad" => WidgetId::Gamepad,
-        "telemetry" => WidgetId::Telemetry,
-        _ => return None,
-    })
+    mxbo_hud::layout::parse_target(name)
 }
 
 fn sync_gamepad_preview(active: &str, t: f32) {
@@ -551,6 +537,8 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "sector_bold" => cfg[WidgetId::Sector].bold,
         "delta_bold" => cfg[WidgetId::Delta].bold,
         "flag_bold" => cfg[WidgetId::Flag].bold,
+        "stance_bold" => cfg[WidgetId::Stance].bold,
+        "stance_show_sit" => cfg.stance_show_sit,
         "lean_bold" => cfg[WidgetId::Lean].bold,
         "gamepad_bold" => cfg[WidgetId::Gamepad].bold,
         "telemetry_bold" => cfg[WidgetId::Telemetry].bold,
@@ -641,6 +629,8 @@ fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
         "sector_bold" => cfg[WidgetId::Sector].bold = on,
         "delta_bold" => cfg[WidgetId::Delta].bold = on,
         "flag_bold" => cfg[WidgetId::Flag].bold = on,
+        "stance_bold" => cfg[WidgetId::Stance].bold = on,
+        "stance_show_sit" => cfg.stance_show_sit = on,
         "lean_bold" => cfg[WidgetId::Lean].bold = on,
         "gamepad_bold" => cfg[WidgetId::Gamepad].bold = on,
         "telemetry_bold" => cfg[WidgetId::Telemetry].bold = on,
@@ -696,6 +686,8 @@ fn int_val(cfg: &HudConfig, key: &str) -> Option<i32> {
         "delta_bg" => cfg[WidgetId::Delta].bg,
         "flag_font" => cfg[WidgetId::Flag].font,
         "flag_bg" => cfg[WidgetId::Flag].bg,
+        "stance_font" => cfg[WidgetId::Stance].font,
+        "stance_bg" => cfg[WidgetId::Stance].bg,
         "lean_font" => cfg[WidgetId::Lean].font,
         "lean_bg" => cfg[WidgetId::Lean].bg,
         "gamepad_font" => cfg[WidgetId::Gamepad].font,
@@ -725,6 +717,7 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "sector_bg" => cfg[WidgetId::Sector].bg = value.clamp(0, 100),
         "delta_bg" => cfg[WidgetId::Delta].bg = value.clamp(0, 100),
         "flag_bg" => cfg[WidgetId::Flag].bg = value.clamp(0, 100),
+        "stance_bg" => cfg[WidgetId::Stance].bg = value.clamp(0, 100),
         "lean_bg" => cfg[WidgetId::Lean].bg = value.clamp(0, 100),
         "gamepad_bg" => cfg[WidgetId::Gamepad].bg = value.clamp(0, 100),
         "telemetry_bg" => cfg[WidgetId::Telemetry].bg = value.clamp(0, 100),
@@ -741,6 +734,7 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "sector_font" => cfg.set_font_pct(WidgetId::Sector, value),
         "delta_font" => cfg.set_font_pct(WidgetId::Delta, value),
         "flag_font" => cfg.set_font_pct(WidgetId::Flag, value),
+        "stance_font" => cfg.set_font_pct(WidgetId::Stance, value),
         "lean_font" => cfg.set_font_pct(WidgetId::Lean, value),
         "gamepad_font" => cfg.set_font_pct(WidgetId::Gamepad, value),
         "telemetry_font" => cfg.set_font_pct(WidgetId::Telemetry, value),
@@ -771,6 +765,8 @@ fn field_val(cfg: &HudConfig, key: &str) -> Option<String> {
         "mini_dot" => cfg.mini_dot.key().into(),
         "st_text" => cfg.st_text.key().into(),
         "rel_text" => cfg.rel_text.key().into(),
+        "stance_mode" => cfg.stance_mode.key().into(),
+        "stance_style" => cfg.stance_style.key().into(),
         "lean_style" => cfg.lean_style.key().into(),
         "gamepad_style" => cfg.gamepad_style.key().into(),
         _ => return None,
@@ -800,6 +796,8 @@ fn set_field(cfg: &mut HudConfig, key: &str, value: &str) {
         "mini_dot" => cfg.mini_dot = DotLabel::parse(value),
         "st_text" => cfg.st_text = TableText::parse(value),
         "rel_text" => cfg.rel_text = TableText::parse(value),
+        "stance_mode" => cfg.stance_mode = StanceMode::parse(value),
+        "stance_style" => cfg.stance_style = StanceStyle::parse(value),
         "lean_style" => cfg.lean_style = LeanStyle::parse(value),
         "gamepad_style" => cfg.gamepad_style = GamepadStyle::parse(value),
         _ => {}

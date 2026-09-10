@@ -25,6 +25,22 @@ jobs:
       - name: Build plugin
         run: msbuild mxbo.vcxproj /p:Configuration=Release /p:Platform=x64 /m
 
+      - name: Check plugin/overlay SHM layout
+        run: |
+          msbuild tools/shm-abi.vcxproj /p:Configuration=Release /p:Platform=x64 /m
+          $got = & .\out\Release\shm-abi.exe | Out-String
+          $got = $got -replace "`r`n", "`n"
+          $expected = (Get-Content -Raw src\shm\abi.txt) -replace "`r`n", "`n"
+          if ($got.TrimEnd() -ne $expected.TrimEnd()) {
+            throw "Plugin C snapshot layout does not match src/shm/abi.txt"
+          }
+
+      - name: Test plugin SHM publish
+        run: |
+          msbuild tools/shm-publish-test.vcxproj /p:Configuration=Release /p:Platform=x64 /m
+          & .\out\Release\shm-publish-test.exe
+          if ($LASTEXITCODE -ne 0) { throw "shm-publish-test failed" }
+
       - name: Build overlay
         run: cargo build --release --manifest-path overlay/Cargo.toml
 

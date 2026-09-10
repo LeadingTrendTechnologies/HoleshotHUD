@@ -530,6 +530,133 @@ impl Snapshot {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/snapshot.rs"]
-mod tests;
+/// C field names and offsets for `src/shm/abi.txt`. Must match `tools/shm-abi.cpp`.
+pub fn abi_text() -> String {
+    use std::fmt::Write;
+    use std::mem::{offset_of, size_of};
+    let mut o = String::new();
+    let _ = writeln!(o, "MAGIC={MAGIC:#X}");
+    let _ = writeln!(o, "VERSION={VERSION}");
+    let _ = writeln!(o, "MAX_POLY={MAX_POLY}");
+    let _ = writeln!(o, "MAX_RIDERS={MAX_RIDERS}");
+    let _ = writeln!(o, "MAX_STANDINGS={MAX_STANDINGS}");
+    let _ = writeln!(o, "MAX_SECTORS={MAX_SECTORS}");
+    let _ = writeln!(o, "NAME={NAME}");
+    let _ = writeln!(o, "TRACK_NAME={TRACK_NAME}");
+    fn field(o: &mut String, ty: &str, name: &str, off: usize, size: usize) {
+        let _ = writeln!(o, "{ty}.{name} {off} {size}");
+    }
+    let _ = writeln!(o, "MxboShmPoint.size {}", size_of::<Point>());
+    field(&mut o, "MxboShmPoint", "x", offset_of!(Point, x), size_of::<f32>());
+    field(&mut o, "MxboShmPoint", "z", offset_of!(Point, z), size_of::<f32>());
+    let _ = writeln!(o, "MxboShmRider.size {}", size_of::<Rider>());
+    field(&mut o, "MxboShmRider", "raceNum", offset_of!(Rider, race_num), 4);
+    field(&mut o, "MxboShmRider", "x", offset_of!(Rider, x), 4);
+    field(&mut o, "MxboShmRider", "z", offset_of!(Rider, z), 4);
+    field(&mut o, "MxboShmRider", "yaw", offset_of!(Rider, yaw), 4);
+    field(&mut o, "MxboShmRider", "trackPos", offset_of!(Rider, track_pos), 4);
+    field(&mut o, "MxboShmRider", "crashed", offset_of!(Rider, crashed), 4);
+    field(&mut o, "MxboShmRider", "name", offset_of!(Rider, name), NAME);
+    field(&mut o, "MxboShmRider", "lean", offset_of!(Rider, lean), 4);
+    let _ = writeln!(o, "MxboShmStanding.size {}", size_of::<Standing>());
+    field(&mut o, "MxboShmStanding", "raceNum", offset_of!(Standing, race_num), 4);
+    field(&mut o, "MxboShmStanding", "position", offset_of!(Standing, position), 4);
+    field(&mut o, "MxboShmStanding", "state", offset_of!(Standing, state), 4);
+    field(&mut o, "MxboShmStanding", "bestLapMs", offset_of!(Standing, best_lap_ms), 4);
+    field(&mut o, "MxboShmStanding", "numLaps", offset_of!(Standing, num_laps), 4);
+    field(&mut o, "MxboShmStanding", "gapMs", offset_of!(Standing, gap_ms), 4);
+    field(&mut o, "MxboShmStanding", "gapLaps", offset_of!(Standing, gap_laps), 4);
+    field(&mut o, "MxboShmStanding", "pit", offset_of!(Standing, pit), 4);
+    field(&mut o, "MxboShmStanding", "penaltyMs", offset_of!(Standing, penalty_ms), 4);
+    field(&mut o, "MxboShmStanding", "crashed", offset_of!(Standing, crashed), 4);
+    field(&mut o, "MxboShmStanding", "name", offset_of!(Standing, name), NAME);
+    field(&mut o, "MxboShmStanding", "bike", offset_of!(Standing, bike), NAME);
+    field(&mut o, "MxboShmStanding", "lastLapMs", offset_of!(Standing, last_lap_ms), 4);
+    field(&mut o, "MxboShmStanding", "category", offset_of!(Standing, category), NAME);
+    let _ = writeln!(o, "MxboShmRect.size {}", size_of::<Rect>());
+    field(&mut o, "MxboShmRect", "x", offset_of!(Rect, x), 4);
+    field(&mut o, "MxboShmRect", "y", offset_of!(Rect, y), 4);
+    field(&mut o, "MxboShmRect", "w", offset_of!(Rect, w), 4);
+    field(&mut o, "MxboShmRect", "h", offset_of!(Rect, h), 4);
+    let _ = writeln!(o, "MxboShmSnapshot.size {}", size_of::<Snapshot>());
+    field(&mut o, "MxboShmSnapshot", "magic", offset_of!(Snapshot, magic), 4);
+    field(&mut o, "MxboShmSnapshot", "version", offset_of!(Snapshot, version), 4);
+    field(&mut o, "MxboShmSnapshot", "seq", offset_of!(Snapshot, seq), 4);
+    field(&mut o, "MxboShmSnapshot", "size", offset_of!(Snapshot, size), 4);
+    field(&mut o, "MxboShmSnapshot", "tickQpc", offset_of!(Snapshot, tick_qpc), 8);
+    field(&mut o, "MxboShmSnapshot", "localRaceNum", offset_of!(Snapshot, local_race_num), 4);
+    field(&mut o, "MxboShmSnapshot", "focusRaceNum", offset_of!(Snapshot, focus_race_num), 4);
+    field(&mut o, "MxboShmSnapshot", "hasTelemetry", offset_of!(Snapshot, has_telemetry), 4);
+    field(&mut o, "MxboShmSnapshot", "localCrashed", offset_of!(Snapshot, local_crashed), 4);
+    field(&mut o, "MxboShmSnapshot", "localX", offset_of!(Snapshot, local_x), 4);
+    field(&mut o, "MxboShmSnapshot", "localZ", offset_of!(Snapshot, local_z), 4);
+    field(&mut o, "MxboShmSnapshot", "localVelX", offset_of!(Snapshot, local_vel_x), 4);
+    field(&mut o, "MxboShmSnapshot", "localVelZ", offset_of!(Snapshot, local_vel_z), 4);
+    field(&mut o, "MxboShmSnapshot", "localYaw", offset_of!(Snapshot, local_yaw), 4);
+    field(&mut o, "MxboShmSnapshot", "localSpeed", offset_of!(Snapshot, local_speed), 4);
+    field(&mut o, "MxboShmSnapshot", "localTrackPos", offset_of!(Snapshot, local_track_pos), 4);
+    field(&mut o, "MxboShmSnapshot", "trackName", offset_of!(Snapshot, track_name), TRACK_NAME);
+    field(&mut o, "MxboShmSnapshot", "trackLength", offset_of!(Snapshot, track_length), 4);
+    field(&mut o, "MxboShmSnapshot", "sfMeters", offset_of!(Snapshot, sf_meters), 4);
+    field(&mut o, "MxboShmSnapshot", "polyCount", offset_of!(Snapshot, poly_count), 4);
+    field(&mut o, "MxboShmSnapshot", "poly", offset_of!(Snapshot, poly), size_of::<[Point; MAX_POLY]>());
+    field(&mut o, "MxboShmSnapshot", "riderCount", offset_of!(Snapshot, rider_count), 4);
+    field(&mut o, "MxboShmSnapshot", "riders", offset_of!(Snapshot, riders), size_of::<[Rider; MAX_RIDERS]>());
+    field(&mut o, "MxboShmSnapshot", "standingCount", offset_of!(Snapshot, standing_count), 4);
+    field(
+        &mut o,
+        "MxboShmSnapshot",
+        "standings",
+        offset_of!(Snapshot, standings),
+        size_of::<[Standing; MAX_STANDINGS]>(),
+    );
+    field(&mut o, "MxboShmSnapshot", "map", offset_of!(Snapshot, map), size_of::<Rect>());
+    field(&mut o, "MxboShmSnapshot", "standingsRect", offset_of!(Snapshot, standings_rect), size_of::<Rect>());
+    field(&mut o, "MxboShmSnapshot", "relative", offset_of!(Snapshot, relative), size_of::<Rect>());
+    field(&mut o, "MxboShmSnapshot", "showMap", offset_of!(Snapshot, show_map), 4);
+    field(&mut o, "MxboShmSnapshot", "showStandings", offset_of!(Snapshot, show_standings), 4);
+    field(&mut o, "MxboShmSnapshot", "showRelative", offset_of!(Snapshot, show_relative), 4);
+    field(&mut o, "MxboShmSnapshot", "standingsRows", offset_of!(Snapshot, standings_rows), 4);
+    field(&mut o, "MxboShmSnapshot", "relativeCount", offset_of!(Snapshot, relative_count), 4);
+    field(&mut o, "MxboShmSnapshot", "localGear", offset_of!(Snapshot, local_gear), 4);
+    field(&mut o, "MxboShmSnapshot", "localRpm", offset_of!(Snapshot, local_rpm), 4);
+    field(&mut o, "MxboShmSnapshot", "engineTemp", offset_of!(Snapshot, engine_temp), 4);
+    field(&mut o, "MxboShmSnapshot", "airTemp", offset_of!(Snapshot, air_temp), 4);
+    field(&mut o, "MxboShmSnapshot", "lastLapMs", offset_of!(Snapshot, last_lap_ms), 4);
+    field(&mut o, "MxboShmSnapshot", "currentLapMs", offset_of!(Snapshot, current_lap_ms), 4);
+    field(&mut o, "MxboShmSnapshot", "currentLap", offset_of!(Snapshot, current_lap), 4);
+    field(&mut o, "MxboShmSnapshot", "sessionLaps", offset_of!(Snapshot, session_laps), 4);
+    field(&mut o, "MxboShmSnapshot", "onTrack", offset_of!(Snapshot, on_track), 4);
+    field(&mut o, "MxboShmSnapshot", "maxRpm", offset_of!(Snapshot, max_rpm), 4);
+    field(&mut o, "MxboShmSnapshot", "shiftRpm", offset_of!(Snapshot, shift_rpm), 4);
+    field(&mut o, "MxboShmSnapshot", "sessionTimeMs", offset_of!(Snapshot, session_time_ms), 4);
+    field(&mut o, "MxboShmSnapshot", "sessionLength", offset_of!(Snapshot, session_length), 4);
+    field(&mut o, "MxboShmSnapshot", "bestLapMs", offset_of!(Snapshot, best_lap_ms), 4);
+    field(&mut o, "MxboShmSnapshot", "sectorCount", offset_of!(Snapshot, sector_count), 4);
+    field(&mut o, "MxboShmSnapshot", "sectorLast", offset_of!(Snapshot, sector_last), 4);
+    field(&mut o, "MxboShmSnapshot", "sectorCur", offset_of!(Snapshot, sector_cur), size_of::<[i32; MAX_SECTORS]>());
+    field(
+        &mut o,
+        "MxboShmSnapshot",
+        "sectorLastLap",
+        offset_of!(Snapshot, sector_last_lap),
+        size_of::<[i32; MAX_SECTORS]>(),
+    );
+    field(&mut o, "MxboShmSnapshot", "sectorBest", offset_of!(Snapshot, sector_best), size_of::<[i32; MAX_SECTORS]>());
+    field(&mut o, "MxboShmSnapshot", "sectorDelta", offset_of!(Snapshot, sector_delta), size_of::<[i32; MAX_SECTORS]>());
+    field(&mut o, "MxboShmSnapshot", "sectorDeltaValid", offset_of!(Snapshot, sector_delta_valid), 4);
+    field(&mut o, "MxboShmSnapshot", "sessionKind", offset_of!(Snapshot, session_kind), 4);
+    field(&mut o, "MxboShmSnapshot", "sessionState", offset_of!(Snapshot, session_state), 4);
+    field(&mut o, "MxboShmSnapshot", "fuel", offset_of!(Snapshot, fuel), 4);
+    field(&mut o, "MxboShmSnapshot", "maxFuel", offset_of!(Snapshot, max_fuel), 4);
+    field(&mut o, "MxboShmSnapshot", "localRoll", offset_of!(Snapshot, local_roll), 4);
+    field(&mut o, "MxboShmSnapshot", "localPitch", offset_of!(Snapshot, local_pitch), 4);
+    field(&mut o, "MxboShmSnapshot", "localSteer", offset_of!(Snapshot, local_steer), 4);
+    field(&mut o, "MxboShmSnapshot", "steerLock", offset_of!(Snapshot, steer_lock), 4);
+    field(&mut o, "MxboShmSnapshot", "setupName", offset_of!(Snapshot, setup_name), TRACK_NAME);
+    field(&mut o, "MxboShmSnapshot", "localThrottle", offset_of!(Snapshot, local_throttle), 4);
+    field(&mut o, "MxboShmSnapshot", "localFrontBrake", offset_of!(Snapshot, local_front_brake), 4);
+    field(&mut o, "MxboShmSnapshot", "localRearBrake", offset_of!(Snapshot, local_rear_brake), 4);
+    field(&mut o, "MxboShmSnapshot", "localClutch", offset_of!(Snapshot, local_clutch), 4);
+    o
+}

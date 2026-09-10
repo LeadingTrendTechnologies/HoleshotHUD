@@ -3,7 +3,8 @@ use super::*;
 fn available() -> UpdateState {
     UpdateState::Available {
         version: "9.9.9".into(),
-        url: "https://example.test/app.zip".into(),
+        url: "https://github.com/LeadingTrendTechnologies/HoleshotHUD/releases/download/v9.9.9/Holeshot-HUD-9.9.9-windows-x64.zip".into(),
+        digest: "a".repeat(64),
     }
 }
 
@@ -74,20 +75,75 @@ fn version_newer_compares_semver_and_v_prefix() {
 #[test]
 fn json_download_url_prefers_windows_x64_zip() {
     let body = r#"{
+        "tag_name": "v9.9.9",
         "assets": [
-            {"browser_download_url":"https://example.test/app.tar.gz"},
-            {"browser_download_url":"https://example.test/Holeshot-windows-x64.zip"}
+            {"name":"app.tar.gz","browser_download_url":"https://github.com/LeadingTrendTechnologies/HoleshotHUD/releases/download/v9.9.9/app.tar.gz","digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+            {"name":"Holeshot-HUD-9.9.9-windows-x64.zip","browser_download_url":"https://github.com/LeadingTrendTechnologies/HoleshotHUD/releases/download/v9.9.9/Holeshot-HUD-9.9.9-windows-x64.zip","digest":"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}
         ]
     }"#;
+    let rel = parse_latest_release(body).expect("zip");
     assert_eq!(
-        json_download_url(body).as_deref(),
-        Some("https://example.test/Holeshot-windows-x64.zip")
+        rel.url,
+        "https://github.com/LeadingTrendTechnologies/HoleshotHUD/releases/download/v9.9.9/Holeshot-HUD-9.9.9-windows-x64.zip"
+    );
+    assert_eq!(
+        rel.digest,
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
     );
 }
 
 #[test]
+fn rejects_non_github_zip_url() {
+    let body = r#"{
+        "tag_name": "v1.0.0",
+        "assets": [
+            {"browser_download_url":"https://example.test/Holeshot-windows-x64.zip","digest":"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}
+        ]
+    }"#;
+    assert!(parse_latest_release(body).is_err());
+}
+
+#[test]
+fn rejects_setup_exe_named_like_a_zip() {
+    assert!(!release_zip_url_ok(
+        "https://github.com/LeadingTrendTechnologies/HoleshotHUD/releases/download/v1/HoleshotHUD-Setup.exe"
+    ));
+    assert!(release_zip_url_ok(
+        "https://github.com/LeadingTrendTechnologies/HoleshotHUD/releases/download/v1.0.0/Holeshot-HUD-1.0.0-windows-x64.zip"
+    ));
+}
+
+#[test]
+fn overlay_exe_name_is_exact() {
+    assert!(is_overlay_exe("Holeshot-HUD.exe"));
+    assert!(is_overlay_exe("holeshot-hud.exe"));
+    assert!(!is_overlay_exe("HoleshotHUD-Setup.exe"));
+    assert!(!is_overlay_exe("Install.exe"));
+    assert!(is_plugin_dlo("Holeshot-HUD.dlo"));
+    assert!(!is_plugin_dlo("mxbo.dlo"));
+}
+
+#[test]
+fn zip_paths_cannot_escape_extract_dir() {
+    let dest = Path::new(r"C:\temp\update");
+    assert!(safe_extract_path(dest, Path::new("Holeshot-HUD.exe")).is_some());
+    assert!(safe_extract_path(dest, Path::new("..\\evil.exe")).is_none());
+    assert!(safe_extract_path(dest, Path::new("/evil.exe")).is_none());
+}
+
+#[test]
+fn digest_must_be_sha256_hex() {
+    assert!(parse_sha256_digest("sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").is_some());
+    assert!(parse_sha256_digest("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").is_none());
+    assert!(parse_sha256_digest("sha256:short").is_none());
+}
+
+#[test]
 fn overlay_only_relaunch_skips_plugin_changed() {
-    assert_eq!(relaunch_args(false), "'--skip-update','--whats-new'");
+    assert_eq!(
+        relaunch_args(false),
+        vec!["--skip-update", "--whats-new"]
+    );
     assert!(!dlo_differs(b"plugin", Some(b"plugin")));
 }
 
@@ -95,7 +151,7 @@ fn overlay_only_relaunch_skips_plugin_changed() {
 fn plugin_byte_diff_relaunch_passes_plugin_changed() {
     assert_eq!(
         relaunch_args(true),
-        "'--skip-update','--whats-new','--plugin-changed'"
+        vec!["--skip-update", "--whats-new", "--plugin-changed"]
     );
     assert!(dlo_differs(b"new", Some(b"old")));
     assert!(dlo_differs(b"new", None));

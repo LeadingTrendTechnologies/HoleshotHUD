@@ -2,6 +2,14 @@
 
 #include <string>
 
+// Frozen in-game HUD (ingame_hud=1). Do not add widgets or INI keys here.
+// Overlay HudConfig is the real settings object and the only writer of
+// Holeshot-HUD.ini. This struct is a read-only subset for:
+//   - SHM layout rects (standings / relative / map)
+//   - optional in-game draw: standings, relative, map only
+// Minimap / radar / dash keys are parsed so old files still load; they are
+// not drawn and must not grow.
+
 struct HudRect
 {
     float x = 0.0f;
@@ -109,5 +117,4 @@ struct PluginConfig
     int relWCrashed = 44;
 
     void load(const std::string& path);
-    void save(const std::string& path) const;
 };

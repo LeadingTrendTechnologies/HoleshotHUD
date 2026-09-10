@@ -114,3 +114,30 @@ fn snapshot_dump_skips_empty_arrays() {
     assert!(dump.contains("Troy"));
     assert!(!dump.contains("rider[1]"));
 }
+
+#[test]
+fn snapshot_abi_is_prefix_of_checked_in_layout() {
+    let snap = abi_text();
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("src/shm/abi.txt");
+    let file = std::fs::read_to_string(&path).unwrap_or_default().replace("\r\n", "\n");
+    assert!(
+        file.contains("MxboShmSnapshot.localClutch"),
+        "src/shm/abi.txt missing snapshot fields at {}",
+        path.display()
+    );
+    for line in snap.lines() {
+        if line.starts_with("MAGIC=") || line.starts_with("VERSION=") || line.starts_with("MAX_") || line.starts_with("NAME=") || line.starts_with("TRACK_NAME=") {
+            assert!(
+                file.lines().any(|l| l == line),
+                "src/shm/abi.txt missing {line}"
+            );
+            continue;
+        }
+        assert!(
+            file.lines().any(|l| l == line),
+            "src/shm/abi.txt missing snapshot line {line}"
+        );
+    }
+}

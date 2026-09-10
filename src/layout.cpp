@@ -96,6 +96,7 @@ HudRect* LayoutEditor::rectFor(PluginConfig& config, Target t) const
 
 void LayoutEditor::update(PluginConfig& config, bool& layoutDirty, const std::string& iniPath)
 {
+    (void)iniPath;
     m_layoutMode = keyDown(VK_CONTROL);
     m_mouseValid = false;
     m_hover = Target::None;
@@ -192,7 +193,6 @@ void LayoutEditor::update(PluginConfig& config, bool& layoutDirty, const std::st
         {
             m_dragging = false;
             m_target = Target::None;
-            config.save(iniPath);
         }
     }
 }

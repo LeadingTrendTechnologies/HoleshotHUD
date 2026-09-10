@@ -8,6 +8,7 @@ extern "C" {
 
 #define MXBO_SHM_MAGIC 0x4F42584Du /* 'MXBO' */
 #define MXBO_SHM_VERSION 14
+/* Layout lock: src/shm/abi.txt — tools/shm-abi.cpp and Rust Snapshot/CmdView. */
 /* Versioned name so a leftover smaller mapping cannot be remapped and overrun. */
 #define MXBO_SHM_NAME L"Local\\MXBOHudV14"
 #define MXBO_SHM_NAME_A "Local\\MXBOHudV14"

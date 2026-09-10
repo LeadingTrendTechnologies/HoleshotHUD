@@ -4,14 +4,10 @@ use crate::race_store::{
     effective_extra_laps, effective_race_laps, live_session, session_preset, ClockMode,
 };
 use crate::shm::{write_name, Point, Rider, Snapshot, Standing, MAGIC, TRACK_NAME, VERSION};
-use std::sync::{Mutex, OnceLock};
 use tiny_skia::{Color, Pixmap, Rect};
 
 fn session_lock() -> std::sync::MutexGuard<'static, ()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
+    crate::race_store::session_test_lock()
 }
 
 fn reset_session() {

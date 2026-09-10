@@ -1,0 +1,2 @@
+# Lap moto, 3 of 4, rolling. Banner is laps, not a clock.
+{"len":0,"laps":4,"time":0,"cur":3,"spd":18,"on":1,"ll":2,"ld":2,"n":2,"pos":0.4,"expect":{"banner":"3 / 4","mode":"LapRace","gate":false}}

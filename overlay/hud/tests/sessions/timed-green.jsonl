@@ -1,0 +1,3 @@
+# Timed +2: 30s gate, then green with ~8:00 on the board.
+{"len":8,"laps":2,"time":30000,"cur":1,"spd":0,"on":1,"ll":0,"ld":0,"n":2,"pos":0.5,"expect":{"banner":"00:30","gate":true,"mode":"Gate"}}
+{"len":8,"laps":2,"time":480000,"cur":1,"spd":18,"on":1,"ll":0,"ld":0,"n":2,"pos":0.5,"expect":{"banner":"08:00","gate":false,"mode":"Timed"}}

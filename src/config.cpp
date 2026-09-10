@@ -23,14 +23,6 @@ namespace
         return v == "1" || v == "true" || v == "True" || v == "yes";
     }
 
-    void writeRect(std::ofstream& out, const char* prefix, const HudRect& r)
-    {
-        out << prefix << "_x=" << r.x << "\n";
-        out << prefix << "_y=" << r.y << "\n";
-        out << prefix << "_w=" << r.w << "\n";
-        out << prefix << "_h=" << r.h << "\n";
-    }
-
     bool applyRect(const std::string& key, const std::string& prefix, HudRect& r, float value)
     {
         if (key == prefix + "_x") { r.x = value; return true; }
@@ -46,7 +38,6 @@ void PluginConfig::load(const std::string& path)
     std::ifstream in(path);
     if (!in)
     {
-        save(path);
         return;
     }
 
@@ -153,107 +144,4 @@ void PluginConfig::load(const std::string& path)
         else if (key == "rel_w_interval") relWInterval = std::max(18, std::atoi(val.c_str()));
         else if (key == "rel_w_crashed") relWCrashed = std::max(18, std::atoi(val.c_str()));
     }
-}
-
-void PluginConfig::save(const std::string& path) const
-{
-    std::ofstream out(path);
-    if (!out)
-    {
-        return;
-    }
-    out << "# Holeshot HUD layout (normalized 0..1, origin top-left)\n";
-    out << "[Layout]\n";
-    writeRect(out, "standings", standings);
-    writeRect(out, "relative", relative);
-    writeRect(out, "map", map);
-    writeRect(out, "minimap", minimap);
-    writeRect(out, "radar", radar);
-    writeRect(out, "dash", dash);
-    out << "\n[Widgets]\n";
-    out << "show_standings=" << (showStandings ? 1 : 0) << "\n";
-    out << "show_relative=" << (showRelative ? 1 : 0) << "\n";
-    out << "show_map=" << (showMap ? 1 : 0) << "\n";
-    out << "show_minimap=" << (showMinimap ? 1 : 0) << "\n";
-    out << "show_radar=" << (showRadar ? 1 : 0) << "\n";
-    out << "show_dash=" << (showDash ? 1 : 0) << "\n";
-    out << "ingame_hud=" << (ingameHud ? 1 : 0) << "\n";
-    out << "standings_rows=" << standingsRows << "\n";
-    out << "relative_count=" << relativeCount << "\n";
-    out << "\n[Standings]\n";
-    out << "st_pos=" << (stPos ? 1 : 0) << "\n";
-    out << "st_num=" << (stNum ? 1 : 0) << "\n";
-    out << "st_name=" << (stName ? 1 : 0) << "\n";
-    out << "st_gap=" << (stGap ? 1 : 0) << "\n";
-    out << "st_interval=" << (stInterval ? 1 : 0) << "\n";
-    out << "st_laps=" << (stLaps ? 1 : 0) << "\n";
-    out << "st_best=" << (stBest ? 1 : 0) << "\n";
-    out << "st_status=" << (stStatus ? 1 : 0) << "\n";
-    out << "st_bike=" << (stBike ? 1 : 0) << "\n";
-    out << "st_penalty=" << (stPenalty ? 1 : 0) << "\n";
-    out << "st_crashed=" << (stCrashed ? 1 : 0) << "\n";
-    out << "st_order=" << stOrder << "\n";
-    out << "st_w_pos=" << stWPos << "\n";
-    out << "st_w_num=" << stWNum << "\n";
-    out << "st_w_name=" << stWName << "\n";
-    out << "st_w_gap=" << stWGap << "\n";
-    out << "st_w_interval=" << stWInterval << "\n";
-    out << "st_w_laps=" << stWLaps << "\n";
-    out << "st_w_best=" << stWBest << "\n";
-    out << "st_w_status=" << stWStatus << "\n";
-    out << "st_w_bike=" << stWBike << "\n";
-    out << "st_w_penalty=" << stWPenalty << "\n";
-    out << "st_w_crashed=" << stWCrashed << "\n";
-    out << "st_bg=" << stBg << "\n";
-    out << "st_head=" << stHead << "\n";
-    out << "st_foot=" << stFoot << "\n";
-    out << "\n[Relative]\n";
-    out << "rel_num=" << (relNum ? 1 : 0) << "\n";
-    out << "rel_name=" << (relName ? 1 : 0) << "\n";
-    out << "rel_gap=" << (relGap ? 1 : 0) << "\n";
-    out << "rel_pos=" << (relPos ? 1 : 0) << "\n";
-    out << "rel_bike=" << (relBike ? 1 : 0) << "\n";
-    out << "rel_penalty=" << (relPenalty ? 1 : 0) << "\n";
-    out << "rel_interval=" << (relInterval ? 1 : 0) << "\n";
-    out << "rel_crashed=" << (relCrashed ? 1 : 0) << "\n";
-    out << "rel_order=" << relOrder << "\n";
-    out << "rel_w_num=" << relWNum << "\n";
-    out << "rel_w_name=" << relWName << "\n";
-    out << "rel_w_gap=" << relWGap << "\n";
-    out << "rel_w_pos=" << relWPos << "\n";
-    out << "rel_w_bike=" << relWBike << "\n";
-    out << "rel_w_penalty=" << relWPenalty << "\n";
-    out << "rel_w_interval=" << relWInterval << "\n";
-    out << "rel_w_crashed=" << relWCrashed << "\n";
-    out << "rel_bg=" << relBg << "\n";
-    out << "rel_head=" << relHead << "\n";
-    out << "rel_foot=" << relFoot << "\n";
-    out << "\n[Map]\n";
-    out << "map_others=" << (mapOthers ? 1 : 0) << "\n";
-    out << "map_sf=" << (mapSf ? 1 : 0) << "\n";
-    out << "map_name=" << (mapName ? 1 : 0) << "\n";
-    out << "map_numbers=" << (mapNumbers ? 1 : 0) << "\n";
-    out << "map_arrows=" << (mapArrows ? 1 : 0) << "\n";
-    out << "map_crown=" << (mapCrown ? 1 : 0) << "\n";
-    out << "map_place=" << (mapPlace ? 1 : 0) << "\n";
-    out << "map_dot=" << mapDot << "\n";
-    out << "map_bg=" << mapBg << "\n";
-    out << "\n[Minimap]\n";
-    out << "mini_others=" << (miniOthers ? 1 : 0) << "\n";
-    out << "mini_sf=" << (miniSf ? 1 : 0) << "\n";
-    out << "mini_numbers=" << (miniNumbers ? 1 : 0) << "\n";
-    out << "mini_arrows=" << (miniArrows ? 1 : 0) << "\n";
-    out << "mini_crown=" << (miniCrown ? 1 : 0) << "\n";
-    out << "mini_place=" << (miniPlace ? 1 : 0) << "\n";
-    out << "mini_dot=" << miniDot << "\n";
-    out << "mini_bg=" << miniBg << "\n";
-    out << "\n[Radar]\n";
-    out << "radar_sides=" << (radarSides ? 1 : 0) << "\n";
-    out << "radar_rear=" << (radarRear ? 1 : 0) << "\n";
-    out << "radar_bg=" << radarBg << "\n";
-    out << "\n[Dash]\n";
-    out << "dash_left=" << dashLeft << "\n";
-    out << "dash_mid=" << dashMid << "\n";
-    out << "dash_right=" << dashRight << "\n";
-    out << "dash_bg=" << dashBg << "\n";
 }
