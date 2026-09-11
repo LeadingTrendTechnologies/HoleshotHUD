@@ -593,10 +593,12 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         // session HUD instead of blanking at 2.5s; drop after 15s so garage/menus
         // still hide if SHM stops.
         let hitch_hold = in_session && raw_age < 15.0;
+        mxbo_hud::pitboard::set_preview(settings_open || layout_on);
         if live || hitch_hold {
             if let Some(s) = last_snap.as_ref() {
                 mxbo_hud::delta::tick(s);
                 mxbo_hud::sector::tick(s);
+                mxbo_hud::pitboard::tick(s);
             }
         }
         let hud = if overlay_on && (live || hitch_hold || layout_on || (settings_open && in_session))

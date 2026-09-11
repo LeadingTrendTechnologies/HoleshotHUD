@@ -3,6 +3,7 @@ pub mod delta;
 pub mod gamepad;
 pub mod layout;
 pub mod lean;
+pub mod pitboard;
 pub mod telemetry;
 pub mod race_store;
 pub mod render;
@@ -16,4 +17,5 @@ pub use render::{
     set_sys_stats, set_stance, stance_sitting, ClickRider, SysProc,
 };
 pub use gamepad::{set as set_gamepad, PadKind, PadState};
+pub use pitboard::{PitVar, PitWhen};
 pub use snapshot as shm;

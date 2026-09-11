@@ -133,6 +133,14 @@ pub(crate) fn widget_pane_spec(id: WidgetId) -> WidgetPaneSpec {
             bg: Hit::TelemetryBg,
             bg_label: "Panel opacity",
         },
+        WidgetId::Pitboard => WidgetPaneSpec {
+            id,
+            title: "Pit Board",
+            subtitle: "Slots from the plate, pick what each shows",
+            show: Hit::PitShow,
+            bg: Hit::PitBg,
+            bg_label: "Panel opacity",
+        },
     }
 }
 
@@ -813,6 +821,107 @@ pub(crate) fn pane_telemetry(
             y = toggle_nested(px, fonts, x, y, w, "Brake", cfg.telemetry_bar_brake, Hit::TelemetryBarBrake, hover, hits);
             y = toggle_nested(px, fonts, x, y, w, "Throttle", cfg.telemetry_bar_throttle, Hit::TelemetryBarThrottle, hover, hits);
             y = toggle_nested(px, fonts, x, y, w, "Steer", cfg.telemetry_bar_steer, Hit::TelemetryBarSteer, hover, hits);
+        }
+        pane_style(px, fonts, spec, cfg, hover, hits, x, y, w)
+    })
+}
+
+pub(crate) fn pane_pitboard(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    cfg: &HudConfig,
+    hover: Option<Hit>,
+    open_drop: Option<Drop>,
+    hits: &mut Vec<HitBox>,
+    x: f32,
+    y: f32,
+    w: f32,
+) -> f32 {
+    let spec = widget_pane_spec(WidgetId::Pitboard);
+    open_widget_pane(px, fonts, cfg, hover, hits, x, y, w, spec, |px, fonts, y, shown, hits| {
+        let mut y = note_lines(
+            px,
+            fonts,
+            x,
+            y,
+            w,
+            "Make your own: draw a PNG of the plate and leave room for the numbers. Put board.json next to it with a slots list — each slot has name, default, x, y, and size (0 to 1). Open folder writes a starter. Browse the PNG to lock the plate. Each slot then has a menu of the stats in that file. Text cannot be dragged.",
+        );
+        if !shown {
+            return y;
+        }
+        y = section(px, fonts, x, y, "Design");
+        let art = if cfg.pit_art.is_empty() || cfg.pit_art == FACTORY_ART {
+            "Holeshot (holeshot.png + board.json)"
+        } else {
+            cfg.pit_art.as_str()
+        };
+        y = note_lines(px, fonts, x, y, w, art);
+        action_btn(px, fonts, x, y, 132.0, 32.0, "Browse…", Hit::PitBrowse, hover, hits, false);
+        action_btn(px, fonts, x + 144.0, y, 132.0, 32.0, "Reset layout", Hit::PitReset, hover, hits, false);
+        y += 40.0;
+        action_btn(px, fonts, x, y, 160.0, 32.0, "Open folder", Hit::PitOpenFolder, hover, hits, false);
+        y += 40.0;
+        y = toggle_row(px, fonts, x, y, w, "Black text", cfg.pit_text == TableText::Black, Hit::PitTextBlack, hover, hits);
+        y = toggle_row(px, fonts, x, y, w, "White text", cfg.pit_text == TableText::White, Hit::PitTextWhite, hover, hits);
+        y = section(px, fonts, x, y, "When");
+        y = note_lines(
+            px,
+            fonts,
+            x,
+            y,
+            w,
+            "Always shows live values. Sector and lap flash a 5-second snapshot of the sector or lap that just finished.",
+        );
+        y = toggle_row(px, fonts, x, y, w, "Always", cfg.pit_when == PitWhen::Always, Hit::PitWhenAlways, hover, hits);
+        y = toggle_row(px, fonts, x, y, w, "End of each sector", cfg.pit_when == PitWhen::Sector, Hit::PitWhenSector, hover, hits);
+        y = toggle_row(px, fonts, x, y, w, "End of each lap", cfg.pit_when == PitWhen::Lap, Hit::PitWhenLap, hover, hits);
+        y = section(px, fonts, x, y, "Slots");
+        y = note_lines(px, fonts, x, y, w, "One row per slot. The name comes from board.json. Every menu matches Standings header and footer.");
+        let slots = if cfg.pit_vars.len() >= LEGACY_CATALOG {
+            factory_places()
+        } else {
+            cfg.pit_vars.clone()
+        };
+        let names = pack_slot_names(&cfg.pit_art);
+        let menu = slot_menu();
+        for (slot, place) in slots.iter().enumerate() {
+            let i = slot as u8;
+            let title = names
+                .get(slot)
+                .cloned()
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| place.row_label());
+            let value = if !place.show {
+                "None"
+            } else {
+                menu.iter()
+                    .find(|(var, _)| *var == place.var)
+                    .map(|(_, label)| *label)
+                    .unwrap_or_else(|| place.var.label())
+            };
+            let mut options: Vec<(Hit, &'static str, bool)> = vec![(Hit::PitSlotNone(i), "None", !place.show)];
+            options.extend(menu.iter().map(|&(var, label)| {
+                (
+                    Hit::PitSlotPick(i, var.idx()),
+                    label,
+                    place.show && place.var == var,
+                )
+            }));
+            y = dropdown_row(
+                px,
+                fonts,
+                x,
+                y,
+                w,
+                &title,
+                value,
+                open_drop == Some(Drop::PitSlot(i)),
+                Hit::PitSlotOpen(i),
+                &options,
+                hover,
+                hits,
+            );
         }
         pane_style(px, fonts, spec, cfg, hover, hits, x, y, w)
     })

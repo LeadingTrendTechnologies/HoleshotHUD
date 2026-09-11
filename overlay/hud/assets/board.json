@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "background": "holeshot.png",
+  "text": "white",
+  "slots": [
+    { "name": "Name", "default": "name", "x": 0.50, "y": 0.28, "size": 16 },
+    { "name": "Position", "default": "pos", "x": 0.22, "y": 0.46, "size": 16 },
+    { "name": "Laps", "default": "laps", "x": 0.78, "y": 0.46, "size": 16 },
+    { "name": "Last", "default": "last", "x": 0.50, "y": 0.68, "size": 40 },
+    { "name": "Delta", "default": "delta", "x": 0.50, "y": 0.86, "size": 18 }
+  ]
+}

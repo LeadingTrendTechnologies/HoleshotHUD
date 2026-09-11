@@ -81,6 +81,15 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             set_tab(Tab::Telemetry);
             return;
         }
+        Hit::TabPitboard => {
+            set_tab(Tab::Pitboard);
+            update_config(|c| {
+                normalize_places(&mut c.pit_vars);
+                let art = c.pit_art.clone();
+                apply_json_names(&art, &mut c.pit_vars);
+            });
+            return;
+        }
         Hit::PresetCopyOpen => {
             toggle_drop(Drop::PresetCopy);
             return;
@@ -171,6 +180,10 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         }
         Hit::TickerFootOpen(slot) => {
             toggle_drop(Drop::TickerFoot(slot));
+            return;
+        }
+        Hit::PitSlotOpen(slot) => {
+            toggle_drop(Drop::PitSlot(slot));
             return;
         }
         Hit::InfoOpen(bar, slot) => {
@@ -308,6 +321,52 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             }
             return;
         }
+        Hit::PitBrowse => {
+            close_drop();
+            let host = UI.lock().unwrap().as_ref().map(|u| u.host);
+            let Some(host) = host else {
+                return;
+            };
+            if let Some(path) = browse_png(host) {
+                match import_png(&path) {
+                    Ok(name) => {
+                        let pack = load_sidecar(&path);
+                        update_config(|c| {
+                            c.pit_art = name;
+                            if let Some((text, _, places)) = pack {
+                                c.pit_text = text;
+                                c.pit_sponsor.clear();
+                                c.pit_vars = places;
+                                let art = c.pit_art.clone();
+                                apply_json_names(&art, &mut c.pit_vars);
+                            }
+                        });
+                    }
+                    Err(msg) => unsafe {
+                        let mut text: Vec<u16> = msg.encode_utf16().collect();
+                        text.push(0);
+                        let _ = windows::Win32::UI::WindowsAndMessaging::MessageBoxW(
+                            host,
+                            windows::core::PCWSTR(text.as_ptr()),
+                            windows::core::w!("Holeshot HUD"),
+                            windows::Win32::UI::WindowsAndMessaging::MB_OK
+                                | windows::Win32::UI::WindowsAndMessaging::MB_ICONWARNING,
+                        );
+                    },
+                }
+            }
+            return;
+        }
+        Hit::PitOpenFolder => {
+            close_drop();
+            let (art, places, text) = with_config(|c| {
+                (c.pit_art.clone(), c.pit_vars.clone(), c.pit_text)
+            });
+            let _ = write_pack(&art, &places, text);
+            let dir = pitboards_dir();
+            let _ = std::process::Command::new("explorer").arg(dir).spawn();
+            return;
+        }
         Hit::FbRate => {
             close_drop();
             crate::feedback::set_kind(crate::feedback::Kind::Rate);
@@ -377,6 +436,27 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::FlagShow => c[WidgetId::Flag].show ^= true,
         Hit::LeanShow => c[WidgetId::Lean].show ^= true,
         Hit::TelemetryShow => c[WidgetId::Telemetry].show ^= true,
+        Hit::PitShow => c[WidgetId::Pitboard].show ^= true,
+        Hit::PitReset => {
+            let (text, _, places) = factory_pack();
+            c.pit_art = FACTORY_ART.into();
+            c.pit_text = text;
+            c.pit_sponsor.clear();
+            c.pit_vars = places;
+        }
+        Hit::PitTextWhite => c.pit_text = TableText::White,
+        Hit::PitTextBlack => c.pit_text = TableText::Black,
+        Hit::PitWhenAlways => c.pit_when = PitWhen::Always,
+        Hit::PitWhenSector => c.pit_when = PitWhen::Sector,
+        Hit::PitWhenLap => c.pit_when = PitWhen::Lap,
+        Hit::PitSlotPick(slot, i) => {
+            if let Some(var) = PitVar::from_idx(i) {
+                mxbo_hud::pitboard::set_slot_var(&mut c.pit_vars, slot as usize, Some(var));
+            }
+        }
+        Hit::PitSlotNone(slot) => {
+            mxbo_hud::pitboard::set_slot_var(&mut c.pit_vars, slot as usize, None);
+        }
         Hit::TelemetryTraces => c.telemetry_traces = !c.telemetry_traces,
         Hit::TelemetryTraceThrottle => c.telemetry_trace_throttle = !c.telemetry_trace_throttle,
         Hit::TelemetryTraceBrake => c.telemetry_trace_brake = !c.telemetry_trace_brake,
@@ -499,7 +579,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::SectorHistDec => c.sector_hist_laps = (c.sector_hist_laps - 1).max(1),
         Hit::SectorHistInc => c.sector_hist_laps = (c.sector_hist_laps + 1).min(5),
         Hit::TabWidgets | Hit::TabApp | Hit::TabFeedback | Hit::TabSt | Hit::TabRel | Hit::TabMap | Hit::TabMini | Hit::TabRadar | Hit::TabDash
-        | Hit::TabTicker | Hit::TabSys | Hit::TabSector | Hit::TabDelta | Hit::TabStance | Hit::TabFlag | Hit::TabLean | Hit::TabGamepad | Hit::TabTelemetry
+        | Hit::TabTicker | Hit::TabSys | Hit::TabSector | Hit::TabDelta | Hit::TabStance | Hit::TabFlag | Hit::TabLean | Hit::TabGamepad | Hit::TabTelemetry | Hit::TabPitboard
         | Hit::MapDotOpen | Hit::MiniDotOpen | Hit::FontOpen | Hit::UnitsOpen(_) | Hit::StTextOpen | Hit::RelTextOpen
         | Hit::SettingsKeyOpen
         | Hit::StanceBindOpen
@@ -511,6 +591,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::DashFootOpen(_)
         | Hit::TickerFootOpen(_)
         | Hit::InfoOpen(_, _)
+        | Hit::PitSlotOpen(_)
         | Hit::PresetCopyOpen
         | Hit::UpdateCheck | Hit::UpdateInstall | Hit::UpdateBanner | Hit::UpdateBannerDismiss
         | Hit::WhatsNewOpen | Hit::WhatsNewDismiss | Hit::WhatsNewScrim | Hit::WhatsNewPanel
@@ -520,7 +601,8 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::AutoUpdateOnLaunch | Hit::QuitApp | Hit::Uninstall | Hit::GameFolder | Hit::SysAppBrowse
         | Hit::FbRate | Hit::FbBug | Hit::FbFeature | Hit::FbStar(_) | Hit::FbText | Hit::FbAttach | Hit::FbSend
         | Hit::StDrag(_) | Hit::RelDrag(_)
-        | Hit::StBg | Hit::StHl | Hit::RelBg | Hit::RelHl | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarRange | Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg | Hit::FlagBg | Hit::LeanBg | Hit::GamepadBg | Hit::TelemetryBg
+        | Hit::StBg | Hit::StHl | Hit::RelBg | Hit::RelHl | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarRange | Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg | Hit::FlagBg | Hit::LeanBg | Hit::GamepadBg | Hit::TelemetryBg | Hit::PitBg
+        | Hit::PitBrowse | Hit::PitOpenFolder
         | Hit::StW(_) | Hit::RelW(_) | Hit::Font(_) | Hit::StanceReset | Hit::TrackPbClear => {}
     });
     if id == Hit::FeatureSector && !with_config(|c| c.experimental_unlocked()) {

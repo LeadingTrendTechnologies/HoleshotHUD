@@ -117,6 +117,7 @@ const NAMES = {
   lean: "Lean",
   telemetry: "Telemetry",
   gamepad: "Controller",
+  pitboard: "Pit Board",
 };
 
 const canvas = document.getElementById("hud");
@@ -306,6 +307,12 @@ function renderSettings() {
       html += toggleRow("telemetry_bar_steer", "Steer", true);
     }
     html += styleControls("telemetry", "Panel opacity");
+  } else if (w === "pitboard") {
+    html += fieldRow("pit_text", "Text color", [
+      ["white", "White"],
+      ["black", "Black"],
+    ]);
+    html += styleControls("pit", "Panel opacity");
   } else if (w === "stance") {
     html += fieldRow("stance_mode", "Sit", [
       ["toggle", "Toggle"],

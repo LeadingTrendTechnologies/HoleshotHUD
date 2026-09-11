@@ -179,6 +179,7 @@ const WIDGETS: &[(&str, &[&str])] = &[
     ("Dash", &["dash"]),
     ("Lean", &["lean"]),
     ("Telemetry", &["telemetry"]),
+    ("Pit Board", &["pit board"]),
     ("Controller", &["controller", "gamepad"]),
     ("Systems", &["systems"]),
     ("Stance", &["stance"]),

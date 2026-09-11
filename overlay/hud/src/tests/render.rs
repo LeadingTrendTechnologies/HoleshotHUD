@@ -224,21 +224,9 @@ fn assert_golden(name: &str, px: &Pixmap) {
 }
 
 fn hide_widgets(cfg: &mut HudConfig) {
-    cfg[WidgetId::Standings].show = false;
-    cfg[WidgetId::Relative].show = false;
-    cfg[WidgetId::Map].show = false;
-    cfg[WidgetId::Minimap].show = false;
-    cfg[WidgetId::Radar].show = false;
-    cfg[WidgetId::Dash].show = false;
-    cfg[WidgetId::Ticker].show = false;
-    cfg[WidgetId::Sys].show = false;
-    cfg[WidgetId::Sector].show = false;
-    cfg[WidgetId::Delta].show = false;
-    cfg[WidgetId::Stance].show = false;
-    cfg[WidgetId::Flag].show = false;
-    cfg[WidgetId::Lean].show = false;
-    cfg[WidgetId::Gamepad].show = false;
-    cfg[WidgetId::Telemetry].show = false;
+    for id in WidgetId::ALL {
+        cfg[id].show = false;
+    }
 }
 
 fn golden_snap(s: &Snapshot, cfg: &HudConfig) -> Snapshot {
@@ -4957,6 +4945,34 @@ fn telemetry_golden() {
     cfg[WidgetId::Telemetry].rect.w = 0.64;
     cfg[WidgetId::Telemetry].rect.h = 0.20;
     draw_widget_golden("telemetry", &golden_snap(&s, &cfg), &cfg, cfg[WidgetId::Telemetry].rect);
+}
+
+#[test]
+fn pitboard_golden() {
+    let _g = session_lock();
+    reset_session();
+    crate::delta::set_preview(Some(crate::delta::DeltaView {
+        ready: true,
+        recording: false,
+        has_delta: true,
+        delta_ms: -347,
+        ref_lap_ms: 72_140,
+        last_lap_ms: 72_480,
+        cover: 100,
+        new_best: false,
+    }));
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg[WidgetId::Pitboard].show = true;
+    cfg.pit_sponsor = "HOLESHOT".into();
+    let mut s = live_snap();
+    write_name(&mut s.standings[1].name, "You");
+    s.standings[1].num_laps = 4;
+    s.standings[1].last_lap_ms = 95_000;
+    s.session_time_ms = 8 * 60 * 1000;
+    let s = golden_snap(&s, &cfg);
+    draw_widget_golden("pitboard", &s, &cfg, cfg[WidgetId::Pitboard].rect);
+    crate::delta::set_preview(None);
 }
 
 #[test]

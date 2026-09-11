@@ -336,6 +336,8 @@ fn center_widget(cfg: &mut HudConfig, name: &str) {
         size_demo_gamepad(cfg);
     } else if name == "telemetry" {
         size_demo_telemetry(cfg);
+    } else if name == "pitboard" {
+        size_demo_pitboard(cfg);
     } else if let Some(id) = widget_id(name) {
         cfg.snap(id, SnapAlign::Center);
     }
@@ -372,6 +374,13 @@ fn size_demo_telemetry(cfg: &mut HudConfig) {
     cfg.snap(WidgetId::Telemetry, SnapAlign::Center);
 }
 
+fn size_demo_pitboard(cfg: &mut HudConfig) {
+    cfg[WidgetId::Pitboard].rect.w = 0.32;
+    cfg[WidgetId::Pitboard].rect.h = 0.22;
+    cfg.pit_sponsor = "HOLESHOT".into();
+    cfg.snap(WidgetId::Pitboard, SnapAlign::Center);
+}
+
 fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg[WidgetId::Standings].show = name == "standings";
     cfg[WidgetId::Relative].show = name == "relative";
@@ -388,6 +397,7 @@ fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg[WidgetId::Lean].show = name == "lean";
     cfg[WidgetId::Gamepad].show = name == "gamepad";
     cfg[WidgetId::Telemetry].show = name == "telemetry";
+    cfg[WidgetId::Pitboard].show = name == "pitboard";
     cfg.experimental = name == "gamepad";
 }
 
@@ -542,6 +552,7 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "lean_bold" => cfg[WidgetId::Lean].bold,
         "gamepad_bold" => cfg[WidgetId::Gamepad].bold,
         "telemetry_bold" => cfg[WidgetId::Telemetry].bold,
+        "pit_bold" => cfg[WidgetId::Pitboard].bold,
         "telemetry_traces" => cfg.telemetry_traces,
         "telemetry_trace_throttle" => cfg.telemetry_trace_throttle,
         "telemetry_trace_brake" => cfg.telemetry_trace_brake,
@@ -644,6 +655,7 @@ fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
         "telemetry_bar_throttle" => cfg.telemetry_bar_throttle = on,
         "telemetry_bar_steer" => cfg.telemetry_bar_steer = on,
         "telemetry_dial" => cfg.telemetry_dial = on,
+        "pit_bold" => cfg[WidgetId::Pitboard].bold = on,
         "flag_yellow" => cfg.flag_yellow = on,
         "flag_blue" => cfg.flag_blue = on,
         "flag_red" => cfg.flag_red = on,
@@ -694,6 +706,8 @@ fn int_val(cfg: &HudConfig, key: &str) -> Option<i32> {
         "gamepad_bg" => cfg[WidgetId::Gamepad].bg,
         "telemetry_font" => cfg[WidgetId::Telemetry].font,
         "telemetry_bg" => cfg[WidgetId::Telemetry].bg,
+        "pit_font" => cfg[WidgetId::Pitboard].font,
+        "pit_bg" => cfg[WidgetId::Pitboard].bg,
         _ => return None,
     })
 }
@@ -721,6 +735,7 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "lean_bg" => cfg[WidgetId::Lean].bg = value.clamp(0, 100),
         "gamepad_bg" => cfg[WidgetId::Gamepad].bg = value.clamp(0, 100),
         "telemetry_bg" => cfg[WidgetId::Telemetry].bg = value.clamp(0, 100),
+        "pit_bg" => cfg[WidgetId::Pitboard].bg = value.clamp(0, 100),
         "ticker_count" => cfg.ticker_count = value.clamp(3, 15),
         "sector_hist_laps" => cfg.sector_hist_laps = value.clamp(1, 5),
         "st_font" => cfg.set_font_pct(WidgetId::Standings, value),
@@ -738,6 +753,7 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "lean_font" => cfg.set_font_pct(WidgetId::Lean, value),
         "gamepad_font" => cfg.set_font_pct(WidgetId::Gamepad, value),
         "telemetry_font" => cfg.set_font_pct(WidgetId::Telemetry, value),
+        "pit_font" => cfg.set_font_pct(WidgetId::Pitboard, value),
         _ => {}
     }
 }
@@ -765,6 +781,7 @@ fn field_val(cfg: &HudConfig, key: &str) -> Option<String> {
         "mini_dot" => cfg.mini_dot.key().into(),
         "st_text" => cfg.st_text.key().into(),
         "rel_text" => cfg.rel_text.key().into(),
+        "pit_text" => cfg.pit_text.key().into(),
         "stance_mode" => cfg.stance_mode.key().into(),
         "stance_style" => cfg.stance_style.key().into(),
         "lean_style" => cfg.lean_style.key().into(),
@@ -796,6 +813,7 @@ fn set_field(cfg: &mut HudConfig, key: &str, value: &str) {
         "mini_dot" => cfg.mini_dot = DotLabel::parse(value),
         "st_text" => cfg.st_text = TableText::parse(value),
         "rel_text" => cfg.rel_text = TableText::parse(value),
+        "pit_text" => cfg.pit_text = TableText::parse(value),
         "stance_mode" => cfg.stance_mode = StanceMode::parse(value),
         "stance_style" => cfg.stance_style = StanceStyle::parse(value),
         "lean_style" => cfg.lean_style = LeanStyle::parse(value),

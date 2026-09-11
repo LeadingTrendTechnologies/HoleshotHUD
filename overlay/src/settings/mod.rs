@@ -38,6 +38,7 @@ use crate::config::{
     SessionPreset, SettingsKey, SnapAlign, StField, StanceBind, StanceMode, StanceStyle, GamepadStyle, LeanStyle, SYS_PRESETS, SYS_PROC_MAX, TableText, UnitKind, Units, WidgetId, COL_W_MAX,
     COL_W_MIN, RADAR_RANGE_MAX, RADAR_RANGE_MIN,
 };
+use mxbo_hud::pitboard::{apply_json_names, factory_pack, factory_places, import_png, load_sidecar, normalize_places, pack_slot_names, pitboards_dir, slot_menu, write_pack, PitVar, PitWhen, FACTORY_ART, LEGACY_CATALOG};
 use crate::render::{fill_rect, icon, measure, text, Fonts};
 
 mod app;
@@ -271,6 +272,7 @@ pub(crate) enum Tab {
     Lean,
     Gamepad,
     Telemetry,
+    Pitboard,
 }
 
 impl Tab {
@@ -303,6 +305,7 @@ pub(crate) enum Hit {
     TabLean,
     TabGamepad,
     TabTelemetry,
+    TabPitboard,
     Preset(SessionPreset),
     PresetCopyOpen,
     PresetCopyTo(SessionPreset),
@@ -341,6 +344,18 @@ pub(crate) enum Hit {
     LeanShow,
     GamepadShow,
     TelemetryShow,
+    PitShow,
+    PitBrowse,
+    PitReset,
+    PitOpenFolder,
+    PitTextWhite,
+    PitTextBlack,
+    PitWhenAlways,
+    PitWhenSector,
+    PitWhenLap,
+    PitSlotOpen(u8),
+    PitSlotPick(u8, u8),
+    PitSlotNone(u8),
     TelemetryTraces,
     TelemetryTraceThrottle,
     TelemetryTraceBrake,
@@ -432,6 +447,7 @@ pub(crate) enum Hit {
     LeanBg,
     GamepadBg,
     TelemetryBg,
+    PitBg,
     StDec,
     StInc,
     RelDec,
@@ -539,6 +555,7 @@ pub(crate) enum Drop {
     DashFoot(u8),
     TickerFoot(u8),
     Info(InfoBar, u8),
+    PitSlot(u8),
     PresetCopy,
 }
 
@@ -1091,6 +1108,7 @@ fn is_slider(hit: Hit) -> bool {
             | Hit::LeanBg
             | Hit::GamepadBg
             | Hit::TelemetryBg
+            | Hit::PitBg
             | Hit::StW(_)
             | Hit::RelW(_)
             | Hit::Font(_)
@@ -1178,6 +1196,7 @@ fn apply_slide(hit: Hit, mx: f32, x: f32, w: f32, min: i32, max: i32) {
         Hit::LeanBg => c[WidgetId::Lean].bg = v,
         Hit::GamepadBg => c[WidgetId::Gamepad].bg = v,
         Hit::TelemetryBg => c[WidgetId::Telemetry].bg = v,
+        Hit::PitBg => c[WidgetId::Pitboard].bg = v,
         Hit::StW(i) => {
             if let Some(f) = c.st_order.get(i as usize).copied() {
                 f.set_width(c, v);
@@ -1318,6 +1337,8 @@ fn is_drop_pick(hit: Hit) -> bool {
             | Hit::DashFootPick(_, _)
             | Hit::TickerFootPick(_, _)
             | Hit::InfoPick(_, _, _)
+            | Hit::PitSlotPick(_, _)
+            | Hit::PitSlotNone(_)
             | Hit::PresetCopyTo(_)
             | Hit::PresetCopyAll
     )
@@ -1366,6 +1387,18 @@ fn hit_label(hit: Hit) -> String {
         Hit::TabLean => "Lean".into(),
         Hit::TabGamepad => "Controller".into(),
         Hit::TabTelemetry => "Telemetry".into(),
+        Hit::TabPitboard => "Pit Board".into(),
+        Hit::PitBrowse => "Use your PNG. board.json beside it locks the slots.".into(),
+        Hit::PitReset => "Restore the Holeshot slots".into(),
+        Hit::PitOpenFolder => "Plates folder, plus a starter board.json".into(),
+        Hit::PitTextWhite => "White text".into(),
+        Hit::PitTextBlack => "Black text".into(),
+        Hit::PitWhenAlways => "Show the board all the time with live values".into(),
+        Hit::PitWhenSector => "5-second snapshot of the sector that just finished".into(),
+        Hit::PitWhenLap => "5-second snapshot of the lap that just finished".into(),
+        Hit::PitSlotOpen(_) => "What this spot shows".into(),
+        Hit::PitSlotPick(_, i) => PitVar::from_idx(i).map(|v| v.label().into()).unwrap_or_else(|| "Stat".into()),
+        Hit::PitSlotNone(_) => "None".into(),
         Hit::Preset(p) => {
             let (live, active, editing) = with_config(|c| (c.session_live, c.active_preset, c.settings_preset));
             if live && p == active && p != editing {
@@ -1382,12 +1415,12 @@ fn hit_label(hit: Hit) -> String {
         Hit::PresetCopyAll => "Replace all presets with this layout".into(),
         Hit::FeatureSector => "Experimental widgets".into(),
         Hit::StShow | Hit::RelShow | Hit::MapShow | Hit::MiniShow | Hit::RadarShow | Hit::DashShow
-        | Hit::TickerShow | Hit::SysShow | Hit::SectorShow | Hit::DeltaShow | Hit::StanceShow | Hit::FlagShow | Hit::LeanShow | Hit::GamepadShow | Hit::TelemetryShow => "Show on overlay".into(),
+        | Hit::TickerShow | Hit::SysShow | Hit::SectorShow | Hit::DeltaShow | Hit::StanceShow | Hit::FlagShow | Hit::LeanShow | Hit::GamepadShow | Hit::TelemetryShow | Hit::PitShow => "Show on overlay".into(),
         Hit::QuitApp => "Quit overlay".into(),
         Hit::Font(_) => "Font size".into(),
         Hit::Bold(_) => "Bold text".into(),
         Hit::StBg | Hit::RelBg | Hit::MapBg | Hit::MiniBg => "Background".into(),
-        Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg | Hit::FlagBg | Hit::LeanBg | Hit::GamepadBg | Hit::TelemetryBg => "Panel opacity".into(),
+        Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg | Hit::FlagBg | Hit::LeanBg | Hit::GamepadBg | Hit::TelemetryBg | Hit::PitBg => "Panel opacity".into(),
         Hit::StHl | Hit::RelHl => "Row highlight".into(),
         Hit::StStripe | Hit::RelStripe => "Alternating rows".into(),
         Hit::StDec | Hit::StInc => "Rows".into(),
@@ -1670,6 +1703,7 @@ fn nudge_slider(hit: Hit, delta: i32) {
         Hit::LeanBg => c[WidgetId::Lean].bg,
         Hit::GamepadBg => c[WidgetId::Gamepad].bg,
         Hit::TelemetryBg => c[WidgetId::Telemetry].bg,
+        Hit::PitBg => c[WidgetId::Pitboard].bg,
         Hit::StW(i) => c.st_order.get(i as usize).map(|f| f.width(c)).unwrap_or(min),
         Hit::RelW(i) => c.rel_order.get(i as usize).map(|f| f.width(c)).unwrap_or(min),
         Hit::Font(id) => c.font_pct(id),
@@ -1696,6 +1730,7 @@ fn nudge_slider(hit: Hit, delta: i32) {
         Hit::LeanBg => c[WidgetId::Lean].bg = v,
         Hit::GamepadBg => c[WidgetId::Gamepad].bg = v,
         Hit::TelemetryBg => c[WidgetId::Telemetry].bg = v,
+        Hit::PitBg => c[WidgetId::Pitboard].bg = v,
         Hit::StW(i) => {
             if let Some(f) = c.st_order.get(i as usize).copied() {
                 f.set_width(c, v);
@@ -1862,6 +1897,7 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
         Tab::Lean => pane_lean(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
         Tab::Gamepad => pane_gamepad(px, fonts, &cfg, hover, &mut hits, x, py, cw, open_drop),
         Tab::Telemetry => pane_telemetry(px, fonts, &cfg, hover, &mut hits, x, py, cw),
+        Tab::Pitboard => pane_pitboard(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
     };
     if widgets {
         let sticky_bottom = clip_top + 10.0 + PRESET_STRIP_H;
@@ -1963,6 +1999,7 @@ fn widget_short_name(id: WidgetId) -> &'static str {
         WidgetId::Lean => "Lean",
         WidgetId::Gamepad => "Controller",
         WidgetId::Telemetry => "Telemetry",
+        WidgetId::Pitboard => "Pit Board",
     }
 }
 
@@ -2115,6 +2152,7 @@ fn widget_groups(cfg: &HudConfig) -> Vec<(&'static str, Vec<(Tab, Hit, &'static 
         (Tab::Flag, Hit::TabFlag, "Flags", cfg[WidgetId::Flag].show),
         (Tab::Sys, Hit::TabSys, "Systems", cfg[WidgetId::Sys].show),
         (Tab::Stance, Hit::TabStance, "Stance", cfg[WidgetId::Stance].show),
+        (Tab::Pitboard, Hit::TabPitboard, "Pit Board", cfg[WidgetId::Pitboard].show),
     ];
     let mut groups = vec![
         (
@@ -2629,6 +2667,10 @@ fn nav_icon(px: &mut Pixmap, hit: Hit, cx: f32, cy: f32, c: Color) {
             icon_stroke_line(px, cx - 6.0, cy + 2.0, cx - 2.0, cy - 3.2, c, 1.5);
             icon_stroke_line(px, cx - 2.0, cy - 3.2, cx + 1.4, cy + 3.4, c, 1.5);
             icon_stroke_line(px, cx + 1.4, cy + 3.4, cx + 6.2, cy - 2.4, c, 1.5);
+        }
+        Hit::TabPitboard => {
+            fill_round(px, cx - 7.0, cy - 4.6, 14.0, 9.2, 2.2, c);
+            fill_round(px, cx - 3.6, cy - 1.8, 7.2, 3.6, 1.0, Color::from_rgba8(12, 12, 16, 255));
         }
         Hit::QuitApp => {
             icon_stroke_circle(px, cx, cy, 6.2, c);
@@ -3559,6 +3601,29 @@ fn browse_exe(host: HWND) -> Option<String> {
             return None;
         }
         Some(file)
+    }
+}
+
+fn browse_png(host: HWND) -> Option<std::path::PathBuf> {
+    use windows::core::w;
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoTaskMemFree, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
+    };
+    use windows::Win32::UI::Shell::{
+        FileOpenDialog, IFileOpenDialog, FOS_FILEMUSTEXIST, FOS_FORCEFILESYSTEM, FOS_PATHMUSTEXIST,
+        SIGDN_FILESYSPATH,
+    };
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let dlg: IFileOpenDialog = CoCreateInstance(&FileOpenDialog, None, CLSCTX_ALL).ok()?;
+        dlg.SetOptions(FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST | FOS_FORCEFILESYSTEM).ok()?;
+        dlg.SetTitle(w!("Select a pit board picture (PNG)")).ok()?;
+        dlg.Show(host).ok()?;
+        let item = dlg.GetResult().ok()?;
+        let name = item.GetDisplayName(SIGDN_FILESYSPATH).ok()?;
+        let path = name.to_string().ok().filter(|s| !s.is_empty());
+        CoTaskMemFree(Some(name.0 as _));
+        path.map(std::path::PathBuf::from)
     }
 }
 

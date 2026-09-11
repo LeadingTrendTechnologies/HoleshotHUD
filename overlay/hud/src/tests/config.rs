@@ -80,6 +80,7 @@ fn default_hud_hides_every_widget() {
     assert!(!cfg[WidgetId::Lean].show);
     assert!(!cfg[WidgetId::Gamepad].show);
     assert!(!cfg[WidgetId::Telemetry].show);
+    assert!(!cfg[WidgetId::Pitboard].show);
     assert!(cfg.telemetry_traces);
     assert!(cfg.telemetry_trace_throttle);
     assert!(cfg.telemetry_trace_brake);

@@ -49,6 +49,7 @@ mod stance;
 mod lean;
 mod gamepad;
 mod telemetry;
+mod pitboard;
 pub(crate) use standings::*;
 pub(crate) use relative::*;
 pub(crate) use map::*;
@@ -64,6 +65,7 @@ pub(crate) use stance::*;
 pub(crate) use lean::*;
 pub(crate) use gamepad::*;
 pub(crate) use telemetry::*;
+pub(crate) use pitboard::*;
 pub use sys::{SysProc, set_sys_procs, set_sys_stats};
 pub use stance::{set_stance, stance_sitting};
 
@@ -557,6 +559,10 @@ fn draw_widgets(
         let _g = push_style(fonts, cfg[WidgetId::Telemetry].bold, cfg[WidgetId::Telemetry].font);
         draw_telemetry(px, fonts, s, cfg, sw, sh);
     }
+    if crate::pitboard::drawing(cfg[WidgetId::Pitboard].show, cfg.pit_when) {
+        let _g = push_style(fonts, cfg[WidgetId::Pitboard].bold, cfg[WidgetId::Pitboard].font);
+        draw_pitboard(px, fonts, s, cfg, sw, sh);
+    }
 }
 
 fn rr(x: f32, y: f32, w: f32, h: f32) -> Option<Rect> {
@@ -667,6 +673,9 @@ fn draw_layout(px: &mut Pixmap, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32)
     }
     if cfg[WidgetId::Telemetry].show {
         layout_box(px, cfg[WidgetId::Telemetry].rect.x * sw, cfg[WidgetId::Telemetry].rect.y * sh, cfg[WidgetId::Telemetry].rect.w * sw, cfg[WidgetId::Telemetry].rect.h * sh, false);
+    }
+    if cfg[WidgetId::Pitboard].show {
+        layout_box(px, cfg[WidgetId::Pitboard].rect.x * sw, cfg[WidgetId::Pitboard].rect.y * sh, cfg[WidgetId::Pitboard].rect.w * sw, cfg[WidgetId::Pitboard].rect.h * sh, false);
     }
     if cfg[WidgetId::Flag].show {
         layout_box(px, cfg[WidgetId::Flag].rect.x * sw, cfg[WidgetId::Flag].rect.y * sh, cfg[WidgetId::Flag].rect.w * sw, cfg[WidgetId::Flag].rect.h * sh, false);
@@ -2067,7 +2076,7 @@ fn format_fuel_pct(fuel: f32, max_fuel: f32) -> String {
     }
 }
 
-fn board_item(s: &Snapshot, cfg: &HudConfig, field: BoardField) -> Option<(char, String)> {
+pub(crate) fn board_item(s: &Snapshot, cfg: &HudConfig, field: BoardField) -> Option<(char, String)> {
     if field == BoardField::None {
         return None;
     }
@@ -2735,7 +2744,7 @@ fn push_chamfer_tb(pb: &mut PathBuilder, x: f32, y: f32, w: f32, h: f32, top_cut
     pb.close();
 }
 
-fn format_clock(ms: i32) -> String {
+pub(crate) fn format_clock(ms: i32) -> String {
     if ms <= 0 {
         return "--:--.---".into();
     }

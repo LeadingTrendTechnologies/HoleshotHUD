@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "background": "test-plate.png",
+  "text": "black",
+  "sponsor": "TEST PACK",
+  "vars": "sponsor:0.500,0.100,1,14;name:0.220,0.300,1,18;num:0.800,0.300,1,22;last:0.280,0.620,1,36;delta:0.780,0.800,1,20"
+}

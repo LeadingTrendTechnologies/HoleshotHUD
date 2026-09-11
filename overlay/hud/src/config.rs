@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::sync::{LazyLock, Mutex};
 use std::time::SystemTime;
 
+use crate::pitboard::{encode_places, factory_pack, factory_places, parse_places, PitPlace, PitWhen, FACTORY_ART};
 use crate::shm::{Rect, Snapshot};
 
 pub static CONFIG: LazyLock<Mutex<HudConfig>> = LazyLock::new(|| Mutex::new(HudConfig::new()));
@@ -688,10 +689,11 @@ pub enum WidgetId {
     Lean,
     Gamepad,
     Telemetry,
+    Pitboard,
 }
 
 impl WidgetId {
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 16] = [
         Self::Standings,
         Self::Relative,
         Self::Map,
@@ -707,8 +709,9 @@ impl WidgetId {
         Self::Lean,
         Self::Gamepad,
         Self::Telemetry,
+        Self::Pitboard,
     ];
-    pub const COUNT: usize = 15;
+    pub const COUNT: usize = 16;
 
     pub fn idx(self) -> usize {
         self as usize
@@ -741,6 +744,7 @@ impl WidgetId {
             Self::Lean => Rect { x: 0.318, y: 0.755, w: 0.11, h: 0.20 },
             Self::Gamepad => Rect { x: 0.38, y: 0.76, w: 0.24, h: 0.20 },
             Self::Telemetry => Rect { x: 0.22, y: 0.80, w: 0.56, h: 0.145 },
+            Self::Pitboard => Rect { x: 0.34, y: 0.05, w: 0.32, h: 0.22 },
         }
     }
 
@@ -750,6 +754,7 @@ impl WidgetId {
             Self::Radar | Self::Ticker | Self::Stance | Self::Lean => 86,
             Self::Gamepad | Self::Map | Self::Minimap | Self::Delta => 0,
             Self::Dash | Self::Sys | Self::Sector | Self::Telemetry => 82,
+            Self::Pitboard => 86,
             Self::Flag => 100,
         }
     }
@@ -772,6 +777,7 @@ impl WidgetId {
             Self::Lean => WidgetIni { rect: "lean", show: "show_lean", font: "lean_font", bold: "lean_bold", bg: "lean_bg" },
             Self::Gamepad => WidgetIni { rect: "gamepad", show: "show_gamepad", font: "gamepad_font", bold: "gamepad_bold", bg: "gamepad_bg" },
             Self::Telemetry => WidgetIni { rect: "telemetry", show: "show_telemetry", font: "telemetry_font", bold: "telemetry_bold", bg: "telemetry_bg" },
+            Self::Pitboard => WidgetIni { rect: "pitboard", show: "show_pitboard", font: "pit_font", bold: "pit_bold", bg: "pit_bg" },
         }
     }
 }
@@ -1484,6 +1490,12 @@ pub struct HudLayout {
     pub telemetry_bar_steer: bool,
     /// Gear, speed, and RPM dial.
     pub telemetry_dial: bool,
+    pub pit_sponsor: String,
+    pub pit_art: String,
+    pub pit_text: TableText,
+    pub pit_vars: Vec<PitPlace>,
+    /// Always, or flash 5s at each sector end / lap start.
+    pub pit_when: PitWhen,
     /// Process rows on Systems. Built-ins stay; extras can be added and removed.
     pub sys_apps: Vec<SysApp>,
     pub st_order: Vec<StField>,
@@ -1616,6 +1628,11 @@ impl HudLayout {
             telemetry_bar_throttle: true,
             telemetry_bar_steer: false,
             telemetry_dial: true,
+            pit_sponsor: factory_pack().1,
+            pit_art: FACTORY_ART.into(),
+            pit_text: factory_pack().0,
+            pit_vars: factory_places(),
+            pit_when: PitWhen::Always,
             sys_apps: default_sys_apps(),
             st_order: StField::ALL.to_vec(),
             rel_order: RelField::ALL.to_vec(),
@@ -1879,6 +1896,7 @@ impl HudConfig {
         }
         for layout in &mut cfg.layouts {
             layout.migrate_rects();
+            crate::pitboard::normalize_places(&mut layout.pit_vars);
         }
         if !saw_first_install || cfg.first_install_version.is_empty() {
             cfg.first_install_version = "unknown".into();
@@ -2358,6 +2376,11 @@ fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last
         "telemetry_bar_throttle" => cfg.telemetry_bar_throttle = b,
         "telemetry_bar_steer" => cfg.telemetry_bar_steer = b,
         "telemetry_dial" => cfg.telemetry_dial = b,
+        "pit_sponsor" => cfg.pit_sponsor = val.trim().to_string(),
+        "pit_art" => cfg.pit_art = val.trim().to_string(),
+        "pit_text" => cfg.pit_text = TableText::parse(val),
+        "pit_vars" => cfg.pit_vars = parse_places(val),
+        "pit_when" => cfg.pit_when = PitWhen::parse(val),
         _ => {}
     }
 }
@@ -2417,6 +2440,7 @@ fn layout_ini(l: &HudLayout) -> String {
     let lean = l[WidgetId::Lean];
     let gamepad = l[WidgetId::Gamepad];
     let telemetry = l[WidgetId::Telemetry];
+    let pit = l[WidgetId::Pitboard];
     format!(
         "standings_x={}\nstandings_y={}\nstandings_w={}\nstandings_h={}\n\
          relative_x={}\nrelative_y={}\nrelative_w={}\nrelative_h={}\n\
@@ -2433,9 +2457,10 @@ fn layout_ini(l: &HudLayout) -> String {
          lean_x={}\nlean_y={}\nlean_w={}\nlean_h={}\n\
          gamepad_x={}\ngamepad_y={}\ngamepad_w={}\ngamepad_h={}\n\
          telemetry_x={}\ntelemetry_y={}\ntelemetry_w={}\ntelemetry_h={}\n\
+         pitboard_x={}\npitboard_y={}\npitboard_w={}\npitboard_h={}\n\
          show_standings={}\nshow_relative={}\nshow_map={}\nshow_minimap={}\nshow_radar={}\n\
          show_dash={}\nshow_ticker={}\nshow_sys={}\nshow_sector={}\nshow_delta={}\n\
-         show_stance={}\nshow_flag={}\nshow_lean={}\nshow_gamepad={}\nshow_telemetry={}\n\
+         show_stance={}\nshow_flag={}\nshow_lean={}\nshow_gamepad={}\nshow_telemetry={}\nshow_pitboard={}\n\
          standings_rows={}\nrelative_count={}\nticker_count={}\n\
          st_pos={}\nst_num={}\nst_name={}\nst_gap={}\nst_interval={}\nst_laps={}\nst_current={}\n\
          st_best={}\nst_last={}\nst_status={}\nst_bike={}\nst_penalty={}\nst_crashed={}\n\
@@ -2472,7 +2497,9 @@ fn layout_ini(l: &HudLayout) -> String {
          telemetry_traces={}\ntelemetry_trace_throttle={}\ntelemetry_trace_brake={}\ntelemetry_trace_steer={}\n\
          telemetry_bars={}\ntelemetry_bar_clutch={}\ntelemetry_bar_brake={}\ntelemetry_bar_throttle={}\ntelemetry_bar_steer={}\n\
          telemetry_dial={}\n\
-         telemetry_bg={}\ntelemetry_font={}\ntelemetry_bold={}",
+         telemetry_bg={}\ntelemetry_font={}\ntelemetry_bold={}\n\
+         pit_sponsor={}\npit_art={}\npit_text={}\npit_vars={}\npit_when={}\n\
+         pit_bg={}\npit_font={}\npit_bold={}",
         st.rect.x, st.rect.y, st.rect.w, st.rect.h,
         rel.rect.x, rel.rect.y, rel.rect.w, rel.rect.h,
         map.rect.x, map.rect.y, map.rect.w, map.rect.h,
@@ -2488,9 +2515,10 @@ fn layout_ini(l: &HudLayout) -> String {
         lean.rect.x, lean.rect.y, lean.rect.w, lean.rect.h,
         gamepad.rect.x, gamepad.rect.y, gamepad.rect.w, gamepad.rect.h,
         telemetry.rect.x, telemetry.rect.y, telemetry.rect.w, telemetry.rect.h,
+        pit.rect.x, pit.rect.y, pit.rect.w, pit.rect.h,
         b(st.show), b(rel.show), b(map.show), b(mini.show), b(radar.show),
         b(dash.show), b(ticker.show), b(sys.show), b(sector.show), b(delta.show),
-        b(stance.show), b(flag.show), b(lean.show), b(gamepad.show), b(telemetry.show),
+        b(stance.show), b(flag.show), b(lean.show), b(gamepad.show), b(telemetry.show), b(pit.show),
         l.standings_rows, l.relative_count, l.ticker_count,
         b(l.st_pos), b(l.st_num), b(l.st_name), b(l.st_gap), b(l.st_interval), b(l.st_laps), b(l.st_current),
         b(l.st_best), b(l.st_last), b(l.st_status), b(l.st_bike), b(l.st_penalty), b(l.st_crashed),
@@ -2528,11 +2556,26 @@ fn layout_ini(l: &HudLayout) -> String {
         b(l.telemetry_bars), b(l.telemetry_bar_clutch), b(l.telemetry_bar_brake), b(l.telemetry_bar_throttle), b(l.telemetry_bar_steer),
         b(l.telemetry_dial),
         telemetry.bg, telemetry.font, b(telemetry.bold),
+        ini_line(&l.pit_sponsor),
+        ini_line(&l.pit_art),
+        l.pit_text.key(),
+        encode_places(&l.pit_vars),
+        l.pit_when.key(),
+        pit.bg, pit.font, b(pit.bold),
     )
 }
 
 fn b(v: bool) -> i32 {
     i32::from(v)
+}
+
+fn ini_line(s: &str) -> String {
+    s.chars()
+        .map(|c| match c {
+            '\n' | '\r' | '=' => ' ',
+            c => c,
+        })
+        .collect()
 }
 
 fn clamp_w(val: &str) -> i32 {

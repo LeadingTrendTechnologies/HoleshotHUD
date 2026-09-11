@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+### Overlay
+
+- Factory Pit Board has six slots. Empty values stay blank instead of `--`.
+- Pit Board `board.json` lists the slots (default, size, place). After Browse, F8 has one menu per slot to change the value.
+- Factory **Pit Board** is Hero Stack: night-ink glass, top handle holes, last lap and signed delta as the heroes.
+- Pit Board text cannot be dragged. A custom plate locks slot positions from `board.json` next to the PNG.
+- F8 Pit Board now has steps to make your own plate.
+- Pit Board no longer has a sponsor field in F8. A pack can still set it from `board.json`.
+- Pit Board can show always, for 5 seconds at the end of each sector, or for 5 seconds at the start of each lap.
+- Factory Pit Board is `holeshot.png` plus `board.json`, same as a custom pack.
+- Pit Board Always keeps running times. Sector and lap flashes are snapshots of that sector or the last lap.
+- Pit Board F8 slot menus match `board.json`. Sponsor is painted on the PNG, not a JSON field.
+- Pit Board Slots shows one row per `board.json` slot. An old 29-stat list is collapsed to the pack.
+- Pit Board F8 row titles come from each slot’s `name` in `board.json`.
+- Every Pit Board slot menu uses the same stats as Standings header and footer.
+- Pit Board Always stays live. Sector and lap flash a snapshot of the sector or lap that just finished.
+
+## 0.11.0
+
+A pit board you fill from F8. Tick stats, drag them, or drop your own plate picture.
+
+### Overlay
+
+- New **Pit Board** widget. Hidden until Show on overlay. Factory look is the usual glass plaque with last lap and delta as the big numbers.
+- F8, Pit Board: Browse a PNG, tick stats by name, White or Black text, Set a sponsor. While that page is open, drag the numbers on the overlay to place them.
+- **Open folder** writes a board.json next to your plate so you can share a design.
+
 ## 0.10.2
 
 The HUD starts with MX Bikes again after you Quit overlay.

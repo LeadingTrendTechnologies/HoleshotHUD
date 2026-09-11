@@ -59,6 +59,7 @@ Rust overlay structure and possible refactors (suggestions only): **[rust-patter
 - [Stance](widgets/stance.md): sit / stand from a local bind (not plugin telemetry)
 - [Lean](widgets/lean.md): bike roll, pitch, and steer on the bike; spectate follows camera lean. Figure or Minimal (numbers).
 - [Controller](widgets/gamepad.md): live local pad (sticks, analog triggers, bumpers, buttons). Labs. Not plugin telemetry.
+- [Pit Board](widgets/pitboard.md): last lap, delta, and any other stats you tick; optional PNG plate
 
 Local speed / yaw / crash / track pos are in SHM for the moving marker, not as their own widgets yet.
 

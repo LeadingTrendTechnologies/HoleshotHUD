@@ -105,6 +105,20 @@ fn main() {
             mxbo_hud::telemetry::seed_corner();
             size_show(c, "telemetry", 0.62, 0.18);
         }),
+        ("pitboard.png", W, H, |c| {
+            size_show(c, "pitboard", 0.28, 0.26);
+            c.pit_sponsor = "HOLESHOT".into();
+            mxbo_hud::delta::set_preview(Some(mxbo_hud::delta::DeltaView {
+                ready: true,
+                recording: false,
+                has_delta: true,
+                delta_ms: -347,
+                ref_lap_ms: 72_140,
+                last_lap_ms: 72_480,
+                cover: 100,
+                new_best: false,
+            }));
+        }),
         ("hero.png", W, HERO_H, layout_hero),
     ];
 
@@ -186,6 +200,7 @@ fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg[WidgetId::Lean].show = name == "lean";
     cfg[WidgetId::Gamepad].show = name == "gamepad";
     cfg[WidgetId::Telemetry].show = name == "telemetry";
+    cfg[WidgetId::Pitboard].show = name == "pitboard";
 }
 
 fn size_show(cfg: &mut HudConfig, name: &str, w: f32, h: f32) {
@@ -205,6 +220,7 @@ fn size_show(cfg: &mut HudConfig, name: &str, w: f32, h: f32) {
         "lean" => WidgetId::Lean,
         "gamepad" => WidgetId::Gamepad,
         "telemetry" => WidgetId::Telemetry,
+        "pitboard" => WidgetId::Pitboard,
         _ => return,
     };
     cfg[id].rect.w = w;
