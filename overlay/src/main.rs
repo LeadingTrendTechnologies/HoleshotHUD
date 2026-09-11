@@ -71,7 +71,7 @@ pub(crate) fn quit_app() {
     if QUITTING.swap(true, Ordering::SeqCst) {
         return;
     }
-    crate::startup::kill_other_hud_processes();
+    crate::startup::handover_game_waiter();
     crate::tray::remove();
     crate::compat::stop_background_threads();
     unsafe {
@@ -189,13 +189,16 @@ fn main() {
         crate::compat::wait_then_restore_taskbar(pid);
         return;
     }
-    if std::env::args().any(|a| a == "--wait-for-game") {
+    let wait_for_game = std::env::args().any(|a| a == "--wait-for-game");
+    if wait_for_game {
         crate::startup::wait_for_mx_bikes();
     } else if !crate::startup::take_hud_instance() {
         return;
     }
     let loaded = crate::config::HudConfig::load_file();
-    if loaded.auto_update_on_launch && crate::update::apply_on_launch() {
+    // Waiter path: show the HUD as soon as MX Bikes is up. Do not block on GitHub.
+    if loaded.auto_update_on_launch && !wait_for_game && crate::update::apply_on_launch() {
+        crate::startup::handover_game_waiter();
         return;
     }
     if !loaded.auto_update_on_launch {
@@ -258,6 +261,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
     set_host(host);
     crate::settings::attach(host);
     crate::startup::sync_from_config();
+    crate::startup::ensure_game_waiter();
     apply_window_icons(host, icon_big, icon_small);
     crate::tray::add(host, icon_small);
     let start_minimized = std::env::args().any(|a| a == "--minimized" || a == "--wait-for-game");

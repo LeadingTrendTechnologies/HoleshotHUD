@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.10.2
+
+The HUD starts with MX Bikes again after you Quit overlay.
+
+### Overlay
+
+- **Open when MX Bikes opens** still starts the HUD on the next race after Quit overlay or an update. You do not need to reboot.
+
 ## 0.10.1
 
 ### Internals

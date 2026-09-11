@@ -1,7 +1,7 @@
 use std::mem::size_of;
 use std::os::windows::process::CommandExt;
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicIsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use std::time::Duration;
 
 use windows::core::w;
@@ -16,7 +16,8 @@ use windows::Win32::System::Registry::{
     KEY_SET_VALUE, REG_OPTION_NON_VOLATILE, REG_SZ,
 };
 use windows::Win32::System::Threading::{
-    CreateMutexW, OpenProcess, TerminateProcess, PROCESS_TERMINATE,
+    CreateMutexW, OpenProcess, TerminateProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE,
+    PROCESS_TERMINATE,
 };
 
 const RUN_KEY: windows::core::PCWSTR = w!("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
@@ -32,11 +33,14 @@ const TASKBAR_MUTEX_NAME: windows::core::PCWSTR = w!("Local\\HoleshotHUD-taskbar
 static HUD_MUTEX: AtomicIsize = AtomicIsize::new(0);
 static WAIT_MUTEX: AtomicIsize = AtomicIsize::new(0);
 static TASKBAR_MUTEX: AtomicIsize = AtomicIsize::new(0);
+static STARTUP_OFF: AtomicBool = AtomicBool::new(false);
 
 pub fn set_enabled(on: bool) {
     if on {
+        STARTUP_OFF.store(false, Ordering::SeqCst);
         sync_from_config();
     } else {
+        STARTUP_OFF.store(true, Ordering::SeqCst);
         remove_value(RUN_HUD);
         remove_value(RUN_GAME);
     }
@@ -63,6 +67,28 @@ pub fn wait_for_mx_bikes() {
         }
         std::thread::sleep(Duration::from_millis(400));
     }
+}
+
+/// Keep a `--wait-for-game` child after this overlay exits (Quit / update).
+pub fn handover_game_waiter() {
+    kill_other_hud_processes();
+    if should_leave_game_waiter(
+        crate::config::with_config(|c| c.open_with_game),
+        STARTUP_OFF.load(Ordering::SeqCst),
+    ) {
+        spawn_game_waiter();
+    }
+}
+
+/// Start a waiter if the setting is on and one is not already running.
+pub fn ensure_game_waiter() {
+    if crate::config::with_config(|c| c.open_with_game) {
+        spawn_game_waiter();
+    }
+}
+
+fn should_leave_game_waiter(open_with_game: bool, startup_off: bool) -> bool {
+    open_with_game && !startup_off
 }
 
 /// Detached `--wait-for-game` child. Survives this process exiting.
@@ -142,8 +168,10 @@ pub fn kill_other_hud_processes() {
         }
         let _ = CloseHandle(snap);
         for pid in pids {
-            if let Ok(proc) = OpenProcess(PROCESS_TERMINATE, false, pid) {
+            let access = PROCESS_TERMINATE | PROCESS_SYNCHRONIZE;
+            if let Ok(proc) = OpenProcess(access, false, pid) {
                 let _ = TerminateProcess(proc, 0);
+                let _ = WaitForSingleObject(proc, 2000);
                 let _ = CloseHandle(proc);
             }
         }
@@ -283,3 +311,7 @@ fn release(slot: &AtomicIsize) {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "tests/startup.rs"]
+mod tests;
