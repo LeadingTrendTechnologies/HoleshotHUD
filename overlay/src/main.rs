@@ -190,8 +190,13 @@ fn main() {
         return;
     }
     let wait_for_game = std::env::args().any(|a| a == "--wait-for-game");
+    let hud_exe = crate::startup::hud_launch_exe();
     if wait_for_game {
         crate::startup::wait_for_mx_bikes();
+        if let Some(exe) = hud_exe {
+            let _ = std::process::Command::new(&exe).spawn();
+            return;
+        }
     } else if !crate::startup::take_hud_instance() {
         return;
     }

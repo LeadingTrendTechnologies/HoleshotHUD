@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.10.3
+
+Quit overlay unlocks the HUD exe, and the next MX Bikes start still opens the overlay.
+
+### Overlay
+
+- **Quit overlay** exits and unlocks `Holeshot-HUD.exe`. If **Open when MX Bikes opens** is on, a temp helper starts the HUD again the next time MX Bikes launches (after this session of the game ends). If MX Bikes is still open, another temp helper keeps the taskbar hidden on the game screen until you tab out or close the game.
+
 ## 0.10.2
 
 The HUD starts with MX Bikes again after you Quit overlay.

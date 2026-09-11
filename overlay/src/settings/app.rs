@@ -169,7 +169,7 @@ pub(crate) fn pane_app(
     }
     y = toggle_row(px, fonts, x, y, w, "Open when MX Bikes opens", cfg.open_with_game, Hit::OpenWithGame, hover, hits);
     if cfg.open_with_game {
-        text(px, fonts, "Starts the overlay in the tray when MX Bikes launches, including after you close the game. F8 or the HUD mark opens settings.", 11.0, x + 4.0, y + 2.0, dim(), false);
+        text(px, fonts, "Starts the overlay in the tray when MX Bikes launches, including after a reboot or after you Quit overlay. F8 or the HUD mark opens settings.", 11.0, x + 4.0, y + 2.0, dim(), false);
         y += 22.0;
     }
     y = section(px, fonts, x, y, "Labs");

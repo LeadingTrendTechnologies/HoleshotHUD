@@ -1,5 +1,6 @@
 use std::mem::size_of;
 use std::os::windows::process::CommandExt;
+use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use std::time::Duration;
@@ -53,31 +54,52 @@ pub fn sync_from_config() {
 }
 
 pub fn wait_for_mx_bikes() {
+    wait_for_mx_bikes_with(hud_launch_exe().is_some());
+}
+
+fn wait_for_mx_bikes_with(next_session: bool) {
     if !claim_named(WAIT_MUTEX_NAME, &WAIT_MUTEX) {
         std::process::exit(0);
+    }
+    if next_session {
+        while mx_bikes_pid().is_some() {
+            if !mxbo_hud::config::HudConfig::load_file().open_with_game {
+                release(&WAIT_MUTEX);
+                std::process::exit(0);
+            }
+            std::thread::sleep(Duration::from_millis(400));
+        }
     }
     loop {
         if !mxbo_hud::config::HudConfig::load_file().open_with_game {
             release(&WAIT_MUTEX);
             std::process::exit(0);
         }
-        if mx_bikes_pid().is_some() && claim_hud_instance() {
-            release(&WAIT_MUTEX);
-            return;
+        if mx_bikes_pid().is_some() {
+            if next_session || claim_hud_instance() {
+                release(&WAIT_MUTEX);
+                return;
+            }
         }
         std::thread::sleep(Duration::from_millis(400));
     }
 }
 
-/// Keep a `--wait-for-game` child after this overlay exits (Quit / update).
+fn should_leave_game_waiter(open_with_game: bool, startup_off: bool) -> bool {
+    open_with_game && !startup_off
+}
+
+/// After Quit / update: leave a temp waiter so the next MX Bikes start
+/// opens the HUD, without locking `Holeshot-HUD.exe`.
 pub fn handover_game_waiter() {
     kill_other_hud_processes();
-    if should_leave_game_waiter(
+    if !should_leave_game_waiter(
         crate::config::with_config(|c| c.open_with_game),
         STARTUP_OFF.load(Ordering::SeqCst),
     ) {
-        spawn_game_waiter();
+        return;
     }
+    spawn_handover_waiter();
 }
 
 /// Start a waiter if the setting is on and one is not already running.
@@ -85,10 +107,6 @@ pub fn ensure_game_waiter() {
     if crate::config::with_config(|c| c.open_with_game) {
         spawn_game_waiter();
     }
-}
-
-fn should_leave_game_waiter(open_with_game: bool, startup_off: bool) -> bool {
-    open_with_game && !startup_off
 }
 
 /// Detached `--wait-for-game` child. Survives this process exiting.
@@ -110,15 +128,82 @@ pub fn spawn_game_waiter() {
         .spawn();
 }
 
-/// Detached `--restore-taskbar` child. Survives this process exiting.
+fn spawn_handover_waiter() {
+    let Ok(src) = std::env::current_exe() else {
+        return;
+    };
+    let helper = std::env::temp_dir().join(format!(
+        "holeshot-wait-{}-{}.exe",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0)
+    ));
+    if std::fs::copy(&src, &helper).is_err() {
+        spawn_game_waiter();
+        return;
+    }
+    let _ = Command::new(&helper)
+        .arg("--wait-for-game")
+        .arg("--hud-exe")
+        .arg(&src)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(
+            DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB,
+        )
+        .spawn();
+}
+
+/// Real HUD path passed to a temp `--wait-for-game` helper.
+pub fn hud_launch_exe() -> Option<PathBuf> {
+    let mut args = std::env::args();
+    while let Some(a) = args.next() {
+        if a == "--hud-exe" {
+            return args.next().as_deref().and_then(sanitize_hud_exe);
+        }
+    }
+    None
+}
+
+fn sanitize_hud_exe(p: &str) -> Option<PathBuf> {
+    let path = PathBuf::from(p);
+    if path.as_os_str().is_empty() {
+        return None;
+    }
+    if path.components().any(|c| matches!(c, Component::ParentDir)) {
+        return None;
+    }
+    let name = path.file_name()?.to_str()?.to_ascii_lowercase();
+    if name != "holeshot-hud.exe" {
+        return None;
+    }
+    if !Path::new(p).is_file() {
+        return None;
+    }
+    Some(path)
+}
+
+/// Temp-copy `--restore-taskbar` child. Survives this process exiting
+/// without locking `Holeshot-HUD.exe`.
 pub fn spawn_taskbar_restorer(pid: u32) -> bool {
     if mutex_held(TASKBAR_MUTEX_NAME) {
         return true;
     }
-    let Ok(exe) = std::env::current_exe() else {
+    let Ok(src) = std::env::current_exe() else {
         return false;
     };
-    Command::new(&exe)
+    let helper = std::env::temp_dir().join(format!(
+        "holeshot-taskbar-{}-{}.exe",
+        pid,
+        std::process::id()
+    ));
+    if std::fs::copy(&src, &helper).is_err() {
+        return false;
+    }
+    Command::new(&helper)
         .arg("--restore-taskbar")
         .arg(pid.to_string())
         .stdin(Stdio::null())

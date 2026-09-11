@@ -173,8 +173,9 @@ pub fn overlay_screen_rect(hwnd: HWND) -> Option<(i32, i32, i32, i32)> {
     }
 }
 
-/// Undo a leftover 1px shrink from older builds and keep the taskbar off
-/// a borderless game until MX Bikes exits.
+/// Undo a leftover 1px shrink from older builds. If MX Bikes is still up,
+/// a temp helper keeps the game-monitor bar hidden until you tab out or
+/// the game exits — Quit overlay must not force the bar over other apps.
 pub fn on_quit(game: Option<HWND>, game_pid: Option<u32>) {
     unsafe {
         hide_hud_overlays();
@@ -628,7 +629,7 @@ impl Drop for FullscreenFix {
 }
 
 unsafe fn restore_desktop(overlay: HWND) {
-    show_taskbars();
+    restore_all_taskbars_async();
     let _ = ShowWindow(overlay, SW_HIDE);
 }
 
