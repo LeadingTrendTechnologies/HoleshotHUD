@@ -10,7 +10,8 @@ use windows::Win32::System::Diagnostics::ToolHelp::{
 use windows::Win32::System::ProcessStatus::{K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
 use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
 use windows::Win32::System::Threading::{
-    GetCurrentProcess, GetProcessTimes, GetSystemTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    GetCurrentProcess, GetProcessTimes, GetSystemTimes, OpenProcess,
+    PROCESS_QUERY_LIMITED_INFORMATION,
 };
 
 use crate::gpu::Gpu;
@@ -105,7 +106,9 @@ impl Sampler {
         let shown: Vec<&SysApp> = apps.iter().filter(|a| a.show).take(SYS_PROC_MAX).collect();
         let keys: Vec<String> = shown.iter().map(|a| a.key.clone()).collect();
         let now = Instant::now();
-        let stale = self.last_sample.is_some_and(|t| now.duration_since(t) < Duration::from_millis(500));
+        let stale = self
+            .last_sample
+            .is_some_and(|t| now.duration_since(t) < Duration::from_millis(500));
         if stale && keys == self.watch_keys {
             self.push(&shown);
             return;
@@ -491,7 +494,12 @@ fn reshade_game_dir_mb(pid: u32) -> Option<f32> {
             let hook = name.contains("reshade") && name.ends_with(".dll")
                 || matches!(
                     name.as_str(),
-                    "opengl32.dll" | "dxgi.dll" | "d3d9.dll" | "d3d10.dll" | "d3d11.dll" | "d3d12.dll"
+                    "opengl32.dll"
+                        | "dxgi.dll"
+                        | "d3d9.dll"
+                        | "d3d10.dll"
+                        | "d3d11.dll"
+                        | "d3d12.dll"
                 );
             if !hook {
                 continue;

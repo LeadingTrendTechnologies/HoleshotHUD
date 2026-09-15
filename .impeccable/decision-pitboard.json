@@ -1,0 +1,134 @@
+{
+  "title": "Choose the Pit Board layout",
+  "question": "Three compositions in Broadcast Booth Glass. Same job: glance last lap and delta at race speed, with name and place as support. Custom PNG art still skins whichever layout you lock. A depth-dive structure sits in the re-roll pool.",
+  "options": [
+    {
+      "id": "assigned",
+      "label": "Vertical Staff",
+      "kicker": "THE ROLL",
+      "thesis": "Last lap sits on the baseline; delta rises above it like a split on a vertical staff.",
+      "palette": ["#0A0A0A", "#FF9430", "#E4E4E6", "#30DC58", "#FF4048"],
+      "materials": ["night-ink glass plaque", "Exo 2 ExtraBold Italic", "6px corners", "orange skew bug"],
+      "viewport": "Tall plaque. Dim You / HOLESHOT at the top. Huge 01:35.000 on the baseline. Green -0.347 stacked above. Orange P2 bug on the staff.",
+      "risk": "Can read as Sectors stood on end; slower than a board held at chest height.",
+      "raised": [
+        { "from": "Elbow Panel", "raise": "Each shown stat is its own cell; hiding one leaves no empty dashes." },
+        { "from": "ASCII Scene", "raise": "Pending times stay as ghost digits, never blank holes." }
+      ],
+      "comp": ".impeccable/mocks/decision/pitboard-assigned.png"
+    },
+    {
+      "id": "model-pick",
+      "label": "Hero Stack",
+      "kicker": "IMPECCABLE’S PICK",
+      "thesis": "A glass pit board: identity, then place, then huge last and signed delta.",
+      "palette": ["#0A0A0A", "#FF9430", "#E4E4E6", "#30DC58", "#FF4048"],
+      "materials": ["rounded night-ink plate", "handle holes", "orange hairline rim", "Exo 2 ExtraBold Italic"],
+      "viewport": "Rounded plate, two holes. HOLESHOT / You on top. P2 · session · laps mid. 01:35.000 then -0.347 as the heroes.",
+      "risk": "This is the familiar MX pit-board reading — most runs in this category land here.",
+      "comp": ".impeccable/mocks/decision/pitboard-pick.png"
+    },
+    {
+      "id": "hair-delta",
+      "label": "Hair Delta",
+      "thesis": "The board is a Delta Bar with a last-lap caption — Hair family, not a plate.",
+      "palette": ["#0A0A0A", "#FF9430", "#E4E4E6", "#30DC58", "#FF4048"],
+      "materials": ["no plaque", "2px center-zero hairline", "huge ExtraBold Italic", "night-ink caption pills"],
+      "viewport": "Wide lockup. Huge -0.347. Last 01:35.000 as supporting type. You and P2 as dim end caps. Green left of zero, red right.",
+      "risk": "Two delta widgets on screen if Delta Bar is also on.",
+      "comp": ".impeccable/mocks/decision/pitboard-hair.png"
+    },
+    {
+      "id": "stamp-grid",
+      "label": "Stamp Grid",
+      "thesis": "Every ticked stat is a postage-stamp cell in a tight grid.",
+      "palette": ["#0A0A0A", "#FF9430", "#E4E4E6", "#30DC58", "#84848A"],
+      "materials": ["night-ink 6px cells", "1px hairline gaps", "Exo 2 ExtraBold Italic"],
+      "viewport": "2×3 cells: You, P2, 01:35.000, -0.347, L4, session. Last and delta slightly larger, still cells.",
+      "risk": "Equal cells fight the glance; last and delta stop being heroes.",
+      "comp": ".impeccable/mocks/decision/pitboard-stamp.png"
+    },
+    {
+      "id": "challenger-seven-segment",
+      "label": "Digit Mask",
+      "verdict": "wins",
+      "lineage": "seven-segment clocks and scoreboards",
+      "thesis": "Last lap is a rigid digit mask; unlit slots stay as ghosts.",
+      "palette": ["#0A0A0A", "#FF9430", "#E4E4E6", "#30DC58", "#2A2A2E"],
+      "materials": ["night-ink plaque", "fixed digit slots", "ghost unlit cells", "Exo 2 ExtraBold Italic"],
+      "viewport": "01:35.000 in fixed slots, dim ghosts in unused cells. Signed -0.347 in a cell beside. You and P2 as captions.",
+      "case": "Beats the staff on glance and MX identification: a pit board is times.",
+      "risk": "Can look like a clock if the identity captions vanish.",
+      "comp": ".impeccable/mocks/decision/pitboard-digits.png",
+      "hero": "https://impeccable.style/worlds/cards/signals-instruments-seven-segment-alarm-clock-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/signals-instruments-seven-segment-alarm-clock.webp"
+    },
+    {
+      "id": "challenger-wayfinding",
+      "label": "Band Signs",
+      "verdict": "competitive",
+      "lineage": "airport overhead wayfinding",
+      "thesis": "One fact per band. Last is the monumental gate number.",
+      "palette": ["#0A0A0A", "#FF9430", "#E4E4E6", "#30DC58", "#84848A"],
+      "materials": ["stacked night-ink bands", "monumental ExtraBold Italic", "orange P# bug only"],
+      "viewport": "Three stacked bands. Huge 01:35.000. Delta band. P2 as the orange bug. You as a dim caption.",
+      "case": "Holds clarity: one message per line, like a junction sign.",
+      "risk": "Three bands can read as a settings list, not a crew board.",
+      "comp": ".impeccable/mocks/decision/pitboard-bands.png",
+      "hero": "https://impeccable.style/worlds/cards/wayfinding-cartography-signage-terminal-yellow-wayfinding-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/wayfinding-cartography-signage-terminal-yellow-wayfinding.webp"
+    },
+    {
+      "id": "challenger-elbow",
+      "label": "Elbow Pills",
+      "verdict": "declined",
+      "lineage": "starship elbow-panel consoles",
+      "thesis": "Thick elbows frame ranked pills; each pill is one stat.",
+      "palette": ["#0A0A0A", "#FF9430", "#E4E4E6", "#C48424"],
+      "materials": ["pill-cornered night-ink banks", "flat fills", "no glow"],
+      "viewport": "A sweeping elbow around last and delta pills, P2 as the gold-active segment.",
+      "case": "Loses both axes: riders do not identify with a console wall.",
+      "kept": "Each shown stat is a discrete cell; unused stats vanish.",
+      "hero": "https://impeccable.style/worlds/cards/pop-culture-shelf-elbow-panel-console-hero.webp"
+    },
+    {
+      "id": "challenger-orizuru",
+      "label": "Fold Sequence",
+      "verdict": "declined",
+      "lineage": "orizuru crease sequence",
+      "thesis": "The board unfolds from a square into last, then delta, then identity.",
+      "palette": ["#0A0A0A", "#FF9430", "#E4E4E6"],
+      "materials": ["crease hairlines", "night-ink sheet"],
+      "viewport": "A square collapsing into the hero stack through numbered folds.",
+      "case": "Loses both axes: a teaching sequence is not a race glance.",
+      "kept": "Remaining heroes reflow when a stat hides.",
+      "hero": "https://impeccable.style/worlds/cards/paper-folds-pleats-deployable-orizuru-crane-sequence-hero.webp"
+    },
+    {
+      "id": "challenger-ascii",
+      "label": "Glyph Field",
+      "verdict": "declined",
+      "lineage": "live ASCII scene render",
+      "thesis": "Density of glyphs stands in for the board; last lap is the densest cluster.",
+      "palette": ["#0A0A0A", "#30DC58", "#E4E4E6"],
+      "materials": ["monospace grid", "phosphor"],
+      "viewport": "A character grid where 01:35.000 is the highlight cluster.",
+      "case": "Loses both axes: glyph sculpture is not glanceable on track.",
+      "kept": "Pending times are drawn as ghosts, never omitted.",
+      "hero": "https://impeccable.style/worlds/cards/medium-native-ascii-live-scene-render-hero.webp"
+    }
+  ],
+  "reroll": { "registers": ["safer", "bolder"] },
+  "buildPath": { "value": "comp", "toggle": true },
+  "canon": true,
+  "canonCard": {
+    "label": "White number plate",
+    "thesis": "What sim HUDs ship: a white MX plate, black number, last and delta as stickers.",
+    "palette": ["#F4F4F0", "#101012", "#FF9430"],
+    "materials": ["plastic plate", "black vinyl number", "sticker times"],
+    "viewport": "White rounded plate, huge #77, name under it, last and delta as small stickers.",
+    "risk": "Indistinguishable from a generic sim overlay by design.",
+    "comp": ".impeccable/mocks/decision/pitboard-canon.png"
+  },
+  "steer": true
+}

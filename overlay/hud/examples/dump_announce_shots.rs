@@ -7,9 +7,7 @@ mod demo_track;
 
 use mxbo_hud::config::{FontFamily, HudConfig, LeanStyle, SnapAlign, UnitPrefs, Units, WidgetId};
 use mxbo_hud::render::{draw, Fonts};
-use mxbo_hud::shm::{
-    write_name, Point, Rider, Snapshot, Standing, MAGIC, VERSION,
-};
+use mxbo_hud::shm::{write_name, Point, Rider, Snapshot, Standing, MAGIC, VERSION};
 use mxbo_hud::{set_sys_procs, set_sys_stats, SysProc};
 use tiny_skia::Pixmap;
 
@@ -42,8 +40,12 @@ fn main() {
     std::fs::create_dir_all(&out).expect("announce-shots dir");
 
     let shots: &[(&str, u32, u32, fn(&mut HudConfig))] = &[
-        ("standings.png", W, H, |c| size_show(c, "standings", 0.28, 0.70)),
-        ("relative.png", W, H, |c| size_show(c, "relative", 0.26, 0.52)),
+        ("standings.png", W, H, |c| {
+            size_show(c, "standings", 0.28, 0.70)
+        }),
+        ("relative.png", W, H, |c| {
+            size_show(c, "relative", 0.26, 0.52)
+        }),
         ("map.png", W, H, |c| size_show(c, "map", 0.48, 0.72)),
         ("minimap.png", W, H, |c| size_show(c, "minimap", 0.34, 0.58)),
         ("radar.png", W, H, |c| size_show(c, "radar", 0.24, 0.42)),
@@ -133,19 +135,69 @@ fn main() {
         if name == "sys.png" {
             set_sys_stats(48.0, 62.0, 91.0, 41.0, 24);
             set_sys_procs(vec![
-                SysProc { label: "HUD".into(), cpu: 12.0, gpu: 3.0, mem_mb: 420.0, mem_pct: 2.6, on: true },
-                SysProc { label: "MX Bikes".into(), cpu: 41.0, gpu: 38.0, mem_mb: 1800.0, mem_pct: 11.0, on: true },
-                SysProc { label: "MXB App".into(), cpu: 8.0, gpu: 1.0, mem_mb: 180.0, mem_pct: 1.1, on: true },
-                SysProc { label: "ReShade".into(), cpu: -1.0, gpu: -1.0, mem_mb: 44.0, mem_pct: 0.3, on: true },
+                SysProc {
+                    label: "HUD".into(),
+                    cpu: 12.0,
+                    gpu: 3.0,
+                    mem_mb: 420.0,
+                    mem_pct: 2.6,
+                    on: true,
+                },
+                SysProc {
+                    label: "MX Bikes".into(),
+                    cpu: 41.0,
+                    gpu: 38.0,
+                    mem_mb: 1800.0,
+                    mem_pct: 11.0,
+                    on: true,
+                },
+                SysProc {
+                    label: "MXB App".into(),
+                    cpu: 8.0,
+                    gpu: 1.0,
+                    mem_mb: 180.0,
+                    mem_pct: 1.1,
+                    on: true,
+                },
+                SysProc {
+                    label: "ReShade".into(),
+                    cpu: -1.0,
+                    gpu: -1.0,
+                    mem_mb: 44.0,
+                    mem_pct: 0.3,
+                    on: true,
+                },
             ]);
         }
         cfg.apply_to_snapshot(&mut snap);
         let mut px = Pixmap::new(w, h).expect("pixmap");
         fill_backdrop(&mut px);
         // Warm layout / race store, then draw for real on a clean plate.
-        draw(&mut px, &fonts, Some(&snap), &cfg, w, h, 0.35, false, false, false);
+        draw(
+            &mut px,
+            &fonts,
+            Some(&snap),
+            &cfg,
+            w,
+            h,
+            0.35,
+            false,
+            false,
+            false,
+        );
         fill_backdrop(&mut px);
-        draw(&mut px, &fonts, Some(&snap), &cfg, w, h, 0.35, false, false, false);
+        draw(
+            &mut px,
+            &fonts,
+            Some(&snap),
+            &cfg,
+            w,
+            h,
+            0.35,
+            false,
+            false,
+            false,
+        );
         let path = out.join(name);
         std::fs::write(&path, px.encode_png().expect("png")).expect("write");
         println!("wrote {}", path.display());
@@ -343,6 +395,7 @@ fn demo_snapshot() -> Snapshot {
             crashed: 0,
             name: [0; 32],
             lean: 0.0,
+            ..Rider::default()
         };
         write_name(&mut s.riders[i].name, name);
     }

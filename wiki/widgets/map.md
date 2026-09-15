@@ -40,6 +40,8 @@ Toggles: other riders, start/finish, sector lines, track arrows, leader crown, n
 
 ## Change log
 
+- 2026-09-13 — Review lines stay off the live map; they only draw in Analyze.
+- 2026-09-12 — Location tape records for Review (not drawn live).
 - 2026-09-07 — Warmup (`session_kind` 5) keeps dots slate even when leaked extras make the lap field look like a race.
 - 2026-08-30 — Sector lines mark where each sector starts (S1 at S/F, S2 / S3 at the learned splits). The old S1 / S2 labels sat on the split that *ended* that sector.
 - 2026-08-29 — Second time the leader laps you no longer paints them red. Lap-down color prefers `gap_laps` over completed-lap counts.

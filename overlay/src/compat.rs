@@ -4,7 +4,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use windows::core::{w, PCSTR, PCWSTR, PWSTR};
-use windows::Win32::Foundation::{BOOL, CloseHandle, HWND, LPARAM, POINT, RECT};
+use windows::Win32::Foundation::{CloseHandle, BOOL, HWND, LPARAM, POINT, RECT};
 use windows::Win32::Graphics::Gdi::{
     ClientToScreen, GetMonitorInfoW, MonitorFromPoint, MonitorFromWindow, MONITORINFO,
     MONITOR_DEFAULTTONEAREST,
@@ -18,14 +18,14 @@ use windows::Win32::System::Threading::{
     GetExitCodeProcess, OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_FORMAT,
     PROCESS_QUERY_LIMITED_INFORMATION,
 };
-use windows::Win32::UI::Shell::{ABM_WINDOWPOSCHANGED, APPBARDATA, SHAppBarMessage};
+use windows::Win32::UI::Shell::{SHAppBarMessage, ABM_WINDOWPOSCHANGED, APPBARDATA};
 use windows::Win32::UI::WindowsAndMessaging::{
     ClipCursor, EnumWindows, FindWindowExW, FindWindowW, GetClassNameW, GetClientRect,
     GetCursorPos, GetForegroundWindow, GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId,
-    IsIconic, IsWindow, IsWindowVisible,
-    SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow, ShowWindowAsync, GWL_EXSTYLE,
-    HWND_NOTOPMOST, HWND_TOPMOST, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-    SWP_SHOWWINDOW, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE, WS_EX_TRANSPARENT,
+    IsIconic, IsWindow, IsWindowVisible, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos,
+    ShowWindow, ShowWindowAsync, GWL_EXSTYLE, HWND_NOTOPMOST, HWND_TOPMOST, SWP_FRAMECHANGED,
+    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE,
+    WS_EX_TRANSPARENT,
 };
 
 const FLAG: &str = "DISABLEDXMAXIMIZEDWINDOWEDMODE";
@@ -505,7 +505,12 @@ impl FullscreenFix {
         }
     }
 
-    pub fn keep_overlay_above(&mut self, overlay: HWND, game: Option<HWND>, settings: HWND) -> bool {
+    pub fn keep_overlay_above(
+        &mut self,
+        overlay: HWND,
+        game: Option<HWND>,
+        settings: HWND,
+    ) -> bool {
         unsafe {
             // Dead HWNDs stay Some until the next process scan; treat them as gone so
             // closing the game cannot keep the taskbar hidden behind Settings.
@@ -544,7 +549,8 @@ impl FullscreenFix {
                     }
                     // Ctrl-drag must not ShowWindow the bar. Start on this
                     // screen + Explorer poke is what freezes the HUD.
-                    if !self.layout_on && !crate::layout::Editor::ctrl_down()
+                    if !self.layout_on
+                        && !crate::layout::Editor::ctrl_down()
                         && want_hide != self.taskbar_want_hide
                     {
                         if want_hide {
@@ -961,7 +967,8 @@ unsafe fn for_each_taskbar(mut f: impl FnMut(HWND)) {
     }
     let mut prev = HWND::default();
     loop {
-        let hwnd = FindWindowExW(None, prev, w!("Shell_SecondaryTrayWnd"), None).unwrap_or_default();
+        let hwnd =
+            FindWindowExW(None, prev, w!("Shell_SecondaryTrayWnd"), None).unwrap_or_default();
         if hwnd.is_invalid() || hwnd.0.is_null() {
             break;
         }
@@ -1044,7 +1051,10 @@ unsafe fn pin_game_for_overlay(game: HWND) {
     if covers_monitor(wr, mr) {
         let w = mr.right - mr.left;
         let h = (mr.bottom - mr.top - 1).max(600);
-        if wr.left != mr.left || wr.top != mr.top || wr.right - wr.left != w || wr.bottom - wr.top != h
+        if wr.left != mr.left
+            || wr.top != mr.top
+            || wr.right - wr.left != w
+            || wr.bottom - wr.top != h
         {
             let _ = SetWindowPos(game, HWND_NOTOPMOST, mr.left, mr.top, w, h, SWP_NOACTIVATE);
         } else {

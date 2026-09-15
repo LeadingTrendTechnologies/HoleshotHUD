@@ -5,22 +5,35 @@ use std::sync::atomic::{compiler_fence, AtomicI32, AtomicU32, Ordering};
 use windows::core::w;
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::System::Memory::{
-    MapViewOfFile, OpenFileMappingW, UnmapViewOfFile, FILE_MAP_ALL_ACCESS, FILE_MAP_READ,
-    MEMORY_MAPPED_VIEW_ADDRESS,
+    MapViewOfFile, OpenFileMappingW, UnmapViewOfFile, VirtualQuery, FILE_MAP_ALL_ACCESS,
+    FILE_MAP_READ, MEMORY_BASIC_INFORMATION, MEMORY_MAPPED_VIEW_ADDRESS,
 };
 
 pub use mxbo_hud::snapshot::*;
 
+/// Leftover or rebuilt V15: drop so the plugin can CreateFileMapping a fresh section.
+pub fn mapping_unusable(magic: u32, version: u32, size: u32, region: usize) -> bool {
+    if region < mem::size_of::<Snapshot>() {
+        return true;
+    }
+    // Plugin has the mapping but has not stamped the header yet.
+    if magic == 0 && version == 0 && size == 0 {
+        return false;
+    }
+    magic != MAGIC || version != VERSION || size as usize != mem::size_of::<Snapshot>()
+}
+
 pub struct Shm {
     _map: HANDLE,
     view: MEMORY_MAPPED_VIEW_ADDRESS,
+    region: usize,
 }
 
 impl Shm {
     pub fn open() -> Option<Self> {
         unsafe {
             // Must match MXBO_SHM_NAME in src/shm/mxbo_shm.h (versioned with SHM layout).
-            let map = OpenFileMappingW(FILE_MAP_READ.0, false, w!("Local\\MXBOHudV14")).ok()?;
+            let map = OpenFileMappingW(FILE_MAP_READ.0, false, w!("Local\\MXBOHudV15")).ok()?;
             // Map the whole section. Requesting sizeof(Snapshot) fails when a leftover
             // V11 mapping is smaller, which leaves the overlay compositing with no HUD.
             let view = MapViewOfFile(map, FILE_MAP_READ, 0, 0, 0);
@@ -28,7 +41,45 @@ impl Shm {
                 let _ = CloseHandle(map);
                 return None;
             }
-            Some(Self { _map: map, view })
+            let mut info = MEMORY_BASIC_INFORMATION::default();
+            let queried = VirtualQuery(
+                Some(view.Value),
+                &mut info,
+                mem::size_of::<MEMORY_BASIC_INFORMATION>(),
+            );
+            if queried == 0 || info.RegionSize < mem::size_of::<Snapshot>() {
+                let _ = UnmapViewOfFile(view);
+                let _ = CloseHandle(map);
+                return None;
+            }
+            let shm = Self {
+                _map: map,
+                view,
+                region: info.RegionSize,
+            };
+            if shm.is_unusable() {
+                return None;
+            }
+            Some(shm)
+        }
+    }
+
+    pub fn is_unusable(&self) -> bool {
+        unsafe {
+            if self.view.Value.is_null() {
+                return true;
+            }
+            let src = self.view.Value as *const Snapshot;
+            let seq = ptr::read_volatile(ptr::addr_of!((*src).seq));
+            if seq & 1 != 0 {
+                return false;
+            }
+            mapping_unusable(
+                ptr::read_volatile(ptr::addr_of!((*src).magic)),
+                ptr::read_volatile(ptr::addr_of!((*src).version)),
+                ptr::read_volatile(ptr::addr_of!((*src).size)),
+                self.region,
+            )
         }
     }
 
@@ -57,7 +108,11 @@ impl Shm {
                     continue;
                 }
                 let mut copy = Snapshot::default();
-                ptr::copy_nonoverlapping(src as *const u8, (&mut copy as *mut Snapshot).cast(), size);
+                ptr::copy_nonoverlapping(
+                    src as *const u8,
+                    (&mut copy as *mut Snapshot).cast(),
+                    size,
+                );
                 compiler_fence(Ordering::Acquire);
                 let s2 = (*seq_ptr).load(Ordering::Acquire);
                 if s1 == s2 {
@@ -123,7 +178,8 @@ pub struct Cmd {
 impl Cmd {
     pub fn open() -> Option<Self> {
         unsafe {
-            let map = OpenFileMappingW(FILE_MAP_ALL_ACCESS.0, false, w!("Local\\MXBOHudCmdV1")).ok()?;
+            let map =
+                OpenFileMappingW(FILE_MAP_ALL_ACCESS.0, false, w!("Local\\MXBOHudCmdV1")).ok()?;
             let view = MapViewOfFile(map, FILE_MAP_ALL_ACCESS, 0, 0, mem::size_of::<CmdView>());
             if view.Value.is_null() {
                 return None;

@@ -19,11 +19,17 @@ fn main() {
     let n = snap.poly_count.clamp(0, shm::MAX_POLY as i32) as usize;
     if n < 8 {
         eprint!("{}", snap.dump_text());
-        eprintln!("No track path yet ({n} points). Load a session on the track, then run this again.");
+        eprintln!(
+            "No track path yet ({n} points). Load a session on the track, then run this again."
+        );
         std::process::exit(1);
     }
     let name = cstr(&snap.track_name);
-    let name = if name.is_empty() { "Track".into() } else { name };
+    let name = if name.is_empty() {
+        "Track".into()
+    } else {
+        name
+    };
     let out = env::args()
         .nth(1)
         .map(PathBuf::from)
@@ -33,8 +39,14 @@ fn main() {
     }
     let mut body = String::new();
     body.push_str(&format!("pub const TRACK_NAME: &str = {:?};\n", name));
-    body.push_str(&format!("pub const TRACK_LENGTH: f32 = {:?};\n", snap.track_length));
-    body.push_str(&format!("pub const SF_METERS: f32 = {:?};\n", snap.sf_meters));
+    body.push_str(&format!(
+        "pub const TRACK_LENGTH: f32 = {:?};\n",
+        snap.track_length
+    ));
+    body.push_str(&format!(
+        "pub const SF_METERS: f32 = {:?};\n",
+        snap.sf_meters
+    ));
     body.push_str("pub const POLY: &[(f32, f32)] = &[\n");
     for p in snap.poly.iter().take(n) {
         body.push_str(&format!("    ({:?}, {:?}),\n", p.x, p.z));
@@ -42,5 +54,9 @@ fn main() {
     body.push_str("];\n");
     let mut f = fs::File::create(&out).expect("write demo_track.rs");
     f.write_all(body.as_bytes()).expect("write demo_track.rs");
-    println!("Wrote {n} points ({name}, {:.0} m) to {}", snap.track_length, out.display());
+    println!(
+        "Wrote {n} points ({name}, {:.0} m) to {}",
+        snap.track_length,
+        out.display()
+    );
 }

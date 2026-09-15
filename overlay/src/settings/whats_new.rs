@@ -42,7 +42,12 @@ pub(crate) fn draw_whats_new(
 
     let warn = crate::plugin::needs_restart();
     let warn_lines = if warn {
-        wrap_fb(fonts, crate::plugin::RESTART_PLUGIN_STILL_RUNNING, inner_w, body_size)
+        wrap_fb(
+            fonts,
+            crate::plugin::RESTART_PLUGIN_STILL_RUNNING,
+            inner_w,
+            body_size,
+        )
     } else {
         Vec::new()
     };
@@ -92,7 +97,15 @@ pub(crate) fn draw_whats_new(
     let ver_sz = 18.0;
     let ver_w = measure(fonts, &notes.version, ver_sz);
     let plaque_w = (ver_w + 36.0).min(inner_w).max(72.0);
-    fill_skew(px, plaque_x, plaque_y, (plaque_w - skew).max(48.0), plaque_h, skew, accent());
+    fill_skew(
+        px,
+        plaque_x,
+        plaque_y,
+        (plaque_w - skew).max(48.0),
+        plaque_h,
+        skew,
+        accent(),
+    );
     text(
         px,
         fonts,
@@ -154,7 +167,16 @@ pub(crate) fn draw_whats_new(
                         fill_circle(&mut body, 4.0, y + 8.0, 2.2, accent());
                         let mut ly = y;
                         for line in lines {
-                            text(&mut body, fonts, line, body_size, 14.0, ly, text_col(), false);
+                            text(
+                                &mut body,
+                                fonts,
+                                line,
+                                body_size,
+                                14.0,
+                                ly,
+                                text_col(),
+                                false,
+                            );
                             ly += line_h;
                         }
                     }

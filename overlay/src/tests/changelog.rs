@@ -188,7 +188,10 @@ Click a rider on standings to follow them in replay.
 - Pushing a tag runs the Release workflow.
 ";
     let n = notes_for(MIXED, "0.2.0").unwrap();
-    assert_eq!(n.headline, "Click a rider on standings to follow them in replay.");
+    assert_eq!(
+        n.headline,
+        "Click a rider on standings to follow them in replay."
+    );
     assert_eq!(n.sections.len(), 1);
     assert_eq!(n.sections[0].title, "Standings");
     assert_eq!(
@@ -213,7 +216,10 @@ Settings is a working board.
     assert_eq!(n.sections[0].title, "Dash");
     assert_eq!(n.sections[0].bullets[0], "Dash shows a ~Lapped tag");
     assert_eq!(n.sections[1].title, "Settings");
-    assert_eq!(n.sections[1].bullets[0], "Top mode bar is Widgets / Settings");
+    assert_eq!(
+        n.sections[1].bullets[0],
+        "Top mode bar is Widgets / Settings"
+    );
 }
 
 #[test]
@@ -254,16 +260,31 @@ Follow a rider, sit or stand, and see what changed.
             "Overlay"
         ]
     );
-    assert!(n.sections[0].bullets.iter().any(|b| b.contains("click a name")));
-    assert!(n.sections[0].bullets.iter().any(|b| b.contains("alternating row colors")));
-    assert!(n.sections[1].bullets.iter().any(|b| b.contains("alternating row colors")));
+    assert!(n.sections[0]
+        .bullets
+        .iter()
+        .any(|b| b.contains("click a name")));
+    assert!(n.sections[0]
+        .bullets
+        .iter()
+        .any(|b| b.contains("alternating row colors")));
+    assert!(n.sections[1]
+        .bullets
+        .iter()
+        .any(|b| b.contains("alternating row colors")));
     assert_eq!(n.sections[2].bullets.len(), 1);
     assert_eq!(n.sections[3].bullets.len(), 1);
-    assert!(n.sections[4].bullets.iter().any(|b| b.contains("gear and speed")));
+    assert!(n.sections[4]
+        .bullets
+        .iter()
+        .any(|b| b.contains("gear and speed")));
     assert_eq!(n.sections[5].title, "Stance");
     assert!(n.sections[5].bullets[0].starts_with("Stance is sit/stand"));
     assert_eq!(n.sections[6].bullets, vec!["Labs unlocks Sectors."]);
-    assert_eq!(n.sections[7].bullets, vec!["App shows the MX Bikes folder."]);
+    assert_eq!(
+        n.sections[7].bullets,
+        vec!["App shows the MX Bikes folder."]
+    );
     assert_eq!(
         n.sections[8].bullets,
         vec!["The HUD stays up in replay. Systems and Stance hide there too."]
@@ -280,7 +301,11 @@ fn shipped_notes_are_grouped_by_widget() {
         !titles.contains(&"Website"),
         "website notes stay out of What's new: {titles:?}"
     );
-    if let Some(overlay) = n.sections.iter().find(|s| s.title.eq_ignore_ascii_case("overlay")) {
+    if let Some(overlay) = n
+        .sections
+        .iter()
+        .find(|s| s.title.eq_ignore_ascii_case("overlay"))
+    {
         assert!(
             overlay
                 .bullets

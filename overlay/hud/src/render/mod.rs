@@ -4,94 +4,120 @@ use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Mutex, OnceLock};
 
-use crate::config::{BoardField, DashField, DotLabel, FontFamily, HudConfig, LeanStyle, RelField, StField, StanceStyle, SYS_PROC_MAX, TableText, WidgetId};
+use crate::config::{
+    BoardField, DashField, DotLabel, FontFamily, HudConfig, LeanStyle, RelField, StField,
+    StanceStyle, TableText, WidgetId, SYS_PROC_MAX,
+};
+pub use crate::race_store::{clock_sample, ClockSample};
 use crate::shm::{cstr, Snapshot, MAX_STANDINGS};
-pub use crate::race_store::{ClockSample, clock_sample};
 // Re-export clock / field helpers for `render_tests` (`use super::*`).
 #[allow(unused_imports)]
 pub(crate) use crate::race_store::{
-    class_position, extras_started, extra_laps, finish_earned, focus_num_laps,
-    standing_num_laps,
-    focus_standing, format_countdown, format_gap, format_lap, format_session_clock,
-    i_finished, note_laps_to_run, skip_last_lap_white,
-    gap_ahead_text, gap_behind_text, interval_text, interval_text_from_row, is_lap_race, is_warmup,
-    lapped, laps_done, laps_left,
-    leader_finished, leader_num_laps, live_leader, live_position, local_overtime_done,
-    local_overtime_taken, moving, norm_lap_pos as norm_track_pos,
-    overtime_active, prestart, race_lap, race_laps_left_text, race_over_for_me,
+    class_position, extra_laps, extras_started, finish_earned, focus_num_laps, focus_standing,
+    format_countdown, format_gap, format_lap, format_session_clock, gap_ahead_text,
+    gap_behind_text, i_finished, interval_text, interval_text_from_row, is_lap_race, is_warmup,
+    lapped, laps_done, laps_left, leader_finished, leader_num_laps, live_leader, live_position,
+    local_overtime_done, local_overtime_taken, moving, norm_lap_pos as norm_track_pos,
+    note_laps_to_run, overtime_active, prestart, race_lap, race_laps_left_text, race_over_for_me,
     race_progress_text, reset_session_clock_track, rider_current_lap, session_banner,
-    session_best_ms, session_len_ms, session_remain_ms, standing_of, ticker_delta_from_row,
-    timed_clock_live, timed_race_flag, CHECKERED_LATCH, IN_GATE, LAP_GREEN, LAST_CUR_LAP,
-    CLOSING_ON_LINE, LAP_MID_SEEN, LAST_SESSION_SIG, LAST_SF_METERS, LEADER_FIN_LOCAL_BASE,
-    OVERTIME_LOCAL_BASE, POST_GATE, RaceFlag, RaceStore, SESSION_EXPIRED, SF_FRAC_CAND,
-    SF_FRAC_LEARNED, SF_LEARN_LAPS, LAPS_TO_RUN_AT, RUN_IN_FLAG, WHITE_WAVE_AT,
-    WHITE_WAVE_LAP,
+    session_best_ms, session_len_ms, session_remain_ms, skip_last_lap_white, standing_num_laps,
+    standing_of, ticker_delta_from_row, timed_clock_live, timed_race_flag, RaceFlag, RaceStore,
+    CHECKERED_LATCH, CLOSING_ON_LINE, IN_GATE, LAPS_TO_RUN_AT, LAP_GREEN, LAP_MID_SEEN,
+    LAST_CUR_LAP, LAST_SESSION_SIG, LAST_SF_METERS, LEADER_FIN_LOCAL_BASE, OVERTIME_LOCAL_BASE,
+    POST_GATE, RUN_IN_FLAG, SESSION_EXPIRED, SF_FRAC_CAND, SF_FRAC_LEARNED, SF_LEARN_LAPS,
+    WHITE_WAVE_AT, WHITE_WAVE_LAP,
 };
 use fontdue::Font;
 use tiny_skia::{
-    Color, FillRule, FilterQuality, GradientStop, LineCap, LineJoin, LinearGradient, Mask, Paint, Path,
-    PathBuilder, Pixmap, PixmapPaint, Point as SkPoint, PremultipliedColorU8, Rect, SpreadMode, Stroke,
-    StrokeDash, Transform,
+    Color, FillRule, FilterQuality, GradientStop, LineCap, LineJoin, LinearGradient, Mask, Paint,
+    Path, PathBuilder, Pixmap, PixmapPaint, Point as SkPoint, PremultipliedColorU8, Rect,
+    SpreadMode, Stroke, StrokeDash, Transform,
 };
 
-mod standings;
-mod relative;
+mod dash;
+mod delta;
+mod flag;
+mod gamepad;
+mod lean;
 mod map;
 mod minimap;
 mod radar;
-mod dash;
-mod ticker;
-mod sys;
+mod relative;
 mod sector;
-mod delta;
-mod flag;
 mod stance;
-mod lean;
-mod gamepad;
+mod standings;
+mod sys;
 mod telemetry;
-pub(crate) use standings::*;
-pub(crate) use relative::*;
+mod ticker;
+pub(crate) use dash::*;
+pub(crate) use delta::*;
+pub(crate) use flag::*;
+pub(crate) use gamepad::*;
+pub(crate) use lean::*;
 pub(crate) use map::*;
 pub(crate) use minimap::*;
 pub(crate) use radar::*;
-pub(crate) use dash::*;
-pub(crate) use ticker::*;
-pub(crate) use sys::*;
+pub(crate) use relative::*;
 pub(crate) use sector::*;
-pub(crate) use delta::*;
-pub(crate) use flag::*;
 pub(crate) use stance::*;
-pub(crate) use lean::*;
-pub(crate) use gamepad::*;
-pub(crate) use telemetry::*;
-pub use sys::{SysProc, set_sys_procs, set_sys_stats};
 pub use stance::{set_stance, stance_sitting};
+pub(crate) use standings::*;
+pub(crate) use sys::*;
+pub use sys::{set_sys_procs, set_sys_stats, SysProc};
+pub(crate) use telemetry::*;
+pub(crate) use ticker::*;
 
-fn accent() -> Color { Color::from_rgba8(255, 148, 48, 255) }
+fn accent() -> Color {
+    Color::from_rgba8(255, 148, 48, 255)
+}
 
-fn text_col() -> Color { Color::from_rgba8(228, 228, 230, 255) }
+fn text_col() -> Color {
+    Color::from_rgba8(228, 228, 230, 255)
+}
 
-fn text_dim() -> Color { Color::from_rgba8(132, 132, 138, 255) }
+fn text_dim() -> Color {
+    Color::from_rgba8(132, 132, 138, 255)
+}
 
-fn panel_col() -> Color { Color::from_rgba8(10, 10, 10, 200) }
+fn panel_col() -> Color {
+    Color::from_rgba8(10, 10, 10, 200)
+}
 
-fn track_col() -> Color { Color::from_rgba8(236, 236, 240, 255) }
+fn track_col() -> Color {
+    Color::from_rgba8(236, 236, 240, 255)
+}
 
-fn fill_col() -> Color { Color::from_rgba8(10, 8, 8, 168) }
+fn fill_col() -> Color {
+    Color::from_rgba8(10, 8, 8, 168)
+}
 
-fn you_col() -> Color { Color::from_rgba8(255, 148, 48, 255) }
+fn you_col() -> Color {
+    Color::from_rgba8(255, 148, 48, 255)
+}
 
-fn other_col() -> Color { Color::from_rgba8(48, 52, 64, 255) }
+fn other_col() -> Color {
+    Color::from_rgba8(48, 52, 64, 255)
+}
 
-fn lapping_col() -> Color { Color::from_rgba8(59, 130, 246, 255) }
+fn lapping_col() -> Color {
+    Color::from_rgba8(59, 130, 246, 255)
+}
 
-fn lapped_col() -> Color { Color::from_rgba8(239, 68, 68, 255) }
+fn lapped_col() -> Color {
+    Color::from_rgba8(239, 68, 68, 255)
+}
 
-fn ahead_col() -> Color { Color::from_rgba8(48, 220, 88, 255) }
+fn ahead_col() -> Color {
+    Color::from_rgba8(48, 220, 88, 255)
+}
 
-fn behind_col() -> Color { Color::from_rgba8(255, 64, 72, 255) }
+fn behind_col() -> Color {
+    Color::from_rgba8(255, 64, 72, 255)
+}
 
-fn telemetry_steer_col() -> Color { Color::from_rgba8(214, 214, 220, 230) }
+fn telemetry_steer_col() -> Color {
+    Color::from_rgba8(214, 214, 220, 230)
+}
 
 pub struct Fonts {
     pub ui: Font,
@@ -405,7 +431,18 @@ impl Fonts {
     }
 }
 
-pub fn draw(px: &mut Pixmap, fonts: &Fonts, snap: Option<&Snapshot>, cfg: &HudConfig, w: u32, h: u32, age: f32, restart_hint: bool, plugin_hint: bool, settings_hint: bool) {
+pub fn draw(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    snap: Option<&Snapshot>,
+    cfg: &HudConfig,
+    w: u32,
+    h: u32,
+    age: f32,
+    restart_hint: bool,
+    plugin_hint: bool,
+    settings_hint: bool,
+) {
     clear_click_riders();
     px.fill(if settings_hint {
         Color::from_rgba8(0, 0, 0, 1)
@@ -420,7 +457,12 @@ pub fn draw(px: &mut Pixmap, fonts: &Fonts, snap: Option<&Snapshot>, cfg: &HudCo
             "Fully quit MX Bikes and start it again so the plugin can load",
         );
     } else if restart_hint {
-        top_banner(px, fonts, w, "Restart MX Bikes once so the HUD stays on top while you ride");
+        top_banner(
+            px,
+            fonts,
+            w,
+            "Restart MX Bikes once so the HUD stays on top while you ride",
+        );
     }
     let Some(s) = snap else {
         return;
@@ -494,11 +536,19 @@ fn draw_widgets(
 ) {
     let delta = crate::delta::view_for(cfg.delta_session);
     if s.show_standings != 0 {
-        let _g = push_style(fonts, cfg[WidgetId::Standings].bold, cfg[WidgetId::Standings].font);
+        let _g = push_style(
+            fonts,
+            cfg[WidgetId::Standings].bold,
+            cfg[WidgetId::Standings].font,
+        );
         draw_standings(px, fonts, s, cfg, sw, sh);
     }
     if s.show_relative != 0 {
-        let _g = push_style(fonts, cfg[WidgetId::Relative].bold, cfg[WidgetId::Relative].font);
+        let _g = push_style(
+            fonts,
+            cfg[WidgetId::Relative].bold,
+            cfg[WidgetId::Relative].font,
+        );
         draw_relative(px, fonts, s, cfg, sw, sh);
     }
     if s.show_map != 0 {
@@ -506,7 +556,11 @@ fn draw_widgets(
         draw_map(px, fonts, s, cfg, sw, sh, age);
     }
     if cfg[WidgetId::Minimap].show {
-        let _g = push_style(fonts, cfg[WidgetId::Minimap].bold, cfg[WidgetId::Minimap].font);
+        let _g = push_style(
+            fonts,
+            cfg[WidgetId::Minimap].bold,
+            cfg[WidgetId::Minimap].font,
+        );
         draw_minimap(px, fonts, s, cfg, sw, sh, age);
     }
     if cfg[WidgetId::Radar].show {
@@ -515,12 +569,21 @@ fn draw_widgets(
     }
     if cfg[WidgetId::Dash].show {
         let _g = push_style(fonts, cfg[WidgetId::Dash].bold, cfg[WidgetId::Dash].font);
-        let (dash_flag, dash_grow) =
-            dash_wrap_flag(flag, flag_grow, cfg.dash_yellow, cfg.dash_blue, cfg.dash_red);
+        let (dash_flag, dash_grow) = dash_wrap_flag(
+            flag,
+            flag_grow,
+            cfg.dash_yellow,
+            cfg.dash_blue,
+            cfg.dash_red,
+        );
         draw_dash(px, fonts, s, cfg, sw, sh, dash_flag, dash_grow);
     }
     if cfg[WidgetId::Ticker].show {
-        let _g = push_style(fonts, cfg[WidgetId::Ticker].bold, cfg[WidgetId::Ticker].font);
+        let _g = push_style(
+            fonts,
+            cfg[WidgetId::Ticker].bold,
+            cfg[WidgetId::Ticker].font,
+        );
         draw_ticker(px, fonts, s, cfg, sw, sh);
     }
     if cfg[WidgetId::Sys].show {
@@ -528,7 +591,11 @@ fn draw_widgets(
         draw_sys(px, fonts, cfg, sw, sh);
     }
     if cfg.sector_visible() {
-        let _g = push_style(fonts, cfg[WidgetId::Sector].bold, cfg[WidgetId::Sector].font);
+        let _g = push_style(
+            fonts,
+            cfg[WidgetId::Sector].bold,
+            cfg[WidgetId::Sector].font,
+        );
         draw_sector(px, fonts, s, cfg, sw, sh);
     }
     if cfg.delta_visible() {
@@ -537,12 +604,21 @@ fn draw_widgets(
     }
     if cfg[WidgetId::Flag].show {
         let _g = push_style(fonts, cfg[WidgetId::Flag].bold, cfg[WidgetId::Flag].font);
-        let (flag, flag_grow) =
-            flag_widget_flag(flag, flag_grow, cfg.flag_yellow, cfg.flag_blue, cfg.flag_red);
+        let (flag, flag_grow) = flag_widget_flag(
+            flag,
+            flag_grow,
+            cfg.flag_yellow,
+            cfg.flag_blue,
+            cfg.flag_red,
+        );
         draw_flag(px, fonts, cfg, sw, sh, flag, flag_grow);
     }
     if cfg.stance_visible() {
-        let _g = push_style(fonts, cfg[WidgetId::Stance].bold, cfg[WidgetId::Stance].font);
+        let _g = push_style(
+            fonts,
+            cfg[WidgetId::Stance].bold,
+            cfg[WidgetId::Stance].font,
+        );
         draw_stance(px, fonts, cfg, sw, sh);
     }
     if cfg[WidgetId::Lean].show {
@@ -550,11 +626,19 @@ fn draw_widgets(
         draw_lean(px, fonts, s, cfg, sw, sh);
     }
     if cfg.gamepad_visible() {
-        let _g = push_style(fonts, cfg[WidgetId::Gamepad].bold, cfg[WidgetId::Gamepad].font);
+        let _g = push_style(
+            fonts,
+            cfg[WidgetId::Gamepad].bold,
+            cfg[WidgetId::Gamepad].font,
+        );
         draw_gamepad(px, fonts, cfg, sw, sh);
     }
     if cfg[WidgetId::Telemetry].show {
-        let _g = push_style(fonts, cfg[WidgetId::Telemetry].bold, cfg[WidgetId::Telemetry].font);
+        let _g = push_style(
+            fonts,
+            cfg[WidgetId::Telemetry].bold,
+            cfg[WidgetId::Telemetry].font,
+        );
         draw_telemetry(px, fonts, s, cfg, sw, sh);
     }
 }
@@ -608,7 +692,9 @@ pub fn draw_live_mark(px: &mut Pixmap, w: u32, _h: u32, hot: bool) -> (f32, f32,
 
 fn app_icon() -> &'static Pixmap {
     static ICON: OnceLock<Pixmap> = OnceLock::new();
-    ICON.get_or_init(|| Pixmap::decode_png(include_bytes!("../../../icon-48.png")).expect("icon-48.png"))
+    ICON.get_or_init(|| {
+        Pixmap::decode_png(include_bytes!("../../../icon-48.png")).expect("icon-48.png")
+    })
 }
 
 /// Circular rounded rect (cubic approximation). Quadratic corners look pointed at this size.
@@ -639,37 +725,114 @@ fn draw_layout(px: &mut Pixmap, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32)
         layout_box(px, r.x * sw, r.y * sh, r.w * sw, r.h * sh, false);
     }
     if s.show_map != 0 {
-        layout_box(px, s.map.x * sw, s.map.y * sh, s.map.w * sw, s.map.h * sh, false);
+        layout_box(
+            px,
+            s.map.x * sw,
+            s.map.y * sh,
+            s.map.w * sw,
+            s.map.h * sh,
+            false,
+        );
     }
     if cfg[WidgetId::Radar].show {
-        layout_box(px, cfg[WidgetId::Radar].rect.x * sw, cfg[WidgetId::Radar].rect.y * sh, cfg[WidgetId::Radar].rect.w * sw, cfg[WidgetId::Radar].rect.h * sh, false);
+        layout_box(
+            px,
+            cfg[WidgetId::Radar].rect.x * sw,
+            cfg[WidgetId::Radar].rect.y * sh,
+            cfg[WidgetId::Radar].rect.w * sw,
+            cfg[WidgetId::Radar].rect.h * sh,
+            false,
+        );
     }
     if cfg[WidgetId::Ticker].show {
-        layout_box(px, cfg[WidgetId::Ticker].rect.x * sw, cfg[WidgetId::Ticker].rect.y * sh, cfg[WidgetId::Ticker].rect.w * sw, cfg[WidgetId::Ticker].rect.h * sh, true);
+        layout_box(
+            px,
+            cfg[WidgetId::Ticker].rect.x * sw,
+            cfg[WidgetId::Ticker].rect.y * sh,
+            cfg[WidgetId::Ticker].rect.w * sw,
+            cfg[WidgetId::Ticker].rect.h * sh,
+            true,
+        );
     }
     if cfg[WidgetId::Sys].show {
-        layout_box(px, cfg[WidgetId::Sys].rect.x * sw, cfg[WidgetId::Sys].rect.y * sh, cfg[WidgetId::Sys].rect.w * sw, cfg[WidgetId::Sys].rect.h * sh, false);
+        layout_box(
+            px,
+            cfg[WidgetId::Sys].rect.x * sw,
+            cfg[WidgetId::Sys].rect.y * sh,
+            cfg[WidgetId::Sys].rect.w * sw,
+            cfg[WidgetId::Sys].rect.h * sh,
+            false,
+        );
     }
     if cfg.sector_visible() {
-        layout_box(px, cfg[WidgetId::Sector].rect.x * sw, cfg[WidgetId::Sector].rect.y * sh, cfg[WidgetId::Sector].rect.w * sw, cfg[WidgetId::Sector].rect.h * sh, false);
+        layout_box(
+            px,
+            cfg[WidgetId::Sector].rect.x * sw,
+            cfg[WidgetId::Sector].rect.y * sh,
+            cfg[WidgetId::Sector].rect.w * sw,
+            cfg[WidgetId::Sector].rect.h * sh,
+            false,
+        );
     }
     if cfg.delta_visible() {
-        layout_box(px, cfg[WidgetId::Delta].rect.x * sw, cfg[WidgetId::Delta].rect.y * sh, cfg[WidgetId::Delta].rect.w * sw, cfg[WidgetId::Delta].rect.h * sh, false);
+        layout_box(
+            px,
+            cfg[WidgetId::Delta].rect.x * sw,
+            cfg[WidgetId::Delta].rect.y * sh,
+            cfg[WidgetId::Delta].rect.w * sw,
+            cfg[WidgetId::Delta].rect.h * sh,
+            false,
+        );
     }
     if cfg.stance_visible() {
-        layout_box(px, cfg[WidgetId::Stance].rect.x * sw, cfg[WidgetId::Stance].rect.y * sh, cfg[WidgetId::Stance].rect.w * sw, cfg[WidgetId::Stance].rect.h * sh, false);
+        layout_box(
+            px,
+            cfg[WidgetId::Stance].rect.x * sw,
+            cfg[WidgetId::Stance].rect.y * sh,
+            cfg[WidgetId::Stance].rect.w * sw,
+            cfg[WidgetId::Stance].rect.h * sh,
+            false,
+        );
     }
     if cfg[WidgetId::Lean].show {
-        layout_box(px, cfg[WidgetId::Lean].rect.x * sw, cfg[WidgetId::Lean].rect.y * sh, cfg[WidgetId::Lean].rect.w * sw, cfg[WidgetId::Lean].rect.h * sh, false);
+        layout_box(
+            px,
+            cfg[WidgetId::Lean].rect.x * sw,
+            cfg[WidgetId::Lean].rect.y * sh,
+            cfg[WidgetId::Lean].rect.w * sw,
+            cfg[WidgetId::Lean].rect.h * sh,
+            false,
+        );
     }
     if cfg.gamepad_visible() {
-        layout_box(px, cfg[WidgetId::Gamepad].rect.x * sw, cfg[WidgetId::Gamepad].rect.y * sh, cfg[WidgetId::Gamepad].rect.w * sw, cfg[WidgetId::Gamepad].rect.h * sh, false);
+        layout_box(
+            px,
+            cfg[WidgetId::Gamepad].rect.x * sw,
+            cfg[WidgetId::Gamepad].rect.y * sh,
+            cfg[WidgetId::Gamepad].rect.w * sw,
+            cfg[WidgetId::Gamepad].rect.h * sh,
+            false,
+        );
     }
     if cfg[WidgetId::Telemetry].show {
-        layout_box(px, cfg[WidgetId::Telemetry].rect.x * sw, cfg[WidgetId::Telemetry].rect.y * sh, cfg[WidgetId::Telemetry].rect.w * sw, cfg[WidgetId::Telemetry].rect.h * sh, false);
+        layout_box(
+            px,
+            cfg[WidgetId::Telemetry].rect.x * sw,
+            cfg[WidgetId::Telemetry].rect.y * sh,
+            cfg[WidgetId::Telemetry].rect.w * sw,
+            cfg[WidgetId::Telemetry].rect.h * sh,
+            false,
+        );
     }
     if cfg[WidgetId::Flag].show {
-        layout_box(px, cfg[WidgetId::Flag].rect.x * sw, cfg[WidgetId::Flag].rect.y * sh, cfg[WidgetId::Flag].rect.w * sw, cfg[WidgetId::Flag].rect.h * sh, false);
+        layout_box(
+            px,
+            cfg[WidgetId::Flag].rect.x * sw,
+            cfg[WidgetId::Flag].rect.y * sh,
+            cfg[WidgetId::Flag].rect.w * sw,
+            cfg[WidgetId::Flag].rect.h * sh,
+            false,
+        );
     }
     if cfg[WidgetId::Dash].show {
         layout_box(
@@ -737,8 +900,27 @@ fn bg_a(pct: i32) -> u8 {
     ((pct.clamp(0, 100) as f32 / 100.0) * 255.0).round() as u8
 }
 
-pub fn text(px: &mut Pixmap, fonts: &Fonts, s: &str, size: f32, x: f32, y: f32, color: Color, center: bool) {
-    draw_text(px, style_font(fonts), s, size, x, y, color, center, FAKE_BOLD.with(|c| c.get()));
+pub fn text(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    s: &str,
+    size: f32,
+    x: f32,
+    y: f32,
+    color: Color,
+    center: bool,
+) {
+    draw_text(
+        px,
+        style_font(fonts),
+        s,
+        size,
+        x,
+        y,
+        color,
+        center,
+        FAKE_BOLD.with(|c| c.get()),
+    );
 }
 
 /// 1px night-ink border around glyphs. Not a drop-shadow: same 8-neighbor rim as radar numbers.
@@ -771,8 +953,27 @@ fn text_halo(
     text(px, fonts, s, size, x, y, color, center);
 }
 
-fn text_bold(px: &mut Pixmap, fonts: &Fonts, s: &str, size: f32, x: f32, y: f32, color: Color, center: bool) {
-    draw_text(px, &fonts.bold, s, size, x, y, color, center, fonts.bold_is_fake);
+fn text_bold(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    s: &str,
+    size: f32,
+    x: f32,
+    y: f32,
+    color: Color,
+    center: bool,
+) {
+    draw_text(
+        px,
+        &fonts.bold,
+        s,
+        size,
+        x,
+        y,
+        color,
+        center,
+        fonts.bold_is_fake,
+    );
 }
 
 fn draw_text(
@@ -806,14 +1007,26 @@ fn draw_text(
         let gy = y + size - metrics.ymin as f32 - metrics.height as f32;
         blit(px, &bitmap, metrics.width, metrics.height, gx, gy, rgba);
         if fake {
-            blit(px, &bitmap, metrics.width, metrics.height, gx + 0.7, gy, rgba);
+            blit(
+                px,
+                &bitmap,
+                metrics.width,
+                metrics.height,
+                gx + 0.7,
+                gy,
+                rgba,
+            );
         }
         pen += metrics.advance_width;
     }
 }
 
 pub fn measure(fonts: &Fonts, s: &str, size: f32) -> f32 {
-    let extra = if FAKE_BOLD.with(|c| c.get()) { 0.7 } else { 0.0 };
+    let extra = if FAKE_BOLD.with(|c| c.get()) {
+        0.7
+    } else {
+        0.0
+    };
     measure_font(style_font(fonts), s, size * style_k()) + extra
 }
 
@@ -904,7 +1117,10 @@ fn col_slots<T: Copy>(
     // Honor configured widths when they fit. Only shrink on overflow so width
     // sliders (especially Name) actually change how wide each column draws.
     if leftover < -0.5 {
-        let flex = cols.iter().position(|&c| is_flex(c)).unwrap_or(cols.len() - 1);
+        let flex = cols
+            .iter()
+            .position(|&c| is_flex(c))
+            .unwrap_or(cols.len() - 1);
         let mut remain = -leftover;
         let shrink = (widths[flex] - MIN_W).max(0.0).min(remain);
         widths[flex] -= shrink;
@@ -1167,37 +1383,37 @@ fn lap_rel(s: &Snapshot, race_num: i32) -> LapRel {
         return LapRel::Same;
     }
     RaceStore::with(|race| {
-    let me = race
-        .field
-        .row_by_num(focus)
-        .map(|r| &r.standing)
-        .or_else(|| standing_of(s, focus));
-    let other = race
-        .field
-        .row_by_num(race_num)
-        .map(|r| &r.standing)
-        .or_else(|| standing_of(s, race_num));
-    let (Some(me), Some(other)) = (me, other) else {
-        return LapRel::Same;
-    };
-    let Some(op) = rider_norm_pos(s, race_num) else {
-        return LapRel::Same;
-    };
-    let Some(mp) = rider_norm_pos(s, focus) else {
-        return LapRel::Same;
-    };
-    let ahead = other_laps_ahead(other, me);
-    let w = wrap_frac(op, mp);
-    let behind_m = if w < 0.0 { closing_m(s, -w) } else { 0.0 };
-    let ahead_m = if w > 0.0 { closing_m(s, w) } else { 0.0 };
-    let span = catch_span_m(s);
-    if ahead >= 1 && behind_m > 2.0 && behind_m <= span {
-        LapRel::LappingMe
-    } else if ahead <= -1 && ahead_m > 2.0 && ahead_m <= span {
-        LapRel::LappedByMe
-    } else {
-        LapRel::Same
-    }
+        let me = race
+            .field
+            .row_by_num(focus)
+            .map(|r| &r.standing)
+            .or_else(|| standing_of(s, focus));
+        let other = race
+            .field
+            .row_by_num(race_num)
+            .map(|r| &r.standing)
+            .or_else(|| standing_of(s, race_num));
+        let (Some(me), Some(other)) = (me, other) else {
+            return LapRel::Same;
+        };
+        let Some(op) = rider_norm_pos(s, race_num) else {
+            return LapRel::Same;
+        };
+        let Some(mp) = rider_norm_pos(s, focus) else {
+            return LapRel::Same;
+        };
+        let ahead = other_laps_ahead(other, me);
+        let w = wrap_frac(op, mp);
+        let behind_m = if w < 0.0 { closing_m(s, -w) } else { 0.0 };
+        let ahead_m = if w > 0.0 { closing_m(s, w) } else { 0.0 };
+        let span = catch_span_m(s);
+        if ahead >= 1 && behind_m > 2.0 && behind_m <= span {
+            LapRel::LappingMe
+        } else if ahead <= -1 && ahead_m > 2.0 && ahead_m <= span {
+            LapRel::LappedByMe
+        } else {
+            LapRel::Same
+        }
     })
 }
 
@@ -1251,7 +1467,15 @@ fn draw_count_track(px: &mut Pixmap, fonts: &Fonts, x: f32, cy: f32, n: usize, t
     icon(px, fonts, '\u{f553}', 8.0, icon_x, cy + 5.0, ink, false);
     text(px, fonts, &count, 9.0, num_x, cy + 4.5, ink, false);
     let tx = x + 8.0 + count_w + 4.0;
-    fill_skew(px, tx, cy + 3.0, (measure(fonts, track, 10.0) + 14.0).max(36.0), 14.0, 4.0, track_col);
+    fill_skew(
+        px,
+        tx,
+        cy + 3.0,
+        (measure(fonts, track, 10.0) + 14.0).max(36.0),
+        14.0,
+        4.0,
+        track_col,
+    );
     text(px, fonts, track, 10.0, tx + 8.0, cy + 4.5, ink, false);
 }
 
@@ -1356,7 +1580,14 @@ fn bike_color(bike: &str, extra: &str) -> Color {
         Color::from_rgba8(220, 28, 36, 255)
     } else if has("gasgas") || has("gas gas") || tok("mc") {
         Color::from_rgba8(196, 24, 40, 255)
-    } else if has("ktm") || has("sx f") || has("xc f") || tok("sxf") || tok("xcf") || tok("exc") || tok("sx") {
+    } else if has("ktm")
+        || has("sx f")
+        || has("xc f")
+        || tok("sxf")
+        || tok("xcf")
+        || tok("exc")
+        || tok("sx")
+    {
         Color::from_rgba8(255, 96, 0, 255)
     } else if has("sherco") {
         Color::from_rgba8(32, 96, 196, 255)
@@ -1369,7 +1600,9 @@ fn bike_color(bike: &str, extra: &str) -> Color {
     } else if extra.is_empty() && bike.is_empty() {
         accent()
     } else {
-        let h = hay.bytes().fold(2166136261u32, |a, b| a.wrapping_mul(16777619) ^ b as u32);
+        let h = hay
+            .bytes()
+            .fold(2166136261u32, |a, b| a.wrapping_mul(16777619) ^ b as u32);
         const PAL: [(u8, u8, u8); 6] = [
             (232, 196, 48),
             (48, 208, 232),
@@ -1423,7 +1656,9 @@ fn bike_bar_end(pos_cx: f32, pos_cw: f32) -> f32 {
 }
 
 fn name_left_pad(cx: f32, bar_end: Option<f32>) -> f32 {
-    bar_end.map(|end| (end + BIKE_BAR_PAD - cx).max(0.0)).unwrap_or(0.0)
+    bar_end
+        .map(|end| (end + BIKE_BAR_PAD - cx).max(0.0))
+        .unwrap_or(0.0)
 }
 
 fn draw_bike_pill(
@@ -1532,15 +1767,19 @@ fn subject_pose(s: &Snapshot, age: f32) -> Option<SubjectPose> {
     }
     let subject = camera_subject(s);
     let n = s.rider_count.max(0) as usize;
-    s.riders.iter().take(n).find(|r| r.race_num == subject).map(|r| SubjectPose {
-        x: r.x,
-        z: r.z,
-        yaw: r.yaw,
-        vel_x: 0.0,
-        vel_z: 0.0,
-        crashed: r.crashed != 0,
-        from_local: false,
-    })
+    s.riders
+        .iter()
+        .take(n)
+        .find(|r| r.race_num == subject)
+        .map(|r| SubjectPose {
+            x: r.x,
+            z: r.z,
+            yaw: r.yaw,
+            vel_x: 0.0,
+            vel_z: 0.0,
+            crashed: r.crashed != 0,
+            from_local: false,
+        })
 }
 
 fn focus_track_pos(s: &Snapshot) -> f32 {
@@ -1796,47 +2035,47 @@ fn dash_race_flag(s: &Snapshot) -> DashFlag {
     }
     note_line_progress(s);
     RaceStore::with(|store| {
-    let stale = {
-        let b = &store.clock.banner.1;
-        b.is_empty() || b == "--:--"
-    };
-    if is_lap_race(s) {
-        // Gate boards run a countdown; no flags until the race is actually under way.
-        let remain = if stale {
-            session_remain_ms(s)
-        } else {
-            store.clock.remain_ms
+        let stale = {
+            let b = &store.clock.banner.1;
+            b.is_empty() || b == "--:--"
         };
-        if remain.is_some_and(|r| r > 60_000) {
+        if is_lap_race(s) {
+            // Gate boards run a countdown; no flags until the race is actually under way.
+            let remain = if stale {
+                session_remain_ms(s)
+            } else {
+                store.clock.remain_ms
+            };
+            if remain.is_some_and(|r| r > 60_000) {
+                return reset_flag_state();
+            }
+        } else if stale {
+            // Keep the count-only flag latch in step when the store has not ticked yet.
+            let _ = timed_race_flag(s);
+        }
+        if prestart(s) {
             return reset_flag_state();
         }
-    } else if stale {
-        // Keep the count-only flag latch in step when the store has not ticked yet.
-        let _ = timed_race_flag(s);
-    }
-    if prestart(s) {
-        return reset_flag_state();
-    }
-    if CHECKERED_LATCH.load(Ordering::Relaxed) == 1 {
-        return DashFlag::Checkered;
-    }
-    let left = laps_left(s);
-    note_laps_to_run(s, left);
-    let no_white = skip_last_lap_white(s, left);
-    let flag = match left {
-        // You crossed the line with nothing left to run. Never gated on speed, so a
-        // slow roll over the line still gets waved off. `finish_earned` keeps a single
-        // glitched frame from waving you off mid-race.
-        Some(0) if finish_earned(s) => latch_checkered(),
-        // Coming to the line with nothing left to run: the checkered is already out.
-        Some(1) if line_approach(s) => DashFlag::Checkered,
-        Some(0) | Some(1) if no_white => DashFlag::None,
-        Some(0) | Some(1) => white_wave(s),
-        Some(2) if line_approach(s) && no_white => DashFlag::None,
-        Some(2) if line_approach(s) => DashFlag::White,
-        _ => DashFlag::None,
-    };
-    hold_across_line(s, flag)
+        if CHECKERED_LATCH.load(Ordering::Relaxed) == 1 {
+            return DashFlag::Checkered;
+        }
+        let left = laps_left(s);
+        note_laps_to_run(s, left);
+        let no_white = skip_last_lap_white(s, left);
+        let flag = match left {
+            // You crossed the line with nothing left to run. Never gated on speed, so a
+            // slow roll over the line still gets waved off. `finish_earned` keeps a single
+            // glitched frame from waving you off mid-race.
+            Some(0) if finish_earned(s) => latch_checkered(),
+            // Coming to the line with nothing left to run: the checkered is already out.
+            Some(1) if line_approach(s) => DashFlag::Checkered,
+            Some(0) | Some(1) if no_white => DashFlag::None,
+            Some(0) | Some(1) => white_wave(s),
+            Some(2) if line_approach(s) && no_white => DashFlag::None,
+            Some(2) if line_approach(s) => DashFlag::White,
+            _ => DashFlag::None,
+        };
+        hold_across_line(s, flag)
     })
 }
 
@@ -1994,7 +2233,13 @@ fn lapping_them(s: &Snapshot) -> bool {
         })
 }
 
-fn dash_wrap_flag(flag: DashFlag, grow: f32, yellow: bool, blue: bool, red: bool) -> (DashFlag, f32) {
+fn dash_wrap_flag(
+    flag: DashFlag,
+    grow: f32,
+    yellow: bool,
+    blue: bool,
+    red: bool,
+) -> (DashFlag, f32) {
     match flag {
         DashFlag::Yellow if yellow => (flag, grow),
         DashFlag::Blue if blue => (flag, grow),
@@ -2004,7 +2249,13 @@ fn dash_wrap_flag(flag: DashFlag, grow: f32, yellow: bool, blue: bool, red: bool
     }
 }
 
-fn flag_widget_flag(flag: DashFlag, grow: f32, yellow: bool, blue: bool, red: bool) -> (DashFlag, f32) {
+fn flag_widget_flag(
+    flag: DashFlag,
+    grow: f32,
+    yellow: bool,
+    blue: bool,
+    red: bool,
+) -> (DashFlag, f32) {
     dash_wrap_flag(flag, grow, yellow, blue, red)
 }
 
@@ -2072,76 +2323,76 @@ fn board_item(s: &Snapshot, cfg: &HudConfig, field: BoardField) -> Option<(char,
         return None;
     }
     RaceStore::with(|race| {
-    let st = race
-        .field
-        .focus
-        .and_then(|i| race.field.rows.get(i))
-        .map(|r| &r.standing)
-        .or_else(|| focus_standing(s));
-    let text = match field {
-        BoardField::None => return None,
-        BoardField::Position => st
-            .map(|r| format!("P{}", r.position.max(0)))
-            .unwrap_or_else(|| "P--".into()),
-        BoardField::ClassPos => {
-            let pos = class_position(s);
-            if pos > 0 {
-                format!("P{pos}")
-            } else {
-                "P--".into()
+        let st = race
+            .field
+            .focus
+            .and_then(|i| race.field.rows.get(i))
+            .map(|r| &r.standing)
+            .or_else(|| focus_standing(s));
+        let text = match field {
+            BoardField::None => return None,
+            BoardField::Position => st
+                .map(|r| format!("P{}", r.position.max(0)))
+                .unwrap_or_else(|| "P--".into()),
+            BoardField::ClassPos => {
+                let pos = class_position(s);
+                if pos > 0 {
+                    format!("P{pos}")
+                } else {
+                    "P--".into()
+                }
             }
-        }
-        BoardField::Session | BoardField::RaceTime | BoardField::Lap => race_progress_text(s),
-        BoardField::LapsLeft => race_laps_left_text(s),
-        BoardField::Track => {
-            let t = cstr(&s.track_name);
-            if t.is_empty() {
-                "TRACK".into()
-            } else {
-                t
+            BoardField::Session | BoardField::RaceTime | BoardField::Lap => race_progress_text(s),
+            BoardField::LapsLeft => race_laps_left_text(s),
+            BoardField::Track => {
+                let t = cstr(&s.track_name);
+                if t.is_empty() {
+                    "TRACK".into()
+                } else {
+                    t
+                }
             }
-        }
-        BoardField::Air => cfg.units.format_temp(s.air_temp),
-        BoardField::Best => format_clock(dash_best_ms(s)),
-        BoardField::SessionBest => {
-            let best = if race.field.session_best_ms > 0 {
-                race.field.session_best_ms
-            } else {
-                session_best_ms(s)
-            };
-            format_clock(best)
-        }
-        BoardField::LocalTime => local_clock(),
-        BoardField::Riders => format!("{}", s.standing_count.max(s.rider_count).max(0)),
-        BoardField::SessionType => {
-            if is_lap_race(s) {
-                "Lap race".into()
-            } else if overtime_active(s) {
-                "Extra".into()
-            } else if s.session_length > 0 {
-                "Timed".into()
-            } else {
-                "Session".into()
+            BoardField::Air => cfg.units.format_temp(s.air_temp),
+            BoardField::Best => format_clock(dash_best_ms(s)),
+            BoardField::SessionBest => {
+                let best = if race.field.session_best_ms > 0 {
+                    race.field.session_best_ms
+                } else {
+                    session_best_ms(s)
+                };
+                format_clock(best)
             }
-        }
-        BoardField::Fuel => cfg.units.format_fuel(s.fuel, s.max_fuel),
-        BoardField::FuelPct => format_fuel_pct(s.fuel, s.max_fuel),
-        BoardField::Setup => {
-            let name = s.setup_label();
-            if name.is_empty() {
-                "--".into()
-            } else {
-                name
+            BoardField::LocalTime => local_clock(),
+            BoardField::Riders => format!("{}", s.standing_count.max(s.rider_count).max(0)),
+            BoardField::SessionType => {
+                if is_lap_race(s) {
+                    "Lap race".into()
+                } else if overtime_active(s) {
+                    "Extra".into()
+                } else if s.session_length > 0 {
+                    "Timed".into()
+                } else {
+                    "Session".into()
+                }
             }
-        }
-        BoardField::GapAhead => st
-            .map(|r| gap_ahead_text(s, &race.field, r))
-            .unwrap_or_else(|| "---".into()),
-        BoardField::GapBehind => st
-            .map(|r| gap_behind_text(s, &race.field, r))
-            .unwrap_or_else(|| "---".into()),
-    };
-    Some((field.icon(), text))
+            BoardField::Fuel => cfg.units.format_fuel(s.fuel, s.max_fuel),
+            BoardField::FuelPct => format_fuel_pct(s.fuel, s.max_fuel),
+            BoardField::Setup => {
+                let name = s.setup_label();
+                if name.is_empty() {
+                    "--".into()
+                } else {
+                    name
+                }
+            }
+            BoardField::GapAhead => st
+                .map(|r| gap_ahead_text(s, &race.field, r))
+                .unwrap_or_else(|| "---".into()),
+            BoardField::GapBehind => st
+                .map(|r| gap_behind_text(s, &race.field, r))
+                .unwrap_or_else(|| "---".into()),
+        };
+        Some((field.icon(), text))
     })
 }
 
@@ -2274,22 +2525,50 @@ fn draw_table_board<C: BoardCol>(
     let col_h = 16.0 * k;
     let track_h = 20.0 * k;
     let row_h = 22.0 * k;
-    let foot_h = if BoardField::any(look.foot) { 20.0 * k } else { 0.0 };
+    let foot_h = if BoardField::any(look.foot) {
+        20.0 * k
+    } else {
+        0.0
+    };
     let h = table_stack_h(k, vis_rows, BoardField::any(look.foot));
     let pad = 8.0;
-    let slots = col_slots(x, pad, max_w, cols, |c| c.width(cfg) as f32, |c| c.is_name());
+    let slots = col_slots(
+        x,
+        pad,
+        max_w,
+        cols,
+        |c| c.width(cfg) as f32,
+        |c| c.is_name(),
+    );
     let w = hug_board_w(x, pad, max_w, &slots);
     let a = bg_a(look.bg);
     if a > 0 {
         fill_round(px, x, y, w, h, 6.0, Color::from_rgba8(8, 8, 10, a));
-        fill_round(px, x, y, w, head_h, 6.0, Color::from_rgba8(4, 4, 6, plaque_cap_a(a)));
+        fill_round(
+            px,
+            x,
+            y,
+            w,
+            head_h,
+            6.0,
+            Color::from_rgba8(4, 4, 6, plaque_cap_a(a)),
+        );
         if let Some(rrt) = rr(x, y + head_h - 6.0, w, 6.0) {
             fill_rect(px, rrt, Color::from_rgba8(4, 4, 6, plaque_cap_a(a)));
         }
     }
     draw_board_bar(px, fonts, s, cfg, look.head, x, y, w, head_h);
     if let Some(msg) = empty {
-        text(px, fonts, msg, 12.0, x + 12.0, y + head_h + 10.0, text_dim(), false);
+        text(
+            px,
+            fonts,
+            msg,
+            12.0,
+            x + 12.0,
+            y + head_h + 10.0,
+            text_dim(),
+            false,
+        );
         paint_table_footer(px, fonts, s, cfg, look.foot, x, y, w, h, foot_h, a);
         return;
     }
@@ -2302,7 +2581,11 @@ fn draw_table_board<C: BoardCol>(
     let mut cy = y + head_h;
     let track = {
         let t = cstr(&s.track_name);
-        if t.is_empty() { "TRACK".into() } else { t.to_uppercase() }
+        if t.is_empty() {
+            "TRACK".into()
+        } else {
+            t.to_uppercase()
+        }
     };
     draw_count_track(px, fonts, x, cy, count_n, &track);
     if let Some(line) = rr(x + 8.0, cy + 18.0, w - 16.0, 1.2) {
@@ -2312,8 +2595,22 @@ fn draw_table_board<C: BoardCol>(
     let hdr_y = cy + 2.0;
     for (col, cx, cw) in &slots {
         let right = !col.is_name() && !col.is_bike();
-        let pad = if col.is_name() { name_left_pad(*cx, bar_end) } else { 0.0 };
-        col_text(px, fonts, col.header(), 10.0, *cx + pad, (*cw - pad).max(8.0), hdr_y, hdr_c, right);
+        let pad = if col.is_name() {
+            name_left_pad(*cx, bar_end)
+        } else {
+            0.0
+        };
+        col_text(
+            px,
+            fonts,
+            col.header(),
+            10.0,
+            *cx + pad,
+            (*cw - pad).max(8.0),
+            hdr_y,
+            hdr_c,
+            right,
+        );
     }
     cy += col_h;
 
@@ -2341,7 +2638,19 @@ fn draw_table_board<C: BoardCol>(
         foot: look.foot,
     };
     body(&mut board);
-    paint_table_footer(board.px, board.fonts, board.s, board.cfg, board.foot, board.x, board.y, board.w, board.h, board.foot_h, board.a);
+    paint_table_footer(
+        board.px,
+        board.fonts,
+        board.s,
+        board.cfg,
+        board.foot,
+        board.x,
+        board.y,
+        board.w,
+        board.h,
+        board.foot_h,
+        board.a,
+    );
 }
 
 fn paint_table_footer(
@@ -2390,7 +2699,14 @@ impl<C: BoardCol> TableBoard<'_, C> {
         if self.stripe && a > 0 {
             for vis_i in 0..ids.len() {
                 if vis_i % 2 == 1 {
-                    fill_focus_row(self.px, x, body_y + vis_i as f32 * row_h, w, row_h, stripe_c);
+                    fill_focus_row(
+                        self.px,
+                        x,
+                        body_y + vis_i as f32 * row_h,
+                        w,
+                        row_h,
+                        stripe_c,
+                    );
                 }
             }
         }
@@ -2451,10 +2767,22 @@ fn paint_table_row<C: BoardCol>(
     let mut named = false;
     for (kind, cx, cw) in row.slots {
         if kind.is_pos() {
-            fill_skew(px, *cx + *cw + 1.0, row.cy + 4.0, BIKE_BAR_W, row.row_h - 8.0, BIKE_BAR_SKEW, accent);
+            fill_skew(
+                px,
+                *cx + *cw + 1.0,
+                row.cy + 4.0,
+                BIKE_BAR_W,
+                row.row_h - 8.0,
+                BIKE_BAR_SKEW,
+                accent,
+            );
         }
         let (val, color, right) = cell(*kind);
-        let pad = if kind.is_name() { name_left_pad(*cx, row.bar_end) } else { 0.0 };
+        let pad = if kind.is_name() {
+            name_left_pad(*cx, row.bar_end)
+        } else {
+            0.0
+        };
         if kind.is_name() {
             named = true;
             if let Some(num) = click {
@@ -2464,7 +2792,17 @@ fn paint_table_row<C: BoardCol>(
         if kind.is_bike() && !val.is_empty() {
             draw_bike_pill(px, fonts, &val, *cx, row.cy, *cw, row.row_h, accent);
         } else {
-            col_text(px, fonts, &val, 12.0, *cx + pad, (*cw - pad).max(8.0), row.cy + 4.0, color, right);
+            col_text(
+                px,
+                fonts,
+                &val,
+                12.0,
+                *cx + pad,
+                (*cw - pad).max(8.0),
+                row.cy + 4.0,
+                color,
+                right,
+            );
         }
     }
     if !named {
@@ -2501,7 +2839,14 @@ fn signed_deg(deg: f32) -> String {
     }
 }
 
-fn stroke_smooth_series(px: &mut Pixmap, pts: &[(f32, f32)], color: Color, width: f32, y_lo: f32, y_hi: f32) {
+fn stroke_smooth_series(
+    px: &mut Pixmap,
+    pts: &[(f32, f32)],
+    color: Color,
+    width: f32,
+    y_lo: f32,
+    y_hi: f32,
+) {
     if pts.len() < 2 {
         return;
     }
@@ -2510,11 +2855,7 @@ fn stroke_smooth_series(px: &mut Pixmap, pts: &[(f32, f32)], color: Color, width
     let mut smooth = Vec::with_capacity(n);
     for i in 0..n {
         let t = i as i32;
-        let y = (y_at(t - 2)
-            + y_at(t - 1) * 2.0
-            + y_at(t) * 3.0
-            + y_at(t + 1) * 2.0
-            + y_at(t + 2))
+        let y = (y_at(t - 2) + y_at(t - 1) * 2.0 + y_at(t) * 3.0 + y_at(t + 1) * 2.0 + y_at(t + 2))
             / 9.0;
         smooth.push((pts[i].0, y.clamp(y_lo, y_hi)));
     }
@@ -2663,7 +3004,9 @@ fn flag_anim_step(wanted: DashFlag) -> (DashFlag, f32) {
 }
 
 fn max_digit_w(fonts: &Fonts, size: f32) -> f32 {
-    ('0'..='9').map(|d| measure(fonts, d.encode_utf8(&mut [0; 4]), size)).fold(0.0, f32::max)
+    ('0'..='9')
+        .map(|d| measure(fonts, d.encode_utf8(&mut [0; 4]), size))
+        .fold(0.0, f32::max)
 }
 
 fn chamfer_path(x: f32, y: f32, w: f32, h: f32, cut: f32) -> Option<Path> {
@@ -2685,13 +3028,7 @@ fn fill_path(px: &mut Pixmap, path: &Path, color: Color) {
     fill_path_rule(px, path, color, FillRule::Winding, None);
 }
 
-fn fill_path_rule(
-    px: &mut Pixmap,
-    path: &Path,
-    color: Color,
-    rule: FillRule,
-    mask: Option<&Mask>,
-) {
+fn fill_path_rule(px: &mut Pixmap, path: &Path, color: Color, rule: FillRule, mask: Option<&Mask>) {
     let mut p = Paint::default();
     p.set_color(color);
     p.anti_alias = true;
@@ -2714,7 +3051,15 @@ fn push_chamfer(pb: &mut PathBuilder, x: f32, y: f32, w: f32, h: f32, cut: f32) 
 }
 
 /// Chamfered rect with independent top / bottom corner cuts (flag wrap vs dash body).
-fn push_chamfer_tb(pb: &mut PathBuilder, x: f32, y: f32, w: f32, h: f32, top_cut: f32, bot_cut: f32) {
+fn push_chamfer_tb(
+    pb: &mut PathBuilder,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    top_cut: f32,
+    bot_cut: f32,
+) {
     if w <= 0.0 || h <= 0.0 {
         return;
     }
@@ -2838,7 +3183,13 @@ fn draw_checkered_wrap(px: &mut Pixmap, d: &DashLay, border: f32, ox: f32, ow: f
     let Some(frame) = dash_wrap_frame_path(d, border) else {
         return;
     };
-    fill_path_rule(px, &frame, Color::from_rgba8(248, 248, 250, 255), FillRule::EvenOdd, None);
+    fill_path_rule(
+        px,
+        &frame,
+        Color::from_rgba8(248, 248, 250, 255),
+        FillRule::EvenOdd,
+        None,
+    );
     let clip = Mask::new(px.width(), px.height()).map(|mut m| {
         m.fill_path(&frame, FillRule::EvenOdd, true, Transform::identity());
         m
@@ -2846,12 +3197,41 @@ fn draw_checkered_wrap(px: &mut Pixmap, d: &DashLay, border: f32, ox: f32, ow: f
     let dark = Color::from_rgba8(176, 176, 182, 255);
     let light = Color::from_rgba8(236, 236, 240, 255);
     let side_rows = ((d.h / border).round() as i32).max(1);
-    draw_checkered_cells(px, ox, d.y, border, d.h, dark, light, side_rows, clip.as_ref());
-    draw_checkered_cells(px, d.x + d.w, d.y, border, d.h, dark, light, side_rows, clip.as_ref());
+    draw_checkered_cells(
+        px,
+        ox,
+        d.y,
+        border,
+        d.h,
+        dark,
+        light,
+        side_rows,
+        clip.as_ref(),
+    );
+    draw_checkered_cells(
+        px,
+        d.x + d.w,
+        d.y,
+        border,
+        d.h,
+        dark,
+        light,
+        side_rows,
+        clip.as_ref(),
+    );
     draw_checkered_cells(px, ox, d.y + d.h, ow, border, dark, light, 1, clip.as_ref());
 }
 
-fn draw_checkered_banner(px: &mut Pixmap, fonts: &Fonts, band: &Path, ox: f32, top_y: f32, ow: f32, top_h: f32, grow: f32) {
+fn draw_checkered_banner(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    band: &Path,
+    ox: f32,
+    top_y: f32,
+    ow: f32,
+    top_h: f32,
+    grow: f32,
+) {
     let white = Color::from_rgba8(248, 248, 250, 255);
     let ink = Color::from_rgba8(22, 22, 26, 255);
     let label = "Checkered Flag";
@@ -2913,7 +3293,16 @@ fn draw_white_wrap(px: &mut Pixmap, d: &DashLay, border: f32, ox: f32, ow: f32) 
 }
 
 /// Top banner: stripes across most of the band, fading to a white plaque behind the caption.
-fn draw_white_banner(px: &mut Pixmap, fonts: &Fonts, band: &Path, ox: f32, top_y: f32, ow: f32, top_h: f32, grow: f32) {
+fn draw_white_banner(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    band: &Path,
+    ox: f32,
+    top_y: f32,
+    ow: f32,
+    top_h: f32,
+    grow: f32,
+) {
     let white = Color::from_rgba8(248, 248, 250, 255);
     let stripe = Color::from_rgba8(210, 210, 214, 255);
     let ink = Color::from_rgba8(16, 16, 18, 255);
@@ -2976,7 +3365,11 @@ fn standing_pos(s: &Snapshot, race_num: i32) -> i32 {
 }
 
 fn yaw_forward(yaw: f32) -> (f32, f32) {
-    let yaw = if yaw.abs() > 6.5 { yaw.to_radians() } else { yaw };
+    let yaw = if yaw.abs() > 6.5 {
+        yaw.to_radians()
+    } else {
+        yaw
+    };
     let (s, c) = yaw.sin_cos();
     (s, c)
 }
@@ -2991,7 +3384,13 @@ fn local_forward(s: &Snapshot) -> (f32, f32) {
     }
 }
 
-fn screen_dir(to_px: &impl Fn(f32, f32) -> (f32, f32), wx: f32, wz: f32, hx: f32, hz: f32) -> (f32, f32) {
+fn screen_dir(
+    to_px: &impl Fn(f32, f32) -> (f32, f32),
+    wx: f32,
+    wz: f32,
+    hx: f32,
+    hz: f32,
+) -> (f32, f32) {
     let (x0, y0) = to_px(wx, wz);
     let (x1, y1) = to_px(wx + hx, wz + hz);
     let dx = x1 - x0;
@@ -3018,7 +3417,16 @@ fn color_alpha(c: Color, a: u8) -> Color {
     Color::from_rgba8(r, g, b, a)
 }
 
-fn draw_dot_chevron(px: &mut Pixmap, x: f32, y: f32, r: f32, sdx: f32, sdy: f32, fill: Color, you: bool) {
+fn draw_dot_chevron(
+    px: &mut Pixmap,
+    x: f32,
+    y: f32,
+    r: f32,
+    sdx: f32,
+    sdy: f32,
+    fill: Color,
+    you: bool,
+) {
     let ring = if you { 2.4 } else { 1.8 };
     let h = (r * 1.05).clamp(5.5, 11.0);
     let w = (r * 0.78).clamp(3.8, 8.0);
@@ -3038,7 +3446,12 @@ fn draw_dot_chevron(px: &mut Pixmap, x: f32, y: f32, r: f32, sdx: f32, sdy: f32,
         return;
     };
     fill_path(px, &path, color_alpha(fill, 230));
-    stroke_path(px, &path, color_alpha(fill, 160), if you { 1.8 } else { 1.4 });
+    stroke_path(
+        px,
+        &path,
+        color_alpha(fill, 160),
+        if you { 1.8 } else { 1.4 },
+    );
 }
 
 fn draw_rider_dot(
@@ -3067,8 +3480,20 @@ fn fill_dot_glow(px: &mut Pixmap, x: f32, y: f32, r: f32, fill: Color, you: bool
         r + if you { 5.6 } else { 4.2 },
         Color::from_rgba8(0, 0, 0, if you { 48 } else { 32 }),
     );
-    fill_circle(px, x, y, r + if you { 4.4 } else { 3.3 }, color_alpha(fill, if you { 52 } else { 34 }));
-    fill_circle(px, x, y, r + if you { 2.7 } else { 2.1 }, color_alpha(fill, if you { 86 } else { 58 }));
+    fill_circle(
+        px,
+        x,
+        y,
+        r + if you { 4.4 } else { 3.3 },
+        color_alpha(fill, if you { 52 } else { 34 }),
+    );
+    fill_circle(
+        px,
+        x,
+        y,
+        r + if you { 2.7 } else { 2.1 },
+        color_alpha(fill, if you { 86 } else { 58 }),
+    );
     fill_circle(px, x, y, r, color_alpha(fill, 230));
 }
 
@@ -3103,7 +3528,11 @@ fn numbered_dot(
     let Some((min_x, min_y, max_x, max_y)) = ink_bounds(fonts, &label, size) else {
         return;
     };
-    let extra_x = if FAKE_BOLD.with(|c| c.get()) { 0.7 } else { 0.0 };
+    let extra_x = if FAKE_BOLD.with(|c| c.get()) {
+        0.7
+    } else {
+        0.0
+    };
     let tx = (x - (min_x + max_x + extra_x) * 0.5).round();
     let ty = (y - (min_y + max_y) * 0.5).round();
     let ink = ink_on(fill);
@@ -3140,7 +3569,16 @@ fn ink_bounds(fonts: &Fonts, s: &str, size: f32) -> Option<(f32, f32, f32, f32)>
     any.then_some((min_x, min_y, max_x, max_y))
 }
 
-pub fn icon(px: &mut Pixmap, fonts: &Fonts, ch: char, size: f32, mut x: f32, y: f32, color: Color, center: bool) {
+pub fn icon(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    ch: char,
+    size: f32,
+    mut x: f32,
+    y: f32,
+    color: Color,
+    center: bool,
+) {
     let size = size * style_k();
     if center {
         x -= fonts.icons.metrics(ch, size).advance_width * 0.5;
@@ -3186,12 +3624,29 @@ fn icon_over_dot_scaled(
     let metrics = fonts.icons.metrics(ch, vis);
     let gap = (r * 0.22).max(2.5);
     let cy = y - r - gap - vis + metrics.ymin as f32;
-    icon(px, fonts, ch, size, x + 0.8, cy + 0.8, Color::from_rgba8(8, 8, 10, 220), true);
+    icon(
+        px,
+        fonts,
+        ch,
+        size,
+        x + 0.8,
+        cy + 0.8,
+        Color::from_rgba8(8, 8, 10, 220),
+        true,
+    );
     icon(px, fonts, ch, size, x, cy, col, true);
 }
 
 fn crown_over_dot(px: &mut Pixmap, fonts: &Fonts, x: f32, y: f32, r: f32) {
-    icon_over_dot(px, fonts, x, y, r, '\u{f521}', Color::from_rgba8(255, 196, 48, 255));
+    icon_over_dot(
+        px,
+        fonts,
+        x,
+        y,
+        r,
+        '\u{f521}',
+        Color::from_rgba8(255, 196, 48, 255),
+    );
 }
 
 fn draw_rider_overhead(
@@ -3279,7 +3734,16 @@ fn draw_state_mark(px: &mut Pixmap, fonts: &Fonts, x: f32, y: f32, r: f32, mark:
     let size = (r * 1.05).clamp(8.0 * k, 13.0 * k) / k;
     let ix = x + r * 0.62;
     let iy = y + r * 0.18;
-    icon(px, fonts, ch, size, ix + 0.8, iy + 0.8, Color::from_rgba8(8, 8, 10, 230), true);
+    icon(
+        px,
+        fonts,
+        ch,
+        size,
+        ix + 0.8,
+        iy + 0.8,
+        Color::from_rgba8(8, 8, 10, 230),
+        true,
+    );
     icon(px, fonts, ch, size, ix, iy, col, true);
 }
 
@@ -3327,9 +3791,12 @@ fn blit_circle(dst: &mut Pixmap, src: &Pixmap, dx: f32, dy: f32) {
             let sa = (src_data[si + 3] as f32 / 255.0) * cover;
             let inv = 1.0 - sa;
             dst_data[di] = (src_data[si] as f32 * cover + dst_data[di] as f32 * inv) as u8;
-            dst_data[di + 1] = (src_data[si + 1] as f32 * cover + dst_data[di + 1] as f32 * inv) as u8;
-            dst_data[di + 2] = (src_data[si + 2] as f32 * cover + dst_data[di + 2] as f32 * inv) as u8;
-            dst_data[di + 3] = (src_data[si + 3] as f32 * cover + dst_data[di + 3] as f32 * inv) as u8;
+            dst_data[di + 1] =
+                (src_data[si + 1] as f32 * cover + dst_data[di + 1] as f32 * inv) as u8;
+            dst_data[di + 2] =
+                (src_data[si + 2] as f32 * cover + dst_data[di + 2] as f32 * inv) as u8;
+            dst_data[di + 3] =
+                (src_data[si + 3] as f32 * cover + dst_data[di + 3] as f32 * inv) as u8;
         }
     }
 }
@@ -3609,7 +4076,13 @@ fn draw_track_chevron(px: &mut Pixmap, x: f32, y: f32, dx: f32, dy: f32, track_p
     let mut paint = Paint::default();
     paint.set_color(Color::from_rgba8(8, 8, 10, 230));
     paint.anti_alias = true;
-    px.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+    px.fill_path(
+        &path,
+        &paint,
+        FillRule::Winding,
+        Transform::identity(),
+        None,
+    );
 }
 
 struct PolyHit {
@@ -3653,7 +4126,11 @@ fn along_poly(s: &Snapshot, n: usize, meters: f32) -> Option<PolyHit> {
             continue;
         }
         let span = d[i] - d[i - 1];
-        let u = if span > 0.001 { (target - d[i - 1]) / span } else { 0.0 };
+        let u = if span > 0.001 {
+            (target - d[i - 1]) / span
+        } else {
+            0.0
+        };
         let ax = s.poly[i - 1].x;
         let az = s.poly[i - 1].z;
         let bx = s.poly[i].x;
@@ -3675,7 +4152,11 @@ fn poly_at_frac(s: &Snapshot, n: usize, frac: f32) -> Option<PolyHit> {
     if dist < 1.0 {
         return None;
     }
-    let lap = if s.track_length > 1.0 { s.track_length } else { dist };
+    let lap = if s.track_length > 1.0 {
+        s.track_length
+    } else {
+        dist
+    };
     let origin = if s.sf_meters >= 0.0 { s.sf_meters } else { 0.0 };
     along_poly(s, n, origin + frac.rem_euclid(1.0) * lap)
 }
@@ -3692,7 +4173,13 @@ fn poly_centroid(s: &Snapshot, n: usize) -> (f32, f32) {
     (cx * inv, cz * inv)
 }
 
-fn draw_sf(px: &mut Pixmap, s: &Snapshot, n: usize, to_px: impl Fn(f32, f32) -> (f32, f32), track_px: f32) {
+fn draw_sf(
+    px: &mut Pixmap,
+    s: &Snapshot,
+    n: usize,
+    to_px: impl Fn(f32, f32) -> (f32, f32),
+    track_px: f32,
+) {
     let Some(hit) = along_poly(s, n, s.sf_meters) else {
         return;
     };
@@ -3709,7 +4196,12 @@ fn draw_sf(px: &mut Pixmap, s: &Snapshot, n: usize, to_px: impl Fn(f32, f32) -> 
     pb.move_to(hx - pxn * half, hy - pyn * half);
     pb.line_to(hx + pxn * half, hy + pyn * half);
     if let Some(path) = pb.finish() {
-        stroke_path(px, &path, Color::from_rgba8(8, 8, 10, 220), (track_px * 0.55).clamp(5.0, 9.0));
+        stroke_path(
+            px,
+            &path,
+            Color::from_rgba8(8, 8, 10, 220),
+            (track_px * 0.55).clamp(5.0, 9.0),
+        );
         stroke_path(px, &path, accent(), (track_px * 0.38).clamp(3.5, 6.5));
     }
 }
@@ -3764,10 +4256,21 @@ fn draw_sector_lines(
         pb.move_to(hx - pxn * half, hy - pyn * half);
         pb.line_to(hx + pxn * half, hy + pyn * half);
         if let Some(path) = pb.finish() {
-            stroke_dashed(px, &path, Color::from_rgba8(8, 8, 10, 200), thick + 1.0, dash, dash);
+            stroke_dashed(
+                px,
+                &path,
+                Color::from_rgba8(8, 8, 10, 200),
+                thick + 1.0,
+                dash,
+                dash,
+            );
             stroke_dashed(px, &path, violet, thick, dash, dash);
         }
-        let mut side = if (hx - ccx) * pxn + (hy - ccy) * pyn >= 0.0 { 1.0 } else { -1.0 };
+        let mut side = if (hx - ccx) * pxn + (hy - ccy) * pyn >= 0.0 {
+            1.0
+        } else {
+            -1.0
+        };
         let pad = half + sz * 0.7;
         let mut lx = hx + pxn * side * pad;
         let mut ly = hy + pyn * side * pad;

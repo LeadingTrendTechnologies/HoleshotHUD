@@ -77,7 +77,16 @@ pub(crate) fn draw_delta(
     let left = x + (w - cluster) * 0.5;
     let mark_y = gy + (num_fs - mark_h) * 0.78;
     fill_delta_mark(px, left, mark_y, mark_h, accent());
-    text(px, fonts, &label, num_fs, left + mark_w + gap, gy, col, false);
+    text(
+        px,
+        fonts,
+        &label,
+        num_fs,
+        left + mark_w + gap,
+        gy,
+        col,
+        false,
+    );
 
     let line_x = x + pad_x;
     let line_w = (w - pad_x * 2.0).max(48.0);
@@ -118,21 +127,25 @@ pub(crate) fn draw_delta(
         let hw = measure(fonts, hint, times_fs);
         let hx = mid - hw * 0.5;
         if pills {
-            fill_night_pill(
-                px,
-                hx - 7.0,
-                times_y - 3.0,
-                hw + 14.0,
-                times_fs + 6.0,
-            );
+            fill_night_pill(px, hx - 7.0, times_y - 3.0, hw + 14.0, times_fs + 6.0);
         }
         text(px, fonts, hint, times_fs, mid, times_y, text_dim(), true);
     } else {
         if view.ref_lap_ms > 0 {
             let best = format_lap(view.ref_lap_ms);
             draw_delta_lap_chip(
-                px, fonts, if cfg.delta_session { "SESSION" } else { "BEST" }, &best, line_x, cap_y, times_y, cap_fs, times_fs, pills,
-                text_dim(), text_col(),
+                px,
+                fonts,
+                if cfg.delta_session { "SESSION" } else { "BEST" },
+                &best,
+                line_x,
+                cap_y,
+                times_y,
+                cap_fs,
+                times_fs,
+                pills,
+                text_dim(),
+                text_col(),
             );
         }
         if view.new_best {
@@ -146,8 +159,18 @@ pub(crate) fn draw_delta(
             let chip_w = cap_w + measure(fonts, &pb, times_fs);
             let lx = line_x + line_w - chip_w;
             draw_delta_lap_chip(
-                px, fonts, cap, &pb, lx, cap_y, times_y, cap_fs, times_fs, pills,
-                accent(), accent(),
+                px,
+                fonts,
+                cap,
+                &pb,
+                lx,
+                cap_y,
+                times_y,
+                cap_fs,
+                times_fs,
+                pills,
+                accent(),
+                accent(),
             );
         } else if view.last_lap_ms > 0 {
             let last = format_lap(view.last_lap_ms);
@@ -155,8 +178,18 @@ pub(crate) fn draw_delta(
             let last_w = cap_w + measure(fonts, &last, times_fs);
             let lx = line_x + line_w - last_w;
             draw_delta_lap_chip(
-                px, fonts, "LAST", &last, lx, cap_y, times_y, cap_fs, times_fs, pills,
-                text_dim(), text_col(),
+                px,
+                fonts,
+                "LAST",
+                &last,
+                lx,
+                cap_y,
+                times_y,
+                cap_fs,
+                times_fs,
+                pills,
+                text_dim(),
+                text_col(),
             );
         }
     }
@@ -188,7 +221,16 @@ pub(crate) fn draw_delta_lap_chip(
         fill_night_pill(px, x - pad_x, top - pad_y, tw + pad_x * 2.0, ph);
     }
     text(px, fonts, cap, cap_fs, x, cap_y, cap_col, false);
-    text(px, fonts, time, times_fs, x + cap_w, time_y, time_col, false);
+    text(
+        px,
+        fonts,
+        time,
+        times_fs,
+        x + cap_w,
+        time_y,
+        time_col,
+        false,
+    );
 }
 
 pub(crate) fn format_delta_ms(ms: i32) -> String {

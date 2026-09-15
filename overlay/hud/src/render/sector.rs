@@ -49,7 +49,14 @@ pub(crate) fn sector_fit_probe(fonts: &Fonts, probes: &[&str], fs: f32, max_w: f
 }
 
 /// Center the live string in the column. Probe `slot_w` still sizes pills and columns.
-pub(crate) fn sector_num_x(fonts: &Fonts, s: &str, fs: f32, col_x: f32, col_w: f32, _slot_w: f32) -> f32 {
+pub(crate) fn sector_num_x(
+    fonts: &Fonts,
+    s: &str,
+    fs: f32,
+    col_x: f32,
+    col_w: f32,
+    _slot_w: f32,
+) -> f32 {
     let tw = measure(fonts, s, fs);
     col_x + (col_w - tw) * 0.5
 }
@@ -174,7 +181,14 @@ pub(crate) fn sector_col_widths(need: [f32; 4], cols_w: f32, hero: i32) -> [f32;
     w
 }
 
-pub(crate) fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) {
+pub(crate) fn draw_sector(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    s: &Snapshot,
+    cfg: &HudConfig,
+    sw: f32,
+    sh: f32,
+) {
     // THESIS: live sector delta stays the glance; LAP hangs the whole lap beside it; last laps share those columns.
     // OWN-WORLD: night-ink 6px plaque, orange skew S# on the current cell, you-row gold on the fastest log lap, green/red times vs best. No purple, no drop-shadow. Glass (bg < 40) rims floating type in night-ink.
     // STORY: rider reads up/down vs best on top, drops their eyes for LAST / -2 / -3 times and the lap total.
@@ -226,7 +240,17 @@ pub(crate) fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &Hu
         (inner_w * 0.92).max(40.0),
     );
     let cap_y = y + (pad_y * 0.25).max(2.0);
-    text_halo(px, fonts, cap, cap_fs, x + w * 0.5, cap_y, text_dim(), true, glass);
+    text_halo(
+        px,
+        fonts,
+        cap,
+        cap_fs,
+        x + w * 0.5,
+        cap_y,
+        text_dim(),
+        true,
+        glass,
+    );
     // Caption glyphs are `cap_fs * style_k`. Spacing from the raw size left
     // "vs. your best" sitting on S2/S3 when Settings font went up.
     let body_y = cap_y + cap_fs * style_k() + 4.0;
@@ -240,7 +264,9 @@ pub(crate) fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &Hu
     } else {
         Vec::new()
     };
-    let has_hist = hist.first().is_some_and(|r| r.cells.iter().any(|c| c.time_ms > 0));
+    let has_hist = hist
+        .first()
+        .is_some_and(|r| r.cells.iter().any(|c| c.time_ms > 0));
     let ideal = crate::sector::ideal(s, cfg.sector_session);
     let k = style_k();
     // LAST stacks lap time over delta. Row height must follow the scaled type
@@ -339,45 +365,31 @@ pub(crate) fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &Hu
                 true,
             );
         } else {
-            text_halo(px, fonts, row.label, label_fs, mid, label_y, text_dim(), true, glass);
+            text_halo(
+                px,
+                fonts,
+                row.label,
+                label_fs,
+                mid,
+                label_y,
+                text_dim(),
+                true,
+                glass,
+            );
         }
         let delta_y = body_y + (live_h - delta_fs) * 0.38;
         let delta_slot = sector_probe_max(fonts, delta_fs, SECTOR_DELTA_PROBES);
         draw_sector_num(
-            px,
-            fonts,
-            &row.delta,
-            delta_fs,
-            cx,
-            cw,
-            delta_slot,
-            delta_y,
-            delta_c,
-            glass,
+            px, fonts, &row.delta, delta_fs, cx, cw, delta_slot, delta_y, delta_c, glass,
         );
         let (pill_pad, pill_h) = sector_pill_metrics(time_fs);
         let time_y = live_bottom - pill_h + pill_pad;
         let time_slot = sector_probe_max(fonts, time_fs, SECTOR_SPLIT_PROBES);
         let chip_x = 7.0;
         let pill_w = time_slot + chip_x * 2.0;
-        fill_night_pill(
-            px,
-            mid - pill_w * 0.5,
-            time_y - pill_pad,
-            pill_w,
-            pill_h,
-        );
+        fill_night_pill(px, mid - pill_w * 0.5, time_y - pill_pad, pill_w, pill_h);
         draw_sector_num(
-            px,
-            fonts,
-            &row.time,
-            time_fs,
-            cx,
-            cw,
-            time_slot,
-            time_y,
-            time_c,
-            false,
+            px, fonts, &row.time, time_fs, cx, cw, time_slot, time_y, time_c, false,
         );
     }
     draw_sector_lap_live(
@@ -451,7 +463,12 @@ pub(crate) fn draw_sector(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &Hu
             } else {
                 text_dim()
             };
-            let cell_fs = sector_fit_probe(fonts, SECTOR_SPLIT_PROBES, hist_fs, (col_w[i] - 8.0).max(8.0));
+            let cell_fs = sector_fit_probe(
+                fonts,
+                SECTOR_SPLIT_PROBES,
+                hist_fs,
+                (col_w[i] - 8.0).max(8.0),
+            );
             let slot = sector_probe_max(fonts, cell_fs, SECTOR_SPLIT_PROBES);
             draw_sector_num(
                 px,
@@ -534,7 +551,17 @@ pub(crate) fn draw_sector_lap_live(
     let lap = crate::sector::live_lap(s, cfg.sector_session);
     let mid = cx + cw * 0.5;
     let label_fs = (live_h * 0.16).clamp(9.0, 12.0);
-    text_halo(px, fonts, "LAP", label_fs, mid, body_y, text_dim(), true, glass);
+    text_halo(
+        px,
+        fonts,
+        "LAP",
+        label_fs,
+        mid,
+        body_y,
+        text_dim(),
+        true,
+        glass,
+    );
     let time = if lap.time_ms > 0 {
         format_lap(lap.time_ms)
     } else {
@@ -551,7 +578,12 @@ pub(crate) fn draw_sector_lap_live(
         "--".into()
     };
     let text_max = (cw - 8.0).max(8.0);
-    let time_fs = sector_fit_probe(fonts, SECTOR_LAP_PROBES, (live_h * 0.28).clamp(12.0, 22.0), text_max);
+    let time_fs = sector_fit_probe(
+        fonts,
+        SECTOR_LAP_PROBES,
+        (live_h * 0.28).clamp(12.0, 22.0),
+        text_max,
+    );
     let delta_fs = sector_fit_probe(
         fonts,
         SECTOR_DELTA_PROBES,
@@ -577,7 +609,9 @@ pub(crate) fn draw_sector_lap_live(
     let time_y = body_y + ((live_h - pill_band - stack_h).max(0.0)) * 0.42;
     let time_slot = sector_probe_max(fonts, time_fs, SECTOR_LAP_PROBES);
     let delta_slot = sector_probe_max(fonts, delta_fs, SECTOR_DELTA_PROBES);
-    draw_sector_num(px, fonts, &time, time_fs, cx, cw, time_slot, time_y, time_c, glass);
+    draw_sector_num(
+        px, fonts, &time, time_fs, cx, cw, time_slot, time_y, time_c, glass,
+    );
     draw_sector_num(
         px,
         fonts,
@@ -641,12 +675,13 @@ pub(crate) fn draw_sector_ideal_row(
     );
     for i in 0..3 {
         let t = ideal.sectors[i];
-        let label = if t > 0 {
-            format_lap(t)
-        } else {
-            "--".into()
-        };
-        let cell_fs = sector_fit_probe(fonts, SECTOR_SPLIT_PROBES, hist_fs, (col_w[i] - 8.0).max(8.0));
+        let label = if t > 0 { format_lap(t) } else { "--".into() };
+        let cell_fs = sector_fit_probe(
+            fonts,
+            SECTOR_SPLIT_PROBES,
+            hist_fs,
+            (col_w[i] - 8.0).max(8.0),
+        );
         let slot = sector_probe_max(fonts, cell_fs, SECTOR_SPLIT_PROBES);
         draw_sector_num(
             px,

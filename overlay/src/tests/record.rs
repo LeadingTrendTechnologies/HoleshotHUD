@@ -17,14 +17,20 @@ fn leaving_a_session_archives_the_race() {
 fn track_change_starts_a_new_session() {
     let mut g = SessionGate::default();
     g.update("Glen", 4, 0, 40_000, 3, 1);
-    assert_eq!(g.update("Hangtown", 4, 0, 1_000, 1, 1), SessionEvent::NewSession);
+    assert_eq!(
+        g.update("Hangtown", 4, 0, 1_000, 1, 1),
+        SessionEvent::NewSession
+    );
 }
 
 #[test]
 fn lap_count_change_starts_a_new_session() {
     let mut g = SessionGate::default();
     g.update("Glen", 4, 0, 40_000, 3, 1);
-    assert_eq!(g.update("Glen", 6, 0, 1_000, 1, 1), SessionEvent::NewSession);
+    assert_eq!(
+        g.update("Glen", 6, 0, 1_000, 1, 1),
+        SessionEvent::NewSession
+    );
 }
 
 #[test]
@@ -53,7 +59,8 @@ fn same_moto_keeps_logging() {
 
 #[test]
 fn peek_track_reads_latest_name() {
-    let raw = "{\"v\":1}\n{\"track\":\"Glen Helen\",\"cur\":2}\n{\"track\":\"Hangtown\",\"cur\":1}\n";
+    let raw =
+        "{\"v\":1}\n{\"track\":\"Glen Helen\",\"cur\":2}\n{\"track\":\"Hangtown\",\"cur\":1}\n";
     assert_eq!(peek_track(raw).as_deref(), Some("Hangtown"));
 }
 
@@ -71,13 +78,11 @@ fn clock_sample_line_counts_as_a_race_log() {
 
 #[test]
 fn snapshot_uses_in_memory_samples_without_reading_the_live_file() {
-    let dir = std::env::temp_dir().join(format!(
-        "holeshot-hud-snapshot-{}",
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("holeshot-hud-snapshot-{}", std::process::id()));
     let _ = fs::create_dir_all(&dir);
     let path = dir.join("race.jsonl");
-    let raw = "{\"v\":1}\n{\"t\":1.2,\"seq\":3,\"track\":\"Glen\",\"cur\":2,\"time\":8000}\n".into();
+    let raw =
+        "{\"v\":1}\n{\"t\":1.2,\"seq\":3,\"track\":\"Glen\",\"cur\":2,\"time\":8000}\n".into();
     let log = snapshot_log(raw, path, false).expect("samples");
     assert_eq!(log.track.as_deref(), Some("Glen"));
     assert_eq!(

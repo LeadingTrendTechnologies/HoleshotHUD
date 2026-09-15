@@ -1,0 +1,45 @@
+{
+  "title": "Choose the Enable layout",
+  "question": "Empty Review in the Holeshot Settings world. Same copy and Enable. The Analyze capture is the aha. Pick how the shot sits on the page.",
+  "options": [
+    {
+      "id": "preview-act",
+      "label": "Preview then act",
+      "kicker": "THE ROLL",
+      "thesis": "Read the promise, see Analyze, then Enable. The shot is the proof; the button is last.",
+      "palette": ["#0A0A0A", "#18191D", "#FF9430", "#E4E4E6", "#84848A"],
+      "materials": ["charcoal stack", "orange skew Review plaque", "Exo 2 ExtraBold Italic", "6px rounds", "night-ink shot plate"],
+      "viewport": "F8 Review tab. Review plaque and Local races on this PC. Copy. A night-ink well holds the real Analyze screenshot (map beside tapes, At this spot, Results). Enable sits under the well, 128×36 orange plaque.",
+      "risk": "The button can fall below a tall shot on a short window.",
+      "raised": [
+        { "from": "Treasure map", "raise": "The shot is the destination you read, not a thumbnail." },
+        { "from": "Drawcord cape", "raise": "Enable is the one pull that raises recording." }
+      ],
+      "comp": ".impeccable/mocks/decision/enable-preview-act.png"
+    },
+    {
+      "id": "split-desk",
+      "label": "Split desk",
+      "thesis": "Copy and Enable stay left. The shot is the right column, same split as Analyze (map beside tapes).",
+      "palette": ["#0A0A0A", "#18191D", "#FF9430", "#E4E4E6", "#141416"],
+      "materials": ["two columns", "orange Enable plaque", "night-ink well", "Exo 2 ExtraBold Italic"],
+      "viewport": "Review plaque spans the top. Left: copy then Enable. Right: Analyze screenshot filling the remaining height in a 6px night-ink well.",
+      "risk": "A narrow F8 window squeezes the shot until the aha is unreadable.",
+      "comp": ".impeccable/mocks/decision/enable-split-desk.png"
+    },
+    {
+      "id": "full-well",
+      "label": "Full well",
+      "thesis": "The shot is the page. Copy recedes to one line. Enable sits on the dirt.",
+      "palette": ["#0A0A0A", "#FF9430", "#E4E4E6", "#0C0C0E"],
+      "materials": ["full-bleed night-ink well", "orange Enable on the shot", "Exo 2 ExtraBold Italic"],
+      "viewport": "Review plaque. One muted line of copy. Analyze screenshot fills the pane. Enable is an orange plaque in the lower-left of the well, over the map.",
+      "risk": "A button on the screenshot can hide the line it is meant to sell.",
+      "comp": ".impeccable/mocks/decision/enable-full-well.png"
+    }
+  ],
+  "reroll": { "registers": ["safer", "bolder"] },
+  "buildPath": { "value": "comp", "toggle": true },
+  "canon": false,
+  "steer": true
+}

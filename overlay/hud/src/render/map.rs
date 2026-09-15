@@ -1,7 +1,15 @@
 #![allow(unused_imports)]
 use super::*;
 
-pub(crate) fn draw_map(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32, age: f32) {
+pub(crate) fn draw_map(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    s: &Snapshot,
+    cfg: &HudConfig,
+    sw: f32,
+    sh: f32,
+    age: f32,
+) {
     let r = s.map;
     let x = r.x * sw;
     let y = r.y * sh;
@@ -9,12 +17,25 @@ pub(crate) fn draw_map(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudCo
     let h = r.h * sh;
     if cfg[WidgetId::Map].bg > 0 {
         if let Some(rect) = rr(x, y, w, h) {
-            fill_rect(px, rect, Color::from_rgba8(10, 10, 10, bg_a(cfg[WidgetId::Map].bg)));
+            fill_rect(
+                px,
+                rect,
+                Color::from_rgba8(10, 10, 10, bg_a(cfg[WidgetId::Map].bg)),
+            );
         }
     }
     let n = s.poly_count.max(0) as usize;
     if n < 2 {
-        text(px, fonts, "No track map", 13.0, x + w * 0.5, y + h * 0.5, text_dim(), true);
+        text(
+            px,
+            fonts,
+            "No track map",
+            13.0,
+            x + w * 0.5,
+            y + h * 0.5,
+            text_dim(),
+            true,
+        );
         return;
     }
 
@@ -40,9 +61,8 @@ pub(crate) fn draw_map(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudCo
     let used_h = dz * scale;
     let ox = x + (w - used_w) * 0.5;
     let oy = y + (h - used_h) * 0.5;
-    let to_px = |wx: f32, wz: f32| -> (f32, f32) {
-        (ox + (wx - min_x) * scale, oy + (max_z - wz) * scale)
-    };
+    let to_px =
+        |wx: f32, wz: f32| -> (f32, f32) { (ox + (wx - min_x) * scale, oy + (max_z - wz) * scale) };
 
     let track_px = (8.0 * scale).clamp(5.5, 26.0);
     let lw = w.ceil().max(1.0) as u32;
@@ -70,7 +90,12 @@ pub(crate) fn draw_map(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudCo
                     fill.set_color(fill_col());
                     fill.anti_alias = true;
                     layer.fill_path(&path, &fill, FillRule::EvenOdd, Transform::identity(), None);
-                    stroke_path(&mut layer, &path, Color::from_rgba8(18, 16, 16, 240), track_px + 3.0);
+                    stroke_path(
+                        &mut layer,
+                        &path,
+                        Color::from_rgba8(18, 16, 16, 240),
+                        track_px + 3.0,
+                    );
                     stroke_path(&mut layer, &path, track_col(), track_px);
                 }
                 if n >= 2 && s.sf_meters >= 0.0 && cfg.map_sf {
@@ -125,8 +150,27 @@ pub(crate) fn draw_map(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudCo
             let (fwx, fwz) = yaw_forward(rider.yaw);
             let (sdx, sdy) = screen_dir(&to_px, rider.x, rider.z, fwx, fwz);
             draw_dot_chevron(px, hx, hy, other_r, sdx, sdy, fill, false);
-            draw_rider_overhead(px, fonts, s, rider.race_num, hx, hy, other_r, subject, leader, cfg.map_crown, cfg.map_place);
-            draw_state_mark(px, fonts, hx, hy, other_r, rider_mark(s, rider.race_num, rider.crashed != 0));
+            draw_rider_overhead(
+                px,
+                fonts,
+                s,
+                rider.race_num,
+                hx,
+                hy,
+                other_r,
+                subject,
+                leader,
+                cfg.map_crown,
+                cfg.map_place,
+            );
+            draw_state_mark(
+                px,
+                fonts,
+                hx,
+                hy,
+                other_r,
+                rider_mark(s, rider.race_num, rider.crashed != 0),
+            );
         }
     }
     if let Some(pose) = you {
@@ -153,6 +197,13 @@ pub(crate) fn draw_map(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudCo
         if cfg.map_crown && leader > 0 && subject == leader {
             crown_over_dot(px, fonts, hx, hy, local_r);
         }
-        draw_state_mark(px, fonts, hx, hy, local_r, rider_mark(s, subject, pose.crashed));
+        draw_state_mark(
+            px,
+            fonts,
+            hx,
+            hy,
+            local_r,
+            rider_mark(s, subject, pose.crashed),
+        );
     }
 }

@@ -413,7 +413,12 @@ pub fn send() {
         }
         f.status = Status::Sending;
         f.focused = false;
-        (f.kind, f.rating, f.message.trim().to_string(), f.attach_log && f.kind == Kind::Bug)
+        (
+            f.kind,
+            f.rating,
+            f.message.trim().to_string(),
+            f.attach_log && f.kind == Kind::Bug,
+        )
     };
     std::thread::spawn(move || {
         let log = if attach { record::feedback_log() } else { None };
@@ -583,7 +588,13 @@ fn next_char(s: &str, i: usize) -> usize {
         .unwrap_or(s.len())
 }
 
-fn submit(kind: Kind, rating: u8, message: &str, log: Option<&FeedbackLog>, attach: bool) -> Status {
+fn submit(
+    kind: Kind,
+    rating: u8,
+    message: &str,
+    log: Option<&FeedbackLog>,
+    attach: bool,
+) -> Status {
     match post(kind, rating, message, log, attach) {
         Ok(id) => {
             if let Some(id) = id {
@@ -621,7 +632,13 @@ fn copy_report(kind: Kind, rating: u8, message: &str, log: Option<&FeedbackLog>)
     let _ = set_clipboard(&text, path);
 }
 
-fn post(kind: Kind, rating: u8, message: &str, log: Option<&FeedbackLog>, attach: bool) -> Result<Option<String>, String> {
+fn post(
+    kind: Kind,
+    rating: u8,
+    message: &str,
+    log: Option<&FeedbackLog>,
+    attach: bool,
+) -> Result<Option<String>, String> {
     let url = feedback_url();
     let body = payload_json(kind, rating, message, log, attach);
     let agent = ureq::AgentBuilder::new()
@@ -675,7 +692,13 @@ fn first_install_version() -> String {
     })
 }
 
-fn payload_json(kind: Kind, rating: u8, message: &str, log: Option<&FeedbackLog>, attach: bool) -> String {
+fn payload_json(
+    kind: Kind,
+    rating: u8,
+    message: &str,
+    log: Option<&FeedbackLog>,
+    attach: bool,
+) -> String {
     let kind_s = match kind {
         Kind::Rate => "rating",
         Kind::Bug => "bug",
@@ -749,7 +772,10 @@ fn log_excerpt(s: &str, max: usize) -> String {
         return s.to_string();
     }
     let start = s.len() - max;
-    let start = s[start..].find('\n').map(|i| start + i + 1).unwrap_or(start);
+    let start = s[start..]
+        .find('\n')
+        .map(|i| start + i + 1)
+        .unwrap_or(start);
     format!("… truncated …\n{}", &s[start..])
 }
 
@@ -922,10 +948,7 @@ pub fn refresh() {
     if tickets_lock().is_empty() {
         return;
     }
-    if let Ok(mut last) = POLL_AT
-        .get_or_init(|| Mutex::new(None))
-        .lock()
-    {
+    if let Ok(mut last) = POLL_AT.get_or_init(|| Mutex::new(None)).lock() {
         *last = Some(Instant::now());
     }
     spawn_poll();

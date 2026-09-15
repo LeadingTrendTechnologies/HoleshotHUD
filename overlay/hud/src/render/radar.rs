@@ -14,7 +14,10 @@ pub(crate) const RADAR_RINGS_M: [f32; 3] = [3.0, 6.0, 12.0];
 pub(crate) const RADAR_RING_OUTER_M: f32 = 12.0;
 
 pub(crate) fn radar_range_m(cfg: &HudConfig) -> f32 {
-    cfg.radar_range.clamp(crate::config::RADAR_RANGE_MIN, crate::config::RADAR_RANGE_MAX) as f32
+    cfg.radar_range.clamp(
+        crate::config::RADAR_RANGE_MIN,
+        crate::config::RADAR_RANGE_MAX,
+    ) as f32
 }
 
 pub(crate) fn radar_extents(range: f32) -> (f32, f32) {
@@ -30,7 +33,14 @@ pub(crate) fn radar_rings_m() -> [f32; 3] {
     RADAR_RINGS_M
 }
 
-pub(crate) fn radar_in_view(fwd: f32, lat: f32, sides: bool, rear: bool, rear_m: f32, lat_m: f32) -> bool {
+pub(crate) fn radar_in_view(
+    fwd: f32,
+    lat: f32,
+    sides: bool,
+    rear: bool,
+    rear_m: f32,
+    lat_m: f32,
+) -> bool {
     if fwd < -rear_m || fwd > RADAR_FWD_AHEAD || lat.abs() > lat_m {
         return false;
     }
@@ -43,7 +53,14 @@ pub(crate) fn radar_you_frac(rear_m: f32) -> f32 {
     RADAR_FWD_AHEAD / (RADAR_FWD_AHEAD + rear_m.max(1.0))
 }
 
-pub(crate) fn radar_to_screen(fwd: f32, lat: f32, ox: f32, oy: f32, sx: f32, sy: f32) -> (f32, f32) {
+pub(crate) fn radar_to_screen(
+    fwd: f32,
+    lat: f32,
+    ox: f32,
+    oy: f32,
+    sx: f32,
+    sy: f32,
+) -> (f32, f32) {
     (ox + lat * sx, oy - fwd * sy)
 }
 
@@ -75,13 +92,20 @@ pub(crate) fn draw_radar_blip(px: &mut Pixmap, x: f32, y: f32, rad: f32, heat: f
     fill_circle(px, x, y, rad, col);
 }
 
-pub(crate) fn radar_fit_scale(w: f32, h: f32, ox: f32, oy: f32, x: f32, y: f32, inset: f32, rear_m: f32) -> f32 {
+pub(crate) fn radar_fit_scale(
+    w: f32,
+    h: f32,
+    ox: f32,
+    oy: f32,
+    x: f32,
+    y: f32,
+    inset: f32,
+    rear_m: f32,
+) -> f32 {
     let rear = rear_m.max(1.0);
     let to_side = (ox - x - inset).min(x + w - inset - ox).max(1.0);
     let to_bottom = (y + h - inset - oy).max(1.0);
-    (to_side / rear)
-        .min(to_bottom / rear)
-        .max(0.5)
+    (to_side / rear).min(to_bottom / rear).max(0.5)
 }
 
 pub(crate) fn radar_ring_radius(meters: f32, scale: f32) -> f32 {
@@ -96,7 +120,12 @@ pub(crate) fn radar_ring_lift(bg_pct: i32) -> f32 {
 pub(crate) fn radar_ring_color(bg_pct: i32) -> Color {
     let t = radar_ring_lift(bg_pct);
     let v = 96.0 + 84.0 * t;
-    Color::from_rgba8(v as u8, v as u8, (v + 6.0).min(255.0) as u8, (220.0 + 35.0 * t) as u8)
+    Color::from_rgba8(
+        v as u8,
+        v as u8,
+        (v + 6.0).min(255.0) as u8,
+        (220.0 + 35.0 * t) as u8,
+    )
 }
 
 pub(crate) fn radar_ring_label_color(bg_pct: i32) -> Color {
@@ -142,11 +171,23 @@ pub(crate) fn draw_radar_you(px: &mut Pixmap, ox: f32, oy: f32, bw: f32, bh: f32
     paint.anti_alias = true;
     if let Some(body) = round_rect_path(x, y, bw, bh, 2.2) {
         stroke_path(px, &body, ink, sw);
-        px.fill_path(&body, &paint, FillRule::Winding, Transform::identity(), None);
+        px.fill_path(
+            &body,
+            &paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
     }
     if let Some(nose) = radar_you_nose(ox, y) {
         stroke_path(px, &nose, ink, sw);
-        px.fill_path(&nose, &paint, FillRule::Winding, Transform::identity(), None);
+        px.fill_path(
+            &nose,
+            &paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
     }
 }
 
@@ -176,7 +217,10 @@ pub(crate) fn draw_radar_range_rings(
     let rings = radar_rings_m();
     let mid_label = format!("{}", rings[1] as i32);
     let outer_label = format!("{}", rings[2] as i32);
-    let labeled = [(rings[1], mid_label.as_str()), (rings[2], outer_label.as_str())];
+    let labeled = [
+        (rings[1], mid_label.as_str()),
+        (rings[2], outer_label.as_str()),
+    ];
     for meters in rings {
         let r = radar_ring_radius(meters, scale);
         let mut gap = 0.0;
@@ -199,7 +243,15 @@ pub(crate) fn draw_radar_range_rings(
     }
 }
 
-pub(crate) fn draw_radar(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32, age: f32) {
+pub(crate) fn draw_radar(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    s: &Snapshot,
+    cfg: &HudConfig,
+    sw: f32,
+    sh: f32,
+    age: f32,
+) {
     // THESIS: distance is a graphic — hairline arcs on the bike, not empty glass.
     // OWN-WORLD: night-ink 6px plaque, hairline frame, white bike with a night-ink outline, heat blips, range circles that lift off a solid plaque.
     // STORY: rider glances behind and beside; 6 and 12 say how far without reading a table.
@@ -233,7 +285,19 @@ pub(crate) fn draw_radar(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &Hud
     let scale = radar_fit_scale(w, h, ox, oy, x, y, inset, fit_m);
 
     if cfg.radar_rings {
-        draw_radar_range_rings(px, fonts, ox, oy, scale, x, y, w, h, size, cfg[WidgetId::Radar].bg);
+        draw_radar_range_rings(
+            px,
+            fonts,
+            ox,
+            oy,
+            scale,
+            x,
+            y,
+            w,
+            h,
+            size,
+            cfg[WidgetId::Radar].bg,
+        );
     }
 
     let bw = (size * 0.075).max(6.5);
@@ -273,7 +337,14 @@ pub(crate) fn draw_radar(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &Hud
         let heat = radar_blip_heat(dist, RADAR_RING_OUTER_M);
         let rad = radar_blip_radius(heat, size);
         draw_radar_blip(px, bx, by, rad, heat);
-        draw_state_mark(px, fonts, bx, by, rad.max(6.5), rider_mark(s, race_num, crashed));
+        draw_state_mark(
+            px,
+            fonts,
+            bx,
+            by,
+            rad.max(6.5),
+            rider_mark(s, race_num, crashed),
+        );
     }
     let local_num = if focus > 0 { focus } else { s.local_race_num };
     draw_state_mark(

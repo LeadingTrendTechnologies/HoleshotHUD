@@ -4,16 +4,17 @@ mod changelog;
 mod compat;
 mod config;
 mod feedback;
+mod gpu;
 mod layout;
+mod ping;
+mod plugin;
 mod record;
 mod render;
+mod review;
 mod settings;
-mod plugin;
 mod shm;
 mod stance;
 mod startup;
-mod gpu;
-mod ping;
 mod sys;
 mod tray;
 mod uninstall;
@@ -29,9 +30,9 @@ use tiny_skia::Pixmap;
 use windows::core::w;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, SelectObject,
-    AC_SRC_ALPHA, AC_SRC_OVER, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION, DIB_RGB_COLORS,
-    HBITMAP, HDC, HGDIOBJ,
+    CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, SelectObject, AC_SRC_ALPHA,
+    AC_SRC_OVER, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION, DIB_RGB_COLORS, HBITMAP, HDC,
+    HGDIOBJ,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
@@ -40,16 +41,14 @@ use windows::Win32::UI::HiDpi::{SetProcessDpiAwareness, PROCESS_PER_MONITOR_DPI_
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_F9, VK_LBUTTON};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateIconFromResourceEx, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
-    GetSystemMetrics, IsIconic, IsWindow,
-    IsWindowVisible, LoadCursorW,
-    LoadImageW, LookupIconIdFromDirectoryEx, PeekMessageW, PostQuitMessage, RegisterClassExW,
-    SendMessageW, SetCursor, SetWindowPos, ShowWindow, TranslateMessage, UpdateLayeredWindow,
-    HWND_TOPMOST, ICON_BIG, ICON_SMALL, IDC_ARROW, IDC_HAND, IMAGE_ICON, LR_DEFAULTCOLOR, MSG, PM_REMOVE,
-    SM_CXSCREEN, SM_CYSCREEN, SWP_NOACTIVATE, SWP_SHOWWINDOW,
-    SW_SHOWNOACTIVATE, ULW_ALPHA, WM_ACTIVATE, WM_CLOSE, WM_DESTROY, WM_QUIT, WM_SETCURSOR,
-    WM_SETICON, WNDCLASSEXW, WS_CAPTION, WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
-    WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_POPUP,
-    WS_SYSMENU,
+    GetSystemMetrics, IsIconic, IsWindow, IsWindowVisible, LoadCursorW, LoadImageW,
+    LookupIconIdFromDirectoryEx, PeekMessageW, PostQuitMessage, RegisterClassExW, SendMessageW,
+    SetCursor, SetWindowPos, ShowWindow, TranslateMessage, UpdateLayeredWindow, HWND_TOPMOST,
+    ICON_BIG, ICON_SMALL, IDC_ARROW, IDC_HAND, IMAGE_ICON, LR_DEFAULTCOLOR, MSG, PM_REMOVE,
+    SM_CXSCREEN, SM_CYSCREEN, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_SHOWNOACTIVATE, ULW_ALPHA,
+    WM_ACTIVATE, WM_CLOSE, WM_DESTROY, WM_QUIT, WM_SETCURSOR, WM_SETICON, WNDCLASSEXW, WS_CAPTION,
+    WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+    WS_EX_TRANSPARENT, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_POPUP, WS_SYSMENU,
 };
 
 use crate::render::Fonts;
@@ -97,7 +96,12 @@ fn write_shm_dump(text: &str) -> Option<std::path::PathBuf> {
                 .join("snapshot.txt"),
         );
     }
-    paths.push(std::env::temp_dir().join("Holeshot HUD").join("logs").join("snapshot.txt"));
+    paths.push(
+        std::env::temp_dir()
+            .join("Holeshot HUD")
+            .join("logs")
+            .join("snapshot.txt"),
+    );
     for path in paths {
         if let Some(dir) = path.parent() {
             let _ = std::fs::create_dir_all(dir);
@@ -115,10 +119,14 @@ fn f9_dump_text(shm: Option<&Shm>, snap: Option<&Snapshot>) -> String {
     if let Some(s) = snap {
         return s.dump_text();
     }
-    let mut o = String::from("No live Snapshot (overlay SHM version mismatch or plugin not publishing).\n");
-    o.push_str(&format!("overlay VERSION={VERSION} rust_size={}\n", std::mem::size_of::<Snapshot>()));
+    let mut o =
+        String::from("No live Snapshot (overlay SHM version mismatch or plugin not publishing).\n");
+    o.push_str(&format!(
+        "overlay VERSION={VERSION} rust_size={}\n",
+        std::mem::size_of::<Snapshot>()
+    ));
     match shm {
-        None => o.push_str("OpenFileMapping Local\\MXBOHudV14 failed. Start MX Bikes with Holeshot-HUD.dlo loaded.\n"),
+        None => o.push_str("OpenFileMapping Local\\MXBOHudV15 failed. Start MX Bikes with Holeshot-HUD.dlo loaded.\n"),
         Some(s) => match s.header() {
             Some((magic, version, seq, size)) => {
                 o.push_str(&format!(
@@ -171,9 +179,11 @@ fn main() {
     std::panic::set_hook(Box::new(|info| {
         let text = format!("{info}\n{}", std::backtrace::Backtrace::force_capture());
         if let Ok(local) = std::env::var("LOCALAPPDATA") {
-            let dir = std::path::PathBuf::from(local).join("Holeshot HUD").join("logs");
+            let dir = std::path::PathBuf::from(local)
+                .join("Holeshot HUD")
+                .join("logs");
             let _ = std::fs::create_dir_all(&dir);
-                let _ = std::fs::write(dir.join("panic.txt"), text.as_bytes());
+            let _ = std::fs::write(dir.join("panic.txt"), text.as_bytes());
         }
     }));
     if let Some(path) = dump_whats_new_path() {
@@ -211,18 +221,23 @@ fn main() {
     }
     crate::record::init();
     if let Ok(local) = std::env::var("LOCALAPPDATA") {
-        let dir = std::path::PathBuf::from(local).join("Holeshot HUD").join("track-pbs");
-        mxbo_hud::track_pb::set_store_dir(dir);
+        let root = std::path::PathBuf::from(local).join("Holeshot HUD");
+        mxbo_hud::track_pb::set_store_dir(root.join("track-pbs"));
+        crate::review::init(root.join("reviews"));
     }
     let clock_log_path = crate::record::path();
     match clock_log_path {
         Some(p) => mxbo_hud::set_status_hint(format!("Clock log: {}", p.display())),
-        None => mxbo_hud::set_status_hint("Clock log failed — see AppData\\Local\\Holeshot HUD\\logs\\boot.txt"),
+        None => mxbo_hud::set_status_hint(
+            "Clock log failed — see AppData\\Local\\Holeshot HUD\\logs\\boot.txt",
+        ),
     }
     crate::plugin::sync();
     crate::plugin::apply_updater_plugin_flag();
     let family = loaded.font_family;
-    *crate::config::CONFIG.lock().unwrap_or_else(|e| e.into_inner()) = loaded;
+    *crate::config::CONFIG
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = loaded;
     let fonts = Fonts::for_family(family)
         .or_else(Fonts::load)
         .expect("need a HUD font (bundled or Windows\\Fonts)");
@@ -248,15 +263,16 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
     };
     RegisterClassExW(&wc);
 
+    let (host_x, host_y) = crate::settings::host_create_pos();
     let host = CreateWindowExW(
         WS_EX_APPWINDOW,
         class,
         w!("Holeshot HUD — Settings"),
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-        80,
-        80,
-        1000,
-        720,
+        host_x,
+        host_y,
+        crate::settings::SETTINGS_W,
+        crate::settings::SETTINGS_H,
         None,
         None,
         hinst,
@@ -270,15 +286,14 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
     apply_window_icons(host, icon_big, icon_small);
     crate::tray::add(host, icon_small);
     let start_minimized = std::env::args().any(|a| a == "--minimized" || a == "--wait-for-game");
-    let show_notes = crate::changelog::force_whats_new()
-        || {
-            let seen = crate::config::with_config(|c| c.whats_new_seen.clone());
-            crate::changelog::should_auto_open(
-                &seen,
-                crate::update::current_version(),
-                crate::changelog::just_updated(),
-            )
-        };
+    let show_notes = crate::changelog::force_whats_new() || {
+        let seen = crate::config::with_config(|c| c.whats_new_seen.clone());
+        crate::changelog::should_auto_open(
+            &seen,
+            crate::update::current_version(),
+            crate::changelog::just_updated(),
+        )
+    };
     // Registry / MX Bikes waiter pass --minimized. Stay in the tray (Hide), and do
     // not let WM_ACTIVATE pop Settings back up.
     if start_minimized && !show_notes {
@@ -332,13 +347,18 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
     let mut msg = MSG::default();
     loop {
         while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
-            if msg.message == WM_QUIT || crate::update::should_quit() || QUITTING.load(Ordering::SeqCst) {
+            if msg.message == WM_QUIT
+                || crate::update::should_quit()
+                || QUITTING.load(Ordering::SeqCst)
+            {
+                crate::settings::persist_host_pos(host);
                 quit_app();
             }
             let _ = TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
         if QUITTING.load(Ordering::SeqCst) || crate::update::should_quit() {
+            crate::settings::persist_host_pos(host);
             quit_app();
         }
 
@@ -391,7 +411,8 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
                 game_gone_at = None;
             } else if saw_game {
                 let gone = *game_gone_at.get_or_insert_with(Instant::now);
-                let (close, reopen) = crate::config::with_config(|c| (c.close_with_game, c.open_with_game));
+                let (close, reopen) =
+                    crate::config::with_config(|c| (c.close_with_game, c.open_with_game));
                 if close && gone.elapsed() >= Duration::from_secs(3) {
                     if reopen {
                         // Stay in the tray. A child waiter used to die with this process.
@@ -399,6 +420,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
                         saw_game = false;
                         game_gone_at = None;
                     } else {
+                        crate::settings::persist_host_pos(host);
                         crate::config::update_config(|_| {});
                         quit_app();
                     }
@@ -411,7 +433,12 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         }
         if let Some(g) = game {
             if let Some((nx, ny, nw, nh)) = client_screen_rect(g) {
-                if nw > 64 && nh > 64 && ((nx - x).abs() > 2 || (ny - y).abs() > 2 || (nw - w).abs() > 2 || (nh - h).abs() > 2)
+                if nw > 64
+                    && nh > 64
+                    && ((nx - x).abs() > 2
+                        || (ny - y).abs() > 2
+                        || (nw - w).abs() > 2
+                        || (nh - h).abs() > 2)
                 {
                     x = nx;
                     y = ny;
@@ -443,9 +470,8 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         }
         let spectating = overlay_on && cmd.as_ref().is_some_and(|c| c.spectating());
         let hover_rider = if spectating && !layout_on {
-            crate::layout::cursor_norm(x, y, w, h).and_then(|(nx, ny)| {
-                mxbo_hud::click_rider_at(nx * w as f32, ny * h as f32)
-            })
+            crate::layout::cursor_norm(x, y, w, h)
+                .and_then(|(nx, ny)| mxbo_hud::click_rider_at(nx * w as f32, ny * h as f32))
         } else {
             None
         };
@@ -491,6 +517,9 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         let f9_hit = f9 && !f9_was;
         f9_was = f9;
 
+        if shm.as_ref().is_some_and(Shm::is_unusable) {
+            shm = None;
+        }
         if shm.is_none() {
             shm = Shm::open();
         }
@@ -525,6 +554,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
             }
         }
         if crate::update::should_quit() || QUITTING.load(Ordering::SeqCst) {
+            crate::settings::persist_host_pos(host);
             quit_app();
         }
         let commit_layout = crate::config::with_config(|cfg| {
@@ -602,37 +632,42 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
             if let Some(s) = last_snap.as_ref() {
                 mxbo_hud::delta::tick(s);
                 mxbo_hud::sector::tick(s);
+                let record = crate::config::with_config(|c| c.review);
+                crate::review::tick(s, record);
             }
-        }
-        let hud = if overlay_on && (live || hitch_hold || layout_on || (settings_open && in_session))
-        {
-            last_snap.as_ref()
         } else {
-            None
-        };
+            crate::review::tick(&mxbo_hud::shm::Snapshot::default(), false);
+        }
+        let hud =
+            if overlay_on && (live || hitch_hold || layout_on || (settings_open && in_session)) {
+                last_snap.as_ref()
+            } else {
+                None
+            };
 
         let frame_start = Instant::now();
-        let (sys_show, sys_apps, stance_show, stance_bind, stance_mode, gamepad_show) = match preview_cfg.as_ref() {
-            Some(cfg) => (
-                cfg[crate::config::WidgetId::Sys].show,
-                cfg.sys_apps.clone(),
-                cfg[crate::config::WidgetId::Stance].show,
-                cfg.stance_bind,
-                cfg.stance_mode,
-                cfg.gamepad_visible(),
-            ),
-            None => crate::config::with_config(|cfg| {
-                let cfg = cfg.for_overlay();
-                (
+        let (sys_show, sys_apps, stance_show, stance_bind, stance_mode, gamepad_show) =
+            match preview_cfg.as_ref() {
+                Some(cfg) => (
                     cfg[crate::config::WidgetId::Sys].show,
                     cfg.sys_apps.clone(),
                     cfg[crate::config::WidgetId::Stance].show,
                     cfg.stance_bind,
                     cfg.stance_mode,
                     cfg.gamepad_visible(),
-                )
-            }),
-        };
+                ),
+                None => crate::config::with_config(|cfg| {
+                    let cfg = cfg.for_overlay();
+                    (
+                        cfg[crate::config::WidgetId::Sys].show,
+                        cfg.sys_apps.clone(),
+                        cfg[crate::config::WidgetId::Stance].show,
+                        cfg.stance_bind,
+                        cfg.stance_mode,
+                        cfg.gamepad_visible(),
+                    )
+                }),
+            };
         sys.tick(
             last_snap.as_ref().map(|s| s.seq),
             overlay_on && in_session && sys_show,
@@ -670,7 +705,12 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
             paint(&cfg);
         }
         if overlay_on {
-            live_mark = Some(render::draw_live_mark(&mut pixmap, w as u32, h as u32, hover_mark));
+            live_mark = Some(render::draw_live_mark(
+                &mut pixmap,
+                w as u32,
+                h as u32,
+                hover_mark,
+            ));
         } else {
             live_mark = None;
         }
@@ -720,7 +760,12 @@ unsafe fn apply_window_icons(
     big: windows::Win32::UI::WindowsAndMessaging::HICON,
     small: windows::Win32::UI::WindowsAndMessaging::HICON,
 ) {
-    let _ = SendMessageW(hwnd, WM_SETICON, WPARAM(ICON_BIG as usize), LPARAM(big.0 as isize));
+    let _ = SendMessageW(
+        hwnd,
+        WM_SETICON,
+        WPARAM(ICON_BIG as usize),
+        LPARAM(big.0 as isize),
+    );
     let _ = SendMessageW(
         hwnd,
         WM_SETICON,
@@ -770,12 +815,14 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                 crate::settings::hide(hwnd);
                 return LRESULT(0);
             }
+            crate::settings::persist_host_pos(hwnd);
             crate::config::update_config(|_| {});
             quit_app();
             return LRESULT(0);
         }
         if msg == WM_DESTROY {
             if !QUITTING.load(Ordering::SeqCst) {
+                crate::settings::persist_host_pos(hwnd);
                 crate::config::update_config(|_| {});
                 quit_app();
             }
@@ -797,7 +844,8 @@ unsafe fn create_overlay(
     w: i32,
     h: i32,
 ) -> HWND {
-    let ex = WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW;
+    let ex =
+        WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW;
     if let Some(hwnd) = compat::try_create_window_in_band(
         ex.0,
         class,

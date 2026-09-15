@@ -241,7 +241,9 @@ fn done_racing(st: &Standing) -> bool {
 }
 
 fn prev_rank(prev: &[i32], race_num: i32) -> usize {
-    prev.iter().position(|&n| n == race_num).unwrap_or(usize::MAX)
+    prev.iter()
+        .position(|&n| n == race_num)
+        .unwrap_or(usize::MAX)
 }
 
 /// True when `b`, currently scored behind `a`, is clearly up the track on them.
@@ -354,7 +356,10 @@ fn build_field(s: &Snapshot, clock: &SessionClock) -> RaceField {
     let mut rows = Vec::with_capacity(n);
     let mut focus = None;
     let mut leader = None;
-    let focus_st = s.standings[..n].iter().find(|r| r.race_num == focus_num).copied();
+    let focus_st = s.standings[..n]
+        .iter()
+        .find(|r| r.race_num == focus_num)
+        .copied();
 
     for (i, &si) in order.iter().enumerate() {
         let mut st = s.standings[si];
@@ -902,9 +907,8 @@ pub(crate) fn note_session(s: &Snapshot) {
         && (RACE_ARMED.load(Ordering::Relaxed) == 1
             || SESSION_EXPIRED.load(Ordering::Relaxed) == 1);
     let entered_race = prev_laps == 0 && laps > 0 && from_practice && !timed_extras_arriving;
-    let kind_changed = prev_laps > 0
-        && laps > 0
-        && (prev_laps > EXTRA_LAPS_MAX) != (laps > EXTRA_LAPS_MAX);
+    let kind_changed =
+        prev_laps > 0 && laps > 0 && (prev_laps > EXTRA_LAPS_MAX) != (laps > EXTRA_LAPS_MAX);
     let kind = s.session_kind;
     let prev_kind = LAST_SESSION_KIND.swap(kind, Ordering::Relaxed);
     let session_kind_changed = prev_kind > 0 && kind > 0 && prev_kind != kind;
@@ -1167,10 +1171,7 @@ fn leader_is_lap_up(s: &Snapshot) -> bool {
     }
     // Extras started and you have not taken one: the leader is a lap up even when
     // the game leaves both `num_laps` on the race lap.
-    !leader_finished(s)
-        && extras_started(s)
-        && raw_overtime_taken(s) == 0
-        && lead >= 0
+    !leader_finished(s) && extras_started(s) && raw_overtime_taken(s) == 0 && lead >= 0
 }
 
 /// Latch the moment the lap-up leader goes past you. `gap_laps` waits for a line crossing.
@@ -1205,8 +1206,7 @@ fn note_lapped_by_leader(s: &Snapshot) {
     let along = wrap_signed(lp - fp) * len;
     let prev = LAST_LEAD_FRAC.load(Ordering::Relaxed);
     LAST_LEAD_FRAC.store((lp * 10_000.0).round() as i32, Ordering::Relaxed);
-    let lead_moved = prev >= 0
-        && wrap_signed(lp - prev as f32 / 10_000.0) * len > PASS_M;
+    let lead_moved = prev >= 0 && wrap_signed(lp - prev as f32 / 10_000.0) * len > PASS_M;
     if along < -PASS_M {
         LEADER_BEHIND.store(1, Ordering::Relaxed);
     } else if along > PASS_M {
@@ -1265,7 +1265,12 @@ pub(crate) fn board_held(clock: i32, last: i32) -> bool {
     clock_held_for(clock, last, 0.6, &HOLD)
 }
 
-pub(crate) fn clock_held_for(clock: i32, last: i32, secs: f32, hold: &Mutex<Option<(i32, f32)>>) -> bool {
+pub(crate) fn clock_held_for(
+    clock: i32,
+    last: i32,
+    secs: f32,
+    hold: &Mutex<Option<(i32, f32)>>,
+) -> bool {
     let Ok(mut hold) = hold.lock() else {
         return false;
     };
@@ -1291,10 +1296,7 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
         let last = LAST_SESSION_CLOCK.load(Ordering::Relaxed);
         LAST_SESSION_CLOCK.store(clock, Ordering::Relaxed);
         let counting_up = last > 0 && clock > last + 400;
-        let counting_down = last > 0
-            && clock < last
-            && last - clock < 5_000
-            && clock <= 180_000;
+        let counting_down = last > 0 && clock < last && last - clock < 5_000 && clock <= 180_000;
         if LAP_GREEN.load(Ordering::Relaxed) == 1 {
             IN_GATE.store(0, Ordering::Relaxed);
             return None;
@@ -1355,12 +1357,7 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
         raw
     };
     // Game republishes the 8s/10s board during a live race; keep the real remaining clock.
-    if armed
-        && last > 60_000
-        && clock >= 8_000
-        && clock <= 15_000
-        && clock + 20_000 < last
-    {
+    if armed && last > 60_000 && clock >= 8_000 && clock <= 15_000 && clock + 20_000 < last {
         clock = last;
     }
     // A start board can land anywhere, not just the 8–15s window: 04:43 → 00:05 → 04:42
@@ -1433,7 +1430,8 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
         POST_GATE.store(1, Ordering::Relaxed);
         post = true;
     }
-    let short_clock = clock > 0 && clock <= 35_000 && (total <= 0 || clock * 3 < total) && total > 180_000;
+    let short_clock =
+        clock > 0 && clock <= 35_000 && (total <= 0 || clock * 3 < total) && total > 180_000;
     let enter_gate =
         is_gate_clock(clock, total) && !moving(s) && !post && !armed && s.session_laps > 0;
     let gate_clock = enter_gate
@@ -1454,10 +1452,8 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
     let board_restart = in_gate && !post && last > 0 && clock > last + 2_000 && clock <= 180_000;
     // A later 45s/30s board after 00:10 must stay a countdown. Don't swap in leftover 08:00
     // until we've actually seen the race clock tick (Maryland 4-lap / 8:00 leftover).
-    let hold_gate_board = gate_clock
-        && !moving(s)
-        && !armed
-        && SAW_SESSION_TIME.load(Ordering::Relaxed) == 0;
+    let hold_gate_board =
+        gate_clock && !moving(s) && !armed && SAW_SESSION_TIME.load(Ordering::Relaxed) == 0;
     let gate = gate_clock && !drop_off_gate && !armed && (!board_restart || hold_gate_board);
     let race_ticking = !gate_clock
         && last > 180_000
@@ -1465,11 +1461,8 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
         && clock < last
         && last - clock >= 50
         && last - clock < 5_000;
-    let waiting_for_race = (post || board_restart)
-        && !armed
-        && !race_ticking
-        && clock <= 180_000
-        && !hold_gate_board;
+    let waiting_for_race =
+        (post || board_restart) && !armed && !race_ticking && clock <= 180_000 && !hold_gate_board;
 
     if drop_off_gate {
         IN_GATE.store(0, Ordering::Relaxed);
@@ -1608,8 +1601,7 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
         return Some(0);
     }
 
-    let timed_out = remain <= 800
-        || (clock_stuck(clock, last) && remain > 0 && remain <= 2_000);
+    let timed_out = remain <= 800 || (clock_stuck(clock, last) && remain > 0 && remain <= 2_000);
     let raced = RACE_ARMED.load(Ordering::Relaxed) == 1
         || (SAW_SESSION_TIME.load(Ordering::Relaxed) == 1 && last > 60_000);
     if !gate
@@ -1952,9 +1944,7 @@ fn format_session_banner(s: &Snapshot, remain: Option<i32>) -> (char, String) {
             return ('\u{f11e}', overtime_lap_text(s));
         }
         // Timed race over, extras not published yet. Don't look like warmup ended.
-        if s.session_laps <= 0
-            && (remain <= 0 || SESSION_EXPIRED.load(Ordering::Relaxed) == 1)
-        {
+        if s.session_laps <= 0 && (remain <= 0 || SESSION_EXPIRED.load(Ordering::Relaxed) == 1) {
             if timed_race_awaiting_extras(s) {
                 let _ = overtime_base(s);
                 return ('\u{f2f2}', "00:00".into());
@@ -2077,7 +2067,11 @@ pub(crate) fn class_position(s: &Snapshot) -> i32 {
 }
 
 pub(crate) fn focus_standing(s: &Snapshot) -> Option<&Standing> {
-    let focus = if s.focus_race_num > 0 { s.focus_race_num } else { s.local_race_num };
+    let focus = if s.focus_race_num > 0 {
+        s.focus_race_num
+    } else {
+        s.local_race_num
+    };
     standing_of(s, focus)
 }
 
@@ -2101,7 +2095,6 @@ pub(crate) fn lapped(s: &Snapshot) -> bool {
     // out on the last lap the leader just took.
     leader_finished(s) && leader_lap_lead(s) >= 2
 }
-
 
 pub(crate) fn interval_text_from_row(row: &RaceRow) -> String {
     if row.standing.position <= 1 {
@@ -2186,7 +2179,13 @@ pub(crate) fn gap_ahead_text(s: &Snapshot, field: &RaceField, row: &Standing) ->
         if i == 0 {
             return "---".into();
         }
-        return gap_to_num(s, field, row.race_num, field.rows[i - 1].standing.race_num, false);
+        return gap_to_num(
+            s,
+            field,
+            row.race_num,
+            field.rows[i - 1].standing.race_num,
+            false,
+        );
     }
     if row.position <= 1 {
         return "---".into();

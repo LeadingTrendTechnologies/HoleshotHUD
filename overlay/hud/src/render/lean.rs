@@ -8,7 +8,14 @@ pub(crate) fn lean_rider() -> Option<&'static Pixmap> {
         .as_ref()
 }
 
-pub(crate) fn draw_lean(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) {
+pub(crate) fn draw_lean(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    s: &Snapshot,
+    cfg: &HudConfig,
+    sw: f32,
+    sh: f32,
+) {
     // THESIS: the rider is the angle — a rear-view MX figure, not a tach and not a toy trapezoid.
     // OWN-WORLD: night-ink 6px plaque, 1px hairline, white rider, orange skew 32° bug, 2px steer + pitch hairlines.
     // STORY: glance roll, nose, and bar. Spectate follows the camera; steer and pitch hide for other bikes.
@@ -146,7 +153,13 @@ pub(crate) fn draw_lean_minimal(
     let cream = Color::from_rgba8(248, 248, 252, 255);
     if over_game {
         let tw = measure(fonts, &hero, hero_fs);
-        fill_night_pill(px, cx - tw * 0.5 - 10.0, hero_y - 5.0, tw + 20.0, hero_fs + 10.0);
+        fill_night_pill(
+            px,
+            cx - tw * 0.5 - 10.0,
+            hero_y - 5.0,
+            tw + 20.0,
+            hero_fs + 10.0,
+        );
     }
     text(px, fonts, &hero, hero_fs, cx, hero_y, accent(), true);
 

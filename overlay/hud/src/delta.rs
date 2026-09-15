@@ -138,7 +138,11 @@ impl LapTape {
         if !(0.0..1.0).contains(&pos) || ms <= 0 {
             return;
         }
-        self.track_m = if track_m > 80.0 { track_m } else { DEFAULT_TRACK_M };
+        self.track_m = if track_m > 80.0 {
+            track_m
+        } else {
+            DEFAULT_TRACK_M
+        };
         if self.last_pos >= 0.0 {
             let d = pos - self.last_pos;
             // Backwards on the same stretch — skip. A wrap is a lap end; tick()
@@ -497,7 +501,9 @@ impl DeltaEngine {
         // first flying lap, when there is no tape to compare yet.
         if finish_wrap || (start_flying && cur_ms > 4_000) {
             self.stale_clock = true;
-        } else if self.stale_clock && (clock_drop || new_last || cur_ms < 4_000 || clock_fits_tape(self, pos, cur_ms)) {
+        } else if self.stale_clock
+            && (clock_drop || new_last || cur_ms < 4_000 || clock_fits_tape(self, pos, cur_ms))
+        {
             self.stale_clock = false;
             self.smooth_init = false;
             self.session_smooth_init = false;
@@ -543,7 +549,8 @@ impl DeltaEngine {
         // Same-frame sample still has the old clock at pos 0 (plugin sends 1.0).
         let moving = s.on_track != 0 && s.local_speed >= 1.5 && cur_ms > 0 && pos >= 0.0;
         if moving && !ended && self.armed && !self.stale_clock {
-            self.current.push_at_opt(pos, clock_ms, track_m(s), remounting);
+            self.current
+                .push_at_opt(pos, clock_ms, track_m(s), remounting);
         }
 
         self.last_lap_num = lap_num;
@@ -762,7 +769,11 @@ fn live_view(st: &mut DeltaEngine, pos: f32, cur_ms: i32, dt: f32, session: bool
         st.reference.is_some()
     };
     let recording = !ready && st.armed;
-    let ref_lap_ms = if session { st.session_lap_ms } else { st.ref_lap_ms };
+    let ref_lap_ms = if session {
+        st.session_lap_ms
+    } else {
+        st.ref_lap_ms
+    };
     let new_best_at = if session {
         st.session_new_best_at
     } else {
@@ -845,7 +856,10 @@ pub fn lap_clock(s: &Snapshot) -> i32 {
 
 /// Once per live frame from the overlay loop. Records even when the widget is hidden.
 pub fn tick(s: &Snapshot) -> DeltaView {
-    let recorded = STORE.lock().map(|mut g| g.tick(s)).unwrap_or_else(|_| DeltaView::empty());
+    let recorded = STORE
+        .lock()
+        .map(|mut g| g.tick(s))
+        .unwrap_or_else(|_| DeltaView::empty());
     if let Ok(g) = PREVIEW.lock() {
         if let Some(v) = *g {
             return v;

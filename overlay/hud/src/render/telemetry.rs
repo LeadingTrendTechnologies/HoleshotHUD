@@ -20,7 +20,14 @@ pub(crate) fn telemetry_body_path(x: f32, y: f32, w: f32, h: f32) -> Option<Path
     pb.finish()
 }
 
-pub(crate) fn draw_telemetry(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) {
+pub(crate) fn draw_telemetry(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    s: &Snapshot,
+    cfg: &HudConfig,
+    sw: f32,
+    sh: f32,
+) {
     let r = cfg[WidgetId::Telemetry].rect;
     let x = r.x * sw;
     let y = r.y * sh;
@@ -32,7 +39,13 @@ pub(crate) fn draw_telemetry(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: 
             let mut paint = Paint::default();
             paint.set_color(Color::from_rgba8(10, 10, 10, a));
             paint.anti_alias = true;
-            px.fill_path(&body, &paint, FillRule::Winding, Transform::identity(), None);
+            px.fill_path(
+                &body,
+                &paint,
+                FillRule::Winding,
+                Transform::identity(),
+                None,
+            );
             let edge = ((a as u16 * 170) / 255).max(70) as u8;
             stroke_path(px, &body, Color::from_rgba8(42, 42, 46, edge), 1.0);
         }
@@ -85,18 +98,40 @@ pub(crate) fn draw_telemetry(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: 
         0.0
     };
     let well_x = x + pad;
-    let well_w = if show_traces { (cursor - well_x).max(48.0) } else { 0.0 };
+    let well_w = if show_traces {
+        (cursor - well_x).max(48.0)
+    } else {
+        0.0
+    };
     let well_r = 4.0f32.min(well_h * 0.12);
 
     if show_traces {
         if a > 0 {
-            fill_round(px, well_x, well_y, well_w, well_h, well_r, Color::from_rgba8(8, 8, 10, a));
-            if let Some(frame) = round_rect_path(well_x + 0.5, well_y + 0.5, well_w - 1.0, well_h - 1.0, well_r) {
+            fill_round(
+                px,
+                well_x,
+                well_y,
+                well_w,
+                well_h,
+                well_r,
+                Color::from_rgba8(8, 8, 10, a),
+            );
+            if let Some(frame) = round_rect_path(
+                well_x + 0.5,
+                well_y + 0.5,
+                well_w - 1.0,
+                well_h - 1.0,
+                well_r,
+            ) {
                 let edge = ((a as u16 * 120) / 255).max(50) as u8;
                 stroke_path(px, &frame, Color::from_rgba8(42, 42, 46, edge), 1.0);
             }
         }
-        let grid_a = if a > 0 { ((a as u16 * 70) / 255).max(28) as u8 } else { 40 };
+        let grid_a = if a > 0 {
+            ((a as u16 * 70) / 255).max(28) as u8
+        } else {
+            40
+        };
         for i in 1..4 {
             let gy = well_y + well_h * (i as f32 / 4.0);
             if let Some(line) = rr(well_x + 4.0, gy, well_w - 8.0, 1.0) {
@@ -125,7 +160,14 @@ pub(crate) fn draw_telemetry(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: 
                     str_pts.push((tx, mid - steer_amp * sample.steer));
                 }
                 if cfg.telemetry_trace_steer {
-                    stroke_smooth_series(px, &str_pts, telemetry_steer_col(), ink_w * 0.92, y_lo, y_hi);
+                    stroke_smooth_series(
+                        px,
+                        &str_pts,
+                        telemetry_steer_col(),
+                        ink_w * 0.92,
+                        y_lo,
+                        y_hi,
+                    );
                 }
                 if cfg.telemetry_trace_brake {
                     stroke_smooth_series(px, &brk_pts, behind_col(), ink_w, y_lo, y_hi);
@@ -160,10 +202,19 @@ pub(crate) fn draw_telemetry(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: 
         let bar_y = well_y + well_h - bar_h;
         for (i, (level, fill, bipolar)) in bars.iter().enumerate() {
             let bx = bars_x + i as f32 * (bar_w + bar_gap);
-            fill_round(px, bx, bar_y, bar_w, bar_h, 2.0, Color::from_rgba8(24, 24, 28, a.max(160)));
+            fill_round(
+                px,
+                bx,
+                bar_y,
+                bar_w,
+                bar_h,
+                2.0,
+                Color::from_rgba8(24, 24, 28, a.max(160)),
+            );
             if *bipolar {
                 let mid = bar_y + bar_h * 0.5;
-                let fh = (bar_h * 0.5 * level.abs()).max(if level.abs() > 0.02 { 3.0 } else { 0.0 });
+                let fh =
+                    (bar_h * 0.5 * level.abs()).max(if level.abs() > 0.02 { 3.0 } else { 0.0 });
                 if fh > 0.5 {
                     let fy = if *level >= 0.0 { mid - fh } else { mid };
                     fill_round(px, bx, fy, bar_w, fh, 2.0, *fill);
@@ -174,7 +225,16 @@ pub(crate) fn draw_telemetry(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: 
                 if level.abs() > 0.04 {
                     let label = format!("{:+}", (*level * 100.0).round() as i32);
                     let n = (h * 0.14).clamp(8.0, 12.0);
-                    text_bold(px, fonts, &label, n, bx + bar_w * 0.5, bar_y - n - 1.0, text_col(), true);
+                    text_bold(
+                        px,
+                        fonts,
+                        &label,
+                        n,
+                        bx + bar_w * 0.5,
+                        bar_y - n - 1.0,
+                        text_col(),
+                        true,
+                    );
                 }
             } else {
                 let fh = (bar_h * level).max(if *level > 0.02 { 3.0 } else { 0.0 });
@@ -184,7 +244,16 @@ pub(crate) fn draw_telemetry(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: 
                 if *level > 0.04 {
                     let label = format!("{}", (*level * 100.0).round() as i32);
                     let n = (h * 0.14).clamp(8.0, 12.0);
-                    text_bold(px, fonts, &label, n, bx + bar_w * 0.5, bar_y - n - 1.0, text_col(), true);
+                    text_bold(
+                        px,
+                        fonts,
+                        &label,
+                        n,
+                        bx + bar_w * 0.5,
+                        bar_y - n - 1.0,
+                        text_col(),
+                        true,
+                    );
                 }
             }
         }
@@ -194,11 +263,26 @@ pub(crate) fn draw_telemetry(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: 
         return;
     }
     let ring_w = (dial_r * 0.10).clamp(3.0, 6.0);
-    stroke_circle(px, dial_cx, dial_cy, dial_r - ring_w * 0.5, Color::from_rgba8(42, 42, 46, a.max(140)), ring_w);
+    stroke_circle(
+        px,
+        dial_cx,
+        dial_cy,
+        dial_r - ring_w * 0.5,
+        Color::from_rgba8(42, 42, 46, a.max(140)),
+        ring_w,
+    );
     let max_rpm = s.max_rpm.max(1) as f32;
     let rpm_n = (s.local_rpm.max(0) as f32 / max_rpm).clamp(0.0, 1.0);
     if rpm_n > 0.02 {
-        draw_rpm_arc(px, dial_cx, dial_cy, dial_r - ring_w * 0.5, ring_w, rpm_n, accent());
+        draw_rpm_arc(
+            px,
+            dial_cx,
+            dial_cy,
+            dial_r - ring_w * 0.5,
+            ring_w,
+            rpm_n,
+            accent(),
+        );
     }
 
     let gear = if s.local_gear <= 0 {
@@ -224,11 +308,37 @@ pub(crate) fn draw_telemetry(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: 
         shift_gear_col(s, true, text_col()),
         true,
     );
-    text_bold(px, fonts, &speed, speed_n, dial_cx, gy + gear_n + stack_gap, text_col(), true);
-    text(px, fonts, &unit, unit_n, dial_cx, gy + gear_n + stack_gap + speed_n + 1.0, text_dim(), true);
+    text_bold(
+        px,
+        fonts,
+        &speed,
+        speed_n,
+        dial_cx,
+        gy + gear_n + stack_gap,
+        text_col(),
+        true,
+    );
+    text(
+        px,
+        fonts,
+        &unit,
+        unit_n,
+        dial_cx,
+        gy + gear_n + stack_gap + speed_n + 1.0,
+        text_dim(),
+        true,
+    );
 }
 
-pub(crate) fn draw_rpm_arc(px: &mut Pixmap, cx: f32, cy: f32, r: f32, width: f32, frac: f32, color: Color) {
+pub(crate) fn draw_rpm_arc(
+    px: &mut Pixmap,
+    cx: f32,
+    cy: f32,
+    r: f32,
+    width: f32,
+    frac: f32,
+    color: Color,
+) {
     let start = -std::f32::consts::FRAC_PI_2 - 0.15;
     let sweep = std::f32::consts::PI * 1.15 * frac.clamp(0.0, 1.0);
     let steps = ((sweep.abs() * r).max(8.0) as usize).clamp(8, 48);

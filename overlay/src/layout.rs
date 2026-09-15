@@ -196,15 +196,7 @@ impl Editor {
 
         if let Some(d) = self.drag {
             let r = mxbo_hud::layout::resize(
-                d.orig,
-                d.handle,
-                nx,
-                ny,
-                d.grab_x,
-                d.grab_y,
-                ow as f32,
-                oh as f32,
-                d.target,
+                d.orig, d.handle, nx, ny, d.grab_x, d.grab_y, ow as f32, oh as f32, d.target,
             );
             match d.target {
                 WidgetId::Map => self.map = Some(r),
@@ -341,17 +333,18 @@ pub(crate) fn cursor_norm(ox: i32, oy: i32, ow: i32, oh: i32) -> Option<(f32, f3
     unsafe {
         GetCursorPos(&mut p).ok()?;
     }
-    Some((
-        (p.x - ox) as f32 / ow as f32,
-        (p.y - oy) as f32 / oh as f32,
-    ))
+    Some(((p.x - ox) as f32 / ow as f32, (p.y - oy) as f32 / oh as f32))
 }
 
 fn visual_rect(s: &Snapshot, cfg: &HudConfig, r: Rect, t: WidgetId, ow: i32, oh: i32) -> Rect {
     match t {
         WidgetId::Minimap => mxbo_hud::layout::visual_rect(r, t, ow as f32, oh as f32),
-        WidgetId::Standings => table_layout_rect(s, cfg, WidgetId::Standings, r, ow as f32, oh as f32),
-        WidgetId::Relative => table_layout_rect(s, cfg, WidgetId::Relative, r, ow as f32, oh as f32),
+        WidgetId::Standings => {
+            table_layout_rect(s, cfg, WidgetId::Standings, r, ow as f32, oh as f32)
+        }
+        WidgetId::Relative => {
+            table_layout_rect(s, cfg, WidgetId::Relative, r, ow as f32, oh as f32)
+        }
         _ => r,
     }
 }
@@ -396,7 +389,15 @@ fn shown(s: &Snapshot, cfg: &HudConfig, t: WidgetId) -> bool {
     }
 }
 
-fn hit(s: &Snapshot, ed: &Editor, cfg: &HudConfig, x: f32, y: f32, ow: i32, oh: i32) -> Option<(WidgetId, Handle)> {
+fn hit(
+    s: &Snapshot,
+    ed: &Editor,
+    cfg: &HudConfig,
+    x: f32,
+    y: f32,
+    ow: i32,
+    oh: i32,
+) -> Option<(WidgetId, Handle)> {
     const ORDER: [WidgetId; 15] = [
         WidgetId::Dash,
         WidgetId::Ticker,

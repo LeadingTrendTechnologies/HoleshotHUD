@@ -16,8 +16,7 @@ const EMBEDDED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/Holeshot-HUD.d
 static NEED_RETRY: AtomicBool = AtomicBool::new(false);
 static NEED_GAME_RESTART: AtomicBool = AtomicBool::new(false);
 
-pub const RESTART_PLUGIN: &str =
-    "Fully quit MX Bikes and start it again so the plugin can load";
+pub const RESTART_PLUGIN: &str = "Fully quit MX Bikes and start it again so the plugin can load";
 pub const RESTART_PLUGIN_STILL_RUNNING: &str =
     "MX Bikes is still running. Fully quit the game (not just the session) so the new plugin can load.";
 
@@ -57,8 +56,10 @@ pub fn retry_if_needed() {
 
 /// Relaunch arg from the updater when the zip `.dlo` differed from the installed plugin.
 pub fn apply_updater_plugin_flag() {
-    if should_mark_from_updater_flag(plugin_changed_arg(), crate::startup::mx_bikes_pid().is_some())
-    {
+    if should_mark_from_updater_flag(
+        plugin_changed_arg(),
+        crate::startup::mx_bikes_pid().is_some(),
+    ) {
         NEED_GAME_RESTART.store(true, Ordering::Relaxed);
     }
 }
@@ -143,8 +144,10 @@ fn browse_folder(host: windows::Win32::Foundation::HWND) -> Option<PathBuf> {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         let dlg: IFileOpenDialog = CoCreateInstance(&FileOpenDialog, None, CLSCTX_ALL).ok()?;
         dlg.SetOptions(FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM).ok()?;
-        dlg.SetTitle(w!("Select the MX Bikes folder (the one that contains mxbikes.exe)"))
-            .ok()?;
+        dlg.SetTitle(w!(
+            "Select the MX Bikes folder (the one that contains mxbikes.exe)"
+        ))
+        .ok()?;
         dlg.Show(host).ok()?;
         let item = dlg.GetResult().ok()?;
         let name = item.GetDisplayName(SIGDN_FILESYSPATH).ok()?;
@@ -329,7 +332,10 @@ fn steam_roots() -> Vec<PathBuf> {
     let mut roots = Vec::new();
     for (hive, key) in [
         (HKEY_CURRENT_USER, w!("Software\\Valve\\Steam")),
-        (HKEY_LOCAL_MACHINE, w!("SOFTWARE\\WOW6432Node\\Valve\\Steam")),
+        (
+            HKEY_LOCAL_MACHINE,
+            w!("SOFTWARE\\WOW6432Node\\Valve\\Steam"),
+        ),
         (HKEY_LOCAL_MACHINE, w!("SOFTWARE\\Valve\\Steam")),
     ] {
         if let Some(p) = reg_install_path(hive, key) {
@@ -341,7 +347,10 @@ fn steam_roots() -> Vec<PathBuf> {
     roots
 }
 
-fn reg_install_path(hive: windows::Win32::System::Registry::HKEY, subkey: PCWSTR) -> Option<PathBuf> {
+fn reg_install_path(
+    hive: windows::Win32::System::Registry::HKEY,
+    subkey: PCWSTR,
+) -> Option<PathBuf> {
     unsafe {
         let mut key = Default::default();
         if RegOpenKeyExW(hive, subkey, 0, KEY_READ, &mut key).is_err() {

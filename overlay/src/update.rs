@@ -50,7 +50,11 @@ pub enum ManualBanner {
     Installing,
 }
 
-pub fn manual_banner(auto_update: bool, dismissed: bool, state: &UpdateState) -> Option<ManualBanner> {
+pub fn manual_banner(
+    auto_update: bool,
+    dismissed: bool,
+    state: &UpdateState,
+) -> Option<ManualBanner> {
     if auto_update || dismissed {
         return None;
     }
@@ -113,7 +117,12 @@ fn looks_protected(dir: &Path) -> bool {
 
 fn dir_is_writable(dir: &Path) -> bool {
     let probe = dir.join(".holeshot-write-test");
-    match fs::OpenOptions::new().write(true).create(true).truncate(true).open(&probe) {
+    match fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&probe)
+    {
         Ok(_) => {
             let _ = fs::remove_file(&probe);
             true
@@ -122,8 +131,7 @@ fn dir_is_writable(dir: &Path) -> bool {
     }
 }
 
-pub const ADMIN_UPDATE_HINT: &str =
-    "This install folder may need admin approval to update.";
+pub const ADMIN_UPDATE_HINT: &str = "This install folder may need admin approval to update.";
 
 /// Check GitHub and install a newer build before the UI opens.
 /// Returns true if this process should exit so the updater can relaunch.
@@ -187,11 +195,9 @@ pub fn install() {
         }
     };
     *STATE.lock().unwrap_or_else(|e| e.into_inner()) = UpdateState::Downloading;
-    std::thread::spawn(move || {
-        match apply(&rel) {
-            Ok(()) => QUIT.store(true, Ordering::SeqCst),
-            Err(e) => *STATE.lock().unwrap_or_else(|e| e.into_inner()) = UpdateState::Failed(e),
-        }
+    std::thread::spawn(move || match apply(&rel) {
+        Ok(()) => QUIT.store(true, Ordering::SeqCst),
+        Err(e) => *STATE.lock().unwrap_or_else(|e| e.into_inner()) = UpdateState::Failed(e),
     });
 }
 
@@ -222,12 +228,15 @@ fn latest_release_in(timeout: Duration) -> Result<ReleaseZip, String> {
 }
 
 fn parse_latest_release(body: &str) -> Result<ReleaseZip, String> {
-    let tag = json_string(body, "tag_name").ok_or_else(|| "Release is missing a version tag.".to_string())?;
-    let zip = parse_windows_zip_asset(body).ok_or_else(|| "Release has no Windows zip.".to_string())?;
+    let tag = json_string(body, "tag_name")
+        .ok_or_else(|| "Release is missing a version tag.".to_string())?;
+    let zip =
+        parse_windows_zip_asset(body).ok_or_else(|| "Release has no Windows zip.".to_string())?;
     if !release_zip_url_ok(&zip.url) {
         return Err("Release zip URL is not the Holeshot HUD GitHub download.".into());
     }
-    let digest = parse_sha256_digest(&zip.digest).ok_or_else(|| "Release zip is missing a SHA-256 digest.".to_string())?;
+    let digest = parse_sha256_digest(&zip.digest)
+        .ok_or_else(|| "Release zip is missing a SHA-256 digest.".to_string())?;
     Ok(ReleaseZip {
         version: tag.trim_start_matches('v').to_string(),
         url: zip.url,
@@ -294,7 +303,9 @@ fn json_object_at(s: &str) -> Option<&str> {
 
 fn release_zip_url_ok(url: &str) -> bool {
     let lower = url.trim().to_ascii_lowercase();
-    if !lower.starts_with("https://github.com/leadingtrendtechnologies/holeshothud/releases/download/") {
+    if !lower
+        .starts_with("https://github.com/leadingtrendtechnologies/holeshothud/releases/download/")
+    {
         return false;
     }
     if lower.contains("..") || lower.contains('\\') {
@@ -333,7 +344,9 @@ fn apply(rel: &ReleaseZip) -> Result<(), String> {
     let src_exe = find_file(&extracted, is_overlay_exe)
         .ok_or_else(|| "Update zip is missing Holeshot-HUD.exe.".to_string())?;
     let src_dlo = find_file(&extracted, is_plugin_dlo);
-    let plugin_changed = src_dlo.as_ref().is_some_and(|p| zip_plugin_differs_from_installed(p));
+    let plugin_changed = src_dlo
+        .as_ref()
+        .is_some_and(|p| zip_plugin_differs_from_installed(p));
     spawn_apply_helper(&work, &src_exe, &exe, src_dlo.as_deref(), plugin_changed)?;
     Ok(())
 }
@@ -362,7 +375,10 @@ fn spawn_apply_helper(
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .creation_flags(
-            DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB,
+            DETACHED_PROCESS
+                | CREATE_NEW_PROCESS_GROUP
+                | CREATE_NO_WINDOW
+                | CREATE_BREAKAWAY_FROM_JOB,
         );
     cmd.spawn()
         .map_err(|e| format!("Could not start updater: {e}"))?;
@@ -381,7 +397,10 @@ pub fn apply_staged_from_args() -> Result<(), String> {
         .ok_or_else(|| "missing pid".to_string())?
         .parse()
         .map_err(|_| "bad pid".to_string())?;
-    let src_exe = PathBuf::from(args.next().ok_or_else(|| "missing source exe".to_string())?);
+    let src_exe = PathBuf::from(
+        args.next()
+            .ok_or_else(|| "missing source exe".to_string())?,
+    );
     let dst_exe = PathBuf::from(args.next().ok_or_else(|| "missing dest exe".to_string())?);
     let dlo_arg = args.next().unwrap_or_else(|| "-".into());
     let relaunch: Vec<String> = args.collect();
@@ -426,7 +445,10 @@ pub fn apply_staged_from_args() -> Result<(), String> {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .creation_flags(
-            DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB,
+            DETACHED_PROCESS
+                | CREATE_NEW_PROCESS_GROUP
+                | CREATE_NO_WINDOW
+                | CREATE_BREAKAWAY_FROM_JOB,
         );
     child
         .spawn()
@@ -453,22 +475,29 @@ fn sha256_hex(path: &Path) -> Result<String, String> {
 
 fn unzip(src: &Path, dest: &Path) -> Result<(), String> {
     let file = fs::File::open(src).map_err(|e| format!("Could not open update zip: {e}"))?;
-    let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("Could not read update zip: {e}"))?;
+    let mut archive =
+        zip::ZipArchive::new(file).map_err(|e| format!("Could not read update zip: {e}"))?;
     for i in 0..archive.len() {
-        let mut entry = archive.by_index(i).map_err(|e| format!("Could not read zip entry: {e}"))?;
+        let mut entry = archive
+            .by_index(i)
+            .map_err(|e| format!("Could not read zip entry: {e}"))?;
         let name = entry.mangled_name();
         let Some(out) = safe_extract_path(dest, &name) else {
             continue;
         };
         if entry.is_dir() {
-            fs::create_dir_all(&out).map_err(|e| format!("Could not create extract folder: {e}"))?;
+            fs::create_dir_all(&out)
+                .map_err(|e| format!("Could not create extract folder: {e}"))?;
             continue;
         }
         if let Some(parent) = out.parent() {
-            fs::create_dir_all(parent).map_err(|e| format!("Could not create extract folder: {e}"))?;
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Could not create extract folder: {e}"))?;
         }
-        let mut dest_file = fs::File::create(&out).map_err(|e| format!("Could not extract update: {e}"))?;
-        io::copy(&mut entry, &mut dest_file).map_err(|e| format!("Could not extract update: {e}"))?;
+        let mut dest_file =
+            fs::File::create(&out).map_err(|e| format!("Could not extract update: {e}"))?;
+        io::copy(&mut entry, &mut dest_file)
+            .map_err(|e| format!("Could not extract update: {e}"))?;
     }
     Ok(())
 }
@@ -523,11 +552,7 @@ fn find_file(root: &Path, pred: impl Fn(&str) -> bool) -> Option<PathBuf> {
             let path = entry.path();
             if path.is_dir() {
                 stack.push(path);
-            } else if path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(&pred)
-            {
+            } else if path.file_name().and_then(|n| n.to_str()).is_some_and(&pred) {
                 return Some(path);
             }
         }

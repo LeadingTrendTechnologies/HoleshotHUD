@@ -870,6 +870,7 @@ void PluginState::setTelemetry(const SPluginsBikeData_t& data, float time, float
     m_localTrackPos = pos;
     m_localX = data.m_fPosX;
     m_localZ = data.m_fPosZ;
+    m_localY = data.m_fPosY;
     m_localVelX = data.m_fVelocityX;
     m_localVelZ = data.m_fVelocityZ;
     m_localYaw = data.m_fYaw;

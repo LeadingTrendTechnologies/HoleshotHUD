@@ -32,7 +32,10 @@ pub fn add(host: HWND, icon: HICON) {
     ICON.store(icon.0 as isize, Ordering::SeqCst);
     unsafe {
         if TASKBAR_CREATED.load(Ordering::Relaxed) == 0 {
-            TASKBAR_CREATED.store(RegisterWindowMessageW(w!("TaskbarCreated")), Ordering::Relaxed);
+            TASKBAR_CREATED.store(
+                RegisterWindowMessageW(w!("TaskbarCreated")),
+                Ordering::Relaxed,
+            );
         }
         let nid = data();
         let _ = Shell_NotifyIconW(NIM_ADD, &nid);

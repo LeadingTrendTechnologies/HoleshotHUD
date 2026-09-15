@@ -3,14 +3,8 @@ use super::{gpu_engine_pct, gpu_pid_pcts};
 #[test]
 fn pidless_3d_is_the_engine_total() {
     let samples = [
-        (
-            "luid_0x00000000_0x00017A4B_phys_0_eng_0_engtype_3D",
-            41.0,
-        ),
-        (
-            "luid_0x00000000_0x00017A4B_phys_0_eng_1_engtype_Copy",
-            90.0,
-        ),
+        ("luid_0x00000000_0x00017A4B_phys_0_eng_0_engtype_3D", 41.0),
+        ("luid_0x00000000_0x00017A4B_phys_0_eng_1_engtype_Copy", 90.0),
     ];
     assert_eq!(gpu_engine_pct(samples), 41.0);
 }
@@ -37,10 +31,7 @@ fn per_process_3d_sums_on_the_same_engine() {
 #[test]
 fn pidless_wins_over_pid_sum_on_the_same_engine() {
     let samples = [
-        (
-            "luid_0x00000000_0x00017A4B_phys_0_eng_0_engtype_3D",
-            40.0,
-        ),
+        ("luid_0x00000000_0x00017A4B_phys_0_eng_0_engtype_3D", 40.0),
         (
             "pid_100_luid_0x00000000_0x00017A4B_phys_0_eng_0_engtype_3D",
             30.0,
@@ -82,10 +73,7 @@ fn per_process_sum_caps_at_100() {
 #[test]
 fn compute_does_not_beat_3d_on_the_same_card() {
     let samples = [
-        (
-            "luid_0x00000000_0x00017A4B_phys_0_eng_0_engtype_3D",
-            76.0,
-        ),
+        ("luid_0x00000000_0x00017A4B_phys_0_eng_0_engtype_3D", 76.0),
         (
             "luid_0x00000000_0x00017A4B_phys_0_eng_1_engtype_Compute",
             100.0,
@@ -122,10 +110,7 @@ fn pid_pcts_take_the_hottest_work_engine() {
             "pid_200_luid_0x00000000_0x00017A4B_phys_0_eng_2_engtype_Copy",
             80.0,
         ),
-        (
-            "luid_0x00000000_0x00017A4B_phys_0_eng_0_engtype_3D",
-            55.0,
-        ),
+        ("luid_0x00000000_0x00017A4B_phys_0_eng_0_engtype_3D", 55.0),
     ];
     let by_pid = gpu_pid_pcts(samples);
     assert_eq!(by_pid.get(&100).copied(), Some(30.0));

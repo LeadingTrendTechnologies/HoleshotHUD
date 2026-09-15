@@ -210,7 +210,10 @@ fn commit_tape_stamps_used() {
     assert!(commit_tape("A", "", 80_000, bins));
     let after = now_unix();
     let used = bind("A", "").used;
-    assert!(used >= before && used <= after, "used {used} not in [{before}, {after}]");
+    assert!(
+        used >= before && used <= after,
+        "used {used} not in [{before}, {after}]"
+    );
     let _ = fs::remove_dir_all(dir);
 }
 
@@ -220,6 +223,25 @@ fn bind_does_not_create_file_for_unknown_track() {
     let dir = tmp_dir();
     set_store_dir(dir.clone());
     assert_eq!(bind("Ghost", "").used, 0);
+    assert!(!dir.join("Ghost.json").exists());
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn peek_split_milli_does_not_rewrite_file() {
+    let _lock = exclusive_test();
+    let dir = tmp_dir();
+    let _ = fs::create_dir_all(&dir);
+    let path = dir.join("A.json");
+    let text = format!(
+        "{{\"v\":1,\"ms\":80000,\"bins\":{},\"s\":[1,2,3],\"p\":[333,671],\"used\":1}}",
+        bins_json()
+    );
+    fs::write(&path, &text).unwrap();
+    set_store_dir(dir.clone());
+    assert_eq!(peek_split_milli("A"), [333, 671]);
+    assert_eq!(fs::read_to_string(&path).unwrap(), text);
+    assert_eq!(peek_split_milli("Ghost"), [0, 0]);
     assert!(!dir.join("Ghost.json").exists());
     let _ = fs::remove_dir_all(dir);
 }
@@ -278,7 +300,10 @@ fn bind_restamps_stale_used() {
     set_store_dir(dir.clone());
     let before = now_unix();
     let used = bind("A", "").used;
-    assert!(used >= before, "used {used} should refresh past stale {stale}");
+    assert!(
+        used >= before,
+        "used {used} should refresh past stale {stale}"
+    );
     let _ = fs::remove_dir_all(dir);
 }
 

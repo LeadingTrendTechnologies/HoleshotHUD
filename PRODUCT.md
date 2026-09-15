@@ -24,7 +24,7 @@ A broadcast-style race HUD MX Bikes does not ship: standings, relative, map/mini
 
 - Windows only. MX Bikes must be **borderless** or **windowed** (not exclusive fullscreen).
 - Install: `HoleshotHUD-Setup.exe` → `%LOCALAPPDATA%\Holeshot HUD` (or a chosen folder). Setup copies `Holeshot-HUD.dlo` into the game `plugins` folder.
-- Start the game, then start **Holeshot HUD**. **F8** opens settings. Hold **Ctrl** and drag to move or resize widgets.
+- Start the game, then start **Holeshot HUD**. **F8** opens settings. Settings reopens on the last screen you left it on. The overlay stays on the game. Hold **Ctrl** and drag to move or resize widgets.
 - Layout lives in `Documents\PiBoSo\MX Bikes\Holeshot-HUD.ini`. Restart MX Bikes after installing or updating the plugin.
 - The website (`web/`, hosted at holeshot-hud.vercel.app) is a widget demo plus a Windows download — not the product.
 
@@ -34,7 +34,8 @@ A broadcast-style race HUD MX Bikes does not ship: standings, relative, map/mini
 - Widgets: Standings, Relative, Horizontal Standings, Map, Minimap, Radar, Dash, Flags, Systems, Stance, Delta Bar, Sectors, Lean, Controller, Telemetry. Delta Bar and Sectors compare vs your best on this track and class (250 vs 450, saved). A cut or shortcut does not become that best. Sectors can show last laps under the live strip, with lap time, full-lap delta, and an ideal (best S1+S2+S3) in a LAP column. Lean follows the camera: your roll, pitch, and steer on the bike, the spectated rider's lean in replay. Figure (rider) or Minimal (numbers). Telemetry can hide traces, bars, or the gear/speed dial, and hide throttle, brake, or steer on each. Gear flushes faint red at the shift light or limiter. Controller is a Labs widget (Settings → Experimental widgets) for your local pad (sticks, analog triggers, bumpers, buttons); Steam Xbox mapping draws an Xbox Series pad, DualShock HID draws PlayStation. Systems defaults include OBS, and can watch extra apps (Discord, a picked `.exe`) besides HUD / MX Bikes / MXB App / ReShade. Header, footer, and dash slots can show **Setup** (the loaded bike setup filename) and **Gap ahead** / **Gap behind** (live running time to the riders one place in front of and behind you).
 - Fresh install: every **Show on overlay** toggle starts off. Nothing draws until the rider turns it on. Widgets only draw during a session (not in the garage, lobby, or menus). Stance follows a local bind, not rider animation.
 - Optional simpler in-game HUD (`ingame_hud`) is frozen: standings, relative, and map only. Overlay work does not go there. The overlay owns `Holeshot-HUD.ini`.
-- Architecture: `Holeshot-HUD.dlo` → shared memory `Local\MXBOHudV14` → Rust overlay. Field availability is gated by the PiBoSo plugin API (see `wiki/Home.md`). Bump `MXBO_SHM_VERSION` when the snapshot layout changes.
+- Architecture: `Holeshot-HUD.dlo` → shared memory `Local\MXBOHudV15` → Rust overlay. Field availability is gated by the PiBoSo plugin API (see `wiki/Home.md`). Bump `MXBO_SHM_VERSION` when the snapshot layout changes.
+- F8 **Motos** is experimental and starts off. Enable it on that page to store recent motos locally (14 days, or Saved) for line / speed / height compare. The empty page shows an Analyze preview before Enable. Turn recording off to stop new motos; existing ones stay until you delete them. Not a Steam leaderboard.
 - Auto-update from GitHub releases; after an in-app update, Settings shows a What's new board for this version. In-app feedback (F8 → Feedback) posts private gists; a reply from the inbox pops up in settings on that PC, and they can write back.
 - MX Bikes only. Not a general sim HUD.
 

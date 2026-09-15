@@ -58,3 +58,28 @@ fn cmd_view_is_12_bytes() {
     assert_eq!(std::mem::size_of::<CmdView>(), 12);
     assert_eq!(CMD_MAGIC, 0x4342_584D);
 }
+
+#[test]
+fn mapping_unusable_rejects_short_region() {
+    let need = size_of::<Snapshot>() as u32;
+    assert!(mapping_unusable(MAGIC, VERSION, need, 64));
+}
+
+#[test]
+fn mapping_unusable_keeps_stamped_v15() {
+    let need = size_of::<Snapshot>();
+    assert!(!mapping_unusable(MAGIC, VERSION, need as u32, need));
+}
+
+#[test]
+fn mapping_unusable_keeps_zero_header() {
+    assert!(!mapping_unusable(0, 0, 0, size_of::<Snapshot>()));
+}
+
+#[test]
+fn mapping_unusable_rejects_wrong_magic_version_size() {
+    let need = size_of::<Snapshot>();
+    assert!(mapping_unusable(0x1111, VERSION, need as u32, need));
+    assert!(mapping_unusable(MAGIC, 14, need as u32, need));
+    assert!(mapping_unusable(MAGIC, VERSION, 64, need));
+}

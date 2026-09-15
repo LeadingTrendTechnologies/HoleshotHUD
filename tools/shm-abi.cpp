@@ -33,6 +33,12 @@ int main()
     FIELD(MxboShmRider, crashed);
     FIELD(MxboShmRider, name);
     FIELD(MxboShmRider, lean);
+    FIELD(MxboShmRider, y);
+    FIELD(MxboShmRider, speed);
+    FIELD(MxboShmRider, rpm);
+    FIELD(MxboShmRider, gear);
+    FIELD(MxboShmRider, throttle);
+    FIELD(MxboShmRider, frontBrake);
 
     std::printf("MxboShmStanding.size %zu\n", sizeof(MxboShmStanding));
     FIELD(MxboShmStanding, raceNum);
@@ -68,6 +74,7 @@ int main()
     FIELD(MxboShmSnapshot, localCrashed);
     FIELD(MxboShmSnapshot, localX);
     FIELD(MxboShmSnapshot, localZ);
+    FIELD(MxboShmSnapshot, localY);
     FIELD(MxboShmSnapshot, localVelX);
     FIELD(MxboShmSnapshot, localVelZ);
     FIELD(MxboShmSnapshot, localYaw);

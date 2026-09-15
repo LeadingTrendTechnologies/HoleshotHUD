@@ -123,7 +123,10 @@ pub fn spawn_game_waiter() {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .creation_flags(
-            DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB,
+            DETACHED_PROCESS
+                | CREATE_NEW_PROCESS_GROUP
+                | CREATE_NO_WINDOW
+                | CREATE_BREAKAWAY_FROM_JOB,
         )
         .spawn();
 }
@@ -152,7 +155,10 @@ fn spawn_handover_waiter() {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .creation_flags(
-            DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB,
+            DETACHED_PROCESS
+                | CREATE_NEW_PROCESS_GROUP
+                | CREATE_NO_WINDOW
+                | CREATE_BREAKAWAY_FROM_JOB,
         )
         .spawn();
 }
@@ -210,7 +216,10 @@ pub fn spawn_taskbar_restorer(pid: u32) -> bool {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .creation_flags(
-            DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB,
+            DETACHED_PROCESS
+                | CREATE_NEW_PROCESS_GROUP
+                | CREATE_NO_WINDOW
+                | CREATE_BREAKAWAY_FROM_JOB,
         )
         .spawn()
         .is_ok()
@@ -328,7 +337,8 @@ fn exe_cmd(flag: &str) -> Option<String> {
 fn write_value(name: windows::core::PCWSTR, cmd: &str) {
     with_run_key(|key| {
         let wide: Vec<u16> = cmd.encode_utf16().chain(std::iter::once(0)).collect();
-        let bytes = unsafe { std::slice::from_raw_parts(wide.as_ptr() as *const u8, wide.len() * 2) };
+        let bytes =
+            unsafe { std::slice::from_raw_parts(wide.as_ptr() as *const u8, wide.len() * 2) };
         let _ = unsafe { RegSetValueExW(key, name, 0, REG_SZ, Some(bytes)) };
     });
 }

@@ -104,7 +104,10 @@ fn outlap_clock_drop_at_sf_starts_first_flying_lap() {
     }
     assert!(!eng.armed);
     eng.tick(&snap("A", sf, 120, 0, 1));
-    assert!(eng.armed, "clock drop at the line must start the first flying lap");
+    assert!(
+        eng.armed,
+        "clock drop at the line must start the first flying lap"
+    );
     let mut ms = 400;
     let mut p = sf + 0.01;
     while p < 0.98 {
@@ -305,7 +308,10 @@ fn session_compare_uses_this_visit_not_saved_tape() {
     assert_eq!(eng.ref_lap_ms, 60_000);
     assert_eq!(eng.session_lap_ms, 0);
     assert!(eng.last_view.ready);
-    assert!(!eng.session_view.ready, "session compare waits for a lap this visit");
+    assert!(
+        !eng.session_view.ready,
+        "session compare waits for a lap this visit"
+    );
 
     run_lap(&mut eng, "Sess", 72_000, 2, false);
     assert_eq!(eng.ref_lap_ms, 60_000, "saved tape stays the all-time best");
@@ -360,7 +366,10 @@ fn crash_crossing_without_clock_drop_still_counts() {
         "crashed crossing must still become LAST, last={}",
         v.last_lap_ms
     );
-    assert!(eng.armed, "next flying lap must stay armed after an uncounted cross");
+    assert!(
+        eng.armed,
+        "next flying lap must stay armed after an uncounted cross"
+    );
     let next = eng.tick(&snap("A", 0.08, lap_ms + 800, 90_000, 2));
     assert!(
         next.cover > 0 || eng.current.filled > 0,
@@ -582,7 +591,10 @@ fn origin_wrap_mid_lap_keeps_delta() {
         "centerline origin in S3 is not S/F; delta must keep moving"
     );
     assert!(!eng.stale_clock);
-    assert_eq!(eng.ref_lap_ms, 72_000, "origin wrap must not commit a short tape");
+    assert_eq!(
+        eng.ref_lap_ms, 72_000,
+        "origin wrap must not commit a short tape"
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -639,7 +651,10 @@ fn first_flying_lap_origin_wrap_then_sf_commits() {
     let filled = eng.current.filled;
     eng.tick(&snap("A", 0.03, ms, 0, 1));
     ms += 300;
-    assert!(eng.reference.is_none(), "origin wrap must not end the first flying lap");
+    assert!(
+        eng.reference.is_none(),
+        "origin wrap must not end the first flying lap"
+    );
     assert!(
         eng.current.filled >= filled,
         "keep REC through origin, filled {} -> {}",
@@ -841,7 +856,10 @@ fn hitch_across_sf_still_commits() {
     }
     assert!(eng.reference.is_none());
     eng.tick(&snap("A", 0.08, 600, 0, 2));
-    assert!(eng.reference.is_some(), "hitch across S/F must still commit");
+    assert!(
+        eng.reference.is_some(),
+        "hitch across S/F must still commit"
+    );
     assert!(eng.ref_lap_ms >= 60_000, "ref {}", eng.ref_lap_ms);
 }
 
@@ -937,7 +955,10 @@ fn cut_does_not_replace_a_real_pb() {
         eng.tick(&snap("A", t, ms, 72_000, 2));
     }
     eng.tick(&snap("A", 0.01, 180, 0, 3));
-    assert_eq!(eng.ref_lap_ms, 72_000, "cut lap must not replace a real best");
+    assert_eq!(
+        eng.ref_lap_ms, 72_000,
+        "cut lap must not replace a real best"
+    );
 }
 
 #[test]
@@ -962,7 +983,10 @@ fn hitch_mid_lap_still_commits() {
         eng.tick(&s);
     }
     eng.tick(&snap("A", 0.01, 180, 0, 2));
-    assert!(eng.reference.is_some(), "hitch that still covers the ground must commit");
+    assert!(
+        eng.reference.is_some(),
+        "hitch that still covers the ground must commit"
+    );
     assert!(eng.ref_lap_ms >= 60_000, "ref {}", eng.ref_lap_ms);
 }
 
@@ -1001,7 +1025,10 @@ fn jump_after_airtime_is_not_a_cut() {
         ms += 400;
         tape.push_at(pos.min(0.99), ms, 1600.0);
     }
-    assert!(!tape.dirty, "airtime then a short land is a jump, not a cut");
+    assert!(
+        !tape.dirty,
+        "airtime then a short land is a jump, not a cut"
+    );
     assert!(tape.decent(ms));
 }
 
@@ -1025,7 +1052,10 @@ fn big_jump_airtime_still_commits() {
         tape.push_at(pos.min(0.99), ms, 1600.0);
     }
     assert!(!tape.dirty, "a jump that skips 140 m in air is not a cut");
-    assert!(tape.decent(ms), "first flying lap with a jump must still save");
+    assert!(
+        tape.decent(ms),
+        "first flying lap with a jump must still save"
+    );
 }
 
 #[test]
@@ -1047,9 +1077,8 @@ fn first_flying_lap_with_a_jump_becomes_the_tape() {
         }
         let mut ms = (lap_ms as f32 * t) as i32;
         if t >= jump_to {
-            ms = (lap_ms as f32 * jump_from) as i32
-                + 1_200
-                + ((t - jump_to) * lap_ms as f32) as i32;
+            ms =
+                (lap_ms as f32 * jump_from) as i32 + 1_200 + ((t - jump_to) * lap_ms as f32) as i32;
         }
         let mut s = snap("A", t, ms, 0, 1);
         if i + 1 == n {

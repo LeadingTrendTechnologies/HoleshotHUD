@@ -172,7 +172,10 @@ fn rider_facing(notes: Notes) -> Option<Notes> {
 const WIDGETS: &[(&str, &[&str])] = &[
     ("Standings", &["standings"]),
     ("Relative", &["relative"]),
-    ("H-Standings", &["horizontal standings", "h-standings", "h standings"]),
+    (
+        "H-Standings",
+        &["horizontal standings", "h-standings", "h standings"],
+    ),
     ("Map", &["map"]),
     ("Minimap", &["minimap"]),
     ("Radar", &["radar"]),
@@ -229,7 +232,10 @@ fn split_by_widget(notes: Notes) -> Notes {
         }
     }
     for sec in kept {
-        if let Some(existing) = sections.iter_mut().find(|s| s.title.eq_ignore_ascii_case(&sec.title)) {
+        if let Some(existing) = sections
+            .iter_mut()
+            .find(|s| s.title.eq_ignore_ascii_case(&sec.title))
+        {
             for b in sec.bullets {
                 if !existing.bullets.iter().any(|x| x == &b) {
                     existing.bullets.push(b);
@@ -240,7 +246,10 @@ fn split_by_widget(notes: Notes) -> Notes {
         }
     }
     for (title, bullets) in leftovers {
-        if let Some(existing) = sections.iter_mut().find(|s| s.title.eq_ignore_ascii_case(&title)) {
+        if let Some(existing) = sections
+            .iter_mut()
+            .find(|s| s.title.eq_ignore_ascii_case(&title))
+        {
             for b in bullets {
                 if !existing.bullets.iter().any(|x| x == &b) {
                     existing.bullets.push(b);
@@ -329,11 +338,9 @@ fn contains_needle(hay: &str, needle: &str) -> bool {
             return false;
         };
         let abs = from + rel;
-        let before_ok = abs == 0
-            || !hay.as_bytes()[abs - 1].is_ascii_alphanumeric();
+        let before_ok = abs == 0 || !hay.as_bytes()[abs - 1].is_ascii_alphanumeric();
         let after = abs + needle.len();
-        let after_ok = after >= hay.len()
-            || !hay.as_bytes()[after].is_ascii_alphanumeric();
+        let after_ok = after >= hay.len() || !hay.as_bytes()[after].is_ascii_alphanumeric();
         if before_ok && after_ok {
             return true;
         }

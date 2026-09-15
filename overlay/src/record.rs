@@ -26,7 +26,9 @@ pub fn init() {
 }
 
 pub fn path() -> Option<PathBuf> {
-    live().as_ref().and_then(|l| l.path().map(|p| p.to_path_buf()))
+    live()
+        .as_ref()
+        .and_then(|l| l.path().map(|p| p.to_path_buf()))
 }
 
 pub fn rotate() {
@@ -506,11 +508,12 @@ fn read_tail(path: &Path) -> (String, bool) {
     let _ = f.seek(SeekFrom::Start(meta.len() - MAX_LOG as u64));
     let mut buf = Vec::with_capacity(MAX_LOG);
     let _ = f.read_to_end(&mut buf);
-    let start = buf.iter().position(|&b| b == b'\n').map(|i| i + 1).unwrap_or(0);
-    (
-        String::from_utf8_lossy(&buf[start..]).into_owned(),
-        true,
-    )
+    let start = buf
+        .iter()
+        .position(|&b| b == b'\n')
+        .map(|i| i + 1)
+        .unwrap_or(0);
+    (String::from_utf8_lossy(&buf[start..]).into_owned(), true)
 }
 
 fn trim_body(body: &mut String) -> bool {
@@ -518,7 +521,10 @@ fn trim_body(body: &mut String) -> bool {
         return false;
     }
     let start = body.len() - MAX_LOG;
-    let start = body[start..].find('\n').map(|i| start + i + 1).unwrap_or(start);
+    let start = body[start..]
+        .find('\n')
+        .map(|i| start + i + 1)
+        .unwrap_or(start);
     body.replace_range(0..start, "");
     true
 }
@@ -528,13 +534,17 @@ fn clip_send(mut body: String, already_truncated: bool) -> (String, bool) {
         return (body, already_truncated);
     }
     let start = body.len() - MAX_SEND_LOG;
-    let start = body[start..].find('\n').map(|i| start + i + 1).unwrap_or(start);
+    let start = body[start..]
+        .find('\n')
+        .map(|i| start + i + 1)
+        .unwrap_or(start);
     body.replace_range(0..start, "");
     (body, true)
 }
 
 fn raw_has_race(raw: &str) -> bool {
-    raw.lines().any(|l| l.contains("\"cur\":") && l.contains("\"t\":"))
+    raw.lines()
+        .any(|l| l.contains("\"cur\":") && l.contains("\"t\":"))
 }
 
 fn peek_track(raw: &str) -> Option<String> {

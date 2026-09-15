@@ -912,6 +912,7 @@ fn demo_snapshot() -> Snapshot {
             crashed: 0,
             name: [0; 32],
             lean: if i as i32 + 1 == FOCUS { s.local_roll } else { 12.0 + i as f32 },
+            ..Rider::default()
         };
         write_name(&mut s.riders[i].name, name);
     }

@@ -85,9 +85,18 @@ impl FontFamily {
 
     pub fn windows_files(self) -> Option<(&'static str, &'static str)> {
         match self {
-            Self::Segoe => Some((r"C:\Windows\Fonts\segoeui.ttf", r"C:\Windows\Fonts\segoeuib.ttf")),
-            Self::Arial => Some((r"C:\Windows\Fonts\arial.ttf", r"C:\Windows\Fonts\arialbd.ttf")),
-            Self::Tahoma => Some((r"C:\Windows\Fonts\tahoma.ttf", r"C:\Windows\Fonts\tahomabd.ttf")),
+            Self::Segoe => Some((
+                r"C:\Windows\Fonts\segoeui.ttf",
+                r"C:\Windows\Fonts\segoeuib.ttf",
+            )),
+            Self::Arial => Some((
+                r"C:\Windows\Fonts\arial.ttf",
+                r"C:\Windows\Fonts\arialbd.ttf",
+            )),
+            Self::Tahoma => Some((
+                r"C:\Windows\Fonts\tahoma.ttf",
+                r"C:\Windows\Fonts\tahomabd.ttf",
+            )),
             _ => None,
         }
     }
@@ -726,21 +735,96 @@ impl WidgetId {
 
     fn default_rect(self) -> Rect {
         match self {
-            Self::Standings => Rect { x: 0.012, y: 0.03, w: 0.20, h: 0.46 },
-            Self::Relative => Rect { x: 0.012, y: 0.62, w: 0.20, h: 0.36 },
-            Self::Map => Rect { x: 0.775, y: 0.62, w: 0.21, h: 0.34 },
-            Self::Minimap => Rect { x: 0.815, y: 0.035, w: 0.165, h: 0.295 },
-            Self::Radar => Rect { x: 0.438, y: 0.755, w: 0.124, h: 0.22 },
-            Self::Dash => Rect { x: 0.445, y: 0.865, w: 0.111, h: 0.115 },
-            Self::Ticker => Rect { x: 0.06, y: 0.012, w: 0.88, h: 0.055 },
-            Self::Sys => Rect { x: 0.012, y: 0.36, w: 0.086, h: 0.25 },
-            Self::Sector => Rect { x: 0.62, y: 0.68, w: 0.36, h: 0.26 },
-            Self::Delta => Rect { x: 0.36, y: 0.76, w: 0.28, h: 0.09 },
-            Self::Stance => Rect { x: 0.445, y: 0.705, w: 0.11, h: 0.065 },
-            Self::Flag => Rect { x: 0.447, y: 0.026, w: 0.107, h: 0.019 },
-            Self::Lean => Rect { x: 0.318, y: 0.755, w: 0.11, h: 0.20 },
-            Self::Gamepad => Rect { x: 0.38, y: 0.76, w: 0.24, h: 0.20 },
-            Self::Telemetry => Rect { x: 0.22, y: 0.80, w: 0.56, h: 0.145 },
+            Self::Standings => Rect {
+                x: 0.012,
+                y: 0.03,
+                w: 0.20,
+                h: 0.46,
+            },
+            Self::Relative => Rect {
+                x: 0.012,
+                y: 0.62,
+                w: 0.20,
+                h: 0.36,
+            },
+            Self::Map => Rect {
+                x: 0.775,
+                y: 0.62,
+                w: 0.21,
+                h: 0.34,
+            },
+            Self::Minimap => Rect {
+                x: 0.815,
+                y: 0.035,
+                w: 0.165,
+                h: 0.295,
+            },
+            Self::Radar => Rect {
+                x: 0.438,
+                y: 0.755,
+                w: 0.124,
+                h: 0.22,
+            },
+            Self::Dash => Rect {
+                x: 0.445,
+                y: 0.865,
+                w: 0.111,
+                h: 0.115,
+            },
+            Self::Ticker => Rect {
+                x: 0.06,
+                y: 0.012,
+                w: 0.88,
+                h: 0.055,
+            },
+            Self::Sys => Rect {
+                x: 0.012,
+                y: 0.36,
+                w: 0.086,
+                h: 0.25,
+            },
+            Self::Sector => Rect {
+                x: 0.62,
+                y: 0.68,
+                w: 0.36,
+                h: 0.26,
+            },
+            Self::Delta => Rect {
+                x: 0.36,
+                y: 0.76,
+                w: 0.28,
+                h: 0.09,
+            },
+            Self::Stance => Rect {
+                x: 0.445,
+                y: 0.705,
+                w: 0.11,
+                h: 0.065,
+            },
+            Self::Flag => Rect {
+                x: 0.447,
+                y: 0.026,
+                w: 0.107,
+                h: 0.019,
+            },
+            Self::Lean => Rect {
+                x: 0.318,
+                y: 0.755,
+                w: 0.11,
+                h: 0.20,
+            },
+            Self::Gamepad => Rect {
+                x: 0.38,
+                y: 0.76,
+                w: 0.24,
+                h: 0.20,
+            },
+            Self::Telemetry => Rect {
+                x: 0.22,
+                y: 0.80,
+                w: 0.56,
+                h: 0.145,
+            },
         }
     }
 
@@ -757,21 +841,111 @@ impl WidgetId {
     /// Disk key names. Changing these breaks existing `Holeshot-HUD.ini` files.
     fn ini(self) -> WidgetIni {
         match self {
-            Self::Standings => WidgetIni { rect: "standings", show: "show_standings", font: "st_font", bold: "st_bold", bg: "st_bg" },
-            Self::Relative => WidgetIni { rect: "relative", show: "show_relative", font: "rel_font", bold: "rel_bold", bg: "rel_bg" },
-            Self::Map => WidgetIni { rect: "map", show: "show_map", font: "map_font", bold: "map_bold", bg: "map_bg" },
-            Self::Minimap => WidgetIni { rect: "minimap", show: "show_minimap", font: "mini_font", bold: "mini_bold", bg: "mini_bg" },
-            Self::Radar => WidgetIni { rect: "radar", show: "show_radar", font: "radar_font", bold: "radar_bold", bg: "radar_bg" },
-            Self::Dash => WidgetIni { rect: "dash", show: "show_dash", font: "dash_font", bold: "dash_bold", bg: "dash_bg" },
-            Self::Ticker => WidgetIni { rect: "ticker", show: "show_ticker", font: "ticker_font", bold: "ticker_bold", bg: "ticker_bg" },
-            Self::Sys => WidgetIni { rect: "sys", show: "show_sys", font: "sys_font", bold: "sys_bold", bg: "sys_bg" },
-            Self::Sector => WidgetIni { rect: "sector", show: "show_sector", font: "sector_font", bold: "sector_bold", bg: "sector_bg" },
-            Self::Delta => WidgetIni { rect: "delta", show: "show_delta", font: "delta_font", bold: "delta_bold", bg: "delta_bg" },
-            Self::Stance => WidgetIni { rect: "stance", show: "show_stance", font: "stance_font", bold: "stance_bold", bg: "stance_bg" },
-            Self::Flag => WidgetIni { rect: "flag", show: "show_flag", font: "flag_font", bold: "flag_bold", bg: "flag_bg" },
-            Self::Lean => WidgetIni { rect: "lean", show: "show_lean", font: "lean_font", bold: "lean_bold", bg: "lean_bg" },
-            Self::Gamepad => WidgetIni { rect: "gamepad", show: "show_gamepad", font: "gamepad_font", bold: "gamepad_bold", bg: "gamepad_bg" },
-            Self::Telemetry => WidgetIni { rect: "telemetry", show: "show_telemetry", font: "telemetry_font", bold: "telemetry_bold", bg: "telemetry_bg" },
+            Self::Standings => WidgetIni {
+                rect: "standings",
+                show: "show_standings",
+                font: "st_font",
+                bold: "st_bold",
+                bg: "st_bg",
+            },
+            Self::Relative => WidgetIni {
+                rect: "relative",
+                show: "show_relative",
+                font: "rel_font",
+                bold: "rel_bold",
+                bg: "rel_bg",
+            },
+            Self::Map => WidgetIni {
+                rect: "map",
+                show: "show_map",
+                font: "map_font",
+                bold: "map_bold",
+                bg: "map_bg",
+            },
+            Self::Minimap => WidgetIni {
+                rect: "minimap",
+                show: "show_minimap",
+                font: "mini_font",
+                bold: "mini_bold",
+                bg: "mini_bg",
+            },
+            Self::Radar => WidgetIni {
+                rect: "radar",
+                show: "show_radar",
+                font: "radar_font",
+                bold: "radar_bold",
+                bg: "radar_bg",
+            },
+            Self::Dash => WidgetIni {
+                rect: "dash",
+                show: "show_dash",
+                font: "dash_font",
+                bold: "dash_bold",
+                bg: "dash_bg",
+            },
+            Self::Ticker => WidgetIni {
+                rect: "ticker",
+                show: "show_ticker",
+                font: "ticker_font",
+                bold: "ticker_bold",
+                bg: "ticker_bg",
+            },
+            Self::Sys => WidgetIni {
+                rect: "sys",
+                show: "show_sys",
+                font: "sys_font",
+                bold: "sys_bold",
+                bg: "sys_bg",
+            },
+            Self::Sector => WidgetIni {
+                rect: "sector",
+                show: "show_sector",
+                font: "sector_font",
+                bold: "sector_bold",
+                bg: "sector_bg",
+            },
+            Self::Delta => WidgetIni {
+                rect: "delta",
+                show: "show_delta",
+                font: "delta_font",
+                bold: "delta_bold",
+                bg: "delta_bg",
+            },
+            Self::Stance => WidgetIni {
+                rect: "stance",
+                show: "show_stance",
+                font: "stance_font",
+                bold: "stance_bold",
+                bg: "stance_bg",
+            },
+            Self::Flag => WidgetIni {
+                rect: "flag",
+                show: "show_flag",
+                font: "flag_font",
+                bold: "flag_bold",
+                bg: "flag_bg",
+            },
+            Self::Lean => WidgetIni {
+                rect: "lean",
+                show: "show_lean",
+                font: "lean_font",
+                bold: "lean_bold",
+                bg: "lean_bg",
+            },
+            Self::Gamepad => WidgetIni {
+                rect: "gamepad",
+                show: "show_gamepad",
+                font: "gamepad_font",
+                bold: "gamepad_bold",
+                bg: "gamepad_bg",
+            },
+            Self::Telemetry => WidgetIni {
+                rect: "telemetry",
+                show: "show_telemetry",
+                font: "telemetry_font",
+                bold: "telemetry_bold",
+                bg: "telemetry_bg",
+            },
         }
     }
 }
@@ -1223,29 +1397,90 @@ impl SysPreset {
 }
 
 pub const SYS_PRESETS: &[SysPreset] = &[
-    SysPreset { key: "hud", label: "HUD", names: &[], kind: SysAppKind::Hud },
-    SysPreset { key: "mxbikes", label: "MX Bikes", names: &["mxbikes.exe"], kind: SysAppKind::Mxbikes },
+    SysPreset {
+        key: "hud",
+        label: "HUD",
+        names: &[],
+        kind: SysAppKind::Hud,
+    },
+    SysPreset {
+        key: "mxbikes",
+        label: "MX Bikes",
+        names: &["mxbikes.exe"],
+        kind: SysAppKind::Mxbikes,
+    },
     SysPreset {
         key: "mxbapp",
         label: "MXB App",
-        names: &["frost.exe", "mxb app.exe", "mxb-app.exe", "mxbapp.exe", "frostmod.exe"],
+        names: &[
+            "frost.exe",
+            "mxb app.exe",
+            "mxb-app.exe",
+            "mxbapp.exe",
+            "frostmod.exe",
+        ],
         kind: SysAppKind::MxbApp,
     },
-    SysPreset { key: "reshade", label: "ReShade", names: &[], kind: SysAppKind::Reshade },
-    SysPreset { key: "obs", label: "OBS", names: &["obs64.exe", "obs32.exe"], kind: SysAppKind::Exe },
-    SysPreset { key: "discord", label: "Discord", names: &["discord.exe"], kind: SysAppKind::Exe },
-    SysPreset { key: "steam", label: "Steam", names: &["steam.exe"], kind: SysAppKind::Exe },
+    SysPreset {
+        key: "reshade",
+        label: "ReShade",
+        names: &[],
+        kind: SysAppKind::Reshade,
+    },
+    SysPreset {
+        key: "obs",
+        label: "OBS",
+        names: &["obs64.exe", "obs32.exe"],
+        kind: SysAppKind::Exe,
+    },
+    SysPreset {
+        key: "discord",
+        label: "Discord",
+        names: &["discord.exe"],
+        kind: SysAppKind::Exe,
+    },
+    SysPreset {
+        key: "steam",
+        label: "Steam",
+        names: &["steam.exe"],
+        kind: SysAppKind::Exe,
+    },
     SysPreset {
         key: "nvidia",
         label: "NVIDIA",
         names: &["nvidia overlay.exe", "nvidia app.exe", "nvidia share.exe"],
         kind: SysAppKind::Exe,
     },
-    SysPreset { key: "afterburner", label: "Afterburner", names: &["msiafterburner.exe"], kind: SysAppKind::Exe },
-    SysPreset { key: "rtss", label: "RTSS", names: &["rtss.exe"], kind: SysAppKind::Exe },
-    SysPreset { key: "medal", label: "Medal", names: &["medal.exe"], kind: SysAppKind::Exe },
-    SysPreset { key: "spotify", label: "Spotify", names: &["spotify.exe"], kind: SysAppKind::Exe },
-    SysPreset { key: "gamebar", label: "Game Bar", names: &["gamebar.exe"], kind: SysAppKind::Exe },
+    SysPreset {
+        key: "afterburner",
+        label: "Afterburner",
+        names: &["msiafterburner.exe"],
+        kind: SysAppKind::Exe,
+    },
+    SysPreset {
+        key: "rtss",
+        label: "RTSS",
+        names: &["rtss.exe"],
+        kind: SysAppKind::Exe,
+    },
+    SysPreset {
+        key: "medal",
+        label: "Medal",
+        names: &["medal.exe"],
+        kind: SysAppKind::Exe,
+    },
+    SysPreset {
+        key: "spotify",
+        label: "Spotify",
+        names: &["spotify.exe"],
+        kind: SysAppKind::Exe,
+    },
+    SysPreset {
+        key: "gamebar",
+        label: "Game Bar",
+        names: &["gamebar.exe"],
+        kind: SysAppKind::Exe,
+    },
 ];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1333,10 +1568,14 @@ fn parse_sys_app_token(token: &str) -> Option<SysApp> {
         let label = sanitize_sys_token(parts.next().unwrap_or(""));
         let name = parts.next().unwrap_or("").trim().to_ascii_lowercase();
         let show = parts.next().is_some_and(|s| s == "1");
-        if label.is_empty() || !name.ends_with(".exe") || name.contains('\\') || name.contains('/') {
+        if label.is_empty() || !name.ends_with(".exe") || name.contains('\\') || name.contains('/')
+        {
             return None;
         }
-        if let Some(p) = SYS_PRESETS.iter().find(|p| p.names.iter().any(|n| *n == name)) {
+        if let Some(p) = SYS_PRESETS
+            .iter()
+            .find(|p| p.names.iter().any(|n| *n == name))
+        {
             return Some(SysApp::from_preset(p, show));
         }
         return Some(SysApp {
@@ -1685,6 +1924,8 @@ pub struct HudConfig {
     pub session_live: bool,
     /// Kept in the ini for older builds. No widget is gated on this anymore.
     pub experimental: bool,
+    /// F8 Motos records motos only when this is on. Default off; missing ini key stays off.
+    pub review: bool,
     /// Plugin-only: when true the frozen in-game HUD draws standings / relative / map.
     /// Overlay still saves this key. The plugin never writes the ini.
     pub ingame_hud: bool,
@@ -1701,6 +1942,9 @@ pub struct HudConfig {
     /// `"unknown"` if they already had settings before this field existed.
     pub first_install_version: String,
     pub settings_key: SettingsKey,
+    /// Settings host origin in virtual-screen pixels. A second monitor can be `x >= primary` or negative.
+    pub settings_x: i32,
+    pub settings_y: i32,
     pub stance_bind: StanceBind,
     loaded_mtime: Option<SystemTime>,
 }
@@ -1709,16 +1953,12 @@ impl HudConfig {
     pub fn new() -> Self {
         let layout = HudLayout::new();
         Self {
-            layouts: [
-                layout.clone(),
-                layout.clone(),
-                layout.clone(),
-                layout,
-            ],
+            layouts: [layout.clone(), layout.clone(), layout.clone(), layout],
             active_preset: SessionPreset::Race,
             settings_preset: SessionPreset::Race,
             session_live: false,
             experimental: false,
+            review: false,
             ingame_hud: false,
             font_family: FontFamily::Exo2,
             units: UnitPrefs::all(Units::Metric),
@@ -1730,6 +1970,8 @@ impl HudConfig {
             whats_new_seen: String::new(),
             first_install_version: String::new(),
             settings_key: SettingsKey::F8,
+            settings_x: 80,
+            settings_y: 80,
             stance_bind: StanceBind::PadRb,
             loaded_mtime: None,
         }
@@ -1789,8 +2031,7 @@ impl HudConfig {
         let path = ini_path();
         let legacy = legacy_ini_path();
         let mut cfg = Self::new();
-        let text = fs::read_to_string(&path)
-            .or_else(|_| fs::read_to_string(&legacy));
+        let text = fs::read_to_string(&path).or_else(|_| fs::read_to_string(&legacy));
         let Ok(text) = text else {
             cfg.first_install_version = env!("CARGO_PKG_VERSION").to_string();
             cfg.save();
@@ -1821,7 +2062,8 @@ impl HudConfig {
             let key = k.trim();
             let val = v.trim();
             let f = val.parse::<f32>().unwrap_or(0.0);
-            let b = val == "1" || val.eq_ignore_ascii_case("true") || val.eq_ignore_ascii_case("yes");
+            let b =
+                val == "1" || val.eq_ignore_ascii_case("true") || val.eq_ignore_ascii_case("yes");
             match section {
                 IniSection::App => {
                     apply_app_key(&mut cfg, key, val, b, &mut saw_first_install, &mut saw_unit);
@@ -1901,10 +2143,17 @@ impl HudConfig {
 
     pub fn add_sys_exe(&mut self, exe_name: &str) {
         let name = exe_name.trim().to_ascii_lowercase();
-        if !name.ends_with(".exe") || name.contains('\\') || name.contains('/') || name.contains('|') {
+        if !name.ends_with(".exe")
+            || name.contains('\\')
+            || name.contains('/')
+            || name.contains('|')
+        {
             return;
         }
-        if let Some(p) = SYS_PRESETS.iter().find(|p| p.names.iter().any(|n| *n == name)) {
+        if let Some(p) = SYS_PRESETS
+            .iter()
+            .find(|p| p.names.iter().any(|n| *n == name))
+        {
             if let Some(a) = self.sys_apps.iter_mut().find(|a| a.key == p.key) {
                 a.show = true;
                 return;
@@ -1912,8 +2161,16 @@ impl HudConfig {
             self.add_sys_preset(p.key);
             return;
         }
-        if self.sys_apps.iter().any(|a| a.names.iter().any(|n| n == &name)) {
-            if let Some(a) = self.sys_apps.iter_mut().find(|a| a.names.iter().any(|n| n == &name)) {
+        if self
+            .sys_apps
+            .iter()
+            .any(|a| a.names.iter().any(|n| n == &name))
+        {
+            if let Some(a) = self
+                .sys_apps
+                .iter_mut()
+                .find(|a| a.names.iter().any(|n| n == &name))
+            {
                 a.show = true;
             }
             return;
@@ -1962,9 +2219,9 @@ impl HudConfig {
             "# Holeshot HUD layout (normalized 0..1, origin top-left)\n\
              [App]\n\
              font_family={}\nunits={}\nunits_speed={}\nunits_liquids={}\nunits_temperature={}\n\
-             settings_key={}\nstart_with_windows={}\nminimize_on_close={}\n\
+             settings_key={}\nsettings_x={}\nsettings_y={}\nstart_with_windows={}\nminimize_on_close={}\n\
              close_with_game={}\nopen_with_game={}\nauto_update_on_launch={}\nwhats_new_seen={}\n\
-             first_install_version={}\nexperimental={}\ningame_hud={}\nstance_bind={}\nactive_preset={}\n\
+             first_install_version={}\nexperimental={}\nreview={}\ningame_hud={}\nstance_bind={}\nactive_preset={}\n\
              \n[Practice]\n{}\n\n[Warmup]\n{}\n\n[Race]\n{}\n\n[Spectate]\n{}\n",
             self.font_family.key(),
             self.units.speed.key(),
@@ -1972,6 +2229,8 @@ impl HudConfig {
             self.units.liquids.key(),
             self.units.temperature.key(),
             self.settings_key.key(),
+            self.settings_x,
+            self.settings_y,
             b(self.start_with_windows),
             b(self.minimize_on_close),
             b(self.close_with_game),
@@ -1980,6 +2239,7 @@ impl HudConfig {
             self.whats_new_seen,
             self.first_install_version,
             b(self.experimental),
+            b(self.review),
             b(self.ingame_hud),
             self.stance_bind.key(),
             self.active_preset.key(),
@@ -2017,7 +2277,12 @@ impl HudConfig {
     }
 
     pub fn standings_cols(&self) -> Vec<StField> {
-        let mut cols: Vec<_> = self.st_order.iter().copied().filter(|c| c.enabled(self)).collect();
+        let mut cols: Vec<_> = self
+            .st_order
+            .iter()
+            .copied()
+            .filter(|c| c.enabled(self))
+            .collect();
         if cols.is_empty() {
             cols.push(StField::Name);
         }
@@ -2063,7 +2328,12 @@ impl HudConfig {
     }
 
     pub fn relative_cols(&self) -> Vec<RelField> {
-        let mut cols: Vec<_> = self.rel_order.iter().copied().filter(|c| c.enabled(self)).collect();
+        let mut cols: Vec<_> = self
+            .rel_order
+            .iter()
+            .copied()
+            .filter(|c| c.enabled(self))
+            .collect();
         if cols.is_empty() {
             cols.push(RelField::Name);
         }
@@ -2089,7 +2359,9 @@ impl HudConfig {
 
     pub fn telemetry_draw_traces(&self) -> bool {
         self.telemetry_traces
-            && (self.telemetry_trace_throttle || self.telemetry_trace_brake || self.telemetry_trace_steer)
+            && (self.telemetry_trace_throttle
+                || self.telemetry_trace_brake
+                || self.telemetry_trace_steer)
     }
 
     pub fn telemetry_draw_bars(&self) -> bool {
@@ -2181,6 +2453,7 @@ fn apply_app_key(
 ) -> bool {
     match key {
         "experimental" | "feature_experimental" | "feature_sector" => cfg.experimental = b,
+        "review" => cfg.review = b,
         "ingame_hud" => cfg.ingame_hud = b,
         "font_family" => cfg.font_family = FontFamily::parse(val),
         "units" => {
@@ -2202,6 +2475,16 @@ fn apply_app_key(
             *saw_first_install = true;
         }
         "settings_key" => cfg.settings_key = SettingsKey::parse(val),
+        "settings_x" => {
+            if let Ok(n) = val.parse::<i32>() {
+                cfg.settings_x = n;
+            }
+        }
+        "settings_y" => {
+            if let Ok(n) = val.parse::<i32>() {
+                cfg.settings_y = n;
+            }
+        }
         "stance_bind" => cfg.stance_bind = StanceBind::parse(val),
         "active_preset" => {
             let p = SessionPreset::parse(val);
@@ -2548,7 +2831,9 @@ fn clamp_pct(val: &str) -> i32 {
 }
 
 fn clamp_radar_range(val: &str) -> i32 {
-    val.parse().unwrap_or(RADAR_RANGE_DEFAULT).clamp(RADAR_RANGE_MIN, RADAR_RANGE_MAX)
+    val.parse()
+        .unwrap_or(RADAR_RANGE_DEFAULT)
+        .clamp(RADAR_RANGE_MIN, RADAR_RANGE_MAX)
 }
 
 fn clamp_font(val: &str) -> i32 {
@@ -2604,11 +2889,17 @@ fn snap_rect(r: &mut Rect, align: SnapAlign) {
 }
 
 fn parse_st_order(s: &str) -> Vec<StField> {
-    normalize(s.split(',').filter_map(|p| StField::parse(p.trim())), &StField::ALL)
+    normalize(
+        s.split(',').filter_map(|p| StField::parse(p.trim())),
+        &StField::ALL,
+    )
 }
 
 fn parse_rel_order(s: &str) -> Vec<RelField> {
-    normalize(s.split(',').filter_map(|p| RelField::parse(p.trim())), &RelField::ALL)
+    normalize(
+        s.split(',').filter_map(|p| RelField::parse(p.trim())),
+        &RelField::ALL,
+    )
 }
 
 fn normalize<T: Copy + PartialEq>(found: impl Iterator<Item = T>, all: &[T]) -> Vec<T> {

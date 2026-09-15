@@ -4,7 +4,12 @@ use super::*;
 pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
     match id {
         Hit::TabWidgets => {
-            let last = UI.lock().unwrap().as_ref().map(|u| u.last_widget).unwrap_or(Tab::Standings);
+            let last = UI
+                .lock()
+                .unwrap()
+                .as_ref()
+                .map(|u| u.last_widget)
+                .unwrap_or(Tab::Standings);
             let last = if last.is_labs() && !with_config(|c| c.experimental_unlocked()) {
                 Tab::Standings
             } else {
@@ -17,8 +22,125 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             set_tab(Tab::App);
             return;
         }
+        Hit::TabReview => {
+            set_tab(Tab::Review);
+            open_live_analyze(true);
+            return;
+        }
         Hit::TabFeedback => {
             set_tab(Tab::Feedback);
+            return;
+        }
+        Hit::ReviewFilterAll => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.review_saved_only = false;
+            }
+            return;
+        }
+        Hit::ReviewFilterSaved => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.review_saved_only = true;
+            }
+            return;
+        }
+        Hit::ReviewOpen(id) => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.analyze_id = Some(id as i64);
+                ui.analyze_compare = -1;
+                ui.analyze_you_lap = -1;
+                ui.analyze_warmup = false;
+                ui.analyze_zoom = 1.0;
+                ui.analyze_pan_x = 0.0;
+                ui.analyze_pan_z = 0.0;
+                ui.analyze_follow = false;
+                ui.scroll = 0.0;
+            }
+            reset_analyze_scrub();
+            return;
+        }
+        Hit::ReviewKeep(id) => {
+            let cur = crate::review::list(crate::review::ListFilter::All)
+                .into_iter()
+                .find(|r| r.id == id as i64)
+                .map(|r| r.kept)
+                .unwrap_or(false);
+            crate::review::set_kept(id as i64, !cur);
+            return;
+        }
+        Hit::ReviewDelete(id) => {
+            let was_live = crate::review::live_id() == Some(id as i64);
+            crate::review::delete(id as i64);
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                if ui.analyze_id == Some(id as i64) {
+                    ui.analyze_id = None;
+                    ui.scroll = 0.0;
+                }
+                if was_live {
+                    ui.review_stay_on_list = true;
+                }
+            }
+            return;
+        }
+        Hit::ReviewBack => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.analyze_id = None;
+                ui.scroll = 0.0;
+                ui.review_stay_on_list = true;
+            }
+            return;
+        }
+        Hit::ReviewToggle => {
+            let mut now_on = false;
+            update_config(|c| {
+                c.review = !c.review;
+                now_on = c.review;
+            });
+            if !now_on {
+                crate::review::tick(&mxbo_hud::shm::Snapshot::default(), false);
+            }
+            return;
+        }
+        Hit::AnalyzeFollow => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.analyze_follow = !ui.analyze_follow;
+            }
+            return;
+        }
+        Hit::AnalyzeCompare(n) => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.analyze_compare = n;
+                ui.open_drop = None;
+            }
+            reset_analyze_scrub();
+            return;
+        }
+        Hit::AnalyzeCompareOpen => {
+            toggle_drop(Drop::AnalyzeCompare);
+            return;
+        }
+        Hit::AnalyzeYouLap(n) => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.analyze_you_lap = n;
+                ui.open_drop = None;
+            }
+            reset_analyze_scrub();
+            return;
+        }
+        Hit::AnalyzeLapOpen => {
+            toggle_drop(Drop::AnalyzeLap);
+            return;
+        }
+        Hit::AnalyzeSessionOpen => {
+            toggle_drop(Drop::AnalyzeSession);
+            return;
+        }
+        Hit::AnalyzeSession(n) => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.analyze_warmup = n != 0;
+                ui.analyze_you_lap = -1;
+                ui.open_drop = None;
+            }
+            reset_analyze_scrub();
             return;
         }
         Hit::TabSt => {
@@ -272,6 +394,9 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         }
         Hit::QuitApp => {
             close_drop();
+            if let Some(host) = UI.lock().unwrap().as_ref().map(|u| u.host) {
+                crate::settings::persist_host_pos(host);
+            }
             crate::config::update_config(|_| {});
             crate::quit_app();
             return;
@@ -283,6 +408,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
                 return;
             };
             if crate::uninstall::confirm(host) && crate::uninstall::start(host) {
+                crate::settings::persist_host_pos(host);
                 crate::config::update_config(|_| {});
                 crate::quit_app();
             }
@@ -366,7 +492,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             if let Some(p) = SYS_PRESETS.get(i as usize) {
                 c.add_sys_preset(p.key);
             }
-        },
+        }
         Hit::SectorShow => c[WidgetId::Sector].show ^= true,
         Hit::SectorLive => c.sector_live = !c.sector_live,
         Hit::SectorSession => c.sector_session = !c.sector_session,
@@ -498,9 +624,31 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::TickerInc => c.ticker_count = (c.ticker_count + 1).min(15),
         Hit::SectorHistDec => c.sector_hist_laps = (c.sector_hist_laps - 1).max(1),
         Hit::SectorHistInc => c.sector_hist_laps = (c.sector_hist_laps + 1).min(5),
-        Hit::TabWidgets | Hit::TabApp | Hit::TabFeedback | Hit::TabSt | Hit::TabRel | Hit::TabMap | Hit::TabMini | Hit::TabRadar | Hit::TabDash
-        | Hit::TabTicker | Hit::TabSys | Hit::TabSector | Hit::TabDelta | Hit::TabStance | Hit::TabFlag | Hit::TabLean | Hit::TabGamepad | Hit::TabTelemetry
-        | Hit::MapDotOpen | Hit::MiniDotOpen | Hit::FontOpen | Hit::UnitsOpen(_) | Hit::StTextOpen | Hit::RelTextOpen
+        Hit::TabWidgets
+        | Hit::TabApp
+        | Hit::TabReview
+        | Hit::TabFeedback
+        | Hit::TabSt
+        | Hit::TabRel
+        | Hit::TabMap
+        | Hit::TabMini
+        | Hit::TabRadar
+        | Hit::TabDash
+        | Hit::TabTicker
+        | Hit::TabSys
+        | Hit::TabSector
+        | Hit::TabDelta
+        | Hit::TabStance
+        | Hit::TabFlag
+        | Hit::TabLean
+        | Hit::TabGamepad
+        | Hit::TabTelemetry
+        | Hit::MapDotOpen
+        | Hit::MiniDotOpen
+        | Hit::FontOpen
+        | Hit::UnitsOpen(_)
+        | Hit::StTextOpen
+        | Hit::RelTextOpen
         | Hit::SettingsKeyOpen
         | Hit::StanceBindOpen
         | Hit::StanceModeOpen
@@ -512,16 +660,77 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::TickerFootOpen(_)
         | Hit::InfoOpen(_, _)
         | Hit::PresetCopyOpen
-        | Hit::UpdateCheck | Hit::UpdateInstall | Hit::UpdateBanner | Hit::UpdateBannerDismiss
-        | Hit::WhatsNewOpen | Hit::WhatsNewDismiss | Hit::WhatsNewScrim | Hit::WhatsNewPanel
-        | Hit::ReplyDismiss | Hit::ReplySend | Hit::ReplyText | Hit::ReplyScrim | Hit::ReplyPanel
-        | Hit::StartWithWindows | Hit::MinimizeOnClose
-        | Hit::CloseWithGame | Hit::OpenWithGame
-        | Hit::AutoUpdateOnLaunch | Hit::QuitApp | Hit::Uninstall | Hit::GameFolder | Hit::SysAppBrowse
-        | Hit::FbRate | Hit::FbBug | Hit::FbFeature | Hit::FbStar(_) | Hit::FbText | Hit::FbAttach | Hit::FbSend
-        | Hit::StDrag(_) | Hit::RelDrag(_)
-        | Hit::StBg | Hit::StHl | Hit::RelBg | Hit::RelHl | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarRange | Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg | Hit::FlagBg | Hit::LeanBg | Hit::GamepadBg | Hit::TelemetryBg
-        | Hit::StW(_) | Hit::RelW(_) | Hit::Font(_) | Hit::StanceReset | Hit::TrackPbClear => {}
+        | Hit::UpdateCheck
+        | Hit::UpdateInstall
+        | Hit::UpdateBanner
+        | Hit::UpdateBannerDismiss
+        | Hit::WhatsNewOpen
+        | Hit::WhatsNewDismiss
+        | Hit::WhatsNewScrim
+        | Hit::WhatsNewPanel
+        | Hit::ReplyDismiss
+        | Hit::ReplySend
+        | Hit::ReplyText
+        | Hit::ReplyScrim
+        | Hit::ReplyPanel
+        | Hit::StartWithWindows
+        | Hit::MinimizeOnClose
+        | Hit::CloseWithGame
+        | Hit::OpenWithGame
+        | Hit::AutoUpdateOnLaunch
+        | Hit::QuitApp
+        | Hit::Uninstall
+        | Hit::GameFolder
+        | Hit::SysAppBrowse
+        | Hit::FbRate
+        | Hit::FbBug
+        | Hit::FbFeature
+        | Hit::FbStar(_)
+        | Hit::FbText
+        | Hit::FbAttach
+        | Hit::FbSend
+        | Hit::StDrag(_)
+        | Hit::RelDrag(_)
+        | Hit::StBg
+        | Hit::StHl
+        | Hit::RelBg
+        | Hit::RelHl
+        | Hit::MapBg
+        | Hit::MiniBg
+        | Hit::MiniZoom
+        | Hit::RadarRange
+        | Hit::RadarBg
+        | Hit::DashBg
+        | Hit::TickerBg
+        | Hit::SysBg
+        | Hit::SectorBg
+        | Hit::DeltaBg
+        | Hit::StanceBg
+        | Hit::FlagBg
+        | Hit::LeanBg
+        | Hit::GamepadBg
+        | Hit::TelemetryBg
+        | Hit::StW(_)
+        | Hit::RelW(_)
+        | Hit::Font(_)
+        | Hit::StanceReset
+        | Hit::TrackPbClear
+        | Hit::ReviewFilterAll
+        | Hit::ReviewFilterSaved
+        | Hit::ReviewOpen(_)
+        | Hit::ReviewKeep(_)
+        | Hit::ReviewDelete(_)
+        | Hit::ReviewBack
+        | Hit::ReviewToggle
+        | Hit::AnalyzeCompare(_)
+        | Hit::AnalyzeCompareOpen
+        | Hit::AnalyzeYouLap(_)
+        | Hit::AnalyzeLapOpen
+        | Hit::AnalyzeSessionOpen
+        | Hit::AnalyzeSession(_)
+        | Hit::AnalyzeScrub
+        | Hit::AnalyzeMap
+        | Hit::AnalyzeFollow => {}
     });
     if id == Hit::FeatureSector && !with_config(|c| c.experimental_unlocked()) {
         let on_labs = UI.lock().unwrap().as_ref().is_some_and(|u| u.tab.is_labs());
@@ -529,4 +738,68 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             set_tab(Tab::App);
         }
     }
+}
+
+fn reset_analyze_scrub() {
+    let (id, you_lap, warmup) = {
+        let ui = UI.lock().unwrap();
+        let Some(ui) = ui.as_ref() else {
+            return;
+        };
+        (ui.analyze_id, ui.analyze_you_lap, ui.analyze_warmup)
+    };
+    let scrub = id
+        .and_then(crate::review::load)
+        .map(|d| default_analyze_scrub(&d, you_lap, warmup))
+        .unwrap_or(0.0);
+    if let Some(ui) = UI.lock().unwrap().as_mut() {
+        ui.analyze_scrub = scrub;
+    }
+}
+
+/// Jump Analyze to the live moto. `force` is F8 / Review tab; paint is not.
+pub(crate) fn open_live_analyze(force: bool) {
+    let live = crate::review::live_id();
+    {
+        let mut ui = UI.lock().unwrap();
+        let Some(ui) = ui.as_mut() else {
+            return;
+        };
+        if force {
+            ui.review_stay_on_list = false;
+        }
+        let Some(id) = live_analyze_target(force, ui.review_stay_on_list, ui.analyze_id, live)
+        else {
+            return;
+        };
+        ui.analyze_id = Some(id);
+        ui.analyze_compare = -1;
+        ui.analyze_you_lap = -1;
+        ui.analyze_warmup = false;
+        ui.analyze_zoom = 1.0;
+        ui.analyze_pan_x = 0.0;
+        ui.analyze_pan_z = 0.0;
+        ui.analyze_follow = false;
+        ui.scroll = 0.0;
+    }
+    reset_analyze_scrub();
+}
+
+pub(crate) fn live_analyze_target(
+    force: bool,
+    stay: bool,
+    analyze_id: Option<i64>,
+    live_id: Option<i64>,
+) -> Option<i64> {
+    let live = live_id?;
+    if analyze_id == Some(live) {
+        return None;
+    }
+    if force {
+        return Some(live);
+    }
+    if stay || analyze_id.is_some() {
+        return None;
+    }
+    Some(live)
 }

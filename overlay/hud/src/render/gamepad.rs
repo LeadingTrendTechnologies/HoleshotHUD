@@ -68,10 +68,30 @@ pub(crate) fn xbox_gamepad_layout() -> GamepadLayout {
         ls: [426.0 / 1536.0, 460.0 / 1024.0],
         rs: [942.0 / 1536.0, 627.0 / 1024.0],
         well_r: 92.0,
-        l2: [248.0 / 1536.0, 47.0 / 1024.0, 303.0 / 1536.0, 183.0 / 1024.0],
-        r2: [948.0 / 1536.0, 47.0 / 1024.0, 353.0 / 1536.0, 183.0 / 1024.0],
-        l1: [304.0 / 1536.0, 218.0 / 1024.0, 276.0 / 1536.0, 123.0 / 1024.0],
-        r1: [951.0 / 1536.0, 216.0 / 1024.0, 276.0 / 1536.0, 114.0 / 1024.0],
+        l2: [
+            248.0 / 1536.0,
+            47.0 / 1024.0,
+            303.0 / 1536.0,
+            183.0 / 1024.0,
+        ],
+        r2: [
+            948.0 / 1536.0,
+            47.0 / 1024.0,
+            353.0 / 1536.0,
+            183.0 / 1024.0,
+        ],
+        l1: [
+            304.0 / 1536.0,
+            218.0 / 1024.0,
+            276.0 / 1536.0,
+            123.0 / 1024.0,
+        ],
+        r1: [
+            951.0 / 1536.0,
+            216.0 / 1024.0,
+            276.0 / 1536.0,
+            114.0 / 1024.0,
+        ],
         l2_seed: [399.0 / 1536.0, 210.0 / 1024.0],
         r2_seed: [1124.0 / 1536.0, 210.0 / 1024.0],
         l1_seed: [437.0 / 1536.0, 274.0 / 1024.0],
@@ -96,8 +116,18 @@ pub(crate) fn xbox_gamepad_layout() -> GamepadLayout {
             [609.0 / 1536.0, 623.0 / 1024.0, 32.0 / 1536.0, 66.0 / 1024.0],
             [559.0 / 1536.0, 607.0 / 1024.0, 66.0 / 1536.0, 32.0 / 1024.0],
         ]),
-        back: [614.0 / 1536.0, 394.0 / 1024.0, 155.0 / 1536.0, 51.0 / 1024.0],
-        start: [778.0 / 1536.0, 394.0 / 1024.0, 155.0 / 1536.0, 51.0 / 1024.0],
+        back: [
+            614.0 / 1536.0,
+            394.0 / 1024.0,
+            155.0 / 1536.0,
+            51.0 / 1024.0,
+        ],
+        start: [
+            778.0 / 1536.0,
+            394.0 / 1024.0,
+            155.0 / 1536.0,
+            51.0 / 1024.0,
+        ],
         guide: [768.0 / 1536.0, 337.0 / 1024.0],
         guide_r: 22.0,
         touch: None,
@@ -131,9 +161,24 @@ pub(crate) fn draw_gamepad(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: 
         let label = "No controller";
         if a == 0 {
             let tw = measure(fonts, label, fs);
-            fill_night_pill(px, x + (w - tw) * 0.5 - 8.0, y + (h - fs) * 0.48 - 4.0, tw + 16.0, fs + 8.0);
+            fill_night_pill(
+                px,
+                x + (w - tw) * 0.5 - 8.0,
+                y + (h - fs) * 0.48 - 4.0,
+                tw + 16.0,
+                fs + 8.0,
+            );
         }
-        text(px, fonts, label, fs, x + w * 0.5, y + (h - fs) * 0.48, text_col(), true);
+        text(
+            px,
+            fonts,
+            label,
+            fs,
+            x + w * 0.5,
+            y + (h - fs) * 0.48,
+            text_col(),
+            true,
+        );
         return;
     }
 
@@ -160,44 +205,162 @@ pub(crate) fn draw_gamepad(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: 
 
     if pad.lt >= 0.03 {
         shade_press_flood(
-            px, art, dx, dy, dw, dh, layout.l2_seed[0], layout.l2_seed[1], layout.l2, pad.lt, sony,
+            px,
+            art,
+            dx,
+            dy,
+            dw,
+            dh,
+            layout.l2_seed[0],
+            layout.l2_seed[1],
+            layout.l2,
+            pad.lt,
+            sony,
         );
     }
     if pad.rt >= 0.03 {
         shade_press_flood(
-            px, art, dx, dy, dw, dh, layout.r2_seed[0], layout.r2_seed[1], layout.r2, pad.rt, sony,
+            px,
+            art,
+            dx,
+            dy,
+            dw,
+            dh,
+            layout.r2_seed[0],
+            layout.r2_seed[1],
+            layout.r2,
+            pad.rt,
+            sony,
         );
     }
     if pad.down(crate::gamepad::LB) {
         shade_press_flood(
-            px, art, dx, dy, dw, dh, layout.l1_seed[0], layout.l1_seed[1], layout.l1, 1.0, sony,
+            px,
+            art,
+            dx,
+            dy,
+            dw,
+            dh,
+            layout.l1_seed[0],
+            layout.l1_seed[1],
+            layout.l1,
+            1.0,
+            sony,
         );
     }
     if pad.down(crate::gamepad::RB) {
         shade_press_flood(
-            px, art, dx, dy, dw, dh, layout.r1_seed[0], layout.r1_seed[1], layout.r1, 1.0, sony,
+            px,
+            art,
+            dx,
+            dy,
+            dw,
+            dh,
+            layout.r1_seed[0],
+            layout.r1_seed[1],
+            layout.r1,
+            1.0,
+            sony,
         );
     }
     if let Some(touch) = layout.touch {
         if pad.down(crate::gamepad::TOUCH) {
-            shade_art(px, art, dx, dy, dw, dh, touch, 0.0, ShadeMode::Interior, accent(), |_, _| true);
+            shade_art(
+                px,
+                art,
+                dx,
+                dy,
+                dw,
+                dh,
+                touch,
+                0.0,
+                ShadeMode::Interior,
+                accent(),
+                |_, _| true,
+            );
         }
     }
     if pad.down(crate::gamepad::BACK) {
-        shade_art(px, art, dx, dy, dw, dh, layout.back, 0.0, ShadeMode::Interior, accent(), |_, _| true);
+        shade_art(
+            px,
+            art,
+            dx,
+            dy,
+            dw,
+            dh,
+            layout.back,
+            0.0,
+            ShadeMode::Interior,
+            accent(),
+            |_, _| true,
+        );
     }
     if pad.down(crate::gamepad::START) {
-        shade_art(px, art, dx, dy, dw, dh, layout.start, 0.0, ShadeMode::Interior, accent(), |_, _| true);
+        shade_art(
+            px,
+            art,
+            dx,
+            dy,
+            dw,
+            dh,
+            layout.start,
+            0.0,
+            ShadeMode::Interior,
+            accent(),
+            |_, _| true,
+        );
     }
 
     shade_dpad(px, art, dx, dy, dw, dh, pad, &layout);
     shade_face(px, dx, dy, dw, dh, pad, &layout);
 
-    draw_stick_live(px, art, dx, dy, dw, dh, lsx, lsy, pad.lx, pad.ly, pad.down(crate::gamepad::LS), well, cream, layout.well_r);
-    draw_stick_live(px, art, dx, dy, dw, dh, rsx, rsy, pad.rx, pad.ry, pad.down(crate::gamepad::RS), well, cream, layout.well_r);
+    draw_stick_live(
+        px,
+        art,
+        dx,
+        dy,
+        dw,
+        dh,
+        lsx,
+        lsy,
+        pad.lx,
+        pad.ly,
+        pad.down(crate::gamepad::LS),
+        well,
+        cream,
+        layout.well_r,
+    );
+    draw_stick_live(
+        px,
+        art,
+        dx,
+        dy,
+        dw,
+        dh,
+        rsx,
+        rsy,
+        pad.rx,
+        pad.ry,
+        pad.down(crate::gamepad::RS),
+        well,
+        cream,
+        layout.well_r,
+    );
 
     if pad.down(crate::gamepad::GUIDE) {
-        shade_disc(px, art, dx, dy, dw, dh, layout.guide[0], layout.guide[1], layout.guide_r, ShadeMode::Interior, accent());
+        shade_disc(
+            px,
+            art,
+            dx,
+            dy,
+            dw,
+            dh,
+            layout.guide[0],
+            layout.guide[1],
+            layout.guide_r,
+            ShadeMode::Interior,
+            accent(),
+        );
     }
 }
 
@@ -274,7 +437,14 @@ pub(crate) fn scaled_gamepad_art(src: &Pixmap, sony: bool, tw: u32, th: u32) -> 
         let sy = sh as f32 / src.height() as f32;
         let mut paint = PixmapPaint::default();
         paint.quality = FilterQuality::Bilinear;
-        hi.draw_pixmap(0, 0, src.as_ref(), &paint, Transform::from_scale(sx, sy), None);
+        hi.draw_pixmap(
+            0,
+            0,
+            src.as_ref(),
+            &paint,
+            Transform::from_scale(sx, sy),
+            None,
+        );
         let mut lo = Pixmap::new(tw, th)?;
         let mut down = PixmapPaint::default();
         down.quality = FilterQuality::Bicubic;
@@ -359,7 +529,8 @@ pub(crate) fn shade_art(
             if a < 24 {
                 continue;
             }
-            let lum = ((src.red() as u16 * 30 + src.green() as u16 * 59 + src.blue() as u16 * 11) / 100) as u8;
+            let lum = ((src.red() as u16 * 30 + src.green() as u16 * 59 + src.blue() as u16 * 11)
+                / 100) as u8;
             let hit = match mode {
                 ShadeMode::Interior => lum < 78,
                 ShadeMode::All => true,
@@ -452,7 +623,15 @@ pub(crate) fn shade_disc(
     );
 }
 
-pub(crate) fn shade_face(px: &mut Pixmap, dx: f32, dy: f32, dw: f32, dh: f32, pad: crate::gamepad::PadState, layout: &GamepadLayout) {
+pub(crate) fn shade_face(
+    px: &mut Pixmap,
+    dx: f32,
+    dy: f32,
+    dw: f32,
+    dh: f32,
+    pad: crate::gamepad::PadState,
+    layout: &GamepadLayout,
+) {
     let bits = [
         crate::gamepad::NORTH,
         crate::gamepad::EAST,
@@ -467,7 +646,16 @@ pub(crate) fn shade_face(px: &mut Pixmap, dx: f32, dy: f32, dw: f32, dh: f32, pa
     }
 }
 
-pub(crate) fn shade_dpad(px: &mut Pixmap, art: &Pixmap, dx: f32, dy: f32, dw: f32, dh: f32, pad: crate::gamepad::PadState, layout: &GamepadLayout) {
+pub(crate) fn shade_dpad(
+    px: &mut Pixmap,
+    art: &Pixmap,
+    dx: f32,
+    dy: f32,
+    dw: f32,
+    dh: f32,
+    pad: crate::gamepad::PadState,
+    layout: &GamepadLayout,
+) {
     let bits = [
         crate::gamepad::UP,
         crate::gamepad::RIGHT,
@@ -477,7 +665,19 @@ pub(crate) fn shade_dpad(px: &mut Pixmap, art: &Pixmap, dx: f32, dy: f32, dw: f3
     if let Some(segs) = layout.dpad_seg {
         for (i, &bit) in bits.iter().enumerate() {
             if pad.down(bit) {
-                shade_art(px, art, dx, dy, dw, dh, segs[i], 0.0, ShadeMode::Interior, accent(), |_, _| true);
+                shade_art(
+                    px,
+                    art,
+                    dx,
+                    dy,
+                    dw,
+                    dh,
+                    segs[i],
+                    0.0,
+                    ShadeMode::Interior,
+                    accent(),
+                    |_, _| true,
+                );
             }
         }
         return;
@@ -702,7 +902,11 @@ pub(crate) fn shade_press_flood(
     if ymin > ymax {
         return;
     }
-    let squeeze = if squeeze >= 0.92 { 1.0 } else { squeeze.clamp(0.0, 1.0) };
+    let squeeze = if squeeze >= 0.92 {
+        1.0
+    } else {
+        squeeze.clamp(0.0, 1.0)
+    };
     let span = (ymax.saturating_sub(ymin)).max(1) as f32;
     let cut = ymin as f32 + (1.0 - squeeze) * span;
     let fade = (ih as f32 / dh).max(1.0);
@@ -807,7 +1011,11 @@ pub(crate) fn draw_stick_live(
         cx + ox,
         cy + oy,
         cap_r,
-        if click { accent() } else { Color::from_rgba8(14, 14, 16, 255) },
+        if click {
+            accent()
+        } else {
+            Color::from_rgba8(14, 14, 16, 255)
+        },
     );
     if let Some(mut pb) = Some(PathBuilder::new()) {
         pb.push_circle(cx + ox, cy + oy, cap_r);

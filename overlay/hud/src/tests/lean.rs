@@ -25,11 +25,20 @@ fn snap() -> Snapshot {
 #[test]
 fn degrees_stay_degrees() {
     assert!((angle_deg(32.0) - 32.0).abs() < 0.01);
-    assert!((angle_deg(1.0) - 1.0).abs() < 0.01, "upright 1° is not 1 rad");
+    assert!(
+        (angle_deg(1.0) - 1.0).abs() < 0.01,
+        "upright 1° is not 1 rad"
+    );
     assert!((angle_deg(5.0) - 5.0).abs() < 0.01);
     assert_eq!(angle_deg(f32::NAN), 0.0);
-    assert!((angle_deg(75.0) - 75.0).abs() < 0.01, "70°+ chassis lean is real");
-    assert!((angle_deg(170.0) - 90.0).abs() < 0.01, "euler wrap must not snap to 0");
+    assert!(
+        (angle_deg(75.0) - 75.0).abs() < 0.01,
+        "70°+ chassis lean is real"
+    );
+    assert!(
+        (angle_deg(170.0) - 90.0).abs() < 0.01,
+        "euler wrap must not snap to 0"
+    );
 }
 
 #[test]
@@ -75,7 +84,10 @@ fn riding_uses_local_roll_and_steer() {
     s.local_steer = 0.12;
     s.steer_lock = 0.40;
     let v = view(&s);
-    assert!((v.deg + 32.0).abs() < 0.2, "plugin positive is left; HUD is from behind");
+    assert!(
+        (v.deg + 32.0).abs() < 0.2,
+        "plugin positive is left; HUD is from behind"
+    );
     let steer = v.steer.expect("steer while riding");
     assert!((steer + 0.3).abs() < 0.02);
 }
@@ -98,7 +110,10 @@ fn spectate_follows_camera_lean_without_steer() {
 fn pitch_scales_to_clamp() {
     assert!((pitch_frac(30.0) - 0.5).abs() < 0.01);
     assert!((pitch_frac(-60.0) + 1.0).abs() < 0.01);
-    assert!((pitch_frac(75.0) - 1.0).abs() < 0.01, "air pitch must not snap to 0");
+    assert!(
+        (pitch_frac(75.0) - 1.0).abs() < 0.01,
+        "air pitch must not snap to 0"
+    );
 }
 
 #[test]

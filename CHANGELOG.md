@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+### Internals
+
+- Settings remembers where you left it, including a second monitor. The HUD overlay still follows MX Bikes on the game screen.
+- Analyze L1 is violet from the gate until the finish; after that crossing it is orange.
+- At this spot shows Compare speed, gear, and throttle next to yours. Old motos estimate Compare speed, throttle, and gear from the line and your gearbox; RPM is — unless the game stored it. New motos keep every bike's RaceVehicleData.
+- Analyze puts the map beside SPEED / HEIGHT / THR tapes. At this spot sits under them. Compare sits next to Your laps. Results stay below.
+- SPEED / HEIGHT tapes share one scale with Compare. Analyze dirt stays ~16 m wide when you zoom.
+- A race win (P1 with a field) shows a gold crown on the Motos list and Analyze.
+- Analyze S/F matches the dirt width. S1–S3 marks sit on the track’s sector gates, same on every lap.
+- Analyze track is wider so stored lines sit on the dirt.
+- F8 Settings paints during a race. A long HUD frame no longer leaves a white Settings window.
+
+## 0.11.0
+
+**NEW: Motos.** After a race, compare your line against the field.
+
+### Motos
+
+- NEW tab next to Widgets. Experimental. Starts off — Enable on the page (you see Analyze first).
+- NEW Analyze: map beside SPEED / HEIGHT / throttle tapes. Zoom a corner. Compare another rider at the same spot.
+- NEW Results of the field, lap stepper, gold crown on a win. Keep two weeks unless you Save.
+- During a race, Motos opens that visit live.
+
+### Internals
+
+- Shared memory is `Local\MXBOHudV15`. Restart MX Bikes after the update so rider height, speed, and inputs reach the overlay.
+- F8 Settings paints during a race (was a white window when the HUD frame ran long).
+- **Motos** (next to Widgets, experimental) starts off. Enable shows an Analyze preview, then records motos. It lists races on this PC as a timing sheet (when, track, riders, you, fastest) with trash and bookmark icons (hover says Delete / Save / Saved). Open one for a zoomable map, scrubber, and speed / height compare. F8 Motos during a moto opens that visit live (new bests and lines show on the next paint); Back stays on the list until you open Motos again. Analyze shows a dim **Live** label on the current moto. Live Analyze does not reload the session when the field is written every two seconds. The Analyze map clips to the well; the track and rider lines are smoothed. The Analyze track follows zoom with the lines. **Save** (bookmark) keeps that moto after two weeks. **Delete** (trash on the list, or Delete on Analyze) removes it, including Saved. After a week, other riders keep name, best lap, and finish — only you and the fastest keep a line. Lines stay in Motos, not on the live map. The stored line covers the whole lap at about 0.6 m spacing up to ~10 km. The Analyze track is wider so stored lines sit on the dirt. SPEED / HEIGHT tapes share one scale with Compare. Analyze dirt stays ~16 m wide when you zoom. Opening Analyze does not hitch on those dense lines. The Analyze track ribbon is cached so open stays smooth. **Your laps** is a stepper (`<` / time / `>`) plus a Race / Warmup menu for that visit, above the map, and opens on L1. Analyze L1 is violet from the gate until the finish; after that crossing it is orange. After you zoom, **Follow** pans the map with the scrubber, keeps your zoom, and zooms **At this spot** around that corner. The lap chip opens a menu over the map instead of pushing it down. The map sits beside **At this spot**; Compare is a rider menu of stored lines (name | class | time, wide enough to read); a cut tape still compares, a crash is skipped; times without a line stay in Results. Compare is each other rider’s fastest. Their map dot is at the same elapsed time as you, so a faster lap sits ahead on the dirt. Changing lap or compare puts the scrubber back at the start (L1 still draws from the gate; the you-dot starts on the finish line). Compare names include class (250 / 350 / 450). **At this spot** is the same place on the lap, not the map dots: speed, height, throttle, and brake (throttle and brake 0–1 so their line still draws) and fills to the map. At this spot shows Compare speed, gear, and throttle next to yours. At this spot uses | between yours and Compare. S1–S3 are yours only. A race win (P1 with a field) shows a gold crown on the list and Analyze. Analyze S/F matches the dirt width. S1–S3 marks sit on the track’s sector gates, same on every lap. Analyze Back, Delete, and Save are icons. Analyze puts the map beside SPEED / HEIGHT / THR tapes. At this spot sits under them. Compare sits next to Your laps. Results stay below. Old motos estimate Compare speed, throttle, and gear from the line and your gearbox; RPM is — unless the game stored it. New motos keep every bike's RaceVehicleData. SPD is you minus them in MPH or KPH (Settings units); green is faster. HT is meters, + is up (red). RPM is uncolored. Results reads as a table (P / name / best / last / class). Zoomed traces stay inside each well. The map draws the stored finish line. A cut or reset (a jump across the dirt) is kept as `cut`, never becomes fastest, and shows **Cut** above the map. Recording writes the field at most every two seconds so the overlay does not hitch the game. Warmup and race on the same visit are one row. Warmup is not stored; only races. Analyze Race / Warmup only if an older moto already has a warmup. A race starts the tape when the gate drops. A crash on your lap gets a mark; if someone was within about 4 m we show their name (a guess — the game does not say who hit you). Close crashes share one triangle and one name.
+
 ## 0.10.3
 
 Quit overlay unlocks the HUD exe, and the next MX Bikes start still opens the overlay.

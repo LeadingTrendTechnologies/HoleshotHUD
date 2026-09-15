@@ -137,6 +137,7 @@ public:
     float localTrackPos() const { return m_localTrackPos; }
     float localX() const { return m_localX; }
     float localZ() const { return m_localZ; }
+    float localY() const { return m_localY; }
     float localVelX() const { return m_localVelX; }
     float localVelZ() const { return m_localVelZ; }
     float localYaw() const { return m_localYaw; }
@@ -219,6 +220,7 @@ private:
     float m_localTrackPos = 0.0f;
     float m_localX = 0.0f;
     float m_localZ = 0.0f;
+    float m_localY = 0.0f;
     float m_localVelX = 0.0f;
     float m_localVelZ = 0.0f;
     float m_localYaw = 0.0f;

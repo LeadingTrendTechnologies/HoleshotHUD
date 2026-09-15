@@ -16,11 +16,17 @@ pub enum Handle {
 
 impl Handle {
     pub fn changes_w(self) -> bool {
-        matches!(self, Self::E | Self::W | Self::NE | Self::NW | Self::SE | Self::SW)
+        matches!(
+            self,
+            Self::E | Self::W | Self::NE | Self::NW | Self::SE | Self::SW
+        )
     }
 
     pub fn changes_h(self) -> bool {
-        matches!(self, Self::N | Self::S | Self::NE | Self::NW | Self::SE | Self::SW)
+        matches!(
+            self,
+            Self::N | Self::S | Self::NE | Self::NW | Self::SE | Self::SW
+        )
     }
 
     pub fn cursor(self) -> &'static str {
@@ -235,7 +241,15 @@ pub fn resize(
     Rect { x, y, w, h }
 }
 
-fn resize_square(orig: Rect, handle: Handle, nx: f32, ny: f32, ow: f32, oh: f32, min_px: f32) -> Rect {
+fn resize_square(
+    orig: Rect,
+    handle: Handle,
+    nx: f32,
+    ny: f32,
+    ow: f32,
+    oh: f32,
+    min_px: f32,
+) -> Rect {
     let x0 = orig.x * ow;
     let y0 = orig.y * oh;
     let x1 = (orig.x + orig.w) * ow;
@@ -286,10 +300,29 @@ mod tests {
             w: 0.4,
             h: 0.05,
         };
-        assert_eq!(handle_at(r, 0.1, 0.125, 1000.0, 720.0, WidgetId::Ticker), Some(Handle::W));
-        assert_eq!(handle_at(r, 0.5, 0.125, 1000.0, 720.0, WidgetId::Ticker), Some(Handle::E));
-        assert_eq!(handle_at(r, 0.3, 0.1, 1000.0, 720.0, WidgetId::Ticker), None);
-        let grown = resize(r, Handle::S, 0.3, 0.4, 0.3, 0.125, 1000.0, 720.0, WidgetId::Ticker);
+        assert_eq!(
+            handle_at(r, 0.1, 0.125, 1000.0, 720.0, WidgetId::Ticker),
+            Some(Handle::W)
+        );
+        assert_eq!(
+            handle_at(r, 0.5, 0.125, 1000.0, 720.0, WidgetId::Ticker),
+            Some(Handle::E)
+        );
+        assert_eq!(
+            handle_at(r, 0.3, 0.1, 1000.0, 720.0, WidgetId::Ticker),
+            None
+        );
+        let grown = resize(
+            r,
+            Handle::S,
+            0.3,
+            0.4,
+            0.3,
+            0.125,
+            1000.0,
+            720.0,
+            WidgetId::Ticker,
+        );
         assert_eq!(grown.y, r.y);
         assert_eq!(grown.h, r.h);
     }

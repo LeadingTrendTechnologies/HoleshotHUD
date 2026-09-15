@@ -294,7 +294,11 @@ fn path_for(dir: &Path, track: &str) -> PathBuf {
 }
 
 fn resolve_bike(requested: &str, last: &str) -> String {
-    let raw = if requested.is_empty() { last } else { requested };
+    let raw = if requested.is_empty() {
+        last
+    } else {
+        requested
+    };
     bike_class(raw)
 }
 
@@ -380,6 +384,21 @@ pub fn bind_exact(track: &str, bike: &str) -> TrackPb {
         persist(&mut g);
     }
     g.pb.clone()
+}
+
+/// Read this track's S1/S2 split lines without binding or touching `used`.
+pub fn peek_split_milli(track: &str) -> [i32; 2] {
+    if track.is_empty() {
+        return [0, 0];
+    }
+    let path = {
+        let g = live();
+        let Some(dir) = g.dir.as_ref() else {
+            return [0, 0];
+        };
+        path_for(dir, track)
+    };
+    load_file(&path).map(|f| f.split_milli).unwrap_or([0, 0])
 }
 
 pub fn current() -> TrackPb {

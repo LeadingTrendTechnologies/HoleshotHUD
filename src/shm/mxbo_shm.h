@@ -7,11 +7,11 @@ extern "C" {
 #endif
 
 #define MXBO_SHM_MAGIC 0x4F42584Du /* 'MXBO' */
-#define MXBO_SHM_VERSION 14
+#define MXBO_SHM_VERSION 15
 /* Layout lock: src/shm/abi.txt — tools/shm-abi.cpp and Rust Snapshot/CmdView. */
 /* Versioned name so a leftover smaller mapping cannot be remapped and overrun. */
-#define MXBO_SHM_NAME L"Local\\MXBOHudV14"
-#define MXBO_SHM_NAME_A "Local\\MXBOHudV14"
+#define MXBO_SHM_NAME L"Local\\MXBOHudV15"
+#define MXBO_SHM_NAME_A "Local\\MXBOHudV15"
 #define MXBO_CMD_MAGIC 0x4342584Du /* 'MXBC' */
 #define MXBO_CMD_NAME L"Local\\MXBOHudCmdV1"
 #define MXBO_CMD_NAME_A "Local\\MXBOHudCmdV1"
@@ -38,6 +38,12 @@ typedef struct MxboShmRider
     int32_t crashed;
     char name[MXBO_NAME];
     float lean;
+    float y;
+    float speed;
+    int32_t rpm;
+    int32_t gear;
+    float throttle;
+    float frontBrake;
 } MxboShmRider;
 
 typedef struct MxboShmStanding
@@ -80,6 +86,7 @@ typedef struct MxboShmSnapshot
     int32_t localCrashed;
     float localX;
     float localZ;
+    float localY;
     float localVelX;
     float localVelZ;
     float localYaw;

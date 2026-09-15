@@ -49,7 +49,14 @@ pub(crate) fn ticker_title(s: &Snapshot) -> String {
     }
 }
 
-pub(crate) fn draw_ticker(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32) {
+pub(crate) fn draw_ticker(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    s: &Snapshot,
+    cfg: &HudConfig,
+    sw: f32,
+    sh: f32,
+) {
     let r = cfg[WidgetId::Ticker].rect;
     let x = r.x * sw;
     let y = r.y * sh;
@@ -89,7 +96,8 @@ pub(crate) fn draw_ticker(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &Hu
     };
     let side_gap = (h * 0.12).clamp(8.0, 12.0);
     let cards_x = inner_x + left_w + if left_on { side_gap } else { 0.0 };
-    let cards_w = (inner_x + inner_w - right_w - if right_on { side_gap } else { 0.0 } - cards_x).max(80.0);
+    let cards_w =
+        (inner_x + inner_w - right_w - if right_on { side_gap } else { 0.0 } - cards_x).max(80.0);
 
     if left_on {
         draw_ticker_meta(
@@ -140,95 +148,85 @@ pub(crate) fn draw_ticker(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &Hu
     }
 
     RaceStore::with(|race| {
-    // Cards follow the live order, so a pass slides the field now, not at the line.
-    let mut board = race.field.board();
-    if board.is_empty() {
-        let count = (s.standing_count.max(0) as usize).min(MAX_SAFE);
-        board.extend_from_slice(&s.standings[..count]);
-    }
-    let n = board.len().min(MAX_SAFE);
-    if n == 0 {
-        text(
-            px,
-            fonts,
-            "Waiting for race data",
-            11.0,
-            cards_x,
-            card_y + card_h * 0.35,
-            text_dim(),
-            false,
-        );
-        return;
-    }
-    let want = cfg.ticker_count.clamp(3, 15) as usize;
-    let (vis, card_w) = hstand_layout(cards_w, k, want, n);
-    let focus = s.focus_race_num;
-    let fi = race
-        .field
-        .focus
-        .filter(|i| *i < n)
-        .or_else(|| (0..n).find(|&i| board[i].race_num == focus))
-        .unwrap_or(0);
-    let Some(focus_row) = board.get(fi) else {
-        return;
-    };
-    let best_ms = if race.field.session_best_ms > 0 {
-        race.field.session_best_ms
-    } else {
-        session_best_ms(s)
-    };
-    let gap = HS_CARD_GAP;
-    let stride = card_w + gap;
-    let now = anim_now();
-    let ids = row_ids(board.iter().take(n).map(|card| card.race_num));
-    let slots = HS_SLIDE.with(|a| a.borrow_mut().indices(&ids, now));
-    let scroll = if cfg.ticker_autoscroll && n > vis {
-        (now * HS_AUTO_SPEED).rem_euclid(n as f32)
-    } else {
-        let target = hstand_scroll_start(fi, vis, n);
-        HS_SCROLL.with(|a| a.borrow_mut().step(target, now))
-    };
-    let lw = cards_w.ceil().max(1.0) as u32;
-    let lh = card_h.ceil().max(1.0) as u32;
-    if let Some(mut layer) = Pixmap::new(lw, lh) {
-        for (i, card) in board.iter().enumerate().take(n) {
-            let slot = slots.get(i).copied().unwrap_or(i as f32);
-            let x = if cfg.ticker_autoscroll && n > vis {
-                match hstand_loop_x(slot, scroll, n as f32, stride, cards_w, card_w) {
-                    Some(x) => x,
-                    None => continue,
-                }
-            } else {
-                let x = hstand_card_x(slot, scroll, 0.0, stride);
-                if x + card_w < -2.0 || x > cards_w + 2.0 {
-                    continue;
-                }
-                x
-            };
-            draw_ticker_card(
-                &mut layer,
-                fonts,
-                s,
-                card,
-                focus_row,
-                best_ms,
-                x,
-                0.0,
-                card_w,
-                card_h,
-                k,
-            );
-            push_click_rider(card.race_num, cards_x + x, card_y, card_w, card_h);
+        // Cards follow the live order, so a pass slides the field now, not at the line.
+        let mut board = race.field.board();
+        if board.is_empty() {
+            let count = (s.standing_count.max(0) as usize).min(MAX_SAFE);
+            board.extend_from_slice(&s.standings[..count]);
         }
-        px.draw_pixmap(
-            0,
-            0,
-            layer.as_ref(),
-            &PixmapPaint::default(),
-            Transform::from_translate(cards_x, card_y),
-            None,
-        );
-    }
+        let n = board.len().min(MAX_SAFE);
+        if n == 0 {
+            text(
+                px,
+                fonts,
+                "Waiting for race data",
+                11.0,
+                cards_x,
+                card_y + card_h * 0.35,
+                text_dim(),
+                false,
+            );
+            return;
+        }
+        let want = cfg.ticker_count.clamp(3, 15) as usize;
+        let (vis, card_w) = hstand_layout(cards_w, k, want, n);
+        let focus = s.focus_race_num;
+        let fi = race
+            .field
+            .focus
+            .filter(|i| *i < n)
+            .or_else(|| (0..n).find(|&i| board[i].race_num == focus))
+            .unwrap_or(0);
+        let Some(focus_row) = board.get(fi) else {
+            return;
+        };
+        let best_ms = if race.field.session_best_ms > 0 {
+            race.field.session_best_ms
+        } else {
+            session_best_ms(s)
+        };
+        let gap = HS_CARD_GAP;
+        let stride = card_w + gap;
+        let now = anim_now();
+        let ids = row_ids(board.iter().take(n).map(|card| card.race_num));
+        let slots = HS_SLIDE.with(|a| a.borrow_mut().indices(&ids, now));
+        let scroll = if cfg.ticker_autoscroll && n > vis {
+            (now * HS_AUTO_SPEED).rem_euclid(n as f32)
+        } else {
+            let target = hstand_scroll_start(fi, vis, n);
+            HS_SCROLL.with(|a| a.borrow_mut().step(target, now))
+        };
+        let lw = cards_w.ceil().max(1.0) as u32;
+        let lh = card_h.ceil().max(1.0) as u32;
+        if let Some(mut layer) = Pixmap::new(lw, lh) {
+            for (i, card) in board.iter().enumerate().take(n) {
+                let slot = slots.get(i).copied().unwrap_or(i as f32);
+                let x = if cfg.ticker_autoscroll && n > vis {
+                    match hstand_loop_x(slot, scroll, n as f32, stride, cards_w, card_w) {
+                        Some(x) => x,
+                        None => continue,
+                    }
+                } else {
+                    let x = hstand_card_x(slot, scroll, 0.0, stride);
+                    if x + card_w < -2.0 || x > cards_w + 2.0 {
+                        continue;
+                    }
+                    x
+                };
+                draw_ticker_card(
+                    &mut layer, fonts, s, card, focus_row, best_ms, x, 0.0, card_w, card_h, k,
+                );
+                push_click_rider(card.race_num, cards_x + x, card_y, card_w, card_h);
+            }
+            px.draw_pixmap(
+                0,
+                0,
+                layer.as_ref(),
+                &PixmapPaint::default(),
+                Transform::from_translate(cards_x, card_y),
+                None,
+            );
+        }
     });
 }
 
@@ -327,9 +325,7 @@ pub(crate) fn ticker_meta_width(
     let Some((label, val, label_sz, val_sz)) = ticker_meta_copy(fonts, s, cfg, field, h, k) else {
         return 36.0;
     };
-    measure(fonts, &label, label_sz)
-        .max(measure_bold(fonts, &val, val_sz))
-        + 2.0
+    measure(fonts, &label, label_sz).max(measure_bold(fonts, &val, val_sz)) + 2.0
 }
 
 pub(crate) fn draw_ticker_meta(
@@ -422,13 +418,27 @@ pub(crate) fn draw_ticker_card(
     let text_x = bar_x + 7.0;
     let name_sz = (h * 0.28).clamp(10.5, 13.5);
     let gap_sz = (h * 0.22).clamp(8.5, 11.0);
-    let name = ellipsize(fonts, &cstr(&row.name), name_sz, (w - (text_x - x) - 8.0).max(24.0));
+    let name = ellipsize(
+        fonts,
+        &cstr(&row.name),
+        name_sz,
+        (w - (text_x - x) - 8.0).max(24.0),
+    );
     let name_c = if out {
         Color::from_rgba8(110, 110, 116, 255)
     } else {
         Color::from_rgba8(244, 244, 247, 255)
     };
-    text_bold(px, fonts, &name, name_sz, text_x, y + h * 0.16, name_c, false);
+    text_bold(
+        px,
+        fonts,
+        &name,
+        name_sz,
+        text_x,
+        y + h * 0.16,
+        name_c,
+        false,
+    );
     let gap_c = if out {
         Color::from_rgba8(110, 110, 116, 255)
     } else if is_focus {

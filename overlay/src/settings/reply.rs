@@ -82,7 +82,15 @@ pub(crate) fn draw_reply(
     let kind_sz = 18.0;
     let kind_w = measure(fonts, view.kind_label, kind_sz);
     let plaque_w = (kind_w + 36.0).min(inner_w).max(72.0);
-    fill_skew(px, plaque_x, plaque_y, (plaque_w - skew).max(48.0), plaque_h, skew, accent());
+    fill_skew(
+        px,
+        plaque_x,
+        plaque_y,
+        (plaque_w - skew).max(48.0),
+        plaque_h,
+        skew,
+        accent(),
+    );
     text(
         px,
         fonts,
@@ -113,7 +121,16 @@ pub(crate) fn draw_reply(
             y += 10.0;
             for (who, from_dev, lines) in &wrapped {
                 if y + 16.0 > 0.0 && y < view_h {
-                    text(&mut body, fonts, &who.to_ascii_uppercase(), 10.0, 0.0, y, dim(), false);
+                    text(
+                        &mut body,
+                        fonts,
+                        &who.to_ascii_uppercase(),
+                        10.0,
+                        0.0,
+                        y,
+                        dim(),
+                        false,
+                    );
                 }
                 y += 16.0;
                 let col = if *from_dev { text_col() } else { muted() };
@@ -188,7 +205,16 @@ pub(crate) fn draw_reply(
         text(px, fonts, "Write a reply", 12.0, tx, ty + 2.0, dim(), false);
         crate::feedback::set_caret_layout(tx, ty, 16.0, vec![vec![(0, 0.0)]]);
     } else {
-        draw_fb_text(px, fonts, &compose.message, compose.cursor, tx, ty, tw, box_h - 16.0);
+        draw_fb_text(
+            px,
+            fonts,
+            &compose.message,
+            compose.cursor,
+            tx,
+            ty,
+            tw,
+            box_h - 16.0,
+        );
     }
 
     let status_y = box_y + box_h + 8.0;
@@ -196,7 +222,9 @@ pub(crate) fn draw_reply(
         crate::feedback::Status::Idle => ("", muted()),
         crate::feedback::Status::Sending => ("Sending…", muted()),
         crate::feedback::Status::Sent => ("Sent.", accent()),
-        crate::feedback::Status::Error(msg) => (msg.as_str(), Color::from_rgba8(255, 120, 100, 255)),
+        crate::feedback::Status::Error(msg) => {
+            (msg.as_str(), Color::from_rgba8(255, 120, 100, 255))
+        }
     };
     if !status.is_empty() {
         text(px, fonts, status, 11.0, box_x, status_y, status_c, false);
@@ -204,7 +232,19 @@ pub(crate) fn draw_reply(
 
     let btn_y = panel_y + panel_h - 16.0 - btn_h;
     let got_w = 120.0;
-    action_btn(px, fonts, box_x, btn_y, got_w, btn_h, "Got it", Hit::ReplyDismiss, hover, hits, false);
+    action_btn(
+        px,
+        fonts,
+        box_x,
+        btn_y,
+        got_w,
+        btn_h,
+        "Got it",
+        Hit::ReplyDismiss,
+        hover,
+        hits,
+        false,
+    );
     let sending = matches!(compose.status, crate::feedback::Status::Sending);
     action_btn(
         px,
