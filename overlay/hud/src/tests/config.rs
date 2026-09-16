@@ -873,3 +873,93 @@ fn settings_window_pos_defaults_and_round_trips() {
     assert!(text.contains("settings_x=-1920"));
     assert!(text.contains("settings_y=120"));
 }
+
+#[test]
+fn empty_ini_does_not_write_factory_over_the_file() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-empty-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    std::fs::write(&path, "").unwrap();
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let cfg = HudConfig::load_file();
+    let text = std::fs::read_to_string(&path).unwrap();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(!cfg.any_overlay_widget());
+    assert!(
+        text.trim().is_empty(),
+        "empty ini must stay empty, got:\n{text}"
+    );
+}
+
+#[test]
+fn empty_primary_reads_legacy_layout_and_leaves_primary() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-legacy-fb-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    let legacy = dir.join("mxbo.ini");
+    std::fs::write(&path, "").unwrap();
+    std::fs::write(
+        &legacy,
+        "show_dash=1\ndash_x=0.33\nfirst_install_version=0.1.0\nst_last=1\nrel_last=1\n",
+    )
+    .unwrap();
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let cfg = HudConfig::load_file();
+    let primary = std::fs::read_to_string(&path).unwrap();
+    let leftover = std::fs::read_to_string(&legacy).unwrap();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(cfg[WidgetId::Dash].show);
+    assert!((cfg[WidgetId::Dash].rect.x - 0.33).abs() < 0.0001);
+    assert!(
+        primary.trim().is_empty(),
+        "must not cement factory over empty primary:\n{primary}"
+    );
+    assert!(leftover.contains("show_dash=1"));
+}
+
+#[test]
+fn missing_ini_writes_first_install() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-missing-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    let _ = std::fs::remove_file(&path);
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let cfg = HudConfig::load_file();
+    let text = std::fs::read_to_string(&path).unwrap();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(!cfg.any_overlay_widget());
+    assert!(text.contains("first_install_version="));
+    assert!(text.contains("[Race]"));
+}
+
+#[test]
+fn atomic_save_round_trip_leaves_no_tmp() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-atomic-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let mut cfg = HudConfig::new();
+    cfg.first_install_version = "0.1.0".into();
+    cfg[WidgetId::Map].show = true;
+    cfg.save();
+    let tmp = {
+        let mut name = path.as_os_str().to_os_string();
+        name.push(".tmp");
+        std::path::PathBuf::from(name)
+    };
+    let loaded = HudConfig::load_file();
+    let text = std::fs::read_to_string(&path).unwrap();
+    let tmp_left = tmp.is_file();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(loaded[WidgetId::Map].show);
+    assert!(text.contains("show_map=1"));
+    assert!(!tmp_left, "atomic save must not leave a .tmp sibling");
+}

@@ -10,6 +10,11 @@ export class Preview {
     get_field(key: string): string;
     get_int(key: string): number;
     hover_cursor(nx: number, ny: number, width: number, height: number): string;
+    mode(): string;
+    motos_pointer_down(nx: number, ny: number, width: number, height: number): void;
+    motos_pointer_move(nx: number, ny: number, width: number, height: number): void;
+    motos_pointer_up(): void;
+    motos_wheel(nx: number, ny: number, delta: number): void;
     constructor();
     pointer_down(nx: number, ny: number, width: number, height: number): void;
     pointer_move(nx: number, ny: number, width: number, height: number): void;
@@ -18,6 +23,7 @@ export class Preview {
     set_bool(key: string, on: boolean): void;
     set_field(key: string, value: string): void;
     set_int(key: string, value: number): void;
+    set_mode(mode: string): void;
     set_widget(name: string, on: boolean): void;
     snap_widget(align: string): void;
     tick(dt: number): void;
@@ -35,6 +41,11 @@ export interface InitOutput {
     readonly preview_get_field: (a: number, b: number, c: number) => [number, number];
     readonly preview_get_int: (a: number, b: number, c: number) => number;
     readonly preview_hover_cursor: (a: number, b: number, c: number, d: number, e: number) => [number, number];
+    readonly preview_mode: (a: number) => [number, number];
+    readonly preview_motos_pointer_down: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly preview_motos_pointer_move: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly preview_motos_pointer_up: (a: number) => void;
+    readonly preview_motos_wheel: (a: number, b: number, c: number, d: number) => void;
     readonly preview_new: () => [number, number, number];
     readonly preview_pointer_down: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly preview_pointer_move: (a: number, b: number, c: number, d: number, e: number) => void;
@@ -43,6 +54,7 @@ export interface InitOutput {
     readonly preview_set_bool: (a: number, b: number, c: number, d: number) => void;
     readonly preview_set_field: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly preview_set_int: (a: number, b: number, c: number, d: number) => void;
+    readonly preview_set_mode: (a: number, b: number, c: number) => void;
     readonly preview_set_widget: (a: number, b: number, c: number, d: number) => void;
     readonly preview_snap_widget: (a: number, b: number, c: number) => void;
     readonly preview_tick: (a: number, b: number) => void;

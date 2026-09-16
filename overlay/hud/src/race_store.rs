@@ -1010,6 +1010,16 @@ pub fn session_preset(s: &Snapshot, spectating: bool) -> Option<SessionPreset> {
     None
 }
 
+/// Open practice (40+ min), not a race moto and not short warmup.
+pub fn is_practice_session(s: &Snapshot) -> bool {
+    matches!(session_preset(s, false), Some(SessionPreset::Practice))
+}
+
+/// Short warmup (not Practice). Motos stores those laps on the race visit.
+pub(crate) fn skip_warmup_laps(s: &Snapshot) -> bool {
+    is_warmup(s) && !is_practice_session(s)
+}
+
 pub(crate) fn is_lap_race(s: &Snapshot) -> bool {
     // Extra laps are 1–4 on a timed set. Five or more is always a lap moto,
     // even when leftover warmup (10:00) is still sitting in session length.

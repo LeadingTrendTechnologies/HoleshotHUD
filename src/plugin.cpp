@@ -120,7 +120,6 @@ namespace
 
     FILETIME g_iniWriteTime{};
     char g_lastCallback[32]{};
-    ULONGLONG g_lastCallbackWriteMs = 0;
 
     void breadcrumb(const char* name)
     {
@@ -130,12 +129,14 @@ namespace
         }
         std::strncpy(g_lastCallback, name, sizeof(g_lastCallback) - 1);
         g_lastCallback[sizeof(g_lastCallback) - 1] = '\0';
-        const ULONGLONG now = GetTickCount64();
-        if (g_lastCallbackWriteMs != 0 && now - g_lastCallbackWriteMs < 1000)
+    }
+
+    void writeLastCallback()
+    {
+        if (g_lastCallback[0] == '\0')
         {
             return;
         }
-        g_lastCallbackWriteMs = now;
         wchar_t local[MAX_PATH]{};
         const DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", local, MAX_PATH);
         if (n == 0 || n >= MAX_PATH)
@@ -210,6 +211,7 @@ namespace
         }
         catch (...)
         {
+            writeLastCallback();
         }
     }
 
@@ -283,6 +285,7 @@ __declspec(dllexport) int Startup(char* _szSavePath)
 __declspec(dllexport) void Shutdown()
 {
     breadcrumb("Shutdown");
+    writeLastCallback();
     safeCall([] {
         if (!g_iniPath.empty())
         {

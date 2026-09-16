@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::fs;
 use std::ops::{Deref, DerefMut, Index, IndexMut};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 use std::time::SystemTime;
 
@@ -2031,100 +2031,36 @@ impl HudConfig {
         let path = ini_path();
         let legacy = legacy_ini_path();
         let mut cfg = Self::new();
-        let text = fs::read_to_string(&path).or_else(|_| fs::read_to_string(&legacy));
-        let Ok(text) = text else {
-            cfg.first_install_version = env!("CARGO_PKG_VERSION").to_string();
-            cfg.save();
-            return cfg;
+        let primary = fs::read_to_string(&path);
+        let (mut scan, mut meta_path): (IniScan, Option<&Path>) = match &primary {
+            Ok(text) => (apply_ini_text(&mut cfg, text), Some(path.as_path())),
+            Err(_) => match fs::read_to_string(&legacy) {
+                Ok(text) => (apply_ini_text(&mut cfg, &text), Some(legacy.as_path())),
+                Err(_) => {
+                    cfg.first_install_version = env!("CARGO_PKG_VERSION").to_string();
+                    cfg.save();
+                    return cfg;
+                }
+            },
         };
-        let meta_path = if path.is_file() { &path } else { &legacy };
-        cfg.loaded_mtime = fs::metadata(meta_path).and_then(|m| m.modified()).ok();
-        let mut saw_last_cols = [false; SessionPreset::COUNT];
-        let mut saw_first_install = false;
-        let mut saw_unit = [false; UnitKind::COUNT];
-        let mut saw_preset = [false; SessionPreset::COUNT];
-        let mut section = IniSection::Legacy;
-        let mut legacy_layout = HudLayout::new();
-        let mut saw_legacy_layout = false;
-        let mut legacy_last_cols = false;
-        for raw in text.lines() {
-            let line = raw.trim();
-            if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
-                continue;
-            }
-            if line.starts_with('[') {
-                section = parse_ini_section(line);
-                continue;
-            }
-            let Some((k, v)) = line.split_once('=') else {
-                continue;
-            };
-            let key = k.trim();
-            let val = v.trim();
-            let f = val.parse::<f32>().unwrap_or(0.0);
-            let b =
-                val == "1" || val.eq_ignore_ascii_case("true") || val.eq_ignore_ascii_case("yes");
-            match section {
-                IniSection::App => {
-                    apply_app_key(&mut cfg, key, val, b, &mut saw_first_install, &mut saw_unit);
-                }
-                IniSection::Preset(p) => {
-                    saw_preset[p.idx()] = true;
-                    let layout = &mut cfg.layouts[p.idx()];
-                    if apply_widget_prefs(layout, key, val, f, b) {
-                        continue;
-                    }
-                    apply_layout_key(layout, key, val, b, &mut saw_last_cols[p.idx()]);
-                }
-                IniSection::Legacy => {
-                    if apply_app_key(&mut cfg, key, val, b, &mut saw_first_install, &mut saw_unit) {
-                        continue;
-                    }
-                    saw_legacy_layout = true;
-                    if apply_widget_prefs(&mut legacy_layout, key, val, f, b) {
-                        continue;
-                    }
-                    apply_layout_key(&mut legacy_layout, key, val, b, &mut legacy_last_cols);
+        if !scan.has_layout() && primary.is_ok() {
+            if let Ok(legacy_text) = fs::read_to_string(&legacy) {
+                let extra = apply_ini_text(&mut cfg, &legacy_text);
+                if extra.has_layout() {
+                    scan.take_layout(extra);
+                    meta_path = Some(legacy.as_path());
                 }
             }
         }
-        if saw_preset.iter().any(|&on| on) {
-            let donor = SessionPreset::ALL
-                .iter()
-                .find(|p| saw_preset[p.idx()])
-                .map(|p| cfg.layouts[p.idx()].clone())
-                .unwrap_or_else(HudLayout::new);
-            for p in SessionPreset::ALL {
-                if !saw_preset[p.idx()] {
-                    cfg.layouts[p.idx()] = donor.clone();
-                }
-                if !saw_last_cols[p.idx()] && saw_preset[p.idx()] {
-                    cfg.layouts[p.idx()].st_best = true;
-                    cfg.layouts[p.idx()].st_last = true;
-                    cfg.layouts[p.idx()].rel_best = true;
-                    cfg.layouts[p.idx()].rel_last = true;
-                }
-            }
-        } else if saw_legacy_layout {
-            if !legacy_last_cols {
-                legacy_layout.st_best = true;
-                legacy_layout.st_last = true;
-                legacy_layout.rel_best = true;
-                legacy_layout.rel_last = true;
-            }
-            cfg.layouts = [
-                legacy_layout.clone(),
-                legacy_layout.clone(),
-                legacy_layout.clone(),
-                legacy_layout,
-            ];
+        if !scan.saw_first_install || cfg.first_install_version.is_empty() {
+            cfg.first_install_version = "unknown".into();
         }
+        apply_scanned_layouts(&mut cfg, scan);
         for layout in &mut cfg.layouts {
             layout.migrate_rects();
         }
-        if !saw_first_install || cfg.first_install_version.is_empty() {
-            cfg.first_install_version = "unknown".into();
-            cfg.save();
+        if let Some(p) = meta_path {
+            cfg.loaded_mtime = fs::metadata(p).and_then(|m| m.modified()).ok();
         }
         cfg
     }
@@ -2248,8 +2184,9 @@ impl HudConfig {
             layout_ini(&self.layouts[SessionPreset::Race.idx()]),
             layout_ini(&self.layouts[SessionPreset::Spectate.idx()]),
         );
-        let _ = fs::write(&path, body);
-        self.loaded_mtime = fs::metadata(&path).and_then(|m| m.modified()).ok();
+        if write_atomic(&path, &body).is_ok() {
+            self.loaded_mtime = fs::metadata(&path).and_then(|m| m.modified()).ok();
+        }
         let legacy = legacy_ini_path();
         if legacy != path {
             let _ = fs::remove_file(legacy);
@@ -2424,6 +2361,168 @@ enum IniSection {
     App,
     Preset(SessionPreset),
     Legacy,
+}
+
+struct IniScan {
+    saw_last_cols: [bool; SessionPreset::COUNT],
+    saw_first_install: bool,
+    saw_unit: [bool; UnitKind::COUNT],
+    saw_preset: [bool; SessionPreset::COUNT],
+    saw_legacy_layout: bool,
+    legacy_last_cols: bool,
+    legacy_layout: HudLayout,
+}
+
+impl Default for IniScan {
+    fn default() -> Self {
+        Self {
+            saw_last_cols: [false; SessionPreset::COUNT],
+            saw_first_install: false,
+            saw_unit: [false; UnitKind::COUNT],
+            saw_preset: [false; SessionPreset::COUNT],
+            saw_legacy_layout: false,
+            legacy_last_cols: false,
+            legacy_layout: HudLayout::new(),
+        }
+    }
+}
+
+impl IniScan {
+    fn has_layout(&self) -> bool {
+        self.saw_preset.iter().any(|&on| on) || self.saw_legacy_layout
+    }
+
+    fn take_layout(&mut self, extra: Self) {
+        self.saw_last_cols = extra.saw_last_cols;
+        self.saw_preset = extra.saw_preset;
+        self.saw_legacy_layout = extra.saw_legacy_layout;
+        self.legacy_last_cols = extra.legacy_last_cols;
+        self.legacy_layout = extra.legacy_layout;
+        self.saw_first_install = self.saw_first_install || extra.saw_first_install;
+    }
+}
+
+fn apply_ini_text(cfg: &mut HudConfig, text: &str) -> IniScan {
+    let mut scan = IniScan::default();
+    let mut section = IniSection::Legacy;
+    for raw in text.lines() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
+            continue;
+        }
+        if line.starts_with('[') {
+            section = parse_ini_section(line);
+            continue;
+        }
+        let Some((k, v)) = line.split_once('=') else {
+            continue;
+        };
+        let key = k.trim();
+        let val = v.trim();
+        let f = val.parse::<f32>().unwrap_or(0.0);
+        let b = val == "1" || val.eq_ignore_ascii_case("true") || val.eq_ignore_ascii_case("yes");
+        match section {
+            IniSection::App => {
+                apply_app_key(
+                    cfg,
+                    key,
+                    val,
+                    b,
+                    &mut scan.saw_first_install,
+                    &mut scan.saw_unit,
+                );
+            }
+            IniSection::Preset(p) => {
+                scan.saw_preset[p.idx()] = true;
+                let layout = &mut cfg.layouts[p.idx()];
+                if apply_widget_prefs(layout, key, val, f, b) {
+                    continue;
+                }
+                apply_layout_key(layout, key, val, b, &mut scan.saw_last_cols[p.idx()]);
+            }
+            IniSection::Legacy => {
+                if apply_app_key(
+                    cfg,
+                    key,
+                    val,
+                    b,
+                    &mut scan.saw_first_install,
+                    &mut scan.saw_unit,
+                ) {
+                    continue;
+                }
+                scan.saw_legacy_layout = true;
+                if apply_widget_prefs(&mut scan.legacy_layout, key, val, f, b) {
+                    continue;
+                }
+                apply_layout_key(
+                    &mut scan.legacy_layout,
+                    key,
+                    val,
+                    b,
+                    &mut scan.legacy_last_cols,
+                );
+            }
+        }
+    }
+    scan
+}
+
+fn apply_scanned_layouts(cfg: &mut HudConfig, scan: IniScan) {
+    if scan.saw_preset.iter().any(|&on| on) {
+        let donor = SessionPreset::ALL
+            .iter()
+            .find(|p| scan.saw_preset[p.idx()])
+            .map(|p| cfg.layouts[p.idx()].clone())
+            .unwrap_or_else(HudLayout::new);
+        for p in SessionPreset::ALL {
+            if !scan.saw_preset[p.idx()] {
+                cfg.layouts[p.idx()] = donor.clone();
+            }
+            if !scan.saw_last_cols[p.idx()] && scan.saw_preset[p.idx()] {
+                cfg.layouts[p.idx()].st_best = true;
+                cfg.layouts[p.idx()].st_last = true;
+                cfg.layouts[p.idx()].rel_best = true;
+                cfg.layouts[p.idx()].rel_last = true;
+            }
+        }
+    } else if scan.saw_legacy_layout {
+        let mut legacy_layout = scan.legacy_layout;
+        if !scan.legacy_last_cols {
+            legacy_layout.st_best = true;
+            legacy_layout.st_last = true;
+            legacy_layout.rel_best = true;
+            legacy_layout.rel_last = true;
+        }
+        cfg.layouts = [
+            legacy_layout.clone(),
+            legacy_layout.clone(),
+            legacy_layout.clone(),
+            legacy_layout,
+        ];
+    }
+}
+
+fn ini_tmp_path(path: &Path) -> PathBuf {
+    let mut name = path.as_os_str().to_os_string();
+    name.push(".tmp");
+    PathBuf::from(name)
+}
+
+fn write_atomic(path: &Path, body: &str) -> std::io::Result<()> {
+    let tmp = ini_tmp_path(path);
+    fs::write(&tmp, body)?;
+    match fs::rename(&tmp, path) {
+        Ok(()) => Ok(()),
+        Err(_) if path.exists() => {
+            fs::remove_file(path)?;
+            fs::rename(&tmp, path)
+        }
+        Err(e) => {
+            let _ = fs::remove_file(&tmp);
+            Err(e)
+        }
+    }
 }
 
 fn parse_ini_section(line: &str) -> IniSection {
@@ -3361,12 +3460,9 @@ pub fn ini_path() -> PathBuf {
 }
 
 fn legacy_ini_path() -> PathBuf {
-    let home = std::env::var("USERPROFILE").unwrap_or_else(|_| "C:\\Users\\Public".into());
-    PathBuf::from(home)
-        .join("Documents")
-        .join("PiBoSo")
-        .join("MX Bikes")
-        .join("mxbo.ini")
+    let mut p = ini_path();
+    p.set_file_name("mxbo.ini");
+    p
 }
 
 pub fn with_config<T>(f: impl FnOnce(&HudConfig) -> T) -> T {

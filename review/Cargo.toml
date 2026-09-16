@@ -1,0 +1,12 @@
+[package]
+name = "mxbo-review"
+version = "0.11.1"
+edition = "2021"
+
+[features]
+default = ["sqlite"]
+sqlite = ["dep:rusqlite"]
+
+[dependencies]
+mxbo-hud = { path = "../overlay/hud" }
+rusqlite = { version = "0.32", features = ["bundled"], optional = true }

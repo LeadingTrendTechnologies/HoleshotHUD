@@ -30,7 +30,7 @@ fn dummy_ui(open: bool) -> SettingsUi {
         drop_scroll: 0.0,
         drop_menu: None,
         bind_listen: false,
-        review_saved_only: false,
+        review_filter: crate::review::ListFilter::All,
         review_stay_on_list: false,
         analyze_id: None,
         analyze_compare: -1,
@@ -180,6 +180,8 @@ fn review_empty_paints_enable_gate() {
     assert!(ids.contains(&Hit::TabReview));
     assert!(ids.contains(&Hit::ReviewToggle));
     assert!(!ids.contains(&Hit::ReviewFilterAll));
+    assert!(!ids.contains(&Hit::ReviewFilterRace));
+    assert!(!ids.contains(&Hit::ReviewFilterPractice));
     assert!(!ids.contains(&Hit::ReviewFilterSaved));
     assert_golden("review-empty", &px);
     *UI.lock().unwrap() = None;
@@ -203,6 +205,8 @@ fn review_empty_recording_on_paints_filters() {
     let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
     let ids = hit_ids(&hits);
     assert!(ids.contains(&Hit::ReviewFilterAll));
+    assert!(ids.contains(&Hit::ReviewFilterRace));
+    assert!(ids.contains(&Hit::ReviewFilterPractice));
     assert!(ids.contains(&Hit::ReviewFilterSaved));
     assert!(ids.contains(&Hit::ReviewToggle));
     *UI.lock().unwrap() = None;
@@ -261,6 +265,88 @@ fn review_analyze_has_lap_map_and_compare_drop() {
     assert!(ids.contains(&Hit::AnalyzeFollow));
     assert!(ids.contains(&Hit::ReviewBack));
     assert!(ids.contains(&Hit::ReviewDelete(id as u64)));
+    *UI.lock().unwrap() = None;
+    crate::review::reset();
+}
+
+#[test]
+fn review_follow_paint_stores_pan() {
+    let _g = crate::review::serial();
+    let tmp = std::env::temp_dir().join("mxbo-review-follow-pan");
+    let _ = fs::remove_dir_all(&tmp);
+    crate::review::init(tmp);
+    let id = crate::review::seed_demo().expect("demo");
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Review;
+    ui.analyze_id = Some(id);
+    ui.analyze_zoom = 2.0;
+    ui.analyze_follow = true;
+    ui.analyze_scrub = 0.0;
+    *UI.lock().unwrap() = Some(ui);
+    let mut px = Pixmap::new(1000, 920).expect("pixmap");
+    draw(&mut px, &fonts, 1000.0, 920.0);
+    let want = follow_pan_for(id, -1, false, 0.0).expect("follow pan");
+    let ui = UI.lock().unwrap();
+    let u = ui.as_ref().unwrap();
+    assert!(
+        (u.analyze_pan_x - want.0).abs() < 1.0e-4 && (u.analyze_pan_z - want.1).abs() < 1.0e-4,
+        "follow paint must store pan ({}, {}) got ({}, {})",
+        want.0,
+        want.1,
+        u.analyze_pan_x,
+        u.analyze_pan_z
+    );
+    drop(ui);
+    *UI.lock().unwrap() = None;
+    crate::review::reset();
+}
+
+#[test]
+fn review_analyze_open_lap_drop_has_you_lap_hits() {
+    let _g = crate::review::serial();
+    let tmp = std::env::temp_dir().join("mxbo-review-analyze-lap-drop");
+    let _ = fs::remove_dir_all(&tmp);
+    crate::review::init(tmp);
+    let id = crate::review::seed_demo().expect("demo");
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Review;
+    ui.analyze_id = Some(id);
+    ui.open_drop = Some(Drop::AnalyzeLap);
+    *UI.lock().unwrap() = Some(ui);
+    let mut px = Pixmap::new(1000, 920).expect("pixmap");
+    draw(&mut px, &fonts, 1000.0, 920.0);
+    {
+        let ui = UI.lock().unwrap();
+        let ui = ui.as_ref().unwrap();
+        assert!(
+            ui.drop_menu.is_some(),
+            "open lap menu must reach overlay drop painter"
+        );
+        assert!(
+            ui.hits
+                .iter()
+                .any(|h| matches!(h.id, Hit::AnalyzeYouLap(_))),
+            "open lap menu must register AnalyzeYouLap hits"
+        );
+    }
+    *UI.lock().unwrap() = None;
+
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Review;
+    ui.analyze_id = Some(id);
+    ui.open_drop = Some(Drop::AnalyzeCompare);
+    *UI.lock().unwrap() = Some(ui);
+    draw(&mut px, &fonts, 1000.0, 920.0);
+    let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
+    let ids = hit_ids(&hits);
+    assert!(
+        ids.iter().any(|h| matches!(h, Hit::AnalyzeCompare(_))),
+        "open compare menu must register AnalyzeCompare hits"
+    );
     *UI.lock().unwrap() = None;
     crate::review::reset();
 }

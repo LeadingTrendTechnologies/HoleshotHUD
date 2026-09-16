@@ -1,6 +1,6 @@
 [package]
 name = "mxbo-overlay"
-version = "0.11.0"
+version = "0.11.1"
 edition = "2021"
 
 [[bin]]
@@ -19,6 +19,8 @@ winresource = "0.1"
 
 [dependencies]
 mxbo-hud = { path = "hud" }
+mxbo-review = { path = "../review", features = ["sqlite"] }
+mxbo-motos-ui = { path = "../motos-ui" }
 tiny-skia = { version = "0.11", features = ["png-format"] }
 fontdue = "0.9"
 ureq = "2.12"

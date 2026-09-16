@@ -2,13 +2,31 @@
 
 ## Unreleased
 
+## 0.11.1
+
+Practice and warmup on Motos; Analyze Compare starts at None.
+
+### Motos
+
+- List chips **All** / **Race** / **Practice** / **Saved**. Practice sessions are stored. Warmup clean laps sit on the race visit as **Warmup L#**, then race **L#** (no Race/Warmup switch). A clean warmup is that rider’s fastest time and Compare line until a race lap beats it. Spectate / replay does not record.
+- Analyze Compare defaults to **None** (you only). Other riders sit below it, fastest first.
+- Live Analyze Follow keeps the dirt still; it no longer rebakes on sub-cm pan jitter.
+- Analyze Back / Delete / Save tips stay on top of the lap row. At this spot still shows your speed, gear, throttle, height, and RPM when Compare is None. S1–S3 sit under Your laps.
+
 ### Internals
 
+- Analyze Compare defaults to **None** (you only). Other riders sit below it, fastest first.
+- Analyze map dots hold the last recorded sample across a connection gap instead of snapping through missing data.
+- Plugin last-callback.txt is only written on a plugin exception or Shutdown, not every race tick.
+- Analyze says **Connection** (same red as Cut) when your stored line jumped; that is not a cut.
+- Analyze Compare does not draw infield cuts after a hitch; those gaps stay broken. A session where riders vanish is that hitch, not everyone cutting.
 - Settings remembers where you left it, including a second monitor. The HUD overlay still follows MX Bikes on the game screen.
 - Analyze L1 is violet from the gate until the finish; after that crossing it is orange.
 - At this spot shows Compare speed, gear, and throttle next to yours. Old motos estimate Compare speed, throttle, and gear from the line and your gearbox; RPM is — unless the game stored it. New motos keep every bike's RaceVehicleData.
 - Analyze puts the map beside SPEED / HEIGHT / THR tapes. At this spot sits under them. Compare sits next to Your laps. Results stay below.
-- SPEED / HEIGHT tapes share one scale with Compare. Analyze dirt stays ~16 m wide when you zoom.
+- Analyze dirt stays ~32 m wide when you zoom. Tight tracks thin only enough that lanes stay separate, so stored lines stay on the dirt.
+- Motos Analyze lap, Compare, and Race/Warmup menus open again.
+- A truncated or empty layout file no longer turns every widget off. First install still writes a new file.
 - A race win (P1 with a field) shows a gold crown on the Motos list and Analyze.
 - Analyze S/F matches the dirt width. S1–S3 marks sit on the track’s sector gates, same on every lap.
 - Analyze track is wider so stored lines sit on the dirt.

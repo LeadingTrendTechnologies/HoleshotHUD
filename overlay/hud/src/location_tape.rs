@@ -1,6 +1,6 @@
 //! Per-rider line + channel tapes at track position (live ghosts + review commits).
 
-use crate::race_store::{is_warmup, norm_lap_pos};
+use crate::race_store::{norm_lap_pos, skip_warmup_laps};
 use crate::shm::{cstr, Snapshot};
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -12,7 +12,8 @@ const MIN_LAP_MS: i32 = 20_000;
 const MAX_LAP_MS: i32 = 15 * 60 * 1000;
 const MIN_COVER: f32 = 0.45;
 const LINE_MIN_M: f32 = 0.6;
-const CUT_M2: f32 = 30.0 * 30.0;
+pub const LINE_CUT_M2: f32 = 30.0 * 30.0;
+const CUT_M2: f32 = LINE_CUT_M2;
 const HITCH_MS: u128 = 200;
 const GATE_STATE: i32 = 256;
 const CONTACT_M2: f32 = 16.0;
@@ -78,6 +79,7 @@ struct RiderWork {
     last_pos: f32,
     lap_t0: Option<Instant>,
     last_at: Option<Instant>,
+    gap: bool,
 }
 
 impl RiderWork {
@@ -98,6 +100,7 @@ impl RiderWork {
             last_pos: -1.0,
             lap_t0: None,
             last_at: None,
+            gap: false,
         }
     }
 
@@ -114,6 +117,7 @@ impl RiderWork {
         self.last_pos = -1.0;
         self.lap_t0 = None;
         self.last_at = None;
+        self.gap = false;
     }
 
     fn note_pos(&mut self, pos: f32) {
@@ -138,10 +142,52 @@ impl RiderWork {
 
 pub fn line_is_cut(line: &[(f32, f32, f32)]) -> bool {
     line.windows(2).any(|w| {
+        if !w[0].0.is_finite() || !w[1].0.is_finite() {
+            return false;
+        }
         let dx = w[1].0 - w[0].0;
         let dz = w[1].2 - w[0].2;
         dx * dx + dz * dz >= CUT_M2
     })
+}
+
+/// Half-open ranges of finite XZ samples with no ≥30 m jump.
+pub fn line_run_ranges(pts: &[(f32, f32)]) -> Vec<(usize, usize)> {
+    let mut runs = Vec::new();
+    let mut start = None;
+    let mut prev: Option<(f32, f32)> = None;
+    for (i, p) in pts.iter().enumerate() {
+        if !p.0.is_finite() || !p.1.is_finite() {
+            if let Some(s) = start.take() {
+                if i - s >= 2 {
+                    runs.push((s, i));
+                }
+            }
+            prev = None;
+            continue;
+        }
+        if let Some(q) = prev {
+            let dx = p.0 - q.0;
+            let dy = p.1 - q.1;
+            if dx * dx + dy * dy >= CUT_M2 {
+                if let Some(s) = start.take() {
+                    if i - s >= 2 {
+                        runs.push((s, i));
+                    }
+                }
+                start = Some(i);
+            }
+        } else {
+            start = Some(i);
+        }
+        prev = Some(*p);
+    }
+    if let Some(s) = start {
+        if pts.len() - s >= 2 {
+            runs.push((s, pts.len()));
+        }
+    }
+    runs
 }
 
 fn jump_is_cut(d2: f32, since_ms: Option<u128>) -> bool {
@@ -257,7 +303,7 @@ pub fn tick(s: &Snapshot) {
     } else {
         s.focus_race_num
     };
-    let warmup = is_warmup(s);
+    let warmup = skip_warmup_laps(s);
     with_store(|st| {
         let mut pending = Vec::new();
         st.you_num = you;
@@ -349,6 +395,7 @@ pub fn tick(s: &Snapshot) {
                 work.line.push((r.x, y, r.z));
                 work.last_x = r.x;
                 work.last_z = r.z;
+                work.last_at = Some(Instant::now());
             } else {
                 let dx = r.x - work.last_x;
                 let dz = r.z - work.last_z;
@@ -358,16 +405,25 @@ pub fn tick(s: &Snapshot) {
                     work.cut = true;
                     work.last_x = r.x;
                     work.last_z = r.z;
+                    work.last_at = Some(Instant::now());
                 } else if d2 >= CUT_M2 {
+                    work.gap = true;
                     work.last_x = r.x;
                     work.last_z = r.z;
+                    work.last_at = Some(Instant::now());
                 } else if !work.cut && d2 >= min_d2 && work.line.len() < MAX_LINE {
+                    if work.gap {
+                        if work.line.len() + 1 < MAX_LINE {
+                            work.line.push((f32::NAN, y, f32::NAN));
+                        }
+                        work.gap = false;
+                    }
                     work.line.push((r.x, y, r.z));
                     work.last_x = r.x;
                     work.last_z = r.z;
+                    work.last_at = Some(Instant::now());
                 }
             }
-            work.last_at = Some(Instant::now());
 
             let last = standing_last(s, r.race_num);
             if last > 0 && last != work.last_lap_ms {
@@ -449,7 +505,7 @@ fn note_gate(s: &Snapshot, warmup: bool, st: &mut Store) {
 fn should_commit(
     warmup: bool,
     first_race: bool,
-    _crashed: bool,
+    crashed: bool,
     last: i32,
     _cover: f32,
     line_len: usize,
@@ -458,7 +514,7 @@ fn should_commit(
         return false;
     }
     if warmup {
-        return false;
+        return !crashed && last >= MIN_LAP_MS;
     }
     if first_race {
         return true;
@@ -642,11 +698,57 @@ mod tests {
     }
 
     #[test]
-    fn warmup_does_not_commit_clean_full_lap() {
+    fn warmup_commits_clean_full_lap() {
         isolated(|| {
             let mut s = base(5, 16);
             drive_cover(&mut s, 45_000);
-            assert!(take_commits().is_empty());
+            let commits = take_commits();
+            assert_eq!(commits.len(), 1);
+            assert!(commits[0].warmup);
+            assert!(commits[0].is_you);
+        });
+    }
+
+    #[test]
+    fn warmup_commits_other_riders_clean_full_lap() {
+        isolated(|| {
+            let mut s = base(5, 16);
+            s.rider_count = 2;
+            s.standing_count = 2;
+            s.riders[1] = rider(7, "Cole", 0.0, 0.0, 0.1, 0);
+            s.standings[1] = standing(7, 0);
+            for i in 0..140 {
+                s.riders[0].track_pos = i as f32 / 140.0;
+                s.riders[0].x = i as f32;
+                s.riders[1].track_pos = i as f32 / 140.0;
+                s.riders[1].x = i as f32 + 2.0;
+                s.standings[0].last_lap_ms = 0;
+                s.standings[1].last_lap_ms = 0;
+                tick(&s);
+            }
+            s.standings[0].last_lap_ms = 45_000;
+            s.standings[1].last_lap_ms = 44_000;
+            tick(&s);
+            let commits = take_commits();
+            let cole = commits
+                .iter()
+                .find(|c| c.race_num == 7)
+                .expect("other warmup");
+            assert!(cole.warmup);
+            assert!(!cole.is_you);
+            assert_eq!(cole.lap_ms, 44_000);
+        });
+    }
+
+    #[test]
+    fn practice_commits_clean_full_lap() {
+        isolated(|| {
+            let mut s = base(-1, 16);
+            s.session_length = 40;
+            drive_cover(&mut s, 45_000);
+            let commits = take_commits();
+            assert_eq!(commits.len(), 1);
+            assert!(!commits[0].warmup);
         });
     }
 
@@ -810,7 +912,59 @@ mod tests {
                 .expect("cole lap");
             assert!(!cole.cut, "stale 30m step should not mark cut");
             assert!(cole.line.len() >= 2);
+            assert!(
+                !line_is_cut(&cole.line),
+                "hitch must not store a grass hypotenuse"
+            );
         });
+    }
+
+    #[test]
+    fn frozen_then_resume_does_not_store_a_chord() {
+        isolated(|| {
+            let mut s = base(7, 256);
+            s.rider_count = 2;
+            s.standing_count = 2;
+            s.riders[1] = rider(7, "Cole", 0.0, 0.0, 0.1, 0);
+            s.standings[1] = standing(7, 0);
+            tick(&s);
+            s.session_state = 16;
+            tick(&s);
+            s.riders[1].x = 4.0;
+            s.riders[1].track_pos = 0.2;
+            tick(&s);
+            for _ in 0..8 {
+                tick(&s);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            s.riders[1].x = 54.0;
+            s.riders[1].track_pos = 0.5;
+            tick(&s);
+            s.riders[1].x = 56.0;
+            s.riders[1].track_pos = 0.55;
+            s.standings[1].last_lap_ms = 8_500;
+            tick(&s);
+            let cole = take_commits()
+                .into_iter()
+                .find(|c| c.race_num == 7)
+                .expect("cole lap");
+            assert!(!cole.cut, "frozen SHM then a jump is a hitch, not a cut");
+            assert!(!line_is_cut(&cole.line));
+        });
+    }
+
+    #[test]
+    fn line_run_ranges_splits_a_long_chord() {
+        let pts = [(0.0, 0.0), (0.0, 8.0), (80.0, 8.0), (80.0, 16.0)];
+        assert_eq!(line_run_ranges(&pts), vec![(0, 2), (2, 4)]);
+        let with_nan = [
+            (0.0, 0.0),
+            (0.0, 8.0),
+            (f32::NAN, f32::NAN),
+            (80.0, 8.0),
+            (80.0, 16.0),
+        ];
+        assert_eq!(line_run_ranges(&with_nan), vec![(0, 2), (3, 5)]);
     }
 
     #[test]

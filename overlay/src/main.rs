@@ -175,6 +175,34 @@ fn dump_whats_new_and_exit(path: &std::path::Path) -> ! {
     }
 }
 
+fn dump_motos_shots_path() -> Option<std::path::PathBuf> {
+    let mut args = std::env::args();
+    while let Some(a) = args.next() {
+        if a == "--dump-motos-shots" {
+            return Some(
+                args.next()
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| std::path::PathBuf::from("announce-shots")),
+            );
+        }
+    }
+    None
+}
+
+fn dump_motos_shots_and_exit(dir: &std::path::Path) -> ! {
+    match crate::settings::dump_motos_shots(dir) {
+        Ok((list, analyze)) => {
+            eprintln!("Wrote {}", list.display());
+            eprintln!("Wrote {}", analyze.display());
+            std::process::exit(0);
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
+    }
+}
+
 fn main() {
     std::panic::set_hook(Box::new(|info| {
         let text = format!("{info}\n{}", std::backtrace::Backtrace::force_capture());
@@ -188,6 +216,9 @@ fn main() {
     }));
     if let Some(path) = dump_whats_new_path() {
         dump_whats_new_and_exit(&path);
+    }
+    if let Some(dir) = dump_motos_shots_path() {
+        dump_motos_shots_and_exit(&dir);
     }
     if std::env::args().any(|a| a == "--apply-update") {
         match crate::update::apply_staged_from_args() {
@@ -626,14 +657,20 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         }
         // Plugin publish can pause for a few seconds during a hitch. Keep the last
         // session HUD instead of blanking at 2.5s; drop after 15s so garage/menus
-        // still hide if SHM stops.
+        // still hide if SHM stops. Do not tape that frozen snapshot — the first
+        // live tick after is a teleport, not a driven chord.
         let hitch_hold = in_session && raw_age < 15.0;
-        if live || hitch_hold {
+        if live {
             if let Some(s) = last_snap.as_ref() {
                 mxbo_hud::delta::tick(s);
                 mxbo_hud::sector::tick(s);
                 let record = crate::config::with_config(|c| c.review);
-                crate::review::tick(s, record);
+                crate::review::tick(s, record && !spectating);
+            }
+        } else if hitch_hold {
+            if let Some(s) = last_snap.as_ref() {
+                mxbo_hud::delta::tick(s);
+                mxbo_hud::sector::tick(s);
             }
         } else {
             crate::review::tick(&mxbo_hud::shm::Snapshot::default(), false);

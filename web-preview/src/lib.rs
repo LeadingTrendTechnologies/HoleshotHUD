@@ -1,5 +1,6 @@
 mod demo_track;
 mod edit;
+mod motos;
 
 use mxbo_hud::config::{
     BoardField, DashField, DotLabel, FontFamily, GamepadStyle, HudConfig, LeanStyle, SnapAlign, StanceMode,
@@ -45,6 +46,8 @@ pub struct Preview {
     drag: Option<edit::Drag>,
     placed: Vec<String>,
     layout_edit: bool,
+    mode_motos: bool,
+    motos: motos::MotosDemo,
 }
 
 #[wasm_bindgen]
@@ -70,7 +73,50 @@ impl Preview {
             drag: None,
             placed: vec!["standings".into()],
             layout_edit: false,
+            mode_motos: false,
+            motos: motos::MotosDemo::new(),
         })
+    }
+
+    pub fn set_mode(&mut self, mode: &str) {
+        self.mode_motos = mode == "motos";
+    }
+
+    pub fn mode(&self) -> String {
+        if self.mode_motos {
+            "motos".into()
+        } else {
+            "widgets".into()
+        }
+    }
+
+    pub fn motos_pointer_down(&mut self, nx: f32, ny: f32, width: u32, height: u32) {
+        if !self.mode_motos {
+            return;
+        }
+        let x = nx * width as f32;
+        let y = ny * height as f32;
+        self.motos.pointer_down(x, y, width as f32, height as f32);
+    }
+
+    pub fn motos_pointer_move(&mut self, nx: f32, ny: f32, width: u32, height: u32) {
+        if !self.mode_motos {
+            return;
+        }
+        let x = nx * width as f32;
+        let y = ny * height as f32;
+        self.motos.pointer_move(x, y, width as f32, height as f32);
+    }
+
+    pub fn motos_pointer_up(&mut self) {
+        self.motos.pointer_up();
+    }
+
+    pub fn motos_wheel(&mut self, nx: f32, ny: f32, delta: f32) {
+        if !self.mode_motos {
+            return;
+        }
+        self.motos.wheel(nx, ny, delta);
     }
 
     pub fn select_widget(&mut self, name: &str) {
@@ -247,6 +293,10 @@ impl Preview {
         let w = width.clamp(320, 1920);
         let h = height.clamp(180, 1080);
         let mut px = Pixmap::new(w, h).expect("pixmap");
+        if self.mode_motos {
+            self.motos.paint(&mut px, &self.fonts, w as f32, h as f32);
+            return px.data().to_vec();
+        }
         if self.active == "sys" {
             let t = self.t;
             mxbo_hud::set_sys_stats(

@@ -341,6 +341,8 @@ pub(crate) enum Hit {
     TabReview,
     TabFeedback,
     ReviewFilterAll,
+    ReviewFilterRace,
+    ReviewFilterPractice,
     ReviewFilterSaved,
     ReviewOpen(u64),
     ReviewKeep(u64),
@@ -351,8 +353,6 @@ pub(crate) enum Hit {
     AnalyzeCompareOpen,
     AnalyzeYouLap(i32),
     AnalyzeLapOpen,
-    AnalyzeSessionOpen,
-    AnalyzeSession(u8),
     AnalyzeScrub,
     AnalyzeMap,
     AnalyzeFollow,
@@ -608,7 +608,6 @@ pub(crate) enum Drop {
     TickerFoot(u8),
     Info(InfoBar, u8),
     PresetCopy,
-    AnalyzeSession,
     AnalyzeCompare,
     AnalyzeLap,
 }
@@ -667,7 +666,7 @@ struct SettingsUi {
     drop_menu: Option<(f32, f32, f32, f32, f32)>,
     /// Sit button is waiting for the next pad press.
     bind_listen: bool,
-    review_saved_only: bool,
+    review_filter: crate::review::ListFilter,
     /// Back (or delete of the live moto) keeps the list until Review is opened again.
     review_stay_on_list: bool,
     analyze_id: Option<i64>,
@@ -700,6 +699,26 @@ struct PendingDrop {
 
 thread_local! {
     static DROP_MENUS: RefCell<Vec<PendingDrop>> = RefCell::new(Vec::new());
+}
+
+pub(crate) fn queue_drop_menu(
+    mx: f32,
+    my: f32,
+    bw: f32,
+    content_h: f32,
+    open_hit: Hit,
+    options: Vec<(Hit, String, bool)>,
+) {
+    DROP_MENUS.with(|menus| {
+        menus.borrow_mut().push(PendingDrop {
+            mx,
+            my,
+            bw,
+            content_h,
+            open_hit,
+            options,
+        });
+    });
 }
 
 const SIDE_W: f32 = 204.0;
@@ -743,7 +762,7 @@ pub fn attach(host: HWND) {
         drop_scroll: 0.0,
         drop_menu: None,
         bind_listen: false,
-        review_saved_only: false,
+        review_filter: crate::review::ListFilter::All,
         review_stay_on_list: false,
         analyze_id: None,
         analyze_compare: -1,
@@ -952,7 +971,7 @@ pub fn dump_whats_new(path: &std::path::Path) -> Result<crate::changelog::Notes,
         drop_scroll: 0.0,
         drop_menu: None,
         bind_listen: false,
-        review_saved_only: false,
+        review_filter: crate::review::ListFilter::All,
         review_stay_on_list: false,
         analyze_id: None,
         analyze_compare: -1,
@@ -979,27 +998,55 @@ pub fn dump_whats_new(path: &std::path::Path) -> Result<crate::changelog::Notes,
     Ok(notes)
 }
 
-/// Paint Review list + Analyze to PNGs (demo sessions).
+/// Paint Motos list + Analyze to PNGs (demo sessions).
+pub fn dump_motos_shots(
+    dir: &std::path::Path,
+) -> Result<(std::path::PathBuf, std::path::PathBuf), String> {
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2)
+        .or_else(Fonts::load)
+        .ok_or_else(|| "Need Exo 2 to paint Motos.".to_string())?;
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let tmp = std::env::temp_dir().join(format!("mxbo-motos-shots-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    crate::review::reset();
+    crate::review::init(tmp);
+    crate::config::update_config(|c| c.review = true);
+    let id = crate::review::seed_demo()
+        .ok_or_else(|| "Could not seed Motos demo sessions.".to_string())?;
+
+    let list = dir.join("motos-list.png");
+    paint_review_tab(&fonts, None, 1000, 720, &list)?;
+    let analyze = dir.join("motos-analyze.png");
+    paint_review_tab(&fonts, Some(id), 1000, 920, &analyze)?;
+    crate::review::reset();
+    Ok((list, analyze))
+}
+
 #[cfg(test)]
 pub fn dump_review_pages(
     dir: &std::path::Path,
 ) -> Result<(i64, std::path::PathBuf, std::path::PathBuf), String> {
+    let tmp = std::env::temp_dir().join(format!("mxbo-review-mocks-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    crate::review::reset();
+    crate::review::init(tmp);
+    crate::config::update_config(|c| c.review = true);
+    let id = crate::review::seed_demo()
+        .ok_or_else(|| "Could not seed Motos demo sessions.".to_string())?;
     refresh_palette();
     let fonts = Fonts::for_family(FontFamily::Exo2)
         .or_else(Fonts::load)
-        .ok_or_else(|| "Need Exo 2 to paint Review.".to_string())?;
+        .ok_or_else(|| "Need Exo 2 to paint Motos.".to_string())?;
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    let id = crate::review::seed_demo()
-        .ok_or_else(|| "Could not seed Review demo sessions.".to_string())?;
-
-    let list = dir.join("review-list.png");
+    let list = dir.join("motos-list.png");
     paint_review_tab(&fonts, None, 1000, 720, &list)?;
-    let analyze = dir.join("review-analyze.png");
+    let analyze = dir.join("motos-analyze.png");
     paint_review_tab(&fonts, Some(id), 1000, 920, &analyze)?;
+    crate::review::reset();
     Ok((id, list, analyze))
 }
 
-#[cfg(test)]
 fn paint_review_tab(
     fonts: &Fonts,
     analyze_id: Option<i64>,
@@ -1034,10 +1081,10 @@ fn paint_review_tab(
         drop_scroll: 0.0,
         drop_menu: None,
         bind_listen: false,
-        review_saved_only: false,
+        review_filter: crate::review::ListFilter::All,
         review_stay_on_list: false,
         analyze_id,
-        analyze_compare: -1,
+        analyze_compare: 0,
         analyze_you_lap: -1,
         analyze_warmup: false,
         analyze_scrub: if analyze_id.is_some() { 0.38 } else { 0.0 },
@@ -1718,6 +1765,8 @@ fn is_drop_pick(hit: Hit) -> bool {
             | Hit::InfoPick(_, _, _)
             | Hit::PresetCopyTo(_)
             | Hit::PresetCopyAll
+            | Hit::AnalyzeYouLap(_)
+            | Hit::AnalyzeCompare(_)
     )
 }
 
@@ -1755,8 +1804,10 @@ fn hit_label(hit: Hit) -> String {
         Hit::TabApp => "Settings".into(),
         Hit::TabReview => "Motos".into(),
         Hit::TabFeedback => "Feedback".into(),
-        Hit::ReviewFilterAll => "All races".into(),
-        Hit::ReviewFilterSaved => "Saved races".into(),
+        Hit::ReviewFilterAll => "All motos".into(),
+        Hit::ReviewFilterRace => "Race sessions".into(),
+        Hit::ReviewFilterPractice => "Practice sessions".into(),
+        Hit::ReviewFilterSaved => "Saved motos".into(),
         Hit::ReviewOpen(_) => "Open race".into(),
         Hit::ReviewKeep(_) => "Save race".into(),
         Hit::ReviewDelete(_) => "Delete race".into(),
@@ -1768,13 +1819,11 @@ fn hit_label(hit: Hit) -> String {
                 "Record races".into()
             }
         }
+        Hit::AnalyzeCompare(0) => "No compare".into(),
         Hit::AnalyzeCompare(_) => "Compare rider".into(),
         Hit::AnalyzeCompareOpen => "Choose rider".into(),
         Hit::AnalyzeYouLap(_) => "Your lap".into(),
         Hit::AnalyzeLapOpen => "Choose lap".into(),
-        Hit::AnalyzeSessionOpen => "Warmup or race".into(),
-        Hit::AnalyzeSession(0) => "Race laps".into(),
-        Hit::AnalyzeSession(_) => "Warmup laps".into(),
         Hit::AnalyzeScrub => "Lap position".into(),
         Hit::AnalyzeMap => "Race map".into(),
         Hit::AnalyzeFollow => "Follow scrubber".into(),
@@ -2244,6 +2293,31 @@ fn hit_at(hits: &[HitBox], x: f32, y: f32) -> Option<Hit> {
         .map(|h| h.id)
 }
 
+fn persist_analyze_follow_pan(
+    id: Option<i64>,
+    you_lap: i32,
+    warmup: bool,
+    scrub: f32,
+    zoom: f32,
+    follow: bool,
+) {
+    if !follow || zoom <= 1.0 {
+        return;
+    }
+    let Some(id) = id else {
+        return;
+    };
+    let Some((px, pz)) = review::follow_pan_for(id, you_lap, warmup, scrub) else {
+        return;
+    };
+    if let Some(ui) = UI.lock().unwrap().as_mut() {
+        if ui.analyze_follow && ui.analyze_id == Some(id) {
+            ui.analyze_pan_x = px;
+            ui.analyze_pan_z = pz;
+        }
+    }
+}
+
 fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
     refresh_palette();
     px.fill(bg());
@@ -2378,7 +2452,7 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
     }
     let (
         analyze_id,
-        review_saved_only,
+        review_filter,
         analyze_compare,
         analyze_you_lap,
         analyze_warmup,
@@ -2392,7 +2466,8 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
         let u = ui.as_ref();
         (
             u.and_then(|u| u.analyze_id),
-            u.map(|u| u.review_saved_only).unwrap_or(false),
+            u.map(|u| u.review_filter)
+                .unwrap_or(crate::review::ListFilter::All),
             u.map(|u| u.analyze_compare).unwrap_or(-1),
             u.map(|u| u.analyze_you_lap).unwrap_or(-1),
             u.map(|u| u.analyze_warmup).unwrap_or(false),
@@ -2405,32 +2480,39 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
     };
     let bottom = match tab {
         Tab::App => pane_app(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
-        Tab::Review => pane_review(
-            px,
-            fonts,
-            hover,
-            &mut hits,
-            x,
-            py,
-            cw,
-            analyze_id,
-            if review_saved_only {
-                crate::review::ListFilter::Saved
-            } else {
-                crate::review::ListFilter::All
-            },
-            analyze_compare,
-            analyze_you_lap,
-            analyze_warmup,
-            open_drop,
-            analyze_scrub,
-            analyze_zoom,
-            analyze_pan_x,
-            analyze_pan_z,
-            analyze_follow,
-            cfg.review,
-            cfg.units.speed,
-        ),
+        Tab::Review => {
+            let b = pane_review(
+                px,
+                fonts,
+                hover,
+                &mut hits,
+                x,
+                py,
+                cw,
+                analyze_id,
+                review_filter,
+                analyze_compare,
+                analyze_you_lap,
+                analyze_warmup,
+                open_drop,
+                analyze_scrub,
+                analyze_zoom,
+                analyze_pan_x,
+                analyze_pan_z,
+                analyze_follow,
+                cfg.review,
+                cfg.units.speed,
+            );
+            persist_analyze_follow_pan(
+                analyze_id,
+                analyze_you_lap,
+                analyze_warmup,
+                analyze_scrub,
+                analyze_zoom,
+                analyze_follow,
+            );
+            b
+        }
         Tab::Feedback => pane_feedback_tab(px, fonts, hover, &mut hits, x, py, cw),
         Tab::Standings => pane_standings(
             px, fonts, &cfg, hover, open_drop, drag, &mut hits, x, py, cw,

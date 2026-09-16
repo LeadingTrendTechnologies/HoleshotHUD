@@ -139,10 +139,69 @@ html, body {
 .dl-text { white-space: nowrap; flex: 0 0 auto; }
 .download:hover { filter: brightness(1.08); }
 
+.modebar {
+  display: flex;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--charcoal-side);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.modebar button {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 8px 18px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.modebar button.on {
+  background: rgba(232, 106, 21, 0.18);
+  color: var(--accent);
+}
+
+.modebar button[data-mode="motos"] {
+  color: var(--accent);
+  background: rgba(232, 106, 21, 0.1);
+  box-shadow:
+    inset 0 0 0 1px rgba(232, 106, 21, 0.55),
+    0 0 14px rgba(232, 106, 21, 0.22);
+}
+
+.modebar button[data-mode="motos"].on {
+  background: rgba(232, 106, 21, 0.28);
+  box-shadow:
+    inset 0 0 0 1px var(--accent),
+    0 0 18px rgba(232, 106, 21, 0.35);
+}
+
+.modebar .mode-new {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  vertical-align: 1px;
+  color: #0c0a08;
+  background: var(--accent);
+  box-shadow: 0 0 10px rgba(232, 106, 21, 0.65);
+}
+
+.modebar button:hover:not(.on) {
+  background: rgba(255, 255, 255, 0.06);
+}
+
 .pit {
   display: grid;
   grid-template-columns: minmax(0, var(--twin-w)) minmax(0, var(--rail-w)) minmax(0, 1fr);
-  height: calc(100% - var(--chrome-top));
+  height: calc(100% - var(--chrome-top) - 44px);
   min-width: 0;
   min-height: 0;
   max-width: 100%;
@@ -197,6 +256,15 @@ html, body {
 }
 
 .stage-status[hidden] { display: none; }
+
+.pit.mode-motos {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.pit.mode-motos .twin,
+.pit.mode-motos .rail {
+  display: none;
+}
 
 .twin {
   background: var(--pane);

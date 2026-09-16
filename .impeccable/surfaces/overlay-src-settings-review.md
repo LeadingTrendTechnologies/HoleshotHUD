@@ -13,7 +13,7 @@ Same settings world: charcoal stack, orange skew plaques, Exo 2 ExtraBold Italic
 Map beside tapes; At this spot under them; scrubber locked to that spot.
 
 ## Approved comps
-`.impeccable/mocks/review-list.png`
+`.impeccable/mocks/motos-list.png`
 `.impeccable/mocks/decision/analyze-depth-side.png`
 
 ## Direction contract

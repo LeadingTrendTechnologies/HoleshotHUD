@@ -119,6 +119,7 @@ const NAMES = {
   gamepad: "Controller",
 };
 
+const pit = document.querySelector(".pit");
 const canvas = document.getElementById("hud");
 const ctx = canvas.getContext("2d", { alpha: true });
 const settings = document.getElementById("settings");
@@ -129,7 +130,7 @@ stageStatus.hidden = false;
 
 let preview;
 try {
-  await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=0.9.0", import.meta.url) });
+  await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=0.11.7", import.meta.url) });
   preview = new Preview();
   stageStatus.hidden = true;
 } catch (err) {
@@ -394,32 +395,79 @@ settings.addEventListener("click", (e) => {
 
 function norm(e) {
   const r = canvas.getBoundingClientRect();
-  return {
-    nx: (e.clientX - r.left) / r.width,
-    ny: (e.clientY - r.top) / r.height,
-  };
+  const cw = canvas.width;
+  const ch = canvas.height;
+  const scale = Math.min(r.width / cw, r.height / ch) || 1;
+  const dw = cw * scale;
+  const dh = ch * scale;
+  const ox = (r.width - dw) * 0.5;
+  const oy = (r.height - dh) * 0.5;
+  const px = e.clientX - r.left - ox;
+  const py = e.clientY - r.top - oy;
+  return { nx: px / dw, ny: py / dh };
+}
+
+function setMode(mode) {
+  preview.set_mode(mode);
+  pit.classList.toggle("mode-motos", mode === "motos");
+  if (mode === "motos") {
+    canvas.width = 1000;
+    canvas.height = 920;
+  } else {
+    canvas.width = 1280;
+    canvas.height = 720;
+  }
+  for (const btn of document.querySelectorAll("[data-mode]")) {
+    const on = btn.dataset.mode === mode;
+    btn.classList.toggle("on", on);
+    if (on) btn.setAttribute("aria-current", "true");
+    else btn.removeAttribute("aria-current");
+  }
+}
+
+for (const btn of document.querySelectorAll("[data-mode]")) {
+  btn.addEventListener("click", () => setMode(btn.dataset.mode));
 }
 
 let dragging = false;
 canvas.addEventListener("pointerdown", (e) => {
   const { nx, ny } = norm(e);
-  preview.pointer_down(nx, ny, canvas.width, canvas.height);
+  if (preview.mode() === "motos") {
+    preview.motos_pointer_down(nx, ny, canvas.width, canvas.height);
+  } else {
+    preview.pointer_down(nx, ny, canvas.width, canvas.height);
+  }
   dragging = true;
   canvas.setPointerCapture(e.pointerId);
 });
 canvas.addEventListener("pointermove", (e) => {
   const { nx, ny } = norm(e);
   if (dragging) {
-    preview.pointer_move(nx, ny, canvas.width, canvas.height);
-  } else {
+    if (preview.mode() === "motos") {
+      preview.motos_pointer_move(nx, ny, canvas.width, canvas.height);
+    } else {
+      preview.pointer_move(nx, ny, canvas.width, canvas.height);
+    }
+  } else if (preview.mode() !== "motos") {
     canvas.style.cursor = preview.hover_cursor(nx, ny, canvas.width, canvas.height) || "default";
   }
 });
 canvas.addEventListener("pointerup", (e) => {
-  preview.pointer_up();
+  if (preview.mode() === "motos") preview.motos_pointer_up();
+  else preview.pointer_up();
   dragging = false;
   try { canvas.releasePointerCapture(e.pointerId); } catch {}
 });
+canvas.addEventListener(
+  "wheel",
+  (e) => {
+    if (preview.mode() !== "motos") return;
+    e.preventDefault();
+    const { nx, ny } = norm(e);
+    preview.motos_wheel(nx, ny, e.deltaY);
+  },
+  { passive: false },
+);
 canvas.addEventListener("pointerleave", () => {
   if (!dragging) canvas.style.cursor = "default";
 });
@@ -428,6 +476,11 @@ syncButtons();
 renderSettings();
 
 const q = new URLSearchParams(location.search);
+if (q.get("mode") === "widgets") {
+  setMode("widgets");
+} else {
+  setMode("motos");
+}
 if (q.get("widget") && NAMES[q.get("widget")]) {
   preview.select_widget(q.get("widget"));
   syncButtons();
@@ -442,7 +495,7 @@ let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  preview.tick(dt);
+  if (preview.mode() !== "motos") preview.tick(dt);
   const w = canvas.width;
   const h = canvas.height;
   const bytes = preview.frame(w, h);

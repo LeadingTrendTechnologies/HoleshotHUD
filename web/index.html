@@ -6,7 +6,7 @@
   <title>Holeshot HUD — live widget editor</title>
   <link rel="icon" href="favicon.ico" sizes="any" />
   <link rel="icon" href="logo.png" type="image/png" />
-  <link rel="stylesheet" href="style.css?v=f8twin25" />
+  <link rel="stylesheet" href="style.css?v=0.11.7" />
 </head>
 <body>
   <!--
@@ -27,6 +27,10 @@
       <span class="dl-text">Download<span class="rest"> for Windows</span></span>
     </a>
   </header>
+  <nav class="modebar" aria-label="F8 modes">
+    <button type="button" data-mode="widgets">Widgets</button>
+    <button type="button" data-mode="motos" class="on" aria-current="true">Motos <span class="mode-new">NEW</span></button>
+  </nav>
   <main class="pit">
     <aside class="twin" aria-label="Widget settings">
       <h1 id="widget-title">Standings</h1>
@@ -80,6 +84,6 @@
       <p class="stage-status" id="stage-status" hidden>Loading HUD…</p>
     </section>
   </main>
-  <script type="module" src="demo.js?v=0.9.0"></script>
+  <script type="module" src="demo.js?v=0.11.7"></script>
 </body>
 </html>

@@ -33,13 +33,25 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         }
         Hit::ReviewFilterAll => {
             if let Some(ui) = UI.lock().unwrap().as_mut() {
-                ui.review_saved_only = false;
+                ui.review_filter = crate::review::ListFilter::All;
+            }
+            return;
+        }
+        Hit::ReviewFilterRace => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.review_filter = crate::review::ListFilter::Race;
+            }
+            return;
+        }
+        Hit::ReviewFilterPractice => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.review_filter = crate::review::ListFilter::Practice;
             }
             return;
         }
         Hit::ReviewFilterSaved => {
             if let Some(ui) = UI.lock().unwrap().as_mut() {
-                ui.review_saved_only = true;
+                ui.review_filter = crate::review::ListFilter::Saved;
             }
             return;
         }
@@ -121,6 +133,14 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::AnalyzeYouLap(n) => {
             if let Some(ui) = UI.lock().unwrap().as_mut() {
                 ui.analyze_you_lap = n;
+                if let Some(id) = ui.analyze_id {
+                    if let Some(d) = crate::review::load(id) {
+                        ui.analyze_warmup = d
+                            .laps
+                            .iter()
+                            .any(|l| l.lap_num == n && l.race_num == d.your_race_num && l.warmup);
+                    }
+                }
                 ui.open_drop = None;
             }
             reset_analyze_scrub();
@@ -128,19 +148,6 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         }
         Hit::AnalyzeLapOpen => {
             toggle_drop(Drop::AnalyzeLap);
-            return;
-        }
-        Hit::AnalyzeSessionOpen => {
-            toggle_drop(Drop::AnalyzeSession);
-            return;
-        }
-        Hit::AnalyzeSession(n) => {
-            if let Some(ui) = UI.lock().unwrap().as_mut() {
-                ui.analyze_warmup = n != 0;
-                ui.analyze_you_lap = -1;
-                ui.open_drop = None;
-            }
-            reset_analyze_scrub();
             return;
         }
         Hit::TabSt => {
@@ -716,6 +723,8 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::StanceReset
         | Hit::TrackPbClear
         | Hit::ReviewFilterAll
+        | Hit::ReviewFilterRace
+        | Hit::ReviewFilterPractice
         | Hit::ReviewFilterSaved
         | Hit::ReviewOpen(_)
         | Hit::ReviewKeep(_)
@@ -726,8 +735,6 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::AnalyzeCompareOpen
         | Hit::AnalyzeYouLap(_)
         | Hit::AnalyzeLapOpen
-        | Hit::AnalyzeSessionOpen
-        | Hit::AnalyzeSession(_)
         | Hit::AnalyzeScrub
         | Hit::AnalyzeMap
         | Hit::AnalyzeFollow => {}
