@@ -85,7 +85,7 @@ pub(crate) fn draw_stance(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f
     let a = bg_a(cfg[WidgetId::Stance].bg);
     let stand = !sitting;
     let fill = if stand {
-        Color::from_rgba8(255, 148, 48, a.max(220))
+        accent_a(a.max(220))
     } else {
         Color::from_rgba8(10, 10, 12, a)
     };
@@ -93,7 +93,7 @@ pub(crate) fn draw_stance(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f
     fill_skew(px, x, y, w, h, skew, fill);
     let word = if sitting { "SIT" } else { "STAND" };
     let ink = if stand {
-        Color::from_rgba8(12, 12, 14, 255)
+        ink_on(fill)
     } else {
         Color::from_rgba8(228, 228, 230, 255)
     };

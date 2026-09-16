@@ -866,14 +866,15 @@ fn draw_edit_frame(px: &mut Pixmap, r: mxbo_hud::snapshot::Rect, sw: f32, sh: f3
     pb.line_to(x + w, y + h);
     pb.line_to(x, y + h);
     pb.close();
+    let [r, g, b] = mxbo_hud::config::accent_rgb();
     if let Some(path) = pb.finish() {
         let mut paint = Paint::default();
-        paint.set_color(Color::from_rgba8(255, 148, 48, 220));
+        paint.set_color(Color::from_rgba8(r, g, b, 220));
         paint.anti_alias = true;
         px.stroke_path(&path, &paint, &Stroke { width: 2.0, ..Stroke::default() }, Transform::identity(), None);
     }
     let mut paint = Paint::default();
-    paint.set_color(Color::from_rgba8(255, 148, 48, 255));
+    paint.set_color(Color::from_rgba8(r, g, b, 255));
     let handles: &[(f32, f32)] = if ew_only {
         &[(x, y + h * 0.5), (x + w, y + h * 0.5)]
     } else {

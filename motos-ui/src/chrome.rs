@@ -47,11 +47,18 @@ pub enum Drop {
 }
 
 pub(crate) fn ink() -> Color {
-    Color::from_rgba8(10, 10, 10, 255)
+    let [r, g, b] = mxbo_hud::config::ink_on_rgb(mxbo_hud::config::accent_rgb());
+    Color::from_rgba8(r, g, b, 255)
 }
 
 pub(crate) fn accent() -> Color {
-    Color::from_rgba8(232, 106, 21, 255)
+    let [r, g, b] = mxbo_hud::config::accent_rgb();
+    Color::from_rgba8(r, g, b, 255)
+}
+
+pub(crate) fn accent_a(a: u8) -> Color {
+    let [r, g, b] = mxbo_hud::config::accent_rgb();
+    Color::from_rgba8(r, g, b, a)
 }
 
 pub(crate) fn muted() -> Color {

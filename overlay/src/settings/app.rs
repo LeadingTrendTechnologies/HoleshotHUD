@@ -19,7 +19,7 @@ pub(crate) fn pane_app(
         y,
         w,
         "Settings",
-        "Font applies to every widget. Units are per measurement",
+        "Font and primary color apply everywhere. Units are per measurement",
         None,
         hover,
         hits,
@@ -132,6 +132,17 @@ pub(crate) fn pane_app(
                 cfg.font_family == FontFamily::Montserrat,
             ),
         ],
+        hover,
+        hits,
+    );
+    y = color_row(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        cfg.primary,
+        open_drop == Some(Drop::PrimaryColor),
         hover,
         hits,
     );

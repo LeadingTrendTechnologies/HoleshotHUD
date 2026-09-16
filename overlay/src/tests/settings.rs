@@ -13,6 +13,7 @@ fn dummy_ui(open: bool) -> SettingsUi {
         open_drop: None,
         drag: None,
         slide: None,
+        sv_drag: None,
         scroll: 0.0,
         content_h: 0.0,
         scroll_max: 0.0,

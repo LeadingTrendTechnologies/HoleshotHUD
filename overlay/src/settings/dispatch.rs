@@ -226,6 +226,21 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             toggle_drop(Drop::FontFamily);
             return;
         }
+        Hit::PrimaryOpen => {
+            toggle_drop(Drop::PrimaryColor);
+            return;
+        }
+        Hit::PrimaryPanel | Hit::PrimarySv | Hit::PrimaryHue => return,
+        Hit::PrimaryReset => {
+            update_config(|c| c.primary = DEFAULT_PRIMARY);
+            return;
+        }
+        Hit::PrimarySwatch(i) => {
+            if let Some(&rgb) = PRIMARY_SWATCHES.get(i as usize) {
+                update_config(|c| c.primary = rgb);
+            }
+            return;
+        }
         Hit::UnitsOpen(kind) => {
             toggle_drop(Drop::Units(kind));
             return;
@@ -653,6 +668,12 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::MapDotOpen
         | Hit::MiniDotOpen
         | Hit::FontOpen
+        | Hit::PrimaryOpen
+        | Hit::PrimaryPanel
+        | Hit::PrimarySv
+        | Hit::PrimaryHue
+        | Hit::PrimarySwatch(_)
+        | Hit::PrimaryReset
         | Hit::UnitsOpen(_)
         | Hit::StTextOpen
         | Hit::RelTextOpen

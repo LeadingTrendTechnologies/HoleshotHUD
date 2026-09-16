@@ -74,9 +74,10 @@ pub(crate) fn radar_blip_radius(heat: f32, size: f32) -> f32 {
 }
 
 pub(crate) fn radar_blip_color(heat: f32) -> Color {
-    let r = 228.0 + 22.0 * heat;
-    let g = 197.0 + (118.0 - 197.0) * heat;
-    let b = 112.0 + (2.0 - 112.0) * heat;
+    let [pr, pg, pb] = accent_rgb();
+    let r = 228.0 + (pr as f32 - 228.0) * heat;
+    let g = 197.0 + (pg as f32 - 197.0) * heat;
+    let b = 112.0 + (pb as f32 - 112.0) * heat;
     Color::from_rgba8(r as u8, g as u8, b as u8, 255)
 }
 

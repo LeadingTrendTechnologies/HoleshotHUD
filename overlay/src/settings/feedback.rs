@@ -107,7 +107,7 @@ pub(crate) fn pane_feedback(
             let col = if on {
                 accent()
             } else if hot {
-                Color::from_rgba8(255, 140, 36, 140)
+                accent_a(140)
             } else {
                 Color::from_rgba8(72, 72, 80, 255)
             };
@@ -163,7 +163,7 @@ pub(crate) fn pane_feedback(
             pb.line_to(x + 30.0, iy + 11.0);
             if let Some(path) = pb.finish() {
                 let mut p = Paint::default();
-                p.set_color(Color::from_rgba8(20, 12, 4, 255));
+                p.set_color(ink());
                 p.anti_alias = true;
                 px.stroke_path(
                     &path,

@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## 0.13.0
+
+Pick a primary color in Settings. Default stays Holeshot orange.
+
+### Overlay
+
+- Settings → Look → **Primary color** opens a swatch and hue picker. You, plaques, and Motos follow it live. Default is Holeshot orange.
+
+### Dash
+
+- **P#** uses the Look primary color.
+
+### Controller
+
+- Button, trigger, and bumper presses use the Look primary color.
+
 ## 0.12.0
 
 **Controller** gets a traced Xbox One pad; PlayStation stays dark schematic and Xbox stays light filled.

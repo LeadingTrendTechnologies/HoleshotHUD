@@ -10,8 +10,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use tiny_skia::{
-    Color, FillRule, LineCap, LineJoin, Paint, Path, PathBuilder, Pixmap, PixmapPaint, Rect,
-    Stroke, Transform,
+    Color, FillRule, GradientStop, LineCap, LineJoin, LinearGradient, Paint, Path, PathBuilder,
+    Pixmap, PixmapPaint, Point as SkPoint, Rect, SpreadMode, Stroke, Transform,
 };
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::{BOOL, HWND, LPARAM, POINT, RECT, WPARAM};
@@ -40,10 +40,11 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 use crate::config::{
-    update_config, with_config, BoardField, DashField, DotLabel, FontFamily, GamepadStyle, HudConfig,
-    LeanStyle, RelField, SessionPreset, SettingsKey, SnapAlign, StField, StanceBind,
-    StanceMode, StanceStyle, TableText, UnitKind, Units, WidgetId, COL_W_MAX, COL_W_MIN,
-    RADAR_RANGE_MAX, RADAR_RANGE_MIN, SYS_PRESETS, SYS_PROC_MAX,
+    format_primary_color, hsv_to_rgb, rgb_to_hsv, update_config, with_config, BoardField, DashField,
+    DotLabel, FontFamily, GamepadStyle, HudConfig, LeanStyle, RelField, SessionPreset, SettingsKey,
+    SnapAlign, StField, StanceBind, StanceMode, StanceStyle, TableText, UnitKind, Units, WidgetId,
+    COL_W_MAX, COL_W_MIN, DEFAULT_PRIMARY, PRIMARY_SWATCHES, RADAR_RANGE_MAX, RADAR_RANGE_MIN,
+    SYS_PRESETS, SYS_PROC_MAX,
 };
 use crate::render::{fill_rect, icon, measure, text, Fonts};
 
@@ -83,24 +84,28 @@ struct Pal {
 }
 
 impl Pal {
-    fn dark() -> Self {
+    fn dark(rgb: [u8; 3]) -> Self {
+        let [r, g, b] = rgb;
         Self {
             bg: Color::from_rgba8(24, 25, 29, 255),
             side: Color::from_rgba8(8, 8, 10, 255),
-            tab_on: Color::from_rgba8(255, 140, 36, 28),
+            tab_on: Color::from_rgba8(r, g, b, 28),
             text: Color::from_rgba8(244, 244, 247, 255),
             muted: Color::from_rgba8(140, 140, 148, 255),
             dim: Color::from_rgba8(132, 132, 140, 255),
             row_line: Color::from_rgba8(255, 255, 255, 12),
             chip_hover: Color::from_rgba8(46, 47, 54, 255),
-            accent: Color::from_rgba8(255, 140, 36, 255),
-            accent_dim: Color::from_rgba8(255, 140, 36, 36),
+            accent: Color::from_rgba8(r, g, b, 255),
+            accent_dim: Color::from_rgba8(r, g, b, 36),
             knob: Color::from_rgba8(250, 250, 252, 255),
             track_off: Color::from_rgba8(112, 112, 120, 255),
             btn_bg: Color::from_rgba8(32, 32, 36, 255),
             btn_border: Color::from_rgba8(255, 255, 255, 22),
             panel: Color::from_rgba8(34, 35, 41, 255),
-            ink: Color::from_rgba8(20, 12, 4, 255),
+            ink: {
+                let [ir, ig, ib] = crate::config::ink_on_rgb(rgb);
+                Color::from_rgba8(ir, ig, ib, 255)
+            },
         }
     }
 
@@ -165,15 +170,17 @@ fn high_contrast_on() -> bool {
 }
 
 thread_local! {
-    static PAL: std::cell::Cell<Pal> = std::cell::Cell::new(Pal::dark());
+    static PAL: std::cell::Cell<Pal> = std::cell::Cell::new(Pal::dark(DEFAULT_PRIMARY));
 }
 
 fn refresh_palette() {
+    let rgb = with_config(|c| c.primary);
+    crate::config::set_accent_rgb(rgb);
     PAL.with(|p| {
         p.set(if high_contrast_on() {
             Pal::high_contrast()
         } else {
-            Pal::dark()
+            Pal::dark(rgb)
         });
     });
 }
@@ -224,6 +231,27 @@ fn chip_hover() -> Color {
 
 fn accent() -> Color {
     pal().accent
+}
+
+fn accent_a(a: u8) -> Color {
+    let c = accent();
+    Color::from_rgba8(
+        (c.red() * 255.0) as u8,
+        (c.green() * 255.0) as u8,
+        (c.blue() * 255.0) as u8,
+        a,
+    )
+}
+
+fn accent_hot() -> Color {
+    let c = accent();
+    let t = 0.12;
+    Color::from_rgba8(
+        ((c.red() * (1.0 - t) + t) * 255.0) as u8,
+        ((c.green() * (1.0 - t) + t) * 255.0) as u8,
+        ((c.blue() * (1.0 - t) + t) * 255.0) as u8,
+        255,
+    )
 }
 
 fn accent_dim() -> Color {
@@ -564,6 +592,12 @@ pub(crate) enum Hit {
     QuitApp,
     Uninstall,
     GameFolder,
+    PrimaryOpen,
+    PrimaryPanel,
+    PrimarySv,
+    PrimaryHue,
+    PrimarySwatch(u8),
+    PrimaryReset,
     FbRate,
     FbBug,
     FbFeature,
@@ -610,6 +644,7 @@ pub(crate) enum Drop {
     PresetCopy,
     AnalyzeCompare,
     AnalyzeLap,
+    PrimaryColor,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -644,6 +679,7 @@ struct SettingsUi {
     open_drop: Option<Drop>,
     drag: Option<ColDrag>,
     slide: Option<SlideDrag>,
+    sv_drag: Option<(f32, f32, f32, f32)>,
     scroll: f32,
     content_h: f32,
     /// Max pane scroll from the last draw. Wheel uses this so it cannot overshoot
@@ -699,6 +735,8 @@ struct PendingDrop {
 
 thread_local! {
     static DROP_MENUS: RefCell<Vec<PendingDrop>> = RefCell::new(Vec::new());
+    static COLOR_PICKER_ANCHOR: std::cell::Cell<Option<(f32, f32, f32, f32)>> =
+        const { std::cell::Cell::new(None) };
 }
 
 pub(crate) fn queue_drop_menu(
@@ -745,6 +783,7 @@ pub fn attach(host: HWND) {
         open_drop: None,
         drag: None,
         slide: None,
+        sv_drag: None,
         scroll: 0.0,
         content_h: 0.0,
         scroll_max: 0.0,
@@ -954,6 +993,7 @@ pub fn dump_whats_new(path: &std::path::Path) -> Result<crate::changelog::Notes,
         open_drop: None,
         drag: None,
         slide: None,
+        sv_drag: None,
         scroll: 0.0,
         content_h: 0.0,
         scroll_max: 0.0,
@@ -1064,6 +1104,7 @@ fn paint_review_tab(
         open_drop: None,
         drag: None,
         slide: None,
+        sv_drag: None,
         scroll: 0.0,
         content_h: 0.0,
         scroll_max: 0.0,
@@ -1451,6 +1492,9 @@ fn press(p: (f32, f32)) {
                 let _ = SetCapture(host);
             }
         }
+        Some(Hit::PrimarySv) => {
+            start_sv_drag(p, host);
+        }
         Some(Hit::StDrag(i)) => start_drag(DragKind::St, i, host),
         Some(Hit::RelDrag(i)) => start_drag(DragKind::Rel, i, host),
         Some(hit) if is_slider(hit) => {
@@ -1515,6 +1559,7 @@ fn is_slider(hit: Hit) -> bool {
             | Hit::StW(_)
             | Hit::RelW(_)
             | Hit::Font(_)
+            | Hit::PrimaryHue
     )
 }
 
@@ -1540,12 +1585,15 @@ fn slide_range(hit: Hit) -> (i32, i32) {
         }
         Hit::Font(_) => (70, 160),
         Hit::RadarRange => (RADAR_RANGE_MIN, RADAR_RANGE_MAX),
+        Hit::PrimaryHue => (0, 360),
         _ => (0, 100),
     }
 }
 
 fn start_slide(hit: Hit, mx: f32, host: HWND) {
-    close_drop();
+    if hit != Hit::PrimaryHue {
+        close_drop();
+    }
     let box_ = {
         let ui = UI.lock().unwrap();
         ui.as_ref().and_then(|u| {
@@ -1574,6 +1622,46 @@ fn start_slide(hit: Hit, mx: f32, host: HWND) {
     unsafe {
         let _ = SetCapture(host);
     }
+}
+
+fn start_sv_drag(p: (f32, f32), host: HWND) {
+    let box_ = {
+        let ui = UI.lock().unwrap();
+        ui.as_ref().and_then(|u| {
+            u.hits
+                .iter()
+                .rev()
+                .find(|h| h.id == Hit::PrimarySv)
+                .copied()
+        })
+    };
+    let Some(hb) = box_ else {
+        return;
+    };
+    if let Some(ui) = UI.lock().unwrap().as_mut() {
+        ui.sv_drag = Some((hb.x, hb.y, hb.w, hb.h));
+    }
+    apply_sv(p.0, p.1, hb.x, hb.y, hb.w, hb.h);
+    unsafe {
+        let _ = SetCapture(host);
+    }
+}
+
+fn apply_sv(mx: f32, my: f32, x: f32, y: f32, w: f32, h: f32) {
+    let s = if w <= 1.0 {
+        0.0
+    } else {
+        ((mx - x) / w).clamp(0.0, 1.0)
+    };
+    let v = if h <= 1.0 {
+        1.0
+    } else {
+        (1.0 - (my - y) / h).clamp(0.0, 1.0)
+    };
+    update_config(|c| {
+        let (hue, _, _) = rgb_to_hsv(c.primary);
+        c.primary = hsv_to_rgb(hue, s, v);
+    });
 }
 
 fn apply_slide(hit: Hit, mx: f32, x: f32, w: f32, min: i32, max: i32) {
@@ -1614,6 +1702,10 @@ fn apply_slide(hit: Hit, mx: f32, x: f32, w: f32, min: i32, max: i32) {
             }
         }
         Hit::Font(id) => c.set_font_pct(id, v),
+        Hit::PrimaryHue => {
+            let (_, s, val) = rgb_to_hsv(c.primary);
+            c.primary = hsv_to_rgb(v as f32, s, val);
+        }
         _ => {}
     });
 }
@@ -1622,6 +1714,10 @@ fn update_drag(p: (f32, f32)) {
     {
         let mut ui = UI.lock().unwrap();
         if let Some(ui) = ui.as_mut() {
+            if let Some((x, y, w, h)) = ui.sv_drag {
+                apply_sv(p.0, p.1, x, y, w, h);
+                return;
+            }
             if ui.analyze_scrubbing {
                 if let Some(h) = ui.hits.iter().rev().find(|h| h.id == Hit::AnalyzeScrub) {
                     ui.analyze_scrub = ((p.0 - h.x) / h.w.max(1.0)).clamp(0.0, 1.0);
@@ -1686,6 +1782,7 @@ fn release(p: (f32, f32)) {
     if let Some(ui) = UI.lock().unwrap().as_mut() {
         ui.analyze_scrubbing = false;
         ui.map_drag = None;
+        ui.sv_drag = None;
     }
     let sliding = {
         let mut ui = UI.lock().unwrap();
@@ -1780,6 +1877,8 @@ fn is_focusable(hit: Hit) -> bool {
             | Hit::WhatsNewPanel
             | Hit::ReplyScrim
             | Hit::ReplyPanel
+            | Hit::PrimaryPanel
+            | Hit::PrimarySv
     )
 }
 
@@ -1896,6 +1995,11 @@ fn hit_label(hit: Hit) -> String {
         Hit::Snap(_, align) => snap_align_label(align).into(),
         Hit::StW(_) | Hit::RelW(_) => "Column width".into(),
         Hit::FontOpen => "Font".into(),
+        Hit::PrimaryOpen | Hit::PrimaryPanel => "Primary color".into(),
+        Hit::PrimarySv => "Saturation and brightness".into(),
+        Hit::PrimaryHue => "Hue".into(),
+        Hit::PrimarySwatch(_) => "Color swatch".into(),
+        Hit::PrimaryReset => "Reset primary color".into(),
         Hit::UnitsOpen(kind) => kind.label().into(),
         Hit::UnitsPick(_, units) => units.label().into(),
         Hit::SettingsKeyOpen => "Settings key".into(),
@@ -2207,6 +2311,7 @@ fn nudge_slider(hit: Hit, delta: i32) {
             .map(|f| f.width(c))
             .unwrap_or(min),
         Hit::Font(id) => c.font_pct(id),
+        Hit::PrimaryHue => rgb_to_hsv(c.primary).0.round() as i32,
         _ => min,
     });
     let v = (v + delta).clamp(min, max);
@@ -2241,6 +2346,10 @@ fn nudge_slider(hit: Hit, delta: i32) {
             }
         }
         Hit::Font(id) => c.set_font_pct(id, v),
+        Hit::PrimaryHue => {
+            let (_, s, val) = rgb_to_hsv(c.primary);
+            c.primary = hsv_to_rgb(v as f32, s, val);
+        }
         _ => {}
     });
 }
@@ -2387,6 +2496,7 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
     };
     let mut hits = Vec::new();
     DROP_MENUS.with(|menus| menus.borrow_mut().clear());
+    COLOR_PICKER_ANCHOR.with(|a| a.set(None));
 
     let top_y = banner_h;
     let clip_top = top_y + TOP_H;
@@ -2604,6 +2714,7 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
         paint_focus(px, &hits, focus);
     } else {
         paint_drop_menus(px, fonts, hover, &mut hits);
+        paint_color_picker(px, fonts, hover, &mut hits, cfg.primary);
         paint_focus(px, &hits, focus);
         paint_snap_tooltip(px, fonts, &cfg, hover, focus, &hits, w, h, clip_top);
     }
@@ -3231,7 +3342,7 @@ fn preset_chip(
             size,
             x + 12.0,
             y + 6.0,
-            Color::from_rgba8(20, 12, 4, 255),
+            ink(),
             false,
         );
     } else {
@@ -3287,7 +3398,7 @@ fn mode_tab(
             size,
             x + 14.0,
             y + 8.0,
-            Color::from_rgba8(20, 12, 4, 255),
+            ink(),
             false,
         );
     } else {
@@ -3336,7 +3447,7 @@ fn draw_update_banner(
         fill_rect(px, r, accent());
     }
     if let Some(r) = Rect::from_xywh(0.0, h, w, 1.0) {
-        fill_rect(px, r, Color::from_rgba8(255, 140, 36, 50));
+        fill_rect(px, r, accent_a(50));
     }
     hits.push(HitBox {
         id: Hit::UpdateBanner,
@@ -3972,7 +4083,7 @@ fn action_btn(
     });
     if primary {
         let fill = if hover == Some(hit) {
-            Color::from_rgba8(255, 156, 56, 255)
+            accent_hot()
         } else {
             accent()
         };
@@ -3984,7 +4095,7 @@ fn action_btn(
             13.0,
             x + w * 0.5,
             y + 8.0,
-            Color::from_rgba8(20, 12, 4, 255),
+            ink(),
             true,
         );
     } else {
@@ -5156,6 +5267,143 @@ fn dropdown_row(
     y + h + ROW_GAP
 }
 
+fn color_row(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    x: f32,
+    y: f32,
+    w: f32,
+    rgb: [u8; 3],
+    open: bool,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+) -> f32 {
+    let h = ROW_H;
+    hits.push(HitBox {
+        id: Hit::PrimaryOpen,
+        x,
+        y,
+        w,
+        h,
+    });
+    row_card(
+        px,
+        x,
+        y,
+        w,
+        h,
+        open || hover == Some(Hit::PrimaryOpen) || hover == Some(Hit::PrimaryReset),
+    );
+    text(
+        px,
+        fonts,
+        "Primary color",
+        13.0,
+        x + 16.0,
+        y + 16.0,
+        text_col(),
+        false,
+    );
+    let hex = format_primary_color(rgb);
+    let label_w = measure(fonts, "Primary color", 13.0);
+    let bh = 28.0;
+    let by = y + 10.0;
+    let reset_label = "Reset";
+    let rw = (measure(fonts, reset_label, 12.0) + 20.0).max(56.0);
+    let gap = 8.0;
+    let label_end = x + 16.0 + label_w + 12.0;
+    let right = x + w - 14.0;
+    let bw = (right - label_end - rw - gap).clamp(108.0, 160.0);
+    let bx = right - bw;
+    let rx = bx - gap - rw;
+    hits.push(HitBox {
+        id: Hit::PrimaryOpen,
+        x: bx,
+        y: by,
+        w: bw,
+        h: bh,
+    });
+    let hot = open || hover == Some(Hit::PrimaryOpen);
+    outlined(
+        px,
+        bx,
+        by,
+        bw,
+        bh,
+        7.0,
+        if hot { chip_hover() } else { bg() },
+    );
+    fill_round(
+        px,
+        bx + 8.0,
+        by + 5.0,
+        18.0,
+        18.0,
+        5.0,
+        Color::from_rgba8(rgb[0], rgb[1], rgb[2], 255),
+    );
+    if let Some(path) = round_path(bx + 8.0, by + 5.0, 18.0, 18.0, 5.0) {
+        let mut p = Paint::default();
+        p.set_color(Color::from_rgba8(255, 255, 255, 40));
+        p.anti_alias = true;
+        px.stroke_path(
+            &path,
+            &p,
+            &Stroke {
+                width: 1.0,
+                ..Stroke::default()
+            },
+            Transform::identity(),
+            None,
+        );
+    }
+    text(
+        px,
+        fonts,
+        &hex,
+        12.0,
+        bx + 32.0,
+        by + 6.0,
+        text_col(),
+        false,
+    );
+    chevron(px, bx + bw - 14.0, by + bh * 0.5, open, muted());
+    hits.push(HitBox {
+        id: Hit::PrimaryReset,
+        x: rx,
+        y: by,
+        w: rw,
+        h: bh,
+    });
+    outlined(
+        px,
+        rx,
+        by,
+        rw,
+        bh,
+        7.0,
+        if hover == Some(Hit::PrimaryReset) {
+            chip_hover()
+        } else {
+            bg()
+        },
+    );
+    text(
+        px,
+        fonts,
+        reset_label,
+        12.0,
+        rx + 10.0,
+        by + 6.0,
+        text_col(),
+        false,
+    );
+    if open {
+        COLOR_PICKER_ANCHOR.with(|a| a.set(Some((bx, by, bw, bh))));
+    }
+    y + h + ROW_GAP
+}
+
 fn sorted_drop_options(options: &[(Hit, &'static str, bool)]) -> Vec<(Hit, String, bool)> {
     let mut options: Vec<(Hit, String, bool)> = options
         .iter()
@@ -5294,6 +5542,274 @@ fn paint_drop_menus(px: &mut Pixmap, fonts: &Fonts, hover: Option<Hit>, hits: &m
     if let Some(ui) = UI.lock().unwrap().as_mut() {
         ui.drop_scroll = drop_scroll;
         ui.drop_menu = drop_menu;
+    }
+}
+
+fn paint_color_picker(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+    rgb: [u8; 3],
+) {
+    let Some((bx, by, bw, bh)) = COLOR_PICKER_ANCHOR.with(|a| a.get()) else {
+        return;
+    };
+    let (hue, sat, val) = rgb_to_hsv(rgb);
+    let pad = 12.0;
+    let picker_w = 240.0;
+    let sw = 22.0;
+    let sv_h = 132.0;
+    let hue_h = 16.0;
+    let foot_h = 22.0;
+    let show_reset = rgb != DEFAULT_PRIMARY;
+    let content_h = pad + sw + 10.0 + sv_h + 10.0 + hue_h + 10.0 + foot_h + pad;
+    let win_w = px.width() as f32;
+    let win_h = px.height() as f32;
+    let mut mx = bx + bw - picker_w;
+    if mx < 16.0 {
+        mx = 16.0;
+    }
+    if mx + picker_w > win_w - 10.0 {
+        mx = (win_w - 10.0 - picker_w).max(10.0);
+    }
+    let mut my = by + bh + 6.0;
+    if my + content_h > win_h - 10.0 {
+        my = (by - 6.0 - content_h).max(10.0);
+    }
+
+    hits.push(HitBox {
+        id: Hit::PrimaryPanel,
+        x: mx,
+        y: my,
+        w: picker_w,
+        h: content_h,
+    });
+    fill_round(
+        px,
+        mx - 1.0,
+        my - 1.0,
+        picker_w + 2.0,
+        content_h + 2.0,
+        10.0,
+        Color::from_rgba8(0, 0, 0, 90),
+    );
+    outlined(
+        px,
+        mx,
+        my,
+        picker_w,
+        content_h,
+        9.0,
+        Color::from_rgba8(24, 24, 28, 255),
+    );
+
+    let inner_x = mx + pad;
+    let inner_w = picker_w - pad * 2.0;
+    let mut cy = my + pad;
+    let n = PRIMARY_SWATCHES.len();
+    let gap = ((inner_w - sw * n as f32) / (n as f32 - 1.0)).max(4.0);
+    for (i, chip) in PRIMARY_SWATCHES.iter().copied().enumerate() {
+        let sx = inner_x + i as f32 * (sw + gap);
+        let hit = Hit::PrimarySwatch(i as u8);
+        hits.push(HitBox {
+            id: hit,
+            x: sx,
+            y: cy,
+            w: sw,
+            h: sw,
+        });
+        fill_round(
+            px,
+            sx,
+            cy,
+            sw,
+            sw,
+            6.0,
+            Color::from_rgba8(chip[0], chip[1], chip[2], 255),
+        );
+        if chip == rgb || hover == Some(hit) {
+            if let Some(path) = round_path(sx + 1.0, cy + 1.0, sw - 2.0, sw - 2.0, 5.0) {
+                let mut p = Paint::default();
+                p.set_color(Color::from_rgba8(248, 248, 250, 220));
+                p.anti_alias = true;
+                px.stroke_path(
+                    &path,
+                    &p,
+                    &Stroke {
+                        width: 2.0,
+                        ..Stroke::default()
+                    },
+                    Transform::identity(),
+                    None,
+                );
+            }
+        }
+    }
+
+    cy += sw + 10.0;
+    let sv_x = inner_x;
+    let sv_y = cy;
+    hits.push(HitBox {
+        id: Hit::PrimarySv,
+        x: sv_x,
+        y: sv_y,
+        w: inner_w,
+        h: sv_h,
+    });
+    paint_sv_square(px, sv_x, sv_y, inner_w, sv_h, hue);
+    let cx = sv_x + sat * inner_w;
+    let cy_sv = sv_y + (1.0 - val) * sv_h;
+    fill_circle(px, cx, cy_sv, 6.0, Color::from_rgba8(0, 0, 0, 90));
+    fill_circle(px, cx, cy_sv, 5.0, Color::from_rgba8(248, 248, 250, 255));
+    fill_circle(
+        px,
+        cx,
+        cy_sv,
+        3.2,
+        Color::from_rgba8(rgb[0], rgb[1], rgb[2], 255),
+    );
+
+    cy += sv_h + 10.0;
+    hits.push(HitBox {
+        id: Hit::PrimaryHue,
+        x: inner_x,
+        y: cy,
+        w: inner_w,
+        h: hue_h,
+    });
+    paint_hue_bar(px, inner_x, cy, inner_w, hue_h);
+    let t = (hue / 360.0).clamp(0.0, 1.0);
+    let kx = inner_x + inner_w * t;
+    let kr = if hover == Some(Hit::PrimaryHue) {
+        7.0
+    } else {
+        6.0
+    };
+    fill_circle(
+        px,
+        kx,
+        cy + hue_h * 0.5 + 1.0,
+        kr + 1.0,
+        Color::from_rgba8(0, 0, 0, 70),
+    );
+    fill_circle(px, kx, cy + hue_h * 0.5, kr, knob());
+
+    cy += hue_h + 10.0;
+    text(
+        px,
+        fonts,
+        &format_primary_color(rgb),
+        12.0,
+        inner_x,
+        cy + 2.0,
+        muted(),
+        false,
+    );
+    if show_reset {
+        let label = "Reset";
+        let rw = measure(fonts, label, 12.0) + 16.0;
+        let rx = mx + picker_w - pad - rw;
+        hits.push(HitBox {
+            id: Hit::PrimaryReset,
+            x: rx,
+            y: cy,
+            w: rw,
+            h: foot_h,
+        });
+        let hot = hover == Some(Hit::PrimaryReset);
+        fill_round(
+            px,
+            rx,
+            cy,
+            rw,
+            foot_h,
+            6.0,
+            if hot {
+                chip_hover()
+            } else {
+                Color::from_rgba8(255, 255, 255, 10)
+            },
+        );
+        text(
+            px,
+            fonts,
+            label,
+            12.0,
+            rx + 8.0,
+            cy + 4.0,
+            text_col(),
+            false,
+        );
+    }
+
+    if let Some(ui) = UI.lock().unwrap().as_mut() {
+        ui.drop_menu = Some((mx, my, picker_w, content_h, content_h));
+    }
+}
+
+fn paint_sv_square(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, hue: f32) {
+    let hue_c = {
+        let [r, g, b] = hsv_to_rgb(hue, 1.0, 1.0);
+        Color::from_rgba8(r, g, b, 255)
+    };
+    let Some(path) = round_path(x, y, w, h, 7.0) else {
+        return;
+    };
+    if let Some(shader) = LinearGradient::new(
+        SkPoint::from_xy(x, y),
+        SkPoint::from_xy(x + w, y),
+        vec![
+            GradientStop::new(0.0, Color::from_rgba8(255, 255, 255, 255)),
+            GradientStop::new(1.0, hue_c),
+        ],
+        SpreadMode::Pad,
+        Transform::identity(),
+    ) {
+        let mut paint = Paint::default();
+        paint.shader = shader;
+        paint.anti_alias = true;
+        px.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+    }
+    if let Some(shader) = LinearGradient::new(
+        SkPoint::from_xy(x, y),
+        SkPoint::from_xy(x, y + h),
+        vec![
+            GradientStop::new(0.0, Color::from_rgba8(0, 0, 0, 0)),
+            GradientStop::new(1.0, Color::from_rgba8(0, 0, 0, 255)),
+        ],
+        SpreadMode::Pad,
+        Transform::identity(),
+    ) {
+        let mut paint = Paint::default();
+        paint.shader = shader;
+        paint.anti_alias = true;
+        px.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+    }
+}
+
+fn paint_hue_bar(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32) {
+    let stops: Vec<GradientStop> = [0.0, 60.0, 120.0, 180.0, 240.0, 300.0, 360.0]
+        .into_iter()
+        .map(|deg| {
+            let [r, g, b] = hsv_to_rgb(deg, 1.0, 1.0);
+            GradientStop::new(deg / 360.0, Color::from_rgba8(r, g, b, 255))
+        })
+        .collect();
+    let Some(path) = round_path(x, y, w, h, h * 0.5) else {
+        return;
+    };
+    if let Some(shader) = LinearGradient::new(
+        SkPoint::from_xy(x, y),
+        SkPoint::from_xy(x + w, y),
+        stops,
+        SpreadMode::Pad,
+        Transform::identity(),
+    ) {
+        let mut paint = Paint::default();
+        paint.shader = shader;
+        paint.anti_alias = true;
+        px.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
     }
 }
 

@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::fs;
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 use std::path::{Path, PathBuf};
@@ -15,6 +16,108 @@ pub const NAME_W_MAX: i32 = 400;
 pub const RADAR_RANGE_MIN: i32 = 6;
 pub const RADAR_RANGE_MAX: i32 = 30;
 pub const RADAR_RANGE_DEFAULT: i32 = 12;
+
+/// Holeshot orange. Default primary for HUD, settings plaques, and Motos.
+pub const DEFAULT_PRIMARY: [u8; 3] = [255, 148, 48];
+
+/// Preset chips in Settings → Look → Primary color. First entry is the default.
+pub const PRIMARY_SWATCHES: [[u8; 3]; 7] = [
+    DEFAULT_PRIMARY,
+    [239, 68, 68],
+    [234, 179, 8],
+    [74, 222, 128],
+    [34, 211, 238],
+    [167, 139, 250],
+    [232, 121, 249],
+];
+
+thread_local! {
+    static ACCENT_RGB: Cell<[u8; 3]> = const { Cell::new(DEFAULT_PRIMARY) };
+}
+
+pub fn set_accent_rgb(rgb: [u8; 3]) {
+    ACCENT_RGB.with(|c| c.set(rgb));
+}
+
+pub fn accent_rgb() -> [u8; 3] {
+    ACCENT_RGB.with(|c| c.get())
+}
+
+pub fn format_primary_color(rgb: [u8; 3]) -> String {
+    format!("#{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2])
+}
+
+pub fn parse_primary_color(s: &str) -> Option<[u8; 3]> {
+    let hex = s.trim().strip_prefix('#').unwrap_or(s.trim());
+    if hex.len() != 6 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    Some([
+        u8::from_str_radix(&hex[0..2], 16).ok()?,
+        u8::from_str_radix(&hex[2..4], 16).ok()?,
+        u8::from_str_radix(&hex[4..6], 16).ok()?,
+    ])
+}
+
+/// Hue 0..360, saturation 0..1, value 0..1.
+pub fn rgb_to_hsv(rgb: [u8; 3]) -> (f32, f32, f32) {
+    let r = rgb[0] as f32 / 255.0;
+    let g = rgb[1] as f32 / 255.0;
+    let b = rgb[2] as f32 / 255.0;
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let d = max - min;
+    let h = if d < 1e-6 {
+        0.0
+    } else if (max - r).abs() < 1e-6 {
+        60.0 * ((g - b) / d)
+    } else if (max - g).abs() < 1e-6 {
+        60.0 * ((b - r) / d + 2.0)
+    } else {
+        60.0 * ((r - g) / d + 4.0)
+    };
+    let h = if h < 0.0 { h + 360.0 } else { h };
+    let s = if max < 1e-6 { 0.0 } else { d / max };
+    (h, s, max)
+}
+
+pub fn hsv_to_rgb(h: f32, s: f32, v: f32) -> [u8; 3] {
+    let h = h.rem_euclid(360.0);
+    let s = s.clamp(0.0, 1.0);
+    let v = v.clamp(0.0, 1.0);
+    let c = v * s;
+    let x = c * (1.0 - ((h / 60.0).rem_euclid(2.0) - 1.0).abs());
+    let m = v - c;
+    let (r, g, b) = if h < 60.0 {
+        (c, x, 0.0)
+    } else if h < 120.0 {
+        (x, c, 0.0)
+    } else if h < 180.0 {
+        (0.0, c, x)
+    } else if h < 240.0 {
+        (0.0, x, c)
+    } else if h < 300.0 {
+        (x, 0.0, c)
+    } else {
+        (c, 0.0, x)
+    };
+    [
+        ((r + m) * 255.0).round().clamp(0.0, 255.0) as u8,
+        ((g + m) * 255.0).round().clamp(0.0, 255.0) as u8,
+        ((b + m) * 255.0).round().clamp(0.0, 255.0) as u8,
+    ]
+}
+
+pub fn ink_on_rgb(rgb: [u8; 3]) -> [u8; 3] {
+    let lum = 0.2126 * (rgb[0] as f32 / 255.0)
+        + 0.7152 * (rgb[1] as f32 / 255.0)
+        + 0.0722 * (rgb[2] as f32 / 255.0);
+    if lum > 0.62 {
+        [16, 16, 18]
+    } else {
+        [248, 248, 250]
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum FontFamily {
@@ -1971,6 +2074,8 @@ pub struct HudConfig {
     /// Overlay still saves this key. The plugin never writes the ini.
     pub ingame_hud: bool,
     pub font_family: FontFamily,
+    /// HUD / settings / Motos accent. Default Holeshot orange.
+    pub primary: [u8; 3],
     pub units: UnitPrefs,
     pub start_with_windows: bool,
     pub minimize_on_close: bool,
@@ -2002,6 +2107,7 @@ impl HudConfig {
             review: false,
             ingame_hud: false,
             font_family: FontFamily::Exo2,
+            primary: DEFAULT_PRIMARY,
             units: UnitPrefs::all(Units::Metric),
             start_with_windows: false,
             minimize_on_close: false,
@@ -2195,12 +2301,13 @@ impl HudConfig {
         let body = format!(
             "# Holeshot HUD layout (normalized 0..1, origin top-left)\n\
              [App]\n\
-             font_family={}\nunits={}\nunits_speed={}\nunits_liquids={}\nunits_temperature={}\n\
+             font_family={}\nprimary_color={}\nunits={}\nunits_speed={}\nunits_liquids={}\nunits_temperature={}\n\
              settings_key={}\nsettings_x={}\nsettings_y={}\nstart_with_windows={}\nminimize_on_close={}\n\
              close_with_game={}\nopen_with_game={}\nauto_update_on_launch={}\nwhats_new_seen={}\n\
              first_install_version={}\nexperimental={}\nreview={}\ningame_hud={}\nstance_bind={}\nactive_preset={}\n\
              \n[Practice]\n{}\n\n[Warmup]\n{}\n\n[Race]\n{}\n\n[Spectate]\n{}\n",
             self.font_family.key(),
+            format_primary_color(self.primary),
             self.units.speed.key(),
             self.units.speed.key(),
             self.units.liquids.key(),
@@ -2596,6 +2703,11 @@ fn apply_app_key(
         "review" => cfg.review = b,
         "ingame_hud" => cfg.ingame_hud = b,
         "font_family" => cfg.font_family = FontFamily::parse(val),
+        "primary_color" => {
+            if let Some(rgb) = parse_primary_color(val) {
+                cfg.primary = rgb;
+            }
+        }
         "units" => {
             let u = Units::parse(val);
             for kind in UnitKind::ALL {

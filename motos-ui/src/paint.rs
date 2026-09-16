@@ -48,7 +48,13 @@ fn behind_red() -> Color {
 }
 
 fn you_row() -> Color {
-    Color::from_rgba8(196, 132, 36, 92)
+    let [r, g, b] = mxbo_hud::config::accent_rgb();
+    Color::from_rgba8(
+        (r as f32 * 0.77) as u8,
+        (g as f32 * 0.77) as u8,
+        (b as f32 * 0.77) as u8,
+        92,
+    )
 }
 
 fn best_violet() -> Color {
@@ -3243,7 +3249,7 @@ pub fn draw_pending_drop_menus(px: &mut Pixmap, fonts: &Fonts) {
         for (_hit, label, on) in &menu.options {
             let row_h = 28.0;
             let fill = if *on {
-                Color::from_rgba8(232, 106, 21, 40)
+                accent_a(40)
             } else {
                 Color::from_rgba8(36, 36, 40, 255)
             };

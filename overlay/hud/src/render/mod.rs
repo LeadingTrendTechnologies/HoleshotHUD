@@ -5,8 +5,8 @@ use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use crate::config::{
-    BoardField, DashField, DotLabel, FontFamily, HudConfig, LeanStyle, RelField, StField,
-    StanceStyle, TableText, WidgetId, SYS_PROC_MAX,
+    accent_rgb, BoardField, DashField, DotLabel, FontFamily, HudConfig, LeanStyle, RelField,
+    StField, StanceStyle, TableText, WidgetId, SYS_PROC_MAX,
 };
 pub use crate::race_store::{clock_sample, ClockSample};
 use crate::shm::{cstr, Snapshot, MAX_STANDINGS};
@@ -68,7 +68,13 @@ pub(crate) use telemetry::*;
 pub(crate) use ticker::*;
 
 fn accent() -> Color {
-    Color::from_rgba8(255, 148, 48, 255)
+    let [r, g, b] = accent_rgb();
+    Color::from_rgba8(r, g, b, 255)
+}
+
+fn accent_a(a: u8) -> Color {
+    let [r, g, b] = accent_rgb();
+    Color::from_rgba8(r, g, b, a)
 }
 
 fn text_col() -> Color {
@@ -92,7 +98,7 @@ fn fill_col() -> Color {
 }
 
 fn you_col() -> Color {
-    Color::from_rgba8(255, 148, 48, 255)
+    accent()
 }
 
 fn other_col() -> Color {
@@ -443,6 +449,7 @@ pub fn draw(
     plugin_hint: bool,
     settings_hint: bool,
 ) {
+    crate::config::set_accent_rgb(cfg.primary);
     clear_click_riders();
     px.fill(if settings_hint {
         Color::from_rgba8(0, 0, 0, 1)
@@ -668,7 +675,7 @@ pub fn draw_live_mark(px: &mut Pixmap, w: u32, _h: u32, hot: bool) -> (f32, f32,
     let r = size * 10.0 / 48.0;
     if hot {
         if let Some(glow) = round_rect_path(x - 3.0, y - 3.0, size + 6.0, size + 6.0, r + 3.0) {
-            fill_path(px, &glow, Color::from_rgba8(255, 148, 48, 90));
+            fill_path(px, &glow, accent_a(90));
         }
     }
     let scale = size / icon.width().max(1) as f32;
@@ -862,7 +869,7 @@ fn layout_box(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, ew_only: bool) {
     pb.line_to(x, y + h);
     pb.close();
     if let Some(path) = pb.finish() {
-        stroke_path(px, &path, Color::from_rgba8(255, 148, 48, 200), 1.4);
+        stroke_path(px, &path, accent_a(200), 1.4);
     }
     let handles: &[(f32, f32)] = if ew_only {
         &[(x, y + h * 0.5), (x + w, y + h * 0.5)]
@@ -883,7 +890,7 @@ fn layout_box(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, ew_only: bool) {
             fill_rect(px, r, Color::from_rgba8(8, 8, 10, 230));
         }
         if let Some(r) = rr(hx - 4.0, hy - 4.0, 8.0, 8.0) {
-            fill_rect(px, r, Color::from_rgba8(255, 148, 48, 255));
+            fill_rect(px, r, accent());
         }
     }
 }
@@ -1273,7 +1280,13 @@ fn scale_a(opacity_pct: i32) -> u8 {
 }
 
 fn you_row_bg(opacity_pct: i32) -> Color {
-    Color::from_rgba8(196, 132, 36, scale_a(opacity_pct))
+    let [r, g, b] = accent_rgb();
+    Color::from_rgba8(
+        (r as f32 * 0.77) as u8,
+        (g as f32 * 0.77) as u8,
+        (b as f32 * 0.77) as u8,
+        scale_a(opacity_pct),
+    )
 }
 
 /// Extra black only reads while the game still shows through. Opaque night-ink

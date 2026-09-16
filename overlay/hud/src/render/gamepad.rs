@@ -149,10 +149,10 @@ pub(crate) fn xbox_gamepad_layout() -> GamepadLayout {
 }
 
 pub(crate) fn draw_gamepad(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f32, sh: f32) {
-    // THESIS: a live DualShock over the dirt. Orange is the press. Sticks leave their wells. Triggers fill with squeeze. Bumpers light when held.
-    // OWN-WORLD: Broadcast Booth Glass — DualShock drawing, no night-ink plaque by default, Holeshot orange live, Exo 2 ExtraBold Italic labels.
+    // THESIS: a live DualShock over the dirt. Primary is the press. Sticks leave their wells. Triggers fill with squeeze. Bumpers light when held.
+    // OWN-WORLD: Broadcast Booth Glass — DualShock drawing, no night-ink plaque by default, Look primary live, Exo 2 ExtraBold Italic labels.
     // STORY: glance which inputs are live without looking at the pad. No pad is a small No controller pill.
-    // FIRST VIEWPORT: DualShock 4 keeps its proportions. L2/R2 are trigger wings on the silhouette (analog orange from the bottom). L1/R1 are DualShock shoulder bars. Cross/A orange. Left stick translated.
+    // FIRST VIEWPORT: DualShock 4 keeps its proportions. L2/R2 are trigger wings on the silhouette (analog fill from the bottom). L1/R1 are DualShock shoulder bars. Cross/A primary. Left stick translated.
     // FORM: Glass. Seed: user-locked gamepad-glass.png plus analog triggers and bumpers. Panel opacity 0: just the pad.
     // FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
     let r = cfg[WidgetId::Gamepad].rect;
@@ -729,7 +729,7 @@ pub(crate) fn shade_dpad(
     }
 }
 
-/// Orange fill out to a circular outline. Cream glyphs and the outline stay 1px — not thickened.
+/// Accent fill out to a circular outline. Cream glyphs and the outline stay 1px — not thickened.
 pub(crate) fn shade_press_disc(
     px: &mut Pixmap,
     art: &Pixmap,
@@ -772,18 +772,19 @@ pub(crate) fn shade_press_disc(
             if da < 8 {
                 continue;
             }
-            // Leave the pad's glyphs and outlines. Orange only the dark interior.
+            // Leave the pad's glyphs and outlines. Accent only the dark interior.
             if lum > 92 {
                 continue;
             }
-            if let Some(p) = paint_keep_alpha(255.0, 148.0, 48.0, da) {
+            let [r, g, b] = accent_rgb();
+            if let Some(p) = paint_keep_alpha(r as f32, g as f32, b as f32, da) {
                 dest[i] = p;
             }
         }
     }
 }
 
-/// Orange fill that follows a DualShock control in art space.
+/// Accent fill that follows a DualShock control in art space.
 /// `squeeze` 0…1 fills from the curved bottom of the control (triggers); 1 is a full press.
 pub(crate) fn shade_press_flood(
     px: &mut Pixmap,
@@ -987,9 +988,10 @@ pub(crate) fn shade_press_flood(
                 let t = rise;
                 let a = da as f32;
                 let inv = 1.0 - t;
-                let r = (255.0 * (a / 255.0) * t + dest[di].red() as f32 * inv).round() as u8;
-                let g = (148.0 * (a / 255.0) * t + dest[di].green() as f32 * inv).round() as u8;
-                let b = (48.0 * (a / 255.0) * t + dest[di].blue() as f32 * inv).round() as u8;
+                let [ar, ag, ab] = accent_rgb();
+                let r = (ar as f32 * (a / 255.0) * t + dest[di].red() as f32 * inv).round() as u8;
+                let g = (ag as f32 * (a / 255.0) * t + dest[di].green() as f32 * inv).round() as u8;
+                let b = (ab as f32 * (a / 255.0) * t + dest[di].blue() as f32 * inv).round() as u8;
                 if let Some(p) = PremultipliedColorU8::from_rgba(r, g, b, da) {
                     dest[di] = p;
                 }

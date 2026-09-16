@@ -326,7 +326,7 @@ pub(crate) fn draw_sector(
         let hero = row.fresh;
         if hero {
             if let Some(wash) = rr(cx + 1.0, body_y, (cw - 2.0).max(4.0), live_h) {
-                fill_rect(px, wash, Color::from_rgba8(255, 148, 48, 28));
+                fill_rect(px, wash, accent_a(28));
             }
         }
         let delta_c = if row.pending || !row.has_delta {

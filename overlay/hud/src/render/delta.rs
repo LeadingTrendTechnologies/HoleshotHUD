@@ -112,7 +112,7 @@ pub(crate) fn draw_delta(
     } else if view.recording && view.cover > 0 {
         let fill_w = (line_w * (view.cover as f32 / 100.0)).max(3.0);
         if let Some(fill) = rr(line_x, line_y - 1.0, fill_w, 4.0) {
-            fill_rect(px, fill, Color::from_rgba8(255, 148, 48, 200));
+            fill_rect(px, fill, accent_a(200));
         }
     }
     if let Some(tick) = rr(mid - 0.5, line_y - 4.0, 1.0, 10.0) {

@@ -236,7 +236,7 @@ pub(crate) fn draw_minimap(
                     tx,
                     ty,
                     local_r * (0.55 + i as f32 * 0.04),
-                    Color::from_rgba8(255, 148, 48, a),
+                    accent_a(a),
                 );
             }
         }

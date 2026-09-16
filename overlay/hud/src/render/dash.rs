@@ -2,10 +2,10 @@
 use super::*;
 
 pub(crate) fn dash_pos_col() -> Color {
-    Color::from_rgba8(232, 120, 23, 255)
+    accent()
 }
 
-/// Amber for the lapped tag: reads as a warning without competing with the orange position.
+/// Amber for the lapped tag: reads as a warning without competing with the place color.
 pub(crate) fn dash_lapped_col() -> Color {
     Color::from_rgba8(226, 186, 74, 255)
 }
@@ -668,7 +668,7 @@ pub(crate) fn draw_simple_dash(
         if shift_warn {
             Color::from_rgba8(232, 132, 138, tile_a)
         } else {
-            Color::from_rgba8(255, 148, 48, tile_a)
+            accent_a(tile_a)
         },
     );
     let ink = ink_on(accent());

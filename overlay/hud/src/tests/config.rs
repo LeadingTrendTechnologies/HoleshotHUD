@@ -114,6 +114,7 @@ fn default_hud_hides_every_widget() {
     assert!(cfg.first_install_version.is_empty());
     assert!(cfg.ticker_title);
     assert_eq!(cfg.font_family, FontFamily::Exo2);
+    assert_eq!(cfg.primary, DEFAULT_PRIMARY);
     assert_eq!(cfg.units, UnitPrefs::all(Units::Metric));
     assert!(cfg.st_stripe);
     assert!(cfg.rel_stripe);
@@ -171,6 +172,51 @@ fn review_defaults_off_and_round_trips() {
     let _ = std::fs::remove_dir_all(&dir);
     assert!(loaded.review);
     assert!(text.contains("review=1"));
+}
+
+#[test]
+fn primary_color_parses_and_defaults() {
+    assert_eq!(parse_primary_color("#FF9430"), Some(DEFAULT_PRIMARY));
+    assert_eq!(parse_primary_color("ff9430"), Some(DEFAULT_PRIMARY));
+    assert_eq!(parse_primary_color("#ff9430"), Some(DEFAULT_PRIMARY));
+    assert_eq!(parse_primary_color("#3B82F6"), Some([59, 130, 246]));
+    assert_eq!(parse_primary_color("nope"), None);
+    assert_eq!(parse_primary_color("#FFF"), None);
+    assert_eq!(parse_primary_color(""), None);
+    assert_eq!(format_primary_color(DEFAULT_PRIMARY), "#FF9430");
+    let (h, s, v) = rgb_to_hsv(DEFAULT_PRIMARY);
+    assert!((s - 0.81).abs() < 0.05);
+    assert!((v - 1.0).abs() < 0.01);
+    let back = hsv_to_rgb(h, s, v);
+    assert!(
+        back[0].abs_diff(DEFAULT_PRIMARY[0]) <= 1
+            && back[1].abs_diff(DEFAULT_PRIMARY[1]) <= 1
+            && back[2].abs_diff(DEFAULT_PRIMARY[2]) <= 1
+    );
+}
+
+#[test]
+fn primary_color_round_trips_ini() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-primary-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    std::fs::write(&path, "first_install_version=0.1.0\nst_last=1\nrel_last=1\n").unwrap();
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let missing = HudConfig::load_file();
+    assert_eq!(missing.primary, DEFAULT_PRIMARY);
+    let mut cfg = HudConfig::new();
+    cfg.primary = [59, 130, 246];
+    cfg.save();
+    let loaded = HudConfig::load_file();
+    let text = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(&path, "primary_color=not-a-color\n").unwrap();
+    let bad = HudConfig::load_file();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(loaded.primary, [59, 130, 246]);
+    assert!(text.contains("primary_color=#3B82F6"));
+    assert_eq!(bad.primary, DEFAULT_PRIMARY);
 }
 
 #[test]
