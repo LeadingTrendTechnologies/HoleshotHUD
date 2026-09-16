@@ -651,6 +651,45 @@ impl GamepadStyle {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum GamepadTheme {
+    Light,
+    #[default]
+    Dark,
+}
+
+impl GamepadTheme {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Light => "Light",
+            Self::Dark => "Dark",
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Light => "light",
+            Self::Dark => "dark",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "light" | "filled" => Self::Light,
+            _ => Self::Dark,
+        }
+    }
+
+    pub fn filled(self) -> bool {
+        matches!(self, Self::Light)
+    }
+
+    /// PlayStation → dark schematic; Xbox → light filled (Theme setting disabled for now).
+    pub fn filled_for_platform(sony: bool) -> bool {
+        !sony
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum LeanStyle {
     Figure,
@@ -1710,6 +1749,7 @@ pub struct HudLayout {
     pub stance_show_sit: bool,
     pub lean_style: LeanStyle,
     pub gamepad_style: GamepadStyle,
+    pub gamepad_theme: GamepadTheme,
     /// Throttle / brake history well.
     pub telemetry_traces: bool,
     pub telemetry_trace_throttle: bool,
@@ -1845,6 +1885,7 @@ impl HudLayout {
             stance_show_sit: false,
             lean_style: LeanStyle::Figure,
             gamepad_style: GamepadStyle::Auto,
+            gamepad_theme: GamepadTheme::Dark,
             telemetry_traces: true,
             telemetry_trace_throttle: true,
             telemetry_trace_brake: true,
@@ -2696,6 +2737,7 @@ fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last
         "stance_style" => cfg.stance_style = StanceStyle::parse(val),
         "lean_style" => cfg.lean_style = LeanStyle::parse(val),
         "gamepad_style" => cfg.gamepad_style = GamepadStyle::parse(val),
+        "gamepad_theme" => {}
         "sys_apps" => cfg.sys_apps = parse_sys_apps(val),
         "stance_show_sit" => cfg.stance_show_sit = b,
         "stance_icon" => {
@@ -2905,7 +2947,10 @@ fn layout_ini(l: &HudLayout) -> String {
         stance.bg, stance.font, b(stance.bold),
         flag.bg, b(l.flag_yellow), b(l.flag_blue), b(l.flag_red), b(l.flag_text), flag.font, b(flag.bold),
         l.lean_style.key(), lean.bg, lean.font, b(lean.bold),
-        l.gamepad_style.key(), gamepad.bg, gamepad.font, b(gamepad.bold),
+        l.gamepad_style.key(),
+        gamepad.bg,
+        gamepad.font,
+        b(gamepad.bold),
         b(l.telemetry_traces), b(l.telemetry_trace_throttle), b(l.telemetry_trace_brake), b(l.telemetry_trace_steer),
         b(l.telemetry_bars), b(l.telemetry_bar_clutch), b(l.telemetry_bar_brake), b(l.telemetry_bar_throttle), b(l.telemetry_bar_steer),
         b(l.telemetry_dial),

@@ -3,7 +3,8 @@ mod edit;
 mod motos;
 
 use mxbo_hud::config::{
-    BoardField, DashField, DotLabel, FontFamily, GamepadStyle, HudConfig, LeanStyle, SnapAlign, StanceMode,
+    BoardField, DashField, DotLabel, FontFamily, GamepadStyle, HudConfig, LeanStyle,
+    SnapAlign, StanceMode,
     StanceStyle, TableText, UnitPrefs, Units, WidgetId,
 };
 use mxbo_hud::render::{draw, Fonts};

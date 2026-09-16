@@ -1,5 +1,8 @@
 use super::*;
-use crate::config::{BoardField, DashField, FontFamily, HudConfig, LeanStyle, RelField, SessionPreset, StField, StanceStyle, WidgetId};
+use crate::config::{
+    BoardField, DashField, FontFamily, HudConfig, LeanStyle, RelField, SessionPreset,
+    StField, StanceStyle, WidgetId,
+};
 use crate::race_store::{
     effective_extra_laps, effective_race_laps, live_session, session_preset, ClockMode,
 };
@@ -209,13 +212,10 @@ fn assert_golden(name: &str, px: &Pixmap) {
     let bytes = std::fs::read(&path).unwrap_or_else(|_| {
         panic!("missing golden {name}.png — run with UPDATE_GOLDENS=1")
     });
-    let expected = Pixmap::decode_png(&bytes).expect("decode golden");
-    if expected.width() != px.width()
-        || expected.height() != px.height()
-        || expected.data() != px.data()
-    {
+    let actual = px.encode_png().expect("png");
+    if bytes != actual {
         let actual_path = dir.join(format!("{name}.actual.png"));
-        let _ = std::fs::write(&actual_path, px.encode_png().expect("png"));
+        let _ = std::fs::write(&actual_path, &actual);
         panic!(
             "golden mismatch {name} (wrote {})",
             actual_path.display()
@@ -5009,6 +5009,98 @@ fn gamepad_goldens() {
     draw_widget_golden("gamepad-xbox", &s, &cfg, cfg[WidgetId::Gamepad].rect);
     crate::gamepad::set(crate::gamepad::PadState::DISCONNECTED);
     draw_widget_golden("gamepad-none", &s, &cfg, cfg[WidgetId::Gamepad].rect);
+}
+
+#[test]
+fn xbox_press_covers_the_whole_control() {
+    let _g = session_lock();
+    reset_session();
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg.experimental = true;
+    cfg[WidgetId::Gamepad].show = true;
+    let s = golden_snap(&live_snap(), &cfg);
+    let idle = crate::gamepad::PadState {
+        kind: crate::gamepad::PadKind::Xbox,
+        ..crate::gamepad::PadState::DISCONNECTED
+    };
+    let shot = |pad| {
+        crate::gamepad::set(pad);
+        let mut px = Pixmap::new(1280, 720).expect("pixmap");
+        draw(
+            &mut px,
+            &fonts(),
+            Some(&s),
+            &cfg,
+            1280,
+            720,
+            0.0,
+            false,
+            false,
+            false,
+        );
+        px
+    };
+    // [x0, y0, x1, y1] of everything matching `pick`, or None.
+    let bounds = |px: &Pixmap, pick: &dyn Fn([u8; 4]) -> bool| {
+        let mut b: Option<[u32; 4]> = None;
+        for y in 0..px.height() {
+            for x in 0..px.width() {
+                let i = ((y * px.width() + x) * 4) as usize;
+                let d = px.data();
+                if pick([d[i], d[i + 1], d[i + 2], d[i + 3]]) {
+                    b = Some(match b {
+                        None => [x, y, x, y],
+                        Some(p) => [p[0].min(x), p[1].min(y), p[2].max(x), p[3].max(y)],
+                    });
+                }
+            }
+        }
+        b
+    };
+    let orange = |p: [u8; 4]| p[3] > 200 && p[0] > 200 && (120..190).contains(&p[1]) && p[2] < 90;
+    let ink = |p: [u8; 4]| p[3] > 200 && p[0] < 45 && p[1] < 45 && p[2] < 45;
+
+    // A press must not leave the disc's rim unlit: a radius taken from the target
+    // instead of the art used to leave a ring of ink around the orange.
+    for (label, pad) in [
+        (
+            "A",
+            crate::gamepad::PadState {
+                buttons: crate::gamepad::SOUTH,
+                ..idle
+            },
+        ),
+        (
+            "View",
+            crate::gamepad::PadState {
+                buttons: crate::gamepad::BACK,
+                ..idle
+            },
+        ),
+    ] {
+        let px = shot(pad);
+        let lit = bounds(&px, &orange).unwrap_or_else(|| panic!("{label} lit nothing"));
+        let mut left = 0;
+        for y in lit[1] - 2..=lit[3] + 2 {
+            for x in lit[0] - 2..=lit[2] + 2 {
+                if ink(sample_px(&px, x as f32, y as f32)) {
+                    left += 1;
+                }
+            }
+        }
+        assert!(left <= 8, "{label}: {left} ink px left inside the press");
+    }
+
+    // A trigger held past the snap fills its tab to the very top.
+    let top = bounds(&shot(idle), &ink).expect("idle pad draws ink")[1];
+    let held = crate::gamepad::PadState { rt: 1.0, ..idle };
+    let lit = bounds(&shot(held), &orange).expect("RT lit nothing");
+    assert!(
+        lit[1] <= top + 1,
+        "RT: orange starts at {} but the tab starts at {top}",
+        lit[1]
+    );
 }
 
 #[test]

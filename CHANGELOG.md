@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.12.0
+
+**Controller** gets a traced Xbox One pad; PlayStation stays dark schematic and Xbox stays light filled.
+
+### Overlay
+
+- Controller skin follows **Pad** platform: PlayStation dark schematic, Xbox light filled. The Theme setting is hidden for now; `gamepad_theme` is no longer written to config.
+- Dark **Xbox** schematic art (`gen_gamepad_xbox_dark.py`): neutral ABXY outlines, Share/vent cluster, and L1/R1/L2/R2 shoulder labels (embedded for future Theme control).
+- Xbox One pad traced 1:1 from reference art in Holeshot colors: cream body, night-ink controls, colored ABXY. A press covers the whole control; triggers snap to full fill past 80%. DualShock drawing unchanged.
+
 ## 0.11.1
 
 Practice and warmup on Motos; Analyze Compare starts at None.

@@ -5,6 +5,8 @@ pub(crate) struct GamepadLayout {
     ls: [f32; 2],
     rs: [f32; 2],
     well_r: f32,
+    /// Stick cap radius in art pixels.
+    cap_r: f32,
     l2: [f32; 4],
     r2: [f32; 4],
     l1: [f32; 4],
@@ -31,6 +33,7 @@ pub(crate) fn ds4_gamepad_layout() -> GamepadLayout {
         ls: [0.3554, 0.6117],
         rs: [0.6425, 0.6117],
         well_r: 108.0,
+        cap_r: 48.0,
         l2: [0.168, 0.036, 0.132, 0.145],
         r2: [0.698, 0.036, 0.132, 0.145],
         l1: [0.170, 0.162, 0.132, 0.055],
@@ -62,74 +65,85 @@ pub(crate) fn ds4_gamepad_layout() -> GamepadLayout {
     }
 }
 
-/// `overlay/hud/assets/gamepad-xbox.png` (1536×1024). Layout measured from gamepad-xbox-ref.png.
+/// DS4 filled (Light) skin — same control positions; cross d-pad uses segment presses.
+pub(crate) fn ds4_light_gamepad_layout() -> GamepadLayout {
+    let mut l = ds4_gamepad_layout();
+    let cx = 0.2272;
+    let cy = 0.4243;
+    let arm = 0.055;
+    let bar = 0.065 * 1024.0 / 1536.0;
+    let arm_v = 0.055 * 1536.0 / 1024.0;
+    l.dpad_seg = Some([
+        [cx - bar / 2.0, cy - arm_v, bar, arm_v],
+        [cx, cy - bar / 2.0, arm, bar],
+        [cx - bar / 2.0, cy, bar, arm_v],
+        [cx - arm, cy - bar / 2.0, arm, bar],
+    ]);
+    l
+}
+
+pub(crate) fn gamepad_layout(sony: bool, filled: bool) -> GamepadLayout {
+    if sony {
+        if filled {
+            ds4_light_gamepad_layout()
+        } else {
+            ds4_gamepad_layout()
+        }
+    } else {
+        xbox_gamepad_layout()
+    }
+}
+
+/// `overlay/hud/assets/gamepad-xbox.png` (1344×1024). Layout from gen_gamepad_xbox.py,
+/// traced 1:1 from `gamepad-xbox-target.png`.
 pub(crate) fn xbox_gamepad_layout() -> GamepadLayout {
     GamepadLayout {
-        ls: [426.0 / 1536.0, 460.0 / 1024.0],
-        rs: [942.0 / 1536.0, 627.0 / 1024.0],
-        well_r: 92.0,
-        l2: [
-            248.0 / 1536.0,
-            47.0 / 1024.0,
-            303.0 / 1536.0,
-            183.0 / 1024.0,
-        ],
-        r2: [
-            948.0 / 1536.0,
-            47.0 / 1024.0,
-            353.0 / 1536.0,
-            183.0 / 1024.0,
-        ],
+        ls: [338.7 / 1344.0, 397.2 / 1024.0],
+        rs: [843.7 / 1344.0, 598.8 / 1024.0],
+        well_r: 104.0,
+        cap_r: 69.4,
+        l2: [275.8 / 1344.0, 7.0 / 1024.0, 161.7 / 1344.0, 113.8 / 1024.0],
+        r2: [908.5 / 1344.0, 7.0 / 1024.0, 161.7 / 1344.0, 113.8 / 1024.0],
         l1: [
-            304.0 / 1536.0,
-            218.0 / 1024.0,
-            276.0 / 1536.0,
-            123.0 / 1024.0,
+            207.9 / 1344.0,
+            120.8 / 1024.0,
+            271.5 / 1344.0,
+            131.8 / 1024.0,
         ],
         r1: [
-            951.0 / 1536.0,
-            216.0 / 1024.0,
-            276.0 / 1536.0,
-            114.0 / 1024.0,
+            864.6 / 1344.0,
+            120.8 / 1024.0,
+            271.5 / 1344.0,
+            131.8 / 1024.0,
         ],
-        l2_seed: [399.0 / 1536.0, 210.0 / 1024.0],
-        r2_seed: [1124.0 / 1536.0, 210.0 / 1024.0],
-        l1_seed: [437.0 / 1536.0, 274.0 / 1024.0],
-        r1_seed: [1081.0 / 1536.0, 272.0 / 1024.0],
+        l2_seed: [356.6 / 1344.0, 63.9 / 1024.0],
+        r2_seed: [989.4 / 1344.0, 63.9 / 1024.0],
+        l1_seed: [330.7 / 1344.0, 167.7 / 1024.0],
+        r1_seed: [1013.3 / 1344.0, 167.7 / 1024.0],
         face: [
-            [1092.0 / 1536.0, 360.0 / 1024.0],
-            [1161.0 / 1536.0, 436.0 / 1024.0],
-            [1092.0 / 1536.0, 517.0 / 1024.0],
-            [1023.0 / 1536.0, 436.0 / 1024.0],
+            [1007.3 / 1344.0, 307.4 / 1024.0],
+            [1095.2 / 1344.0, 397.2 / 1024.0],
+            [1007.3 / 1344.0, 485.1 / 1024.0],
+            [919.5 / 1344.0, 397.2 / 1024.0],
         ],
-        face_r: 44.0,
+        face_r: 50.0,
         dpad: [
-            [625.0 / 1536.0, 557.0 / 1024.0],
-            [691.0 / 1536.0, 623.0 / 1024.0],
-            [625.0 / 1536.0, 689.0 / 1024.0],
-            [559.0 / 1536.0, 623.0 / 1024.0],
+            [500.3 / 1344.0, 561.3 / 1024.0],
+            [549.8 / 1344.0, 610.8 / 1024.0],
+            [500.3 / 1344.0, 660.3 / 1024.0],
+            [450.8 / 1344.0, 610.8 / 1024.0],
         ],
-        dpad_half: [66.0 / 1536.0, 66.0 / 1024.0],
+        dpad_half: [99.0 / 1344.0, 99.0 / 1024.0],
         dpad_seg: Some([
-            [609.0 / 1536.0, 557.0 / 1024.0, 32.0 / 1536.0, 66.0 / 1024.0],
-            [625.0 / 1536.0, 607.0 / 1024.0, 66.0 / 1536.0, 32.0 / 1024.0],
-            [609.0 / 1536.0, 623.0 / 1024.0, 32.0 / 1536.0, 66.0 / 1024.0],
-            [559.0 / 1536.0, 607.0 / 1024.0, 66.0 / 1536.0, 32.0 / 1024.0],
+            [466.8 / 1344.0, 511.8 / 1024.0, 67.0 / 1344.0, 99.0 / 1024.0],
+            [500.3 / 1344.0, 577.3 / 1024.0, 99.0 / 1344.0, 67.0 / 1024.0],
+            [466.8 / 1344.0, 610.8 / 1024.0, 67.0 / 1344.0, 99.0 / 1024.0],
+            [401.3 / 1344.0, 577.3 / 1024.0, 99.0 / 1344.0, 67.0 / 1024.0],
         ]),
-        back: [
-            614.0 / 1536.0,
-            394.0 / 1024.0,
-            155.0 / 1536.0,
-            51.0 / 1024.0,
-        ],
-        start: [
-            778.0 / 1536.0,
-            394.0 / 1024.0,
-            155.0 / 1536.0,
-            51.0 / 1024.0,
-        ],
-        guide: [768.0 / 1536.0, 337.0 / 1024.0],
-        guide_r: 22.0,
+        back: [542.2 / 1344.0, 363.2 / 1024.0, 72.0 / 1344.0, 72.0 / 1024.0],
+        start: [731.8 / 1344.0, 363.2 / 1024.0, 72.0 / 1344.0, 72.0 / 1024.0],
+        guide: [672.0 / 1344.0, 251.5 / 1024.0],
+        guide_r: 57.4,
         touch: None,
     }
 }
@@ -183,20 +197,17 @@ pub(crate) fn draw_gamepad(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: 
     }
 
     let sony = cfg.gamepad_style.sony_art(pad.kind);
+    let filled = crate::config::GamepadTheme::filled_for_platform(sony);
     let well = Color::from_rgba8(22, 22, 24, 255);
     let cream = Color::from_rgba8(248, 248, 252, 255);
-    let Some(art) = gamepad_art(sony) else {
+    let Some(art) = gamepad_art(sony, filled) else {
         return;
     };
-    let Some((dx, dy, dw, dh)) = blit_gamepad_art(px, art, sony, x, y, w, h) else {
+    let Some((dx, dy, dw, dh)) = blit_gamepad_art(px, art, sony, filled, x, y, w, h) else {
         return;
     };
 
-    let layout = if sony {
-        ds4_gamepad_layout()
-    } else {
-        xbox_gamepad_layout()
-    };
+    let layout = gamepad_layout(sony, filled);
     let (lsx, lsy) = (dx + layout.ls[0] * dw, dy + layout.ls[1] * dh);
     let (rsx, rsy) = (dx + layout.rs[0] * dw, dy + layout.rs[1] * dh);
     let well_r = layout.well_r / art.height() as f32 * dh;
@@ -215,7 +226,7 @@ pub(crate) fn draw_gamepad(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: 
             layout.l2_seed[1],
             layout.l2,
             pad.lt,
-            sony,
+            sony && !filled,
         );
     }
     if pad.rt >= 0.03 {
@@ -230,7 +241,7 @@ pub(crate) fn draw_gamepad(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: 
             layout.r2_seed[1],
             layout.r2,
             pad.rt,
-            sony,
+            sony && !filled,
         );
     }
     if pad.down(crate::gamepad::LB) {
@@ -245,7 +256,7 @@ pub(crate) fn draw_gamepad(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: 
             layout.l1_seed[1],
             layout.l1,
             1.0,
-            sony,
+            sony && !filled,
         );
     }
     if pad.down(crate::gamepad::RB) {
@@ -260,7 +271,7 @@ pub(crate) fn draw_gamepad(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: 
             layout.r1_seed[1],
             layout.r1,
             1.0,
-            sony,
+            sony && !filled,
         );
     }
     if let Some(touch) = layout.touch {
@@ -312,7 +323,7 @@ pub(crate) fn draw_gamepad(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: 
     }
 
     shade_dpad(px, art, dx, dy, dw, dh, pad, &layout);
-    shade_face(px, dx, dy, dw, dh, pad, &layout);
+    shade_face(px, art, dx, dy, dw, dh, pad, &layout);
 
     draw_stick_live(
         px,
@@ -328,7 +339,8 @@ pub(crate) fn draw_gamepad(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: 
         pad.down(crate::gamepad::LS),
         well,
         cream,
-        layout.well_r,
+        &layout,
+        filled,
     );
     draw_stick_live(
         px,
@@ -344,10 +356,16 @@ pub(crate) fn draw_gamepad(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: 
         pad.down(crate::gamepad::RS),
         well,
         cream,
-        layout.well_r,
+        &layout,
+        filled,
     );
 
     if pad.down(crate::gamepad::GUIDE) {
+        let mode = if filled {
+            ShadeMode::Stroke
+        } else {
+            ShadeMode::Interior
+        };
         shade_disc(
             px,
             art,
@@ -358,28 +376,40 @@ pub(crate) fn draw_gamepad(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: 
             layout.guide[0],
             layout.guide[1],
             layout.guide_r,
-            ShadeMode::Interior,
+            mode,
             accent(),
         );
     }
 }
 
-pub(crate) fn gamepad_art(sony: bool) -> Option<&'static Pixmap> {
-    static DS4: OnceLock<Option<Pixmap>> = OnceLock::new();
-    static XB: OnceLock<Option<Pixmap>> = OnceLock::new();
-    if sony {
-        DS4.get_or_init(|| Pixmap::decode_png(include_bytes!("../../assets/gamepad-ds4.png")).ok())
-            .as_ref()
-    } else {
-        XB.get_or_init(|| Pixmap::decode_png(include_bytes!("../../assets/gamepad-xbox.png")).ok())
-            .as_ref()
-    }
+pub(crate) fn gamepad_art(sony: bool, filled: bool) -> Option<&'static Pixmap> {
+    static DS4_DARK: OnceLock<Option<Pixmap>> = OnceLock::new();
+    static DS4_LIGHT: OnceLock<Option<Pixmap>> = OnceLock::new();
+    static XB_LIGHT: OnceLock<Option<Pixmap>> = OnceLock::new();
+    static XB_DARK: OnceLock<Option<Pixmap>> = OnceLock::new();
+    let slot = match (sony, filled) {
+        (true, false) => &DS4_DARK,
+        (true, true) => &DS4_LIGHT,
+        (false, true) => &XB_LIGHT,
+        (false, false) => &XB_DARK,
+    };
+    slot.get_or_init(|| {
+        Pixmap::decode_png(match (sony, filled) {
+            (true, false) => include_bytes!("../../assets/gamepad-ds4-dark.png").as_slice(),
+            (true, true) => include_bytes!("../../assets/gamepad-ds4-light.png").as_slice(),
+            (false, true) => include_bytes!("../../assets/gamepad-xbox-light.png").as_slice(),
+            (false, false) => include_bytes!("../../assets/gamepad-xbox-dark.png").as_slice(),
+        })
+        .ok()
+    })
+    .as_ref()
 }
 
 pub(crate) fn blit_gamepad_art(
     px: &mut Pixmap,
     src: &Pixmap,
     sony: bool,
+    filled: bool,
     x: f32,
     y: f32,
     w: f32,
@@ -400,7 +430,7 @@ pub(crate) fn blit_gamepad_art(
     let dy = y + (h - dh) * 0.5;
     let tw = dw.round().max(1.0) as u32;
     let th = dh.round().max(1.0) as u32;
-    let Some(hi) = scaled_gamepad_art(src, sony, tw, th) else {
+    let Some(hi) = scaled_gamepad_art(src, sony, filled, tw, th) else {
         return None;
     };
     let mut paint = PixmapPaint::default();
@@ -420,13 +450,19 @@ pub(crate) fn blit_gamepad_art(
     Some((dx, dy, dw, dh))
 }
 
-pub(crate) fn scaled_gamepad_art(src: &Pixmap, sony: bool, tw: u32, th: u32) -> Option<Pixmap> {
+pub(crate) fn scaled_gamepad_art(
+    src: &Pixmap,
+    sony: bool,
+    filled: bool,
+    tw: u32,
+    th: u32,
+) -> Option<Pixmap> {
     thread_local! {
-        static CACHE: RefCell<Option<(bool, u32, u32, Pixmap)>> = const { RefCell::new(None) };
+        static CACHE: RefCell<Option<(bool, bool, u32, u32, Pixmap)>> = const { RefCell::new(None) };
     }
     CACHE.with(|slot| {
-        if let Some((s, w, h, px)) = slot.borrow().as_ref() {
-            if *s == sony && *w == tw && *h == th {
+        if let Some((s, f, w, h, px)) = slot.borrow().as_ref() {
+            if *s == sony && *f == filled && *w == tw && *h == th {
                 return Some(px.clone());
             }
         }
@@ -456,7 +492,7 @@ pub(crate) fn scaled_gamepad_art(src: &Pixmap, sony: bool, tw: u32, th: u32) -> 
             Transform::from_scale(tw as f32 / sw as f32, th as f32 / sh as f32),
             None,
         );
-        *slot.borrow_mut() = Some((sony, tw, th, lo.clone()));
+        *slot.borrow_mut() = Some((sony, filled, tw, th, lo.clone()));
         Some(lo)
     })
 }
@@ -625,6 +661,7 @@ pub(crate) fn shade_disc(
 
 pub(crate) fn shade_face(
     px: &mut Pixmap,
+    art: &Pixmap,
     dx: f32,
     dy: f32,
     dw: f32,
@@ -641,7 +678,7 @@ pub(crate) fn shade_face(
     for (i, &bit) in bits.iter().enumerate() {
         if pad.down(bit) {
             let [u, v] = layout.face[i];
-            shade_press_disc(px, dx, dy, dw, dh, u, v, layout.face_r);
+            shade_press_disc(px, art, dx, dy, dw, dh, u, v, layout.face_r);
         }
     }
 }
@@ -695,6 +732,7 @@ pub(crate) fn shade_dpad(
 /// Orange fill out to a circular outline. Cream glyphs and the outline stay 1px — not thickened.
 pub(crate) fn shade_press_disc(
     px: &mut Pixmap,
+    art: &Pixmap,
     dx: f32,
     dy: f32,
     dw: f32,
@@ -706,8 +744,11 @@ pub(crate) fn shade_press_disc(
     if dw < 1.0 || dh < 1.0 {
         return;
     }
-    let iw = 1536.0;
-    let ih = 1024.0;
+    let iw = art.width() as f32;
+    let ih = art.height() as f32;
+    if iw < 1.0 || ih < 1.0 {
+        return;
+    }
     let ru = (r_art + 2.0) / iw;
     let rv = (r_art + 2.0) / ih;
     let x0 = ((dx + (cu - ru) * dw).floor() as i32).max(0) as u32;
@@ -731,7 +772,7 @@ pub(crate) fn shade_press_disc(
             if da < 8 {
                 continue;
             }
-            // Leave the DualShock cream ring and glyph. Orange only the dark interior.
+            // Leave the pad's glyphs and outlines. Orange only the dark interior.
             if lum > 92 {
                 continue;
             }
@@ -902,7 +943,9 @@ pub(crate) fn shade_press_flood(
     if ymin > ymax {
         return;
     }
-    let squeeze = if squeeze >= 0.92 {
+    // A held trigger should read as fully lit; the last fifth of the pull is not
+    // worth a black sliver at the top of the tab.
+    let squeeze = if squeeze >= 0.80 {
         1.0
     } else {
         squeeze.clamp(0.0, 1.0)
@@ -969,7 +1012,8 @@ pub(crate) fn draw_stick_live(
     click: bool,
     well: Color,
     cream: Color,
-    well_r: f32,
+    layout: &GamepadLayout,
+    filled: bool,
 ) {
     let mag = (lx * lx + ly * ly).sqrt();
     if mag < 0.08 && !click {
@@ -977,30 +1021,52 @@ pub(crate) fn draw_stick_live(
     }
     let iw = art.width() as f32;
     let ih = art.height() as f32;
+    let well_r = layout.well_r;
     let cu = (cx - dx) / dw;
     let cv = (cy - dy) / dh;
-    fill_circle(px, cx, cy, well_r / ih * dh, well);
-    shade_art(
+    let ring_r = well_r / ih * dh;
+    fill_circle(px, cx, cy, ring_r, well);
+    if !filled {
+        shade_art(
+            px,
+            art,
+            dx,
+            dy,
+            dw,
+            dh,
+            [cu - 0.08, cv - 0.12, 0.16, 0.24],
+            0.0,
+            ShadeMode::Stroke,
+            accent(),
+            |u, v| {
+                let ddx = (u - cu) * iw;
+                let ddy = (v - cv) * ih;
+                let d = (ddx * ddx + ddy * ddy).sqrt();
+                d >= (well_r - 20.0).max(1.0) && d <= well_r
+            },
+        );
+    } else {
+        let mut pb = PathBuilder::new();
+        pb.push_circle(cx, cy, ring_r);
+        if let Some(path) = pb.finish() {
+            stroke_path(px, &path, accent(), 2.0);
+        }
+    }
+    let cap_r = layout.cap_r / ih * dh;
+    let travel = 0.048 * dh;
+    shade_disc(
         px,
         art,
         dx,
         dy,
         dw,
         dh,
-        [cu - 0.08, cv - 0.12, 0.16, 0.24],
-        0.0,
-        ShadeMode::Stroke,
-        accent(),
-        |u, v| {
-            let ddx = (u - cu) * iw;
-            let ddy = (v - cv) * ih;
-            let d = (ddx * ddx + ddy * ddy).sqrt();
-            d >= (well_r - 20.0).max(1.0) && d <= well_r
-        },
+        cu,
+        cv,
+        layout.cap_r,
+        ShadeMode::All,
+        well,
     );
-    let cap_r = 0.0469 * dh;
-    let travel = 0.048 * dh;
-    shade_disc(px, art, dx, dy, dw, dh, cu, cv, 48.0, ShadeMode::All, well);
     let (ox, oy) = if mag < 0.08 {
         (0.0, 0.0)
     } else {

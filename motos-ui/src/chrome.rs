@@ -9,8 +9,6 @@ use tiny_skia::{
 
 pub(crate) use mxbo_hud::render::icon;
 
-const ROW_GAP: f32 = 12.0;
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Hit {
     ReviewFilterAll,
@@ -70,10 +68,6 @@ pub(crate) fn text_col() -> Color {
 
 pub(crate) fn side() -> Color {
     Color::from_rgba8(28, 28, 32, 255)
-}
-
-pub(crate) fn row_line() -> Color {
-    Color::from_rgba8(255, 255, 255, 14)
 }
 
 pub(crate) fn text(
@@ -326,61 +320,12 @@ pub(crate) fn action_btn(
     y + h
 }
 
-pub(crate) fn filter_chip(
-    px: &mut Pixmap,
-    fonts: &Fonts,
-    x: f32,
-    y: f32,
-    label: &str,
-    on: bool,
-    hit: Hit,
-    hover: Option<Hit>,
-    hits: &mut Vec<HitBox>,
-) -> f32 {
-    let _ = hover;
-    let w = measure(fonts, label, 13.0) + 24.0;
-    fill_round(
-        px,
-        x,
-        y,
-        w,
-        28.0,
-        6.0,
-        if on {
-            Color::from_rgba8(232, 106, 21, 48)
-        } else {
-            Color::from_rgba8(48, 48, 52, 255)
-        },
-    );
-    text(px, fonts, label, 13.0, x + 12.0, y + 6.0, text_col(), on);
-    hits.push(HitBox {
-        id: hit,
-        x,
-        y,
-        w,
-        h: 28.0,
-    });
-    w
-}
-
 pub(crate) fn knob() -> Color {
     Color::from_rgba8(240, 240, 242, 255)
 }
 
 pub(crate) fn dim() -> Color {
     Color::from_rgba8(120, 120, 128, 255)
-}
-
-pub(crate) fn panel() -> Color {
-    Color::from_rgba8(36, 36, 40, 255)
-}
-
-pub(crate) fn track_off() -> Color {
-    Color::from_rgba8(48, 48, 52, 255)
-}
-
-pub(crate) fn chip_hover() -> Color {
-    Color::from_rgba8(52, 52, 58, 255)
 }
 
 pub(crate) fn btn_border() -> Color {

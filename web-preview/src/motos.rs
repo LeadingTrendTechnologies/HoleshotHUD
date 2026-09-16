@@ -79,7 +79,7 @@ impl MotosDemo {
         }
     }
 
-    pub fn pointer_move(&mut self, x: f32, y: f32, w: f32, _h: f32) {
+    pub fn pointer_move(&mut self, x: f32, y: f32, _w: f32, _h: f32) {
         self.hover = self.hit_at(x, y).map(|b| b.id);
         if self.drag_scrub {
             if let Some(b) = self.hits.iter().find(|b| matches!(b.id, Hit::AnalyzeScrub)) {
@@ -96,7 +96,7 @@ impl MotosDemo {
         self.last_y = y;
     }
 
-    pub fn pointer_down(&mut self, x: f32, y: f32, w: f32, h: f32) {
+    pub fn pointer_down(&mut self, x: f32, y: f32, _w: f32, _h: f32) {
         self.last_x = x;
         self.last_y = y;
         let Some(hit) = self.hit_at(x, y).map(|b| b.id) else {

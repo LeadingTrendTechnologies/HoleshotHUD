@@ -1691,7 +1691,7 @@ pub(crate) fn pane_gamepad(
             x,
             y,
             w,
-            "Your local pad, not plugin telemetry. Auto matches your controller. PlayStation and Xbox force that pad art. Triggers fill with squeeze. Bumpers light when held. No pad shows No controller. Other riders’ inputs are not available.",
+            "Your local pad, not plugin telemetry. Auto matches your controller. PlayStation and Xbox force that pad art. Light and Dark pick the skin independently. Triggers fill with squeeze. Bumpers light when held. No pad shows No controller. Other riders’ inputs are not available.",
         );
             if !shown {
                 return y;

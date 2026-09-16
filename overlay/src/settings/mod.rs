@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use tiny_skia::{
-    Color, FillRule, LineCap, LineJoin, Mask, Paint, Path, PathBuilder, Pixmap, PixmapPaint, Rect,
+    Color, FillRule, LineCap, LineJoin, Paint, Path, PathBuilder, Pixmap, PixmapPaint, Rect,
     Stroke, Transform,
 };
 use windows::core::PCWSTR;
@@ -40,8 +40,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 use crate::config::{
-    update_config, with_config, BoardField, DashField, DotLabel, FontFamily, GamepadStyle,
-    HudConfig, LeanStyle, RelField, SessionPreset, SettingsKey, SnapAlign, StField, StanceBind,
+    update_config, with_config, BoardField, DashField, DotLabel, FontFamily, GamepadStyle, HudConfig,
+    LeanStyle, RelField, SessionPreset, SettingsKey, SnapAlign, StField, StanceBind,
     StanceMode, StanceStyle, TableText, UnitKind, Units, WidgetId, COL_W_MAX, COL_W_MIN,
     RADAR_RANGE_MAX, RADAR_RANGE_MIN, SYS_PRESETS, SYS_PROC_MAX,
 };
