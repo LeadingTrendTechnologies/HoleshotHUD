@@ -564,8 +564,9 @@ __declspec(dllexport) void RaceSplit(void* _pData, int _iDataSize)
 __declspec(dllexport) void RaceHoleshot(void* _pData, int _iDataSize)
 {
     breadcrumb("RaceHoleshot");
-    (void)_pData;
-    (void)_iDataSize;
+    onCopied<SPluginsRaceHoleshot_t>(_pData, _iDataSize, [](const SPluginsRaceHoleshot_t& data) {
+        g_state.setRaceHoleshot(data.m_iRaceNum, data.m_iTime);
+    });
 }
 
 __declspec(dllexport) void RaceCommunication(void* _pData, int _iDataSize)

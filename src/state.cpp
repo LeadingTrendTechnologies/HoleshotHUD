@@ -118,6 +118,8 @@ void PluginState::clearRace()
     m_sectorDeltaValid = 0;
     m_sectorLast = -1;
     m_sectorFinishedLap = -1;
+    m_holeshotRaceNum = 0;
+    m_holeshotTime = 0;
 }
 
 void PluginState::setEvent(const SPluginsBikeEvent_t& ev)
@@ -328,6 +330,8 @@ void PluginState::noteSessionKind(int kind)
         m_sessionLength = kSessionLengthUnset;
         m_sessionRemain = 0;
         m_sessionLaps = 0;
+        m_holeshotRaceNum = 0;
+        m_holeshotTime = 0;
     }
     m_sessionKind = kind;
 }
@@ -455,6 +459,11 @@ void PluginState::setSession(const SPluginsRaceSession_t& s)
 void PluginState::setSessionState(const SPluginsRaceSessionState_t& s)
 {
     noteSessionKind(s.m_iSession);
+    if (s.m_iSessionState == 256)
+    {
+        m_holeshotRaceNum = 0;
+        m_holeshotTime = 0;
+    }
     m_sessionState = s.m_iSessionState;
     applySessionLength(s.m_iSessionLength);
     if (m_sessionLength < 0 && (s.m_iSessionLength <= 0 || !likelyStartCountdown(s.m_iSessionLength)))
@@ -543,6 +552,16 @@ void PluginState::setRaceSplit(int raceNum, int split, int timeMs)
         return;
     }
     recordSector(mapSplitIndex(split), timeMs, 0);
+}
+
+void PluginState::setRaceHoleshot(int raceNum, int timeMs)
+{
+    if (raceNum <= 0)
+    {
+        return;
+    }
+    m_holeshotRaceNum = raceNum;
+    m_holeshotTime = timeMs;
 }
 
 int PluginState::sectorAt(const int* values, int i)

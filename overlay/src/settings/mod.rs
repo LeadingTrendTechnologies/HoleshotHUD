@@ -40,24 +40,28 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 use crate::config::{
-    format_primary_color, hsv_to_rgb, rgb_to_hsv, update_config, with_config, BoardField, DashField,
-    DotLabel, FontFamily, GamepadStyle, HudConfig, LeanStyle, RelField, SessionPreset, SettingsKey,
-    SnapAlign, StField, StanceBind, StanceMode, StanceStyle, TableText, UnitKind, Units, WidgetId,
-    COL_W_MAX, COL_W_MIN, DEFAULT_PRIMARY, PRIMARY_SWATCHES, RADAR_RANGE_MAX, RADAR_RANGE_MIN,
-    SYS_PRESETS, SYS_PROC_MAX,
+    format_primary_color, hsv_to_rgb, rgb_to_hsv, update_config, with_config, BoardField,
+    DashField, DotLabel, FontFamily, GamepadStyle, HudConfig, LeanStyle, RelField, SessionPreset,
+    SettingsKey, SnapAlign, StField, StanceBind, StanceMode, StanceStyle, TableText, UnitKind,
+    Units, WidgetId, COL_W_MAX, COL_W_MIN, DEFAULT_PRIMARY, PRIMARY_SWATCHES, RADAR_RANGE_MAX,
+    RADAR_RANGE_MIN, SYS_PRESETS, SYS_PROC_MAX,
 };
 use crate::render::{fill_rect, icon, measure, text, Fonts};
 
 mod app;
+mod clear;
 mod dispatch;
 mod feedback;
+mod profile;
 mod reply;
 mod review;
 mod whats_new;
 mod widgets;
 pub(crate) use app::*;
+pub(crate) use clear::*;
 pub(crate) use dispatch::*;
 pub(crate) use feedback::*;
+pub(crate) use profile::*;
 pub(crate) use reply::*;
 pub(crate) use review::*;
 pub(crate) use whats_new::*;
@@ -334,6 +338,7 @@ impl PairGrid {
 pub(crate) enum Tab {
     App,
     Review,
+    Profile,
     Feedback,
     Standings,
     Relative,
@@ -354,7 +359,7 @@ pub(crate) enum Tab {
 
 impl Tab {
     fn is_widget(self) -> bool {
-        !matches!(self, Tab::App | Tab::Review | Tab::Feedback)
+        !matches!(self, Tab::App | Tab::Review | Tab::Profile | Tab::Feedback)
     }
 
     fn is_labs(self) -> bool {
@@ -367,6 +372,7 @@ pub(crate) enum Hit {
     TabWidgets,
     TabApp,
     TabReview,
+    TabProfile,
     TabFeedback,
     ReviewFilterAll,
     ReviewFilterRace,
@@ -377,6 +383,11 @@ pub(crate) enum Hit {
     ReviewDelete(u64),
     ReviewBack,
     ReviewToggle,
+    ProfileAllTime,
+    ProfileTwoWeeks,
+    ProfileClear,
+    ProfileAxis(u8),
+    ReviewClear,
     AnalyzeCompare(i32),
     AnalyzeCompareOpen,
     AnalyzeYouLap(i32),
@@ -578,6 +589,10 @@ pub(crate) enum Hit {
     WhatsNewDismiss,
     WhatsNewScrim,
     WhatsNewPanel,
+    ClearScrim,
+    ClearPanel,
+    ClearCancel,
+    ClearConfirm,
     ReplyDismiss,
     ReplySend,
     ReplyText,
@@ -716,6 +731,14 @@ struct SettingsUi {
     analyze_scrubbing: bool,
     analyze_follow: bool,
     map_drag: Option<(f32, f32, f32, f32)>,
+    profile_all_time: bool,
+    clear_confirm: Option<ClearKind>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ClearKind {
+    Profile,
+    Motos,
 }
 
 unsafe impl Send for SettingsUi {}
@@ -814,6 +837,8 @@ pub fn attach(host: HWND) {
         analyze_scrubbing: false,
         analyze_follow: false,
         map_drag: None,
+        profile_all_time: true,
+        clear_confirm: None,
     });
 }
 
@@ -1024,6 +1049,8 @@ pub fn dump_whats_new(path: &std::path::Path) -> Result<crate::changelog::Notes,
         analyze_scrubbing: false,
         analyze_follow: false,
         map_drag: None,
+        profile_all_time: true,
+        clear_confirm: None,
     });
     let mut px = Pixmap::new(1000, 720).ok_or_else(|| "Could not allocate preview.".to_string())?;
     draw(&mut px, &fonts, 1000.0, 720.0);
@@ -1135,6 +1162,8 @@ fn paint_review_tab(
         analyze_scrubbing: false,
         analyze_follow: false,
         map_drag: None,
+        profile_all_time: true,
+        clear_confirm: None,
     });
     let mut px =
         Pixmap::new(w, h).ok_or_else(|| "Could not allocate Review preview.".to_string())?;
@@ -1167,6 +1196,13 @@ fn dismiss_reply() {
     if let Some(ui) = UI.lock().unwrap().as_mut() {
         ui.reply_id = None;
         ui.reply_scroll = 0.0;
+        ui.focus = None;
+    }
+}
+
+fn dismiss_clear_confirm() {
+    if let Some(ui) = UI.lock().unwrap().as_mut() {
+        ui.clear_confirm = None;
         ui.focus = None;
     }
 }
@@ -1877,6 +1913,8 @@ fn is_focusable(hit: Hit) -> bool {
             | Hit::WhatsNewPanel
             | Hit::ReplyScrim
             | Hit::ReplyPanel
+            | Hit::ClearScrim
+            | Hit::ClearPanel
             | Hit::PrimaryPanel
             | Hit::PrimarySv
     )
@@ -1902,7 +1940,15 @@ fn hit_label(hit: Hit) -> String {
         Hit::TabWidgets => "Widgets".into(),
         Hit::TabApp => "Settings".into(),
         Hit::TabReview => "Motos".into(),
+        Hit::TabProfile => "Profile".into(),
         Hit::TabFeedback => "Feedback".into(),
+        Hit::ProfileAllTime => "All time".into(),
+        Hit::ProfileTwoWeeks => "Last 14 days".into(),
+        Hit::ProfileClear => "Clear Profile".into(),
+        Hit::ReviewClear => "Clear Motos".into(),
+        Hit::ClearCancel => "Cancel".into(),
+        Hit::ClearConfirm => "Clear".into(),
+        Hit::ProfileAxis(i) => profile_axis_tip(i).into(),
         Hit::ReviewFilterAll => "All motos".into(),
         Hit::ReviewFilterRace => "Race sessions".into(),
         Hit::ReviewFilterPractice => "Practice sessions".into(),
@@ -2095,6 +2141,15 @@ fn handle_key(vk: u16, shift: bool, _ctrl: bool) -> bool {
             .is_some_and(|u| u.whats_new_open);
         if whats_new {
             dismiss_whats_new();
+            return true;
+        }
+        let clear_open = UI
+            .lock()
+            .unwrap()
+            .as_ref()
+            .is_some_and(|u| u.clear_confirm.is_some());
+        if clear_open {
+            dismiss_clear_confirm();
             return true;
         }
         let reply_open = UI
@@ -2449,10 +2504,12 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
         bind_listen,
         reply_scroll,
         reply_id,
+        ui_all_time,
+        clear_confirm,
     ) = {
         let mut ui = UI.lock().unwrap();
         if let Some(u) = ui.as_mut() {
-            if !u.whats_new_open && u.reply_id.is_none() {
+            if !u.whats_new_open && u.reply_id.is_none() && u.clear_confirm.is_none() {
                 if let Some(view) = pending.as_ref() {
                     u.reply_id = Some(view.id.clone());
                     u.reply_scroll = 0.0;
@@ -2475,10 +2532,15 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
             ui.map(|u| u.bind_listen).unwrap_or(false),
             ui.map(|u| u.reply_scroll).unwrap_or(0.0),
             ui.and_then(|u| u.reply_id.clone()),
+            ui.map(|u| u.profile_all_time).unwrap_or(true),
+            ui.and_then(|u| u.clear_confirm),
         )
     };
     if tab.is_labs() && !cfg.experimental_unlocked() {
         tab = Tab::App;
+    }
+    if tab == Tab::Profile && !cfg.review {
+        tab = Tab::Review;
     }
     let banner = crate::update::manual_banner(
         cfg.auto_update_on_launch,
@@ -2623,6 +2685,7 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
             );
             b
         }
+        Tab::Profile => pane_profile(px, fonts, hover, &mut hits, x, py, cw, ui_all_time),
         Tab::Feedback => pane_feedback_tab(px, fonts, hover, &mut hits, x, py, cw),
         Tab::Standings => pane_standings(
             px, fonts, &cfg, hover, open_drop, drag, &mut hits, x, py, cw,
@@ -2685,6 +2748,7 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
         top_y,
         tab,
         cfg.settings_key.label(),
+        cfg.review,
         hover,
         &mut hits,
     );
@@ -2711,6 +2775,10 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
     } else if let Some(view) = reply_view.as_ref() {
         hits.clear();
         reply_scroll_max = draw_reply(px, fonts, w, h, view, hover, reply_scroll, &mut hits);
+        paint_focus(px, &hits, focus);
+    } else if let Some(kind) = clear_confirm {
+        hits.clear();
+        draw_clear_confirm(px, fonts, w, h, kind, hover, &mut hits);
         paint_focus(px, &hits, focus);
     } else {
         paint_drop_menus(px, fonts, hover, &mut hits);
@@ -3096,6 +3164,7 @@ fn draw_top_bar(
     y: f32,
     tab: Tab,
     key_label: &str,
+    review_on: bool,
     hover: Option<Hit>,
     hits: &mut Vec<HitBox>,
 ) {
@@ -3140,6 +3209,19 @@ fn draw_top_bar(
         hover,
         hits,
     );
+    if review_on {
+        mx += mode_tab(
+            px,
+            fonts,
+            mx,
+            ty,
+            "Profile",
+            tab == Tab::Profile,
+            Hit::TabProfile,
+            hover,
+            hits,
+        );
+    }
     mx += mode_tab(
         px,
         fonts,
@@ -3335,16 +3417,7 @@ fn preset_chip(
     });
     if selected {
         fill_skew(px, x, y, (bw - skew).max(48.0), h, skew, accent());
-        text(
-            px,
-            fonts,
-            label,
-            size,
-            x + 12.0,
-            y + 6.0,
-            ink(),
-            false,
-        );
+        text(px, fonts, label, size, x + 12.0, y + 6.0, ink(), false);
     } else {
         if hover == Some(hit) {
             fill_round(px, x, y, bw, h, 8.0, Color::from_rgba8(255, 255, 255, 10));
@@ -3391,16 +3464,7 @@ fn mode_tab(
     });
     if selected {
         fill_skew(px, x, y, (bw - skew).max(48.0), h, skew, accent());
-        text(
-            px,
-            fonts,
-            label,
-            size,
-            x + 14.0,
-            y + 8.0,
-            ink(),
-            false,
-        );
+        text(px, fonts, label, size, x + 14.0, y + 8.0, ink(), false);
     } else {
         if hover == Some(hit) {
             fill_round(px, x, y, bw, h, 8.0, Color::from_rgba8(255, 255, 255, 10));
@@ -4088,16 +4152,7 @@ fn action_btn(
             accent()
         };
         fill_round(px, x, y, w, h, 8.0, fill);
-        text(
-            px,
-            fonts,
-            label,
-            13.0,
-            x + w * 0.5,
-            y + 8.0,
-            ink(),
-            true,
-        );
+        text(px, fonts, label, 13.0, x + w * 0.5, y + 8.0, ink(), true);
     } else {
         let fill = if hover == Some(hit) {
             chip_hover()
@@ -5769,7 +5824,13 @@ fn paint_sv_square(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, hue: f32) {
         let mut paint = Paint::default();
         paint.shader = shader;
         paint.anti_alias = true;
-        px.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+        px.fill_path(
+            &path,
+            &paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
     }
     if let Some(shader) = LinearGradient::new(
         SkPoint::from_xy(x, y),
@@ -5784,7 +5845,13 @@ fn paint_sv_square(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, hue: f32) {
         let mut paint = Paint::default();
         paint.shader = shader;
         paint.anti_alias = true;
-        px.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+        px.fill_path(
+            &path,
+            &paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
     }
 }
 
@@ -5809,7 +5876,13 @@ fn paint_hue_bar(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32) {
         let mut paint = Paint::default();
         paint.shader = shader;
         paint.anti_alias = true;
-        px.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+        px.fill_path(
+            &path,
+            &paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
     }
 }
 

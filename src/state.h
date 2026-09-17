@@ -94,6 +94,7 @@ public:
     void setLocalSplit(int split, int timeMs, int bestDiff);
     void setRaceLap(int raceNum, int lapNum, int lapMs, int split0, int split1);
     void setRaceSplit(int raceNum, int split, int timeMs);
+    void setRaceHoleshot(int raceNum, int timeMs);
     void finishLapSectors(int lapNum, int lapMs, int split0, int split1);
     void addEntry(const SPluginsRaceAddEntry_t& e);
     void removeEntry(int raceNum);
@@ -168,6 +169,8 @@ public:
     int shiftRpm() const { return m_shiftRpm; }
     int sessionTimeMs() const;
     int sessionLength() const { return m_sessionLength; }
+    int holeshotRaceNum() const { return m_holeshotRaceNum; }
+    int holeshotTime() const { return m_holeshotTime; }
 
     int sectorCount() const { return 3; }
     int sectorLast() const { return m_sectorLast; }
@@ -266,4 +269,7 @@ private:
 
     bool m_centerlineDirty = false;
     uint32_t m_mapRev = 0;
+
+    int m_holeshotRaceNum = 0;
+    int m_holeshotTime = 0;
 };

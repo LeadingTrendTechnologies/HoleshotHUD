@@ -66,7 +66,7 @@ fn mapping_unusable_rejects_short_region() {
 }
 
 #[test]
-fn mapping_unusable_keeps_stamped_v15() {
+fn mapping_unusable_keeps_stamped_v16() {
     let need = size_of::<Snapshot>();
     assert!(!mapping_unusable(MAGIC, VERSION, need as u32, need));
 }

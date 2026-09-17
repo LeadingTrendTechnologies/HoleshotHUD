@@ -22,6 +22,10 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             set_tab(Tab::App);
             return;
         }
+        Hit::TabProfile => {
+            set_tab(Tab::Profile);
+            return;
+        }
         Hit::TabReview => {
             set_tab(Tab::Review);
             open_live_analyze(true);
@@ -109,9 +113,64 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             });
             if !now_on {
                 crate::review::tick(&mxbo_hud::shm::Snapshot::default(), false);
+                if let Some(ui) = UI.lock().unwrap().as_mut() {
+                    if ui.tab == Tab::Profile {
+                        ui.tab = Tab::Review;
+                    }
+                }
             }
             return;
         }
+        Hit::ProfileAllTime => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.profile_all_time = true;
+            }
+            return;
+        }
+        Hit::ProfileTwoWeeks => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.profile_all_time = false;
+            }
+            return;
+        }
+        Hit::ProfileClear => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.clear_confirm = Some(ClearKind::Profile);
+            }
+            return;
+        }
+        Hit::ReviewClear => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.clear_confirm = Some(ClearKind::Motos);
+            }
+            return;
+        }
+        Hit::ClearCancel | Hit::ClearScrim => {
+            dismiss_clear_confirm();
+            return;
+        }
+        Hit::ClearPanel => return,
+        Hit::ClearConfirm => {
+            let kind = UI.lock().unwrap().as_ref().and_then(|u| u.clear_confirm);
+            match kind {
+                Some(ClearKind::Profile) => crate::review::clear_profile(),
+                Some(ClearKind::Motos) => {
+                    crate::review::clear_motos();
+                    if let Some(ui) = UI.lock().unwrap().as_mut() {
+                        if let Some(id) = ui.analyze_id {
+                            if crate::review::load(id).is_none() {
+                                ui.analyze_id = None;
+                                ui.review_stay_on_list = true;
+                            }
+                        }
+                    }
+                }
+                None => {}
+            }
+            dismiss_clear_confirm();
+            return;
+        }
+        Hit::ProfileAxis(_) => return,
         Hit::AnalyzeFollow => {
             if let Some(ui) = UI.lock().unwrap().as_mut() {
                 ui.analyze_follow = !ui.analyze_follow;
@@ -649,7 +708,17 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::TabWidgets
         | Hit::TabApp
         | Hit::TabReview
+        | Hit::TabProfile
         | Hit::TabFeedback
+        | Hit::ProfileAllTime
+        | Hit::ProfileTwoWeeks
+        | Hit::ProfileClear
+        | Hit::ProfileAxis(_)
+        | Hit::ReviewClear
+        | Hit::ClearScrim
+        | Hit::ClearPanel
+        | Hit::ClearCancel
+        | Hit::ClearConfirm
         | Hit::TabSt
         | Hit::TabRel
         | Hit::TabMap

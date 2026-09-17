@@ -7,11 +7,11 @@ extern "C" {
 #endif
 
 #define MXBO_SHM_MAGIC 0x4F42584Du /* 'MXBO' */
-#define MXBO_SHM_VERSION 15
+#define MXBO_SHM_VERSION 16
 /* Layout lock: src/shm/abi.txt — tools/shm-abi.cpp and Rust Snapshot/CmdView. */
 /* Versioned name so a leftover smaller mapping cannot be remapped and overrun. */
-#define MXBO_SHM_NAME L"Local\\MXBOHudV15"
-#define MXBO_SHM_NAME_A "Local\\MXBOHudV15"
+#define MXBO_SHM_NAME L"Local\\MXBOHudV16"
+#define MXBO_SHM_NAME_A "Local\\MXBOHudV16"
 #define MXBO_CMD_MAGIC 0x4342584Du /* 'MXBC' */
 #define MXBO_CMD_NAME L"Local\\MXBOHudCmdV1"
 #define MXBO_CMD_NAME_A "Local\\MXBOHudCmdV1"
@@ -153,6 +153,9 @@ typedef struct MxboShmSnapshot
     float localFrontBrake;
     float localRearBrake;
     float localClutch;
+
+    int32_t holeshotRaceNum;
+    int32_t holeshotTime;
 } MxboShmSnapshot;
 
 /* Overlay → plugin. Separate mapping so the snapshot seqlock is not mixed with writes. */

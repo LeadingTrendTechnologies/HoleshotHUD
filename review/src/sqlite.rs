@@ -122,6 +122,11 @@ fn bump(st: &mut Store, id: Option<i64>) {
     }
 }
 
+fn invalidate(st: &mut Store) {
+    st.rev = st.rev.wrapping_add(1);
+    st.cached = None;
+}
+
 fn bins_blank(bins: &[ChannelBin; BINS]) -> bool {
     !bins
         .iter()
@@ -334,6 +339,33 @@ pub fn init(dir: PathBuf) {
     if added_practice {
         let _ = conn.execute("UPDATE sessions SET practice = 1 WHERE kind < 6", []);
     }
+    let _ = conn.execute("ALTER TABLE sessions ADD COLUMN holeshot INTEGER", []);
+    let _ = conn.execute(
+        "ALTER TABLE profile_races ADD COLUMN name TEXT NOT NULL DEFAULT ''",
+        [],
+    );
+    let _ = conn.execute("ALTER TABLE profile_races ADD COLUMN holeshot INTEGER", []);
+    let _ = conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS profile_races (
+           session_id INTEGER PRIMARY KEY,
+           started INTEGER NOT NULL,
+           rider_count INTEGER NOT NULL,
+           position INTEGER NOT NULL,
+           your_best_ms INTEGER NOT NULL,
+           fastest_ms INTEGER NOT NULL,
+           laps BLOB NOT NULL,
+           attack_hot INTEGER NOT NULL,
+           attack_n INTEGER NOT NULL,
+           air_hot INTEGER NOT NULL,
+           air_n INTEGER NOT NULL,
+           name TEXT NOT NULL DEFAULT '',
+           holeshot INTEGER
+         );
+         CREATE TABLE IF NOT EXISTS profile_meta (
+           k TEXT PRIMARY KEY,
+           v INTEGER NOT NULL
+         );",
+    );
     let mut st = live();
     st.conn = Some(conn);
     drop(st);
@@ -345,7 +377,7 @@ pub fn tick(s: &Snapshot, in_session: bool) {
         let mut st = live();
         if let Some(open) = st.live.take() {
             if let Some(c) = st.conn.as_ref() {
-                delete_if_empty(c, open.id);
+                finish_visit(c, open.id);
                 compact_and_prune(c);
             }
             location_tape::reset();
@@ -375,7 +407,7 @@ pub fn tick(s: &Snapshot, in_session: bool) {
         if need_new {
             if let Some(old) = st.live.take() {
                 if let Some(c) = st.conn.as_ref() {
-                    delete_if_empty(c, old.id);
+                    finish_visit(c, old.id);
                 }
                 bump(&mut st, Some(old.id));
             }
@@ -406,6 +438,7 @@ pub fn tick(s: &Snapshot, in_session: bool) {
             for lap in &commits {
                 let _ = upsert_lap(c, id, lap);
             }
+            note_holeshot(c, id, s, you, practice);
         }
         if due && st.conn.is_some() && id.is_some() {
             st.field_at = Some(Instant::now());
@@ -730,12 +763,48 @@ pub fn delete(id: i64) {
         let _ = c.execute("DELETE FROM crashes WHERE session_id = ?1", params![id]);
         let _ = c.execute("DELETE FROM riders WHERE session_id = ?1", params![id]);
         let _ = c.execute("DELETE FROM laps WHERE session_id = ?1", params![id]);
+        let _ = c.execute(
+            "DELETE FROM profile_races WHERE session_id = ?1",
+            params![id],
+        );
         let _ = c.execute("DELETE FROM sessions WHERE id = ?1", params![id]);
     }
     if st.live.as_ref().is_some_and(|l| l.id == id) {
         st.live = None;
     }
     bump(&mut st, Some(id));
+}
+
+pub fn clear_profile() {
+    let mut st = live();
+    if let Some(c) = st.conn.as_ref() {
+        let _ = c.execute("DELETE FROM profile_races", []);
+        let _ = c.execute(
+            "INSERT INTO profile_meta (k, v) VALUES ('cleared_at', ?1)
+             ON CONFLICT(k) DO UPDATE SET v = excluded.v",
+            params![now_secs()],
+        );
+    }
+    invalidate(&mut st);
+}
+
+pub fn clear_motos() {
+    let mut st = live();
+    let keep = st.live.as_ref().map(|l| l.id);
+    if let Some(c) = st.conn.as_ref() {
+        if let Some(id) = keep {
+            let _ = c.execute("DELETE FROM crashes WHERE session_id != ?1", params![id]);
+            let _ = c.execute("DELETE FROM riders WHERE session_id != ?1", params![id]);
+            let _ = c.execute("DELETE FROM laps WHERE session_id != ?1", params![id]);
+            let _ = c.execute("DELETE FROM sessions WHERE id != ?1", params![id]);
+        } else {
+            let _ = c.execute("DELETE FROM crashes", []);
+            let _ = c.execute("DELETE FROM riders", []);
+            let _ = c.execute("DELETE FROM laps", []);
+            let _ = c.execute("DELETE FROM sessions", []);
+        }
+    }
+    invalidate(&mut st);
 }
 
 pub fn prune() {
@@ -905,7 +974,89 @@ pub fn seed_demo() -> Option<i64> {
             };
             let _ = upsert_lap(c, id, &you_lap);
             let _ = upsert_lap(c, id, &other_lap);
+            for extra in [113_400, 114_100, 112_900] {
+                let mut more = you_lap.clone();
+                more.lap_ms = extra;
+                let _ = upsert_lap(c, id, &more);
+            }
+        } else {
+            let you_best = field
+                .iter()
+                .find(|r| r.1 == *you)
+                .map(|r| r.3)
+                .unwrap_or(120_000);
+            let fast_best = field
+                .iter()
+                .find(|r| r.1 == *fastest)
+                .map(|r| r.3)
+                .unwrap_or(you_best);
+            let you_name = field
+                .iter()
+                .find(|r| r.1 == *you)
+                .map(|r| r.0)
+                .unwrap_or("You");
+            let fast_name = field
+                .iter()
+                .find(|r| r.1 == *fastest)
+                .map(|r| r.0)
+                .unwrap_or("Cole");
+            for extra in [0, 800, 1_400, -400] {
+                let mut lap = CommittedLap {
+                    race_num: *you,
+                    name: you_name.into(),
+                    bike: "FC 450".into(),
+                    lap_ms: you_best + extra,
+                    sectors: [0, 0, 0],
+                    bins: you_bins,
+                    line: you_line.clone(),
+                    is_you: true,
+                    crashed: false,
+                    cut: false,
+                    warmup: false,
+                    crashes: Vec::new(),
+                };
+                if extra < 0 {
+                    lap.lap_ms = you_best + extra.abs();
+                }
+                let _ = upsert_lap(c, id, &lap);
+            }
+            let _ = upsert_lap(
+                c,
+                id,
+                &CommittedLap {
+                    race_num: *fastest,
+                    name: fast_name.into(),
+                    bike: "YZ450F".into(),
+                    lap_ms: fast_best,
+                    sectors: [0, 0, 0],
+                    bins: other_bins,
+                    line: other_line.clone(),
+                    is_you: false,
+                    crashed: false,
+                    cut: false,
+                    warmup: false,
+                    crashes: Vec::new(),
+                },
+            );
         }
+    }
+    if let Some(id) = first {
+        let _ = c.execute(
+            "UPDATE sessions SET holeshot = 1 WHERE id = ?1",
+            params![id],
+        );
+    }
+    let ids: Vec<i64> = c
+        .prepare("SELECT id FROM sessions")
+        .ok()
+        .and_then(|mut stmt| {
+            stmt.query_map([], |r| r.get(0))
+                .ok()
+                .map(|it| it.filter_map(|r| r.ok()).collect())
+        })
+        .unwrap_or_default();
+    for id in ids {
+        upsert_profile_race(c, id);
     }
     bump(&mut st, first);
     first
@@ -1132,8 +1283,28 @@ fn delete_if_empty(c: &Connection, id: i64) {
     let _ = c.execute("DELETE FROM riders WHERE session_id = ?1", params![id]);
     let _ = c.execute("DELETE FROM laps WHERE session_id = ?1", params![id]);
     let _ = c.execute(
+        "DELETE FROM profile_races WHERE session_id = ?1",
+        params![id],
+    );
+    let _ = c.execute(
         "DELETE FROM sessions WHERE id = ?1 AND kept = 0",
         params![id],
+    );
+}
+
+fn finish_visit(c: &Connection, id: i64) {
+    upsert_profile_race(c, id);
+    delete_if_empty(c, id);
+}
+
+fn note_holeshot(c: &Connection, id: i64, s: &Snapshot, you: i32, practice: bool) {
+    if practice || s.session_kind == crate::WARMUP_KIND || s.holeshot_race_num <= 0 {
+        return;
+    }
+    let v = if s.holeshot_race_num == you { 1 } else { 0 };
+    let _ = c.execute(
+        "UPDATE sessions SET holeshot = ?1 WHERE id = ?2 AND holeshot IS NULL",
+        params![v, id],
     );
 }
 
@@ -1301,6 +1472,18 @@ fn next_you_lap(c: &Connection, id: i64, race_num: i32) -> i32 {
 
 fn compact_and_prune(c: &Connection) {
     let now = now_secs();
+    let cutoff = now - FORTNIGHT_SECS;
+    if let Ok(mut stmt) = c.prepare("SELECT id FROM sessions WHERE kept = 0 AND started < ?1") {
+        let ids: Vec<i64> = stmt
+            .query_map(params![cutoff], |r| r.get(0))
+            .ok()
+            .map(|it| it.filter_map(|r| r.ok()).collect())
+            .unwrap_or_default();
+        drop(stmt);
+        for id in ids {
+            upsert_profile_race(c, id);
+        }
+    }
     let _ = c.execute(
         "DELETE FROM laps WHERE session_id IN (
             SELECT id FROM sessions WHERE kept = 0 AND started < ?1
@@ -1313,22 +1496,246 @@ fn compact_and_prune(c: &Connection) {
     );
     let _ = c.execute(
         "DELETE FROM riders WHERE session_id IN (SELECT id FROM sessions WHERE kept = 0 AND started < ?1)",
-        params![now - FORTNIGHT_SECS],
+        params![cutoff],
     );
     let _ = c.execute(
         "DELETE FROM crashes WHERE session_id IN (SELECT id FROM sessions WHERE kept = 0 AND started < ?1)
          OR session_id NOT IN (SELECT id FROM sessions)
          OR (session_id, race_num, lap_num) NOT IN (SELECT session_id, race_num, lap_num FROM laps)",
-        params![now - FORTNIGHT_SECS],
+        params![cutoff],
     );
     let _ = c.execute(
         "DELETE FROM laps WHERE session_id IN (SELECT id FROM sessions WHERE kept = 0 AND started < ?1)",
-        params![now - FORTNIGHT_SECS],
+        params![cutoff],
     );
     let _ = c.execute(
         "DELETE FROM sessions WHERE kept = 0 AND started < ?1",
-        params![now - FORTNIGHT_SECS],
+        params![cutoff],
     );
+}
+
+fn upsert_profile_race(c: &Connection, id: i64) {
+    let Some(compact) = race_input_from(c, id).and_then(|i| crate::compact_from_input(&i)) else {
+        let _ = c.execute(
+            "DELETE FROM profile_races WHERE session_id = ?1",
+            params![id],
+        );
+        return;
+    };
+    let _ = c.execute(
+        "INSERT INTO profile_races (
+            session_id, started, rider_count, position, your_best_ms, fastest_ms,
+            laps, attack_hot, attack_n, air_hot, air_n, name, holeshot
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+         ON CONFLICT(session_id) DO UPDATE SET
+            started = excluded.started,
+            rider_count = excluded.rider_count,
+            position = excluded.position,
+            your_best_ms = excluded.your_best_ms,
+            fastest_ms = excluded.fastest_ms,
+            laps = excluded.laps,
+            attack_hot = excluded.attack_hot,
+            attack_n = excluded.attack_n,
+            air_hot = excluded.air_hot,
+            air_n = excluded.air_n,
+            name = excluded.name,
+            holeshot = excluded.holeshot",
+        params![
+            compact.session_id,
+            compact.started,
+            compact.rider_count,
+            compact.position,
+            compact.your_best_ms,
+            compact.fastest_ms,
+            crate::pack_laps(&compact.laps),
+            compact.attack_hot,
+            compact.attack_n,
+            compact.air_hot,
+            compact.air_n,
+            compact.name,
+            compact.holeshot
+        ],
+    );
+}
+
+fn race_input_from(c: &Connection, id: i64) -> Option<crate::RaceInput> {
+    let (practice, kind, holeshot): (i32, i32, Option<i32>) = c
+        .query_row(
+            "SELECT practice, kind, holeshot FROM sessions WHERE id = ?1",
+            params![id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .ok()?;
+    let detail = load_from(c, id)?;
+    let you = detail
+        .riders
+        .iter()
+        .find(|r| r.race_num == detail.your_race_num);
+    Some(crate::RaceInput {
+        session_id: id,
+        started: detail.row.started,
+        practice: practice != 0,
+        kind,
+        rider_count: detail.row.rider_count,
+        your_race_num: detail.your_race_num,
+        position: you.map(|r| r.position).unwrap_or(0),
+        your_best_ms: you.map(|r| r.best_ms).unwrap_or(detail.row.your_best_ms),
+        fastest_ms: detail.row.fastest_ms,
+        laps: detail
+            .laps
+            .iter()
+            .filter(|l| l.race_num == detail.your_race_num)
+            .map(|l| crate::RaceLapInput {
+                lap_num: l.lap_num,
+                ms: l.lap_ms,
+                warmup: l.warmup,
+                crashed: l.crashed,
+                cut: l.cut,
+                bins: l.bins,
+            })
+            .collect(),
+        name: you.map(|r| r.name.clone()).unwrap_or_default(),
+        holeshot,
+    })
+}
+
+fn load_compact_row(
+    session_id: i64,
+    started: i64,
+    rider_count: i32,
+    position: i32,
+    your_best_ms: i32,
+    fastest_ms: i32,
+    laps: Vec<u8>,
+    attack_hot: i32,
+    attack_n: i32,
+    air_hot: i32,
+    air_n: i32,
+    name: String,
+    holeshot: Option<i32>,
+) -> crate::CompactRace {
+    crate::CompactRace {
+        session_id,
+        started,
+        rider_count,
+        position,
+        your_best_ms,
+        fastest_ms,
+        laps: crate::unpack_laps(&laps),
+        attack_hot,
+        attack_n,
+        air_hot,
+        air_n,
+        name,
+        holeshot,
+    }
+}
+
+pub fn profile(window: crate::ProfileWindow) -> crate::RiderProfile {
+    let st = live();
+    let Some(c) = st.conn.as_ref() else {
+        return crate::RiderProfile::empty();
+    };
+    profile_from(c, window, now_secs())
+}
+
+fn profile_from(c: &Connection, window: crate::ProfileWindow, now: i64) -> crate::RiderProfile {
+    backfill_profile_races(c);
+    let cutoff = now - crate::PROFILE_WINDOW_SECS;
+    let mut races = Vec::new();
+    if let Ok(mut stmt) = c.prepare(
+        "SELECT session_id, started, rider_count, position, your_best_ms, fastest_ms,
+                laps, attack_hot, attack_n, air_hot, air_n, name, holeshot
+         FROM profile_races",
+    ) {
+        if let Ok(it) = stmt.query_map([], |r| {
+            Ok(load_compact_row(
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                r.get(4)?,
+                r.get(5)?,
+                r.get(6)?,
+                r.get(7)?,
+                r.get(8)?,
+                r.get(9)?,
+                r.get(10)?,
+                r.get(11)?,
+                r.get(12)?,
+            ))
+        }) {
+            races.extend(it.filter_map(|r| r.ok()));
+        }
+    }
+    let all_time_count = races.len() as i32;
+    let mut name = String::new();
+    let mut newest = i64::MIN;
+    for race in &races {
+        if race.started >= newest && !race.name.is_empty() {
+            newest = race.started;
+            name = race.name.clone();
+        }
+    }
+    let window_races: Vec<&crate::CompactRace> = match window {
+        crate::ProfileWindow::TwoWeeks => races.iter().filter(|r| r.started >= cutoff).collect(),
+        crate::ProfileWindow::AllTime => races.iter().collect(),
+    };
+    let holeshots = window_races
+        .iter()
+        .filter(|r| r.holeshot == Some(1))
+        .count() as i32;
+    let scores: Vec<[Option<f32>; crate::AXIS_COUNT]> = window_races
+        .iter()
+        .map(|r| crate::scores_from_compact(r))
+        .collect();
+    crate::RiderProfile {
+        name,
+        race_count: window_races.len() as i32,
+        all_time_count,
+        holeshots,
+        scores: crate::mean_scores(&scores),
+    }
+}
+
+fn profile_cleared_at(c: &Connection) -> i64 {
+    c.query_row(
+        "SELECT v FROM profile_meta WHERE k = 'cleared_at'",
+        [],
+        |r| r.get(0),
+    )
+    .unwrap_or(0)
+}
+
+fn backfill_profile_races(c: &Connection) {
+    let cleared_at = profile_cleared_at(c);
+    let existing: std::collections::HashSet<i64> = c
+        .prepare("SELECT session_id FROM profile_races")
+        .ok()
+        .and_then(|mut stmt| {
+            stmt.query_map([], |r| r.get(0))
+                .ok()
+                .map(|it| it.filter_map(|r| r.ok()).collect())
+        })
+        .unwrap_or_default();
+    let rows: Vec<(i64, i64)> = c
+        .prepare("SELECT id, started FROM sessions")
+        .ok()
+        .and_then(|mut stmt| {
+            stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+                .ok()
+                .map(|it| it.filter_map(|r| r.ok()).collect())
+        })
+        .unwrap_or_default();
+    for (id, started) in rows {
+        if existing.contains(&id) {
+            continue;
+        }
+        if started <= cleared_at {
+            continue;
+        }
+        upsert_profile_race(c, id);
+    }
 }
 
 fn pack_channels(bins: &[ChannelBin; BINS]) -> Vec<u8> {
@@ -2177,5 +2584,272 @@ mod tests {
         }
         let pts = unpack_poly(Some(&raw));
         assert_eq!(pts.len(), mxbo_hud::shm::MAX_POLY);
+    }
+
+    fn put_eligible_race(c: &Connection, started: i64, you: i32, laps: &[i32]) -> i64 {
+        let id = insert_typed(c, "Hangtown", 7, you, 7, false).expect("session");
+        c.execute(
+            "UPDATE sessions SET rider_count = 8, started = ?1 WHERE id = ?2",
+            params![started, id],
+        )
+        .expect("field");
+        for ms in laps {
+            upsert_lap(c, id, &dummy_lap(you, *ms, true, false)).expect("lap");
+        }
+        upsert_lap(
+            c,
+            id,
+            &dummy_lap(
+                7,
+                laps.iter().min().copied().unwrap_or(100_000) - 500,
+                false,
+                false,
+            ),
+        )
+        .expect("fastest");
+        c.execute(
+            "UPDATE riders SET position = 3 WHERE session_id = ?1 AND race_num = ?2",
+            params![id, you],
+        )
+        .ok();
+        c.execute(
+            "UPDATE riders SET position = 1 WHERE session_id = ?1 AND race_num = 7",
+            params![id],
+        )
+        .ok();
+        id
+    }
+
+    #[test]
+    fn profile_skips_practice_warmup_and_solo() {
+        let _g = serial();
+        reset();
+        let dir = std::env::temp_dir().join(format!("mxbo-profile-skip-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        init(dir.clone());
+        {
+            let st = live();
+            let c = st.conn.as_ref().expect("conn");
+            let prac = insert_typed(c, "Pala", -1, 2, 7, true).expect("prac");
+            c.execute(
+                "UPDATE sessions SET rider_count = 12 WHERE id = ?1",
+                params![prac],
+            )
+            .ok();
+            upsert_lap(c, prac, &dummy_lap(2, 110_000, true, false)).expect("p");
+            let wu = insert_typed(c, "Pala", crate::WARMUP_KIND, 2, 7, false).expect("wu");
+            c.execute(
+                "UPDATE sessions SET rider_count = 12 WHERE id = ?1",
+                params![wu],
+            )
+            .ok();
+            upsert_lap(c, wu, &dummy_lap(2, 110_000, true, false)).expect("w");
+            let solo = insert_typed(c, "Pala", 7, 2, 2, false).expect("solo");
+            c.execute(
+                "UPDATE sessions SET rider_count = 1 WHERE id = ?1",
+                params![solo],
+            )
+            .ok();
+            upsert_lap(c, solo, &dummy_lap(2, 110_000, true, false)).expect("s");
+        }
+        let p = profile(crate::ProfileWindow::AllTime);
+        assert_eq!(p.all_time_count, 0);
+        reset();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn prune_compacts_eligible_race_for_all_time() {
+        let _g = serial();
+        reset();
+        let dir = std::env::temp_dir().join(format!("mxbo-profile-prune-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        init(dir.clone());
+        let old = now_secs() - FORTNIGHT_SECS - 60;
+        {
+            let st = live();
+            let c = st.conn.as_ref().expect("conn");
+            put_eligible_race(c, old, 2, &[113_000, 114_000, 112_500, 113_400]);
+        }
+        prune();
+        assert!(list(ListFilter::All).is_empty());
+        let all = profile(crate::ProfileWindow::AllTime);
+        assert_eq!(all.all_time_count, 1);
+        assert_eq!(all.race_count, 1);
+        assert!(all.scores[0].is_some());
+        let two = profile(crate::ProfileWindow::TwoWeeks);
+        assert_eq!(two.race_count, 0);
+        assert_eq!(two.all_time_count, 1);
+        reset();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn motos_delete_drops_profile_rollup() {
+        let _g = serial();
+        reset();
+        let dir = std::env::temp_dir().join(format!("mxbo-profile-del-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        init(dir.clone());
+        let old = now_secs() - FORTNIGHT_SECS - 60;
+        let id = {
+            let st = live();
+            let c = st.conn.as_ref().expect("conn");
+            put_eligible_race(c, old, 2, &[113_000, 114_000, 112_500, 113_400])
+        };
+        prune();
+        assert_eq!(profile(crate::ProfileWindow::AllTime).all_time_count, 1);
+        delete(id);
+        assert_eq!(profile(crate::ProfileWindow::AllTime).all_time_count, 0);
+        reset();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn profile_counts_holeshot_from_compact() {
+        let _g = serial();
+        reset();
+        let dir = std::env::temp_dir().join(format!("mxbo-profile-hs-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        init(dir.clone());
+        {
+            let st = live();
+            let c = st.conn.as_ref().expect("conn");
+            let id = put_eligible_race(c, now_secs(), 2, &[113_000, 114_000, 112_500, 113_400]);
+            c.execute(
+                "UPDATE sessions SET holeshot = 1 WHERE id = ?1",
+                params![id],
+            )
+            .expect("hs");
+        }
+        let p = profile(crate::ProfileWindow::AllTime);
+        assert_eq!(p.holeshots, 1);
+        assert_eq!(p.name, "You");
+        reset();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn tick_freezes_holeshot_once() {
+        let _g = serial();
+        reset();
+        let dir = std::env::temp_dir().join(format!("mxbo-profile-hs-tick-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        init(dir.clone());
+        let mut s = Snapshot::default();
+        let name = b"Hangtown";
+        s.track_name[..name.len()].copy_from_slice(name);
+        s.has_telemetry = 1;
+        s.local_race_num = 2;
+        s.session_kind = 7;
+        s.standing_count = 2;
+        s.standings[0].race_num = 2;
+        s.standings[1].race_num = 7;
+        s.holeshot_race_num = 2;
+        tick(&s, true);
+        let id = live_id().expect("live");
+        let hs: Option<i32> = {
+            let st = live();
+            let c = st.conn.as_ref().expect("conn");
+            c.query_row(
+                "SELECT holeshot FROM sessions WHERE id = ?1",
+                params![id],
+                |r| r.get(0),
+            )
+            .expect("hs")
+        };
+        assert_eq!(hs, Some(1));
+        s.holeshot_race_num = 7;
+        tick(&s, true);
+        let hs2: Option<i32> = {
+            let st = live();
+            let c = st.conn.as_ref().expect("conn");
+            c.query_row(
+                "SELECT holeshot FROM sessions WHERE id = ?1",
+                params![id],
+                |r| r.get(0),
+            )
+            .expect("hs2")
+        };
+        assert_eq!(hs2, Some(1));
+        reset();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn profile_reads_compact_after_sessions_gone() {
+        let _g = serial();
+        reset();
+        let dir = std::env::temp_dir().join(format!("mxbo-profile-gone-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        init(dir.clone());
+        let old = now_secs() - FORTNIGHT_SECS - 60;
+        {
+            let st = live();
+            let c = st.conn.as_ref().expect("conn");
+            put_eligible_race(c, old, 2, &[113_000, 114_000, 112_500, 113_400]);
+        }
+        prune();
+        assert!(list(ListFilter::All).is_empty());
+        let p = profile(crate::ProfileWindow::AllTime);
+        assert_eq!(p.all_time_count, 1);
+        assert!(p.scores[0].is_some());
+        reset();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn clear_profile_leaves_motos() {
+        let _g = serial();
+        reset();
+        let dir = std::env::temp_dir().join(format!("mxbo-clear-profile-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        init(dir.clone());
+        seed_demo().expect("demo");
+        assert!(profile(crate::ProfileWindow::AllTime).all_time_count > 0);
+        assert!(!list(ListFilter::All).is_empty());
+        clear_profile();
+        assert_eq!(profile(crate::ProfileWindow::AllTime).all_time_count, 0);
+        assert!(!list(ListFilter::All).is_empty());
+        reset();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn clear_motos_leaves_profile() {
+        let _g = serial();
+        reset();
+        let dir = std::env::temp_dir().join(format!("mxbo-clear-motos-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        init(dir.clone());
+        seed_demo().expect("demo");
+        let n = profile(crate::ProfileWindow::AllTime).all_time_count;
+        assert!(n > 0);
+        clear_motos();
+        assert!(list(ListFilter::All).is_empty());
+        assert_eq!(profile(crate::ProfileWindow::AllTime).all_time_count, n);
+        reset();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn clear_motos_keeps_live() {
+        let _g = serial();
+        reset();
+        let dir = std::env::temp_dir().join(format!("mxbo-clear-live-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        init(dir.clone());
+        let id = seed_demo().expect("demo");
+        set_live(id, "Hangtown");
+        let before = list(ListFilter::All).len();
+        assert!(before > 1);
+        clear_motos();
+        let rows = list(ListFilter::All);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].id, id);
+        assert_eq!(live_id(), Some(id));
+        assert!(profile(crate::ProfileWindow::AllTime).all_time_count > 0);
+        reset();
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

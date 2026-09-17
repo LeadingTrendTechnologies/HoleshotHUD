@@ -114,7 +114,8 @@ pub fn pane_review(
             pan_x, pan_z, follow, units,
         );
     }
-    let has_races = !mxbo_review::list(ListFilter::All).is_empty();
+    let rows = mxbo_review::list(ListFilter::All);
+    let has_races = !rows.is_empty();
     if !recording && !has_races {
         return pane_review_gate(px, fonts, hover, hits, x, y, w);
     }
@@ -149,6 +150,21 @@ pub fn pane_review(
     ] {
         let cw = filter_chip(px, fonts, cx, chip_y, label, on, hit, hover, hits);
         cx += cw + 8.0;
+    }
+    let live = mxbo_review::live_id();
+    if rows.iter().any(|r| Some(r.id) != live) {
+        let bw = (measure(fonts, "Clear", 13.0) + 28.0).max(64.0);
+        filter_chip(
+            px,
+            fonts,
+            x + (w - bw).max(0.0),
+            chip_y,
+            "Clear",
+            false,
+            Hit::ReviewClear,
+            hover,
+            hits,
+        );
     }
     y = chip_y + 36.0;
     draw_review_sheet(px, fonts, hover, hits, x, y, w, filter)

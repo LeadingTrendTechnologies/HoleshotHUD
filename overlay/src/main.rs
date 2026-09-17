@@ -126,7 +126,7 @@ fn f9_dump_text(shm: Option<&Shm>, snap: Option<&Snapshot>) -> String {
         std::mem::size_of::<Snapshot>()
     ));
     match shm {
-        None => o.push_str("OpenFileMapping Local\\MXBOHudV15 failed. Start MX Bikes with Holeshot-HUD.dlo loaded.\n"),
+        None => o.push_str("OpenFileMapping Local\\MXBOHudV16 failed. Start MX Bikes with Holeshot-HUD.dlo loaded.\n"),
         Some(s) => match s.header() {
             Some((magic, version, seq, size)) => {
                 o.push_str(&format!(

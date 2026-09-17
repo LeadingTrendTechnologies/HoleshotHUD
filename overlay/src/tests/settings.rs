@@ -44,6 +44,8 @@ fn dummy_ui(open: bool) -> SettingsUi {
         analyze_scrubbing: false,
         analyze_follow: false,
         map_drag: None,
+        profile_all_time: true,
+        clear_confirm: None,
     }
 }
 
@@ -237,6 +239,7 @@ fn review_list_sheet_has_icon_hits() {
     assert!(ids.iter().any(|h| matches!(h, Hit::ReviewDelete(_))));
     assert!(ids.iter().any(|h| matches!(h, Hit::ReviewKeep(_))));
     assert!(ids.contains(&Hit::ReviewToggle));
+    assert!(ids.contains(&Hit::ReviewClear));
     *UI.lock().unwrap() = None;
     crate::review::reset();
 }
@@ -602,4 +605,115 @@ fn clamp_snaps_to_nearest_when_monitor_is_gone() {
         clamp_settings_origin(80, 80, SETTINGS_W, SETTINGS_H, &[]),
         (80, 80)
     );
+}
+
+#[test]
+fn profile_tab_hidden_when_motos_off() {
+    let _g = crate::review::serial();
+    crate::review::reset();
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        g.review = false;
+    }
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Profile;
+    *UI.lock().unwrap() = Some(ui);
+    let mut px = Pixmap::new(1000, 720).expect("pixmap");
+    draw(&mut px, &fonts, 1000.0, 720.0);
+    let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
+    let ids = hit_ids(&hits);
+    assert!(!ids.contains(&Hit::TabProfile));
+    assert!(ids.contains(&Hit::TabReview));
+    *UI.lock().unwrap() = None;
+}
+
+#[test]
+fn profile_empty_paints_teach_copy() {
+    let _g = crate::review::serial();
+    crate::review::reset();
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        g.review = true;
+    }
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Profile;
+    *UI.lock().unwrap() = Some(ui);
+    let mut px = Pixmap::new(1000, 720).expect("pixmap");
+    draw(&mut px, &fonts, 1000.0, 720.0);
+    let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
+    let ids = hit_ids(&hits);
+    assert!(ids.contains(&Hit::TabProfile));
+    assert!(ids.contains(&Hit::ProfileAllTime));
+    assert!(ids.contains(&Hit::ProfileTwoWeeks));
+    assert!(!ids.contains(&Hit::ProfileClear));
+    assert_golden("profile-empty", &px);
+    *UI.lock().unwrap() = None;
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        g.review = false;
+    }
+}
+
+#[test]
+fn profile_demo_paints_spider() {
+    let _g = crate::review::serial();
+    let tmp = std::env::temp_dir().join("mxbo-profile-demo");
+    let _ = fs::remove_dir_all(&tmp);
+    crate::review::reset();
+    crate::review::init(tmp);
+    crate::review::seed_demo().expect("demo");
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        g.review = true;
+    }
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Profile;
+    *UI.lock().unwrap() = Some(ui);
+    let mut px = Pixmap::new(1000, 720).expect("pixmap");
+    draw(&mut px, &fonts, 1000.0, 720.0);
+    let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
+    let ids = hit_ids(&hits);
+    assert!(ids.contains(&Hit::ProfileAllTime));
+    assert!(ids.contains(&Hit::ProfileClear));
+    for i in 0..8 {
+        assert!(ids.contains(&Hit::ProfileAxis(i)), "missing axis {i}");
+    }
+    assert_eq!(
+        hit_label(Hit::ProfileAxis(0)),
+        "Your best lap vs the fastest in that race."
+    );
+    assert_golden("profile", &px);
+    *UI.lock().unwrap() = None;
+    crate::review::reset();
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        g.review = false;
+    }
+}
+
+#[test]
+fn profile_clear_confirm_paints_buttons() {
+    let _g = crate::review::serial();
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Profile;
+    ui.clear_confirm = Some(ClearKind::Profile);
+    *UI.lock().unwrap() = Some(ui);
+    let mut px = Pixmap::new(1000, 720).expect("pixmap");
+    draw(&mut px, &fonts, 1000.0, 720.0);
+    let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
+    let ids = hit_ids(&hits);
+    assert!(ids.contains(&Hit::ClearScrim));
+    assert!(ids.contains(&Hit::ClearCancel));
+    assert!(ids.contains(&Hit::ClearConfirm));
+    assert_eq!(hit_label(Hit::ClearConfirm), "Clear");
+    assert_golden("clear-profile", &px);
+    *UI.lock().unwrap() = None;
 }

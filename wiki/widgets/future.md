@@ -8,7 +8,7 @@ Streaming (OBS Browser Source, stream-only layout) is not a widget — see [stre
 
 | Widget | Closest we have | Data |
 | --- | --- | --- |
-| [Holeshot / Start](#holeshot--start) | — | Overlay gate (`IN_GATE` / `session_state` 256) + live `track_pos`. `RaceHoleshot` Unused |
+| [Holeshot / Start](#holeshot--start) | — | Overlay gate (`IN_GATE` / `session_state` 256) + live `track_pos`. `RaceHoleshot` on SHM v16 (Profile count; live plaque not shipped) |
 | [Battle card](#battle-card) | [Relative](relative.md) | Overlay gaps. Rival speed Need SHM (`RaceVehicleData`) |
 | [Spectate nameplate](#spectate-nameplate) | Dash / Standings | Overlay (`focus_race_num`, live order, last lap) |
 | [Line](#line) | [Map](map.md) centerline | Overlay `poly[]` + XZ. **Needs in-game dumps** |
@@ -29,8 +29,8 @@ Gate lineup, live chase into turn 1, then the official holeshot call.
 
 - **Gate** — `IN_GATE` / `session_state == 256`. Compact live order, you highlighted. Hide in practice / warmup.
 - **Drop** — live chase from `riders[].track_pos` (same as Relative / live order) until the callback or a short track-pos threshold.
-- **Call** — unused `RaceHoleshot` (`m_iRaceNum` + `m_iTime`) in `src/plugin.cpp`. Winner plaque; your gap if you lost. Hold a few seconds, then hide.
-- Plugin stub today. Publish winner + time on SHM (bump `MXBO_SHM_VERSION`).
+- **Call** — `RaceHoleshot` on SHM v16 (`holeshotRaceNum` + `holeshotTime`). Winner plaque; your gap if you lost. Hold a few seconds, then hide. Profile already counts it; this widget is the live call.
+- Plugin publishes winner + time. Overlay Profile stores it on compact at visit close.
 - Glanceable plaque, not a second standings table. `RaceHoleshot` is no longer only an Event Log leftover.
 
 ## Battle card

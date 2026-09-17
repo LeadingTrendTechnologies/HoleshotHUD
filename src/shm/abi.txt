@@ -1,5 +1,5 @@
 MAGIC=0x4F42584D
-VERSION=15
+VERSION=16
 CMD_MAGIC=0x4342584D
 MAX_POLY=1024
 MAX_RIDERS=64
@@ -45,7 +45,7 @@ MxboShmRect.x 0 4
 MxboShmRect.y 4 4
 MxboShmRect.w 8 4
 MxboShmRect.h 12 4
-MxboShmSnapshot.size 19624
+MxboShmSnapshot.size 19632
 MxboShmSnapshot.magic 0 4
 MxboShmSnapshot.version 4 4
 MxboShmSnapshot.seq 8 4
@@ -114,6 +114,8 @@ MxboShmSnapshot.localThrottle 19604 4
 MxboShmSnapshot.localFrontBrake 19608 4
 MxboShmSnapshot.localRearBrake 19612 4
 MxboShmSnapshot.localClutch 19616 4
+MxboShmSnapshot.holeshotRaceNum 19620 4
+MxboShmSnapshot.holeshotTime 19624 4
 MxboShmCmd.size 12
 MxboShmCmd.magic 0 4
 MxboShmCmd.spectating 4 4

@@ -20,6 +20,7 @@ pub enum Hit {
     ReviewDelete(u64),
     ReviewBack,
     ReviewToggle,
+    ReviewClear,
     AnalyzeCompare(i32),
     AnalyzeCompareOpen,
     AnalyzeYouLap(i32),

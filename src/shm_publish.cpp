@@ -225,6 +225,8 @@ void fillSnapshot(MxboShmSnapshot& local,
         local.sectorBest[i] = state.sectorBest(i);
         local.sectorDelta[i] = state.sectorDelta(i);
     }
+    local.holeshotRaceNum = state.holeshotRaceNum();
+    local.holeshotTime = state.holeshotTime();
 }
 
 void seqlockStore(MxboShmSnapshot& dst, const MxboShmSnapshot& local)

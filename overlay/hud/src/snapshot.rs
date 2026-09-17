@@ -1,5 +1,5 @@
 pub const MAGIC: u32 = 0x4F42584D;
-pub const VERSION: u32 = 15;
+pub const VERSION: u32 = 16;
 pub const MAX_POLY: usize = 1024;
 pub const MAX_RIDERS: usize = 64;
 pub const MAX_STANDINGS: usize = 40;
@@ -174,6 +174,8 @@ pub struct Snapshot {
     pub local_front_brake: f32,
     pub local_rear_brake: f32,
     pub local_clutch: f32,
+    pub holeshot_race_num: i32,
+    pub holeshot_time: i32,
 }
 
 impl Default for Snapshot {
@@ -262,6 +264,8 @@ impl Default for Snapshot {
             local_front_brake: 0.0,
             local_rear_brake: 0.0,
             local_clutch: 0.0,
+            holeshot_race_num: 0,
+            holeshot_time: 0,
         }
     }
 }
@@ -468,6 +472,11 @@ impl Snapshot {
             o,
             "session_kind={} session_state={} session_time_ms={} session_length={}",
             self.session_kind, self.session_state, self.session_time_ms, self.session_length
+        );
+        let _ = writeln!(
+            o,
+            "holeshot_race_num={} holeshot_time={}",
+            self.holeshot_race_num, self.holeshot_time
         );
         if self.version > 0 && self.version < VERSION {
             let _ = writeln!(
@@ -1205,6 +1214,20 @@ pub fn abi_text() -> String {
         "MxboShmSnapshot",
         "localClutch",
         offset_of!(Snapshot, local_clutch),
+        4,
+    );
+    field(
+        &mut o,
+        "MxboShmSnapshot",
+        "holeshotRaceNum",
+        offset_of!(Snapshot, holeshot_race_num),
+        4,
+    );
+    field(
+        &mut o,
+        "MxboShmSnapshot",
+        "holeshotTime",
+        offset_of!(Snapshot, holeshot_time),
         4,
     );
     o

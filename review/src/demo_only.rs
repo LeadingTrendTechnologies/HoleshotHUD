@@ -89,6 +89,14 @@ pub fn list(_filter: ListFilter) -> Vec<SessionRow> {
     Vec::new()
 }
 
+pub fn profile(_window: crate::ProfileWindow) -> crate::RiderProfile {
+    crate::RiderProfile::empty()
+}
+
+pub fn clear_profile() {}
+
+pub fn clear_motos() {}
+
 pub fn load(id: i64) -> Option<Arc<SessionDetail>> {
     WEB_DEMO
         .get()

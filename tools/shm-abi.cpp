@@ -131,6 +131,8 @@ int main()
     FIELD(MxboShmSnapshot, localFrontBrake);
     FIELD(MxboShmSnapshot, localRearBrake);
     FIELD(MxboShmSnapshot, localClutch);
+    FIELD(MxboShmSnapshot, holeshotRaceNum);
+    FIELD(MxboShmSnapshot, holeshotTime);
 
     std::printf("MxboShmCmd.size %zu\n", sizeof(MxboShmCmd));
     FIELD(MxboShmCmd, magic);
