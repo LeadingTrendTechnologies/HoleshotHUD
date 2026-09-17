@@ -35,7 +35,7 @@ A broadcast-style race HUD MX Bikes does not ship: standings, relative, map/mini
 - Fresh install: every **Show on overlay** toggle starts off. Nothing draws until the rider turns it on. Widgets only draw during a session (not in the garage, lobby, or menus). Stance follows a local bind, not rider animation.
 - Optional simpler in-game HUD (`ingame_hud`) is frozen: standings, relative, and map only. Overlay work does not go there. The overlay owns `Holeshot-HUD.ini`.
 - Architecture: `Holeshot-HUD.dlo` → shared memory `Local\MXBOHudV16` → Rust overlay. Field availability is gated by the PiBoSo plugin API (see `wiki/Home.md`). Bump `MXBO_SHM_VERSION` when the snapshot layout changes.
-- F8 **Motos** is experimental and starts off. Enable it on that page to store recent motos locally (14 days, or Saved) for line / speed / height compare. The empty page shows an Analyze preview before Enable. Turn recording off to stop new motos; existing ones stay until you delete them. Not a Steam leaderboard.
+- F8 **Motos** is experimental and starts off. Enable it on that page to store recent motos locally (14 days, or Saved) for line / speed / height compare. The empty page shows an Analyze preview before Enable. Turn recording off to stop new motos; existing ones stay until you delete them. F8 **Profile** (Record on) shows a spider of race traits from eligible motos; Clear on Profile or Motos wipes that store only. Not a Steam leaderboard.
 - Auto-update from GitHub releases; after an in-app update, Settings shows a What's new board for this version. In-app feedback (F8 → Feedback) posts private gists; a reply from the inbox pops up in settings on that PC, and they can write back.
 - MX Bikes only. Not a general sim HUD.
 

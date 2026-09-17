@@ -2,9 +2,15 @@
 
 ## Unreleased
 
+## 0.14.0
+
+See how you race on Profile: an eight-spoke spider from eligible motos.
+
 ### Overlay
 
-- F8 **Profile** (only while Motos recording is on): in-game name, All time / 14 days spider of race traits. Eligible races only (field of 2+, no practice/warmup). After 14 days Motos still drops Analyze tapes; Profile keeps compact scores so all-time still draws. Banner until five races. Spider fills with see-through accent; hover an axis for what it scores. Profile paints from `profile_races` (compact at visit close). Game `RaceHoleshot` is on SHM v16; holeshot count sits under the moto line. **Clear** on Profile wipes the graph only (Motos stays). **Clear** on the Motos list wipes stored tapes only (Profile stays; a live moto is kept). Both ask first.
+- F8 **Profile** (only while Motos recording is on): in-game name over an 8-spoke spider (Pace, Smooth, Clean, Clutch, Attack, Air, Results, Opening). Eligible races only (field of 2+, no practice/warmup). All time or last 14 days. Banner until five races. Hover a spoke for what it scores. Fill uses your accent. Holeshot count sits under the moto line.
+- After 14 days Motos still drops Analyze tapes; Profile keeps compact scores so all-time still draws.
+- **Clear** on Profile wipes the graph only (Motos stays). **Clear** on the Motos list wipes stored tapes only (Profile stays; a live moto is kept). Both sit far right and ask first.
 
 ### Plugin
 
