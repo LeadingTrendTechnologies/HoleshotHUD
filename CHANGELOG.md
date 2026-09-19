@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.14.1
+
+Uninstall no longer deletes MX Bikes if the overlay was installed into the game folder.
+
+### Installer
+
+- Setup refuses the MX Bikes folder (and Steam `steamapps\common`) as the destination. The overlay goes in its own folder; Setup still copies the plugin into the game.
+- Uninstall only removes HUD leftovers from the install folder. It never wipes a folder that looks like the game.
+
 ## 0.14.0
 
 See how you race on Profile: an eight-spoke spider from eligible motos.

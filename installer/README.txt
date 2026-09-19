@@ -7,7 +7,8 @@ Install
 -------
 1. Run HoleshotHUD-Setup.exe
 2. If Windows SmartScreen appears, click More info -> Run anyway
-3. Setup defaults to %LOCALAPPDATA%\Holeshot HUD — you can pick a different folder on the install location page
+3. Setup defaults to %LOCALAPPDATA%\Holeshot HUD — you can pick a different folder on the install location page.
+   Do not install into the MX Bikes folder (or steamapps\common). Setup copies the plugin into the game for you.
 4. Setup finds Steam MX Bikes (or asks you to pick the folder with mxbikes.exe)
    and copies Holeshot-HUD.dlo into the game plugins folder
 
