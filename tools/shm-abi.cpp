@@ -133,6 +133,7 @@ int main()
     FIELD(MxboShmSnapshot, localClutch);
     FIELD(MxboShmSnapshot, holeshotRaceNum);
     FIELD(MxboShmSnapshot, holeshotTime);
+    FIELD(MxboShmSnapshot, drawCount);
 
     std::printf("MxboShmCmd.size %zu\n", sizeof(MxboShmCmd));
     FIELD(MxboShmCmd, magic);

@@ -20,7 +20,7 @@ Classification is joined by race number for position, laps, bike, best/last, pen
 ## Behavior
 
 - Same chrome as Standings (header bar, track name, column headers, optional footer). Header/footer slots include **Fuel**, **Setup**, **Gap ahead**, and **Gap behind**. Those gaps are race place (P−1 / P+1), not the riders in this table. Same lap ticks along the track toward that rider; a live lap or more is `1L` / `-1L`.
-- Your row is highlighted. Lapping colors on **other** rows: blue if they are a lap ahead and closing from behind, red if you are a lap ahead and closing on them (`lap_rel` / `lap_row_bg`). Off in warmup. **Row highlight** opacity (`rel_hl`) scales your row and the blue/red lapping tints. **Text color** is White or Black (`rel_text`); bike pills keep brand colors. **Alternating rows** (`rel_stripe`, default on) paints every other row near-black. Same opaque-panel lift as Standings.
+- Your row is highlighted. Lapping colors on **other** rows: blue if they are a lap ahead and closing from behind, red if you are a lap ahead and closing on them (`lap_rel` / `lap_row_bg`). Off in warmup. **Row highlight** opacity (`rel_hl`) scales your row and the blue/red lapping tints. **Text color** is White or Black (`rel_text`); bike pills keep brand colors. **Alternating rows** (`rel_stripe`, default on) paints every other row near-black. Same opaque-panel lift as Standings. **Plaque text** is Black or White on the orange rider-count / track-name skews (`rel_plaque_text`, default Black). **Show plaques** (`rel_plaque`, default on) hides those skews and collapses their band.
 - **Gap column is not classification gap.** It is `|wrapped_frac * track_length / local_speed|` in seconds (you show `0.0`). Speed floor is 4 so a stopped rider does not explode the number.
 - Rows slide when the nearby set changes (`REL_SLIDE`).
 - Duplicate race numbers are skipped. Empty names with `race_num <= 0` are skipped.
@@ -36,6 +36,7 @@ Default columns on: Number, Name, Gap, Fastest, Last lap.
 - No blue/red lapping row tints in warmup. `session_kind` 5 wins even when extras leak.
 - Two laps down must not tint a better-placed rider red. `gap_laps` wins over `num_laps`.
 - Missing `rel_stripe` in the ini keeps alternating rows on.
+- Missing `rel_plaque` / `rel_plaque_text` keep plaques on with black ink.
 - Alternating rows must still read at **Background** 100% (lift, not extra black on night-ink).
 - Fuel header/footer is liters/US gallons (`Fuel`) or tank percent (`Fuel %`). Empty volume is `0.0`; `--` / `--%` only when tank size is missing.
 - Setup header/footer is the loaded bike setup filename stem. `--` when `RunInit` has not sent it. Restart MX Bikes after the V13 plugin.
@@ -44,6 +45,9 @@ Default columns on: Number, Name, Gap, Fastest, Last lap.
 
 ## Change log
 
+- 2026-09-22 — Settings column drag slides neighboring rows into place (ease-out), instead of snapping on drop.
+- 2026-09-22 — Penalty column shows whole seconds as `#s` (e.g. `5s`), not lap-style `5.000`.
+- 2026-09-22 — **Plaque text** (Black/White, default Black) and **Show plaques** for the orange rider-count / track-name skews. Same controls as Standings. Hidden plaques collapse the track band height.
 - 2026-09-10 — Practice **Laps** for you follows a crashed crossing the same way Standings does.
 - 2026-09-09 — Header/footer **Gap ahead** / **Gap behind** are live-order P−1 / P+1. Same lap ticks along the track toward that rider; a live lap or more is `1L` / `-1L`. A pass switches the rider. Times have no leading `+`; ahead is an up arrow, behind a down arrow.
 - 2026-09-08 — **Gap ahead** and **Gap behind** are header/footer options (shared `BoardField` with Standings). They use classification place, not the nearby riders in this table.

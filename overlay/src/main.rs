@@ -127,7 +127,7 @@ fn f9_dump_text(shm: Option<&Shm>, snap: Option<&Snapshot>) -> String {
         std::mem::size_of::<Snapshot>()
     ));
     match shm {
-        None => o.push_str("OpenFileMapping Local\\MXBOHudV16 failed. Start MX Bikes with Holeshot-HUD.dlo loaded.\n"),
+        None => o.push_str("OpenFileMapping Local\\MXBOHudV17 failed. Start MX Bikes with Holeshot-HUD.dlo loaded.\n"),
         Some(s) => match s.header() {
             Some((magic, version, seq, size)) => {
                 o.push_str(&format!(
@@ -713,7 +713,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
                 }),
             };
         sys.tick(
-            last_snap.as_ref().map(|s| s.seq),
+            last_snap.as_ref().map(|s| s.draw_count),
             overlay_on && in_session && sys_show,
             &sys_apps,
         );

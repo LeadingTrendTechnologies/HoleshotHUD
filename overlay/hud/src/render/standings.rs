@@ -49,6 +49,8 @@ pub(crate) fn draw_standings(
                 hl: cfg.st_hl,
                 text: cfg.st_text,
                 stripe: cfg.st_stripe,
+                plaque_text: cfg.st_plaque_text,
+                show_plaque: cfg.st_plaque,
                 head: &cfg.st_head,
                 foot: &cfg.st_foot,
             },

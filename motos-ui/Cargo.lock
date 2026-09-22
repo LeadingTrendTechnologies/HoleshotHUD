@@ -149,7 +149,7 @@ dependencies = [
 
 [[package]]
 name = "mxbo-hud"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "fontdue",
  "tiny-skia",
@@ -157,7 +157,7 @@ dependencies = [
 
 [[package]]
 name = "mxbo-motos-ui"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "mxbo-hud",
  "mxbo-review",
@@ -166,7 +166,7 @@ dependencies = [
 
 [[package]]
 name = "mxbo-review"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "mxbo-hud",
 ]

@@ -1,5 +1,5 @@
 pub const MAGIC: u32 = 0x4F42584D;
-pub const VERSION: u32 = 16;
+pub const VERSION: u32 = 17;
 pub const MAX_POLY: usize = 1024;
 pub const MAX_RIDERS: usize = 64;
 pub const MAX_STANDINGS: usize = 40;
@@ -176,6 +176,8 @@ pub struct Snapshot {
     pub local_clutch: f32,
     pub holeshot_race_num: i32,
     pub holeshot_time: i32,
+    /// Monotonic Draw publishes only (not RaceVehicleData / lifecycle). Systems FPS.
+    pub draw_count: u32,
 }
 
 impl Default for Snapshot {
@@ -266,6 +268,7 @@ impl Default for Snapshot {
             local_clutch: 0.0,
             holeshot_race_num: 0,
             holeshot_time: 0,
+            draw_count: 0,
         }
     }
 }
@@ -475,8 +478,8 @@ impl Snapshot {
         );
         let _ = writeln!(
             o,
-            "holeshot_race_num={} holeshot_time={}",
-            self.holeshot_race_num, self.holeshot_time
+            "holeshot_race_num={} holeshot_time={} draw_count={}",
+            self.holeshot_race_num, self.holeshot_time, self.draw_count
         );
         if self.version > 0 && self.version < VERSION {
             let _ = writeln!(
@@ -1228,6 +1231,13 @@ pub fn abi_text() -> String {
         "MxboShmSnapshot",
         "holeshotTime",
         offset_of!(Snapshot, holeshot_time),
+        4,
+    );
+    field(
+        &mut o,
+        "MxboShmSnapshot",
+        "drawCount",
+        offset_of!(Snapshot, draw_count),
         4,
     );
     o

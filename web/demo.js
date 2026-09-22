@@ -183,13 +183,18 @@ function fieldRow(key, label, options) {
 
 function styleControls(prefix, opacityLabel = "Background") {
   let html = `${sliderRow(`${prefix}_font`, "Font size", 70, 160, "%")}${sliderRow(`${prefix}_bg`, opacityLabel, 0, 100, "%")}`;
-  if (prefix === "st" || prefix === "rel") {
+    if (prefix === "st" || prefix === "rel") {
     html += sliderRow(`${prefix}_hl`, "Row highlight", 0, 100, "%");
     html += fieldRow(`${prefix}_text`, "Text color", [
       ["white", "White"],
       ["black", "Black"],
     ]);
     html += toggleRow(`${prefix}_stripe`, "Alternating rows");
+    html += fieldRow(`${prefix}_plaque_text`, "Plaque text", [
+      ["white", "White"],
+      ["black", "Black"],
+    ]);
+    html += toggleRow(`${prefix}_plaque`, "Show plaques");
   }
   html += toggleRow(`${prefix}_bold`, "Bold text");
   return html;

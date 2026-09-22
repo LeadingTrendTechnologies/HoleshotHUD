@@ -261,6 +261,43 @@ fn pane_app_menus(
                 hits,
             );
         }
+        y = game_ui_image_row(
+            px,
+            fonts,
+            x,
+            y,
+            w,
+            "Opening screen",
+            &cfg.game_ui_splash_path,
+            Hit::GameUiSplashBrowse,
+            Hit::GameUiSplashDefault,
+            hover,
+            hits,
+        );
+        y = game_ui_image_row(
+            px,
+            fonts,
+            x,
+            y,
+            w,
+            "Loading screen",
+            &cfg.game_ui_loading_path,
+            Hit::GameUiLoadingBrowse,
+            Hit::GameUiLoadingDefault,
+            hover,
+            hits,
+        );
+        text(
+            px,
+            fonts,
+            "PNG or JPG for MX Bikes boot splash and session loading. Restart the game after changing.",
+            11.0,
+            x + 4.0,
+            y + 2.0,
+            dim(),
+            false,
+        );
+        y += 22.0;
     }
     y + 28.0
 }

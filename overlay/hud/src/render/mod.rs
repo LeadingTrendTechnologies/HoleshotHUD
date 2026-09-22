@@ -1099,7 +1099,7 @@ fn format_penalty(ms: i32) -> String {
     if ms <= 0 {
         "---".into()
     } else {
-        format_lap(ms)
+        format!("{}s", ms / 1000)
     }
 }
 
@@ -1165,10 +1165,10 @@ fn table_font_k(pct: i32) -> f32 {
     (pct.clamp(70, 160) as f32) / 100.0
 }
 
-fn table_stack_h(k: f32, vis_rows: usize, has_foot: bool) -> f32 {
+fn table_stack_h(k: f32, vis_rows: usize, has_foot: bool, show_plaque: bool) -> f32 {
     let head_h = 26.0 * k;
     let col_h = 16.0 * k;
-    let track_h = 20.0 * k;
+    let track_h = if show_plaque { 20.0 * k } else { 0.0 };
     let row_h = 22.0 * k;
     let foot_h = if has_foot { 20.0 * k } else { 0.0 };
     // Follow the row stack, not a stale widget box. Ctrl+move can save a
@@ -1225,7 +1225,7 @@ pub fn table_layout_rect(
     if sw <= 0.0 || sh <= 0.0 {
         return rect;
     }
-    let (widths, flex, vis, has_foot) = match id {
+    let (widths, flex, vis, has_foot, show_plaque) = match id {
         WidgetId::Standings => {
             let cols = cfg.standings_cols();
             let flex = cols
@@ -1237,6 +1237,7 @@ pub fn table_layout_rect(
                 flex,
                 standings_vis_rows(s),
                 BoardField::any(&cfg.st_foot),
+                cfg.st_plaque,
             )
         }
         WidgetId::Relative => {
@@ -1250,6 +1251,7 @@ pub fn table_layout_rect(
                 flex,
                 relative_vis_rows(s),
                 BoardField::any(&cfg.rel_foot),
+                cfg.rel_plaque,
             )
         }
         _ => return rect,
@@ -1260,7 +1262,7 @@ pub fn table_layout_rect(
     let idxs: Vec<usize> = (0..widths.len()).collect();
     let slots = col_slots(0.0, pad, max_w, &idxs, |i| widths[i], |i| i == flex);
     let w = hug_board_w(0.0, pad, max_w, &slots);
-    let h = table_stack_h(k, vis, has_foot);
+    let h = table_stack_h(k, vis, has_foot, show_plaque);
     crate::shm::Rect {
         x: rect.x,
         y: rect.y,
@@ -1469,10 +1471,17 @@ fn col_text(
     text(px, fonts, &t, size, tx, y, color, false);
 }
 
-fn draw_count_track(px: &mut Pixmap, fonts: &Fonts, x: f32, cy: f32, n: usize, track: &str) {
+fn draw_count_track(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    x: f32,
+    cy: f32,
+    n: usize,
+    track: &str,
+    ink: Color,
+) {
     let count = format!("{n}");
     let track_col = accent();
-    let ink = Color::from_rgba8(12, 12, 14, 255);
     let icon_x = x + 12.0;
     let num_x = icon_x + 14.0;
     let count_w = (num_x - (x + 8.0) + measure(fonts, &count, 9.0) + 7.0).max(36.0);
@@ -1651,6 +1660,13 @@ fn table_ink(mode: TableText) -> (Color, Color, Color, Color) {
             Color::from_rgba8(90, 90, 98, 255),
             Color::from_rgba8(64, 64, 72, 220),
         ),
+    }
+}
+
+fn plaque_ink(mode: TableText) -> Color {
+    match mode {
+        TableText::White => text_col(),
+        TableText::Black => Color::from_rgba8(12, 12, 14, 255),
     }
 }
 
@@ -2148,16 +2164,21 @@ fn merge_caution(race: DashFlag, caution: DashFlag) -> DashFlag {
     }
 }
 
-/// Inferred only. The game has no marshal flag field. Yellow is a nearby crash;
-/// blue is someone a lap up closing from behind (`LapRel::LappingMe`);
-/// red is someone you are coming to lap (`LapRel::LappedByMe`).
+/// Inferred only. The game has no marshal flag field. Yellow is a nearby crash
+/// (every live session — practice, warmup, race); blue is someone a lap up
+/// closing from behind (`LapRel::LappingMe`); red is someone you are coming to
+/// lap (`LapRel::LappedByMe`). Blue/red stay race-only.
 fn caution_flag(s: &Snapshot, yellow: bool, blue: bool, red: bool) -> DashFlag {
-    if s.on_track == 0 || is_warmup(s) || prestart(s) {
+    if s.on_track == 0 || prestart(s) {
         return DashFlag::None;
     }
     if yellow && nearby_crash(s) {
-        DashFlag::Yellow
-    } else if blue && being_lapped(s) {
+        return DashFlag::Yellow;
+    }
+    if is_warmup(s) {
+        return DashFlag::None;
+    }
+    if blue && being_lapped(s) {
         DashFlag::Blue
     } else if red && lapping_them(s) {
         DashFlag::Red
@@ -2469,6 +2490,8 @@ struct TableLook<'a> {
     hl: i32,
     text: TableText,
     stripe: bool,
+    plaque_text: TableText,
+    show_plaque: bool,
     head: &'a [BoardField; 3],
     foot: &'a [BoardField; 3],
 }
@@ -2536,14 +2559,14 @@ fn draw_table_board<C: BoardCol>(
     let k = style_k();
     let head_h = 26.0 * k;
     let col_h = 16.0 * k;
-    let track_h = 20.0 * k;
+    let track_h = if look.show_plaque { 20.0 * k } else { 0.0 };
     let row_h = 22.0 * k;
     let foot_h = if BoardField::any(look.foot) {
         20.0 * k
     } else {
         0.0
     };
-    let h = table_stack_h(k, vis_rows, BoardField::any(look.foot));
+    let h = table_stack_h(k, vis_rows, BoardField::any(look.foot), look.show_plaque);
     let pad = 8.0;
     let slots = col_slots(
         x,
@@ -2592,19 +2615,29 @@ fn draw_table_board<C: BoardCol>(
         .find(|(c, _, _)| c.is_pos())
         .map(|(_, cx, cw)| bike_bar_end(*cx, *cw));
     let mut cy = y + head_h;
-    let track = {
-        let t = cstr(&s.track_name);
-        if t.is_empty() {
-            "TRACK".into()
-        } else {
-            t.to_uppercase()
+    if look.show_plaque {
+        let track = {
+            let t = cstr(&s.track_name);
+            if t.is_empty() {
+                "TRACK".into()
+            } else {
+                t.to_uppercase()
+            }
+        };
+        draw_count_track(
+            px,
+            fonts,
+            x,
+            cy,
+            count_n,
+            &track,
+            plaque_ink(look.plaque_text),
+        );
+        if let Some(line) = rr(x + 8.0, cy + 18.0, w - 16.0, 1.2) {
+            fill_rect(px, line, accent());
         }
-    };
-    draw_count_track(px, fonts, x, cy, count_n, &track);
-    if let Some(line) = rr(x + 8.0, cy + 18.0, w - 16.0, 1.2) {
-        fill_rect(px, line, accent());
+        cy += track_h;
     }
-    cy += track_h;
     let hdr_y = cy + 2.0;
     for (col, cx, cw) in &slots {
         let right = !col.is_name() && !col.is_bike();

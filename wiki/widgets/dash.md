@@ -82,6 +82,7 @@ One path for lap motos and timed extras, driven by `laps_left`. Lap motos count 
 - Do not let the effective total exceed the race distance. Your own finish latches `LEADER_FIN_LOCAL_BASE` at your full lap count, so an unclamped `base + 1` gives a winner `5 / 6`.
 - Do not show `~Lapped` in warmup, on the gate, or off track. `gap_laps` has no meaning without a race leader.
 - Do not wrap blue or red in warmup (`session_kind` 5). Practice lap counts are not a race, even when extras leak.
+- Do not suppress yellow wrap in practice or warmup when `dash_yellow` is on — a crash ahead is caution in every live session.
 - Do not derive `LapsLeft` from the banner text. It comes from `laps_left` and counts the lap you are on, so the final lap reads `1`.
 - Do not trust a single observed lap crossing as the S/F position; two must agree (`SF_AGREE_FRAC`).
 - Do not leave a sticky `00:00` / `00:30` on the dash after warmup/practice expires; hide the clock until the next session.
@@ -102,6 +103,8 @@ One path for lap motos and timed extras, driven by `laps_left`. Lap motos count 
 
 ## Change log
 
+- 2026-09-22 — Penalty field shows whole seconds as `#s` (e.g. `5s`), not lap-style `5.000`.
+- 2026-09-22 — Yellow wrap waves in practice and warmup when `dash_yellow` is on; blue/red stay race-only.
 - 2026-09-16 — **P#** is Look primary color (`dash_pos_col` → `accent()`).
 - 2026-09-09 — **Shift color** (`dash_shift_color`, off). Gear flushes faint red at `shift_rpm` or the limiter. Simple dash flushes the gear plaque.
 - 2026-09-09 — Dash footer **Gap** / **Interval** are live-order P−1 (not the leader). **Gap behind** is P+1. Same lap ticks along the track; a live lap or more is `1L` / `-1L`. A pass switches who. Times have no leading `+`; ahead is an up arrow, behind a down arrow.

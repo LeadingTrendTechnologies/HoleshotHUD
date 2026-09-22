@@ -9,6 +9,14 @@ fn seqlock_delta_is_half_the_seq_step() {
     assert_eq!(shm_publishes(u32::MAX - 1, 2), 2);
 }
 
+#[test]
+fn draw_count_delta_is_raw_not_halved() {
+    // Systems FPS uses Snapshot.draw_count (one bump per Draw), not seq/2.
+    assert_eq!(70u32.wrapping_sub(0), 70);
+    assert_eq!(10u32.wrapping_sub(10), 0);
+    assert_eq!(2u32.wrapping_sub(u32::MAX - 1), 4);
+}
+
 fn exe(key: &str, names: &[&str]) -> SysApp {
     SysApp {
         key: key.into(),

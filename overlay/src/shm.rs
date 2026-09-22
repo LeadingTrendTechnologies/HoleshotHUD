@@ -11,7 +11,7 @@ use windows::Win32::System::Memory::{
 
 pub use mxbo_hud::snapshot::*;
 
-/// Leftover or rebuilt V16: drop so the plugin can CreateFileMapping a fresh section.
+/// Leftover or rebuilt V17: drop so the plugin can CreateFileMapping a fresh section.
 pub fn mapping_unusable(magic: u32, version: u32, size: u32, region: usize) -> bool {
     if region < mem::size_of::<Snapshot>() {
         return true;
@@ -33,7 +33,7 @@ impl Shm {
     pub fn open() -> Option<Self> {
         unsafe {
             // Must match MXBO_SHM_NAME in src/shm/mxbo_shm.h (versioned with SHM layout).
-            let map = OpenFileMappingW(FILE_MAP_READ.0, false, w!("Local\\MXBOHudV16")).ok()?;
+            let map = OpenFileMappingW(FILE_MAP_READ.0, false, w!("Local\\MXBOHudV17")).ok()?;
             // Map the whole section. Requesting sizeof(Snapshot) fails when a leftover
             // V11 mapping is smaller, which leaves the overlay compositing with no HUD.
             let view = MapViewOfFile(map, FILE_MAP_READ, 0, 0, 0);

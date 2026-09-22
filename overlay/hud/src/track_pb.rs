@@ -9,7 +9,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub const BINS: usize = 256;
+/// Timing points along the lap (0.1% resolution).
+pub const BINS: usize = 1000;
+/// Pre-0.16 tapes used 256 bins; load resamples into [`BINS`].
+const LEGACY_BINS: usize = 256;
 
 /// Rewrite `used` at most this often when you visit a track that already has a file.
 const TOUCH_SECS: i64 = 60 * 60;
@@ -660,23 +663,51 @@ pub fn decode(text: &str) -> Option<TrackPb> {
     decode_body(text)
 }
 
+fn resample_bins(old: &[i32]) -> [i32; BINS] {
+    let mut out = [0; BINS];
+    if old.is_empty() {
+        return out;
+    }
+    let n = old.len();
+    for i in 0..BINS {
+        let f = i as f32 / BINS as f32 * n as f32;
+        let lo = (f.floor() as usize).min(n - 1);
+        let hi = (lo + 1).min(n - 1);
+        let t = f - lo as f32;
+        let a = old[lo];
+        let b = old[hi];
+        out[i] = if a > 0 && b > 0 {
+            a + ((b - a) as f32 * t).round() as i32
+        } else if a > 0 {
+            a
+        } else if b > 0 {
+            b
+        } else {
+            0
+        };
+    }
+    out
+}
+
 fn decode_body(text: &str) -> Option<TrackPb> {
     let ms = int_field(text, "\"ms\":")?;
     let bins_raw = array_field(text, "\"bins\":")?;
     let sec_raw = array_field(text, "\"s\":")?;
     let mut pb = TrackPb::empty();
     pb.lap_ms = ms;
-    let mut n = 0usize;
+    let mut vals = Vec::new();
     for part in bins_raw.split(',') {
-        if n >= BINS {
-            break;
+        vals.push(part.trim().parse().ok()?);
+    }
+    pb.bins = match vals.len() {
+        BINS => {
+            let mut bins = [0; BINS];
+            bins.copy_from_slice(&vals);
+            bins
         }
-        pb.bins[n] = part.trim().parse().ok()?;
-        n += 1;
-    }
-    if n != BINS {
-        return None;
-    }
+        LEGACY_BINS => resample_bins(&vals),
+        _ => return None,
+    };
     let secs: Vec<i32> = sec_raw
         .split(',')
         .filter_map(|p| p.trim().parse().ok())

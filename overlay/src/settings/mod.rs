@@ -576,12 +576,20 @@ pub(crate) enum Hit {
     StTextOpen,
     StTextWhite,
     StTextBlack,
+    StPlaqueTextOpen,
+    StPlaqueTextWhite,
+    StPlaqueTextBlack,
+    StPlaque,
     RelBg,
     RelHl,
     RelStripe,
     RelTextOpen,
     RelTextWhite,
     RelTextBlack,
+    RelPlaqueTextOpen,
+    RelPlaqueTextWhite,
+    RelPlaqueTextBlack,
+    RelPlaque,
     MapBg,
     MiniBg,
     MiniZoom,
@@ -678,6 +686,10 @@ pub(crate) enum Hit {
     GameUiPrimaryHue,
     GameUiPrimarySwatch(u8),
     GameUiPrimaryReset,
+    GameUiSplashBrowse,
+    GameUiSplashDefault,
+    GameUiLoadingBrowse,
+    GameUiLoadingDefault,
     FbRate,
     FbBug,
     FbFeature,
@@ -718,6 +730,8 @@ pub(crate) enum Drop {
     SysAdd,
     StText,
     RelText,
+    StPlaqueText,
+    RelPlaqueText,
     DashFoot(u8),
     TickerFoot(u8),
     Info(InfoBar, u8),
@@ -820,6 +834,98 @@ struct SlideDrag {
     max: i32,
 }
 
+struct ColRowSlide {
+    id: i32,
+    from: f32,
+    to: f32,
+    start: f32,
+}
+
+struct ColSlides {
+    rows: Vec<ColRowSlide>,
+}
+
+impl ColSlides {
+    fn new() -> Self {
+        Self { rows: Vec::new() }
+    }
+
+    fn indices(&mut self, ids: &[i32], now: f32) -> Vec<f32> {
+        const DUR: f32 = 0.30;
+        let displayed = |e: &ColRowSlide| {
+            let t = ((now - e.start) / DUR).clamp(0.0, 1.0);
+            e.from + (e.to - e.from) * col_ease_out_cubic(t)
+        };
+        let mut out = Vec::with_capacity(ids.len());
+        for (i, &id) in ids.iter().enumerate() {
+            let target = i as f32;
+            if let Some(idx) = self.rows.iter().position(|e| e.id == id) {
+                let cur = displayed(&self.rows[idx]);
+                let e = &mut self.rows[idx];
+                if (e.to - target).abs() > 0.05 {
+                    e.from = cur;
+                    e.to = target;
+                    e.start = now;
+                }
+                out.push(displayed(e));
+            } else {
+                self.rows.push(ColRowSlide {
+                    id,
+                    from: target,
+                    to: target,
+                    start: now,
+                });
+                out.push(target);
+            }
+        }
+        self.rows.retain(|e| ids.contains(&e.id));
+        out
+    }
+}
+
+fn col_ease_out_cubic(t: f32) -> f32 {
+    let u = 1.0 - t.clamp(0.0, 1.0);
+    1.0 - u * u * u
+}
+
+fn col_anim_now() -> f32 {
+    thread_local! {
+        static ORIGIN: std::time::Instant = std::time::Instant::now();
+    }
+    ORIGIN.with(|o| o.elapsed().as_secs_f32())
+}
+
+fn col_stride() -> f32 {
+    ROW_H + ROW_GAP
+}
+
+fn preview_move_to<T: Copy>(items: &[T], from: usize, to: usize) -> Vec<T> {
+    let mut out = items.to_vec();
+    if from >= out.len() || to >= out.len() || from == to {
+        return out;
+    }
+    let item = out.remove(from);
+    out.insert(to, item);
+    out
+}
+
+fn drag_over_slots(list_y: f32, n: usize, y: f32) -> Option<u8> {
+    if n == 0 {
+        return None;
+    }
+    let stride = col_stride();
+    if y < list_y {
+        return Some(0);
+    }
+    let last = n - 1;
+    let last_bottom = list_y + last as f32 * stride + ROW_H;
+    if y >= last_bottom {
+        return Some(last as u8);
+    }
+    let i = ((y - list_y) / stride).floor() as usize;
+    Some(i.min(last) as u8)
+}
+
 struct SettingsUi {
     host: HWND,
     tab: Tab,
@@ -870,6 +976,12 @@ struct SettingsUi {
     map_drag: Option<(f32, f32, f32, f32)>,
     profile_all_time: bool,
     clear_confirm: Option<ClearKind>,
+    st_col_slides: ColSlides,
+    rel_col_slides: ColSlides,
+    /// Fixed Y of the column list (for drag slot hit-testing while rows animate).
+    col_list_y: f32,
+    col_list_n: usize,
+    col_list_kind: Option<DragKind>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -977,6 +1089,11 @@ pub fn attach(host: HWND) {
         map_drag: None,
         profile_all_time: true,
         clear_confirm: None,
+        st_col_slides: ColSlides::new(),
+        rel_col_slides: ColSlides::new(),
+        col_list_y: 0.0,
+        col_list_n: 0,
+        col_list_kind: None,
     });
 }
 
@@ -1190,6 +1307,11 @@ pub fn dump_whats_new(path: &std::path::Path) -> Result<crate::changelog::Notes,
         map_drag: None,
         profile_all_time: true,
         clear_confirm: None,
+        st_col_slides: ColSlides::new(),
+        rel_col_slides: ColSlides::new(),
+        col_list_y: 0.0,
+        col_list_n: 0,
+        col_list_kind: None,
     });
     let mut px = Pixmap::new(1000, 720).ok_or_else(|| "Could not allocate preview.".to_string())?;
     draw(&mut px, &fonts, 1000.0, 720.0);
@@ -1304,6 +1426,11 @@ fn paint_review_tab(
         map_drag: None,
         profile_all_time: true,
         clear_confirm: None,
+        st_col_slides: ColSlides::new(),
+        rel_col_slides: ColSlides::new(),
+        col_list_y: 0.0,
+        col_list_n: 0,
+        col_list_kind: None,
     });
     let mut px =
         Pixmap::new(w, h).ok_or_else(|| "Could not allocate Review preview.".to_string())?;
@@ -1937,7 +2064,12 @@ fn update_drag(p: (f32, f32)) {
     let Some(drag) = ui.drag else {
         return;
     };
-    if let Some(over) = drag_over(&ui.hits, drag.kind, p.1) {
+    let over = if ui.col_list_n > 0 && ui.col_list_kind == Some(drag.kind) {
+        drag_over_slots(ui.col_list_y, ui.col_list_n, p.1)
+    } else {
+        drag_over(&ui.hits, drag.kind, p.1)
+    };
+    if let Some(over) = over {
         if let Some(d) = ui.drag.as_mut() {
             d.over = over;
         }
@@ -2054,6 +2186,10 @@ fn is_drop_pick(hit: Hit) -> bool {
             | Hit::StTextBlack
             | Hit::RelTextWhite
             | Hit::RelTextBlack
+            | Hit::StPlaqueTextWhite
+            | Hit::StPlaqueTextBlack
+            | Hit::RelPlaqueTextWhite
+            | Hit::RelPlaqueTextBlack
             | Hit::FontSegoe
             | Hit::FontArial
             | Hit::FontTahoma
@@ -2220,6 +2356,17 @@ fn hit_label(hit: Hit) -> String {
         | Hit::TelemetryBg => "Panel opacity".into(),
         Hit::StHl | Hit::RelHl => "Row highlight".into(),
         Hit::StStripe | Hit::RelStripe => "Alternating rows".into(),
+        Hit::StPlaque | Hit::RelPlaque => "Show plaques".into(),
+        Hit::StTextOpen | Hit::RelTextOpen => "Text color".into(),
+        Hit::StPlaqueTextOpen | Hit::RelPlaqueTextOpen => "Plaque text".into(),
+        Hit::StTextWhite
+        | Hit::StTextBlack
+        | Hit::RelTextWhite
+        | Hit::RelTextBlack
+        | Hit::StPlaqueTextWhite
+        | Hit::StPlaqueTextBlack
+        | Hit::RelPlaqueTextWhite
+        | Hit::RelPlaqueTextBlack => "Color".into(),
         Hit::StDec | Hit::StInc => "Rows".into(),
         Hit::RelDec | Hit::RelInc => "Nearby riders".into(),
         Hit::TickerDec | Hit::TickerInc => "Riders shown".into(),
@@ -2237,6 +2384,10 @@ fn hit_label(hit: Hit) -> String {
         Hit::GameUiPrimaryHue => "Hue".into(),
         Hit::GameUiPrimarySwatch(_) => "Color swatch".into(),
         Hit::GameUiPrimaryReset => "Reset menu color".into(),
+        Hit::GameUiSplashBrowse => "Browse opening screen image".into(),
+        Hit::GameUiSplashDefault => "Use default opening screen".into(),
+        Hit::GameUiLoadingBrowse => "Browse loading screen image".into(),
+        Hit::GameUiLoadingDefault => "Use default loading screen".into(),
         Hit::UnitsOpen(kind) => kind.label().into(),
         Hit::UnitsPick(_, units) => units.label().into(),
         Hit::SettingsKeyOpen => "Settings key".into(),
@@ -2776,6 +2927,10 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
     let mut hits = Vec::new();
     DROP_MENUS.with(|menus| menus.borrow_mut().clear());
     COLOR_PICKER_ANCHOR.with(|a| a.set(None));
+    if let Some(ui) = UI.lock().unwrap().as_mut() {
+        ui.col_list_n = 0;
+        ui.col_list_kind = None;
+    }
 
     let top_y = banner_h;
     let clip_top = top_y + TOP_H;
@@ -4560,6 +4715,13 @@ fn table_style_controls(
     text_black: Hit,
     stripe: bool,
     stripe_hit: Hit,
+    plaque_text: TableText,
+    plaque_text_drop: Drop,
+    plaque_text_open: Hit,
+    plaque_text_white: Hit,
+    plaque_text_black: Hit,
+    show_plaque: bool,
+    plaque_hit: Hit,
 ) -> f32 {
     let mut g = PairGrid::new(x, y, w);
     g.place(|cx, cy, cw| {
@@ -4656,6 +4818,39 @@ fn table_style_controls(
             "Alternating rows",
             stripe,
             stripe_hit,
+            hover,
+            hits,
+        )
+    });
+    g.place(|cx, cy, cw| {
+        dropdown_row(
+            px,
+            fonts,
+            cx,
+            cy,
+            cw,
+            "Plaque text",
+            plaque_text.label(),
+            open_drop == Some(plaque_text_drop),
+            plaque_text_open,
+            &[
+                (plaque_text_white, "White", plaque_text == TableText::White),
+                (plaque_text_black, "Black", plaque_text == TableText::Black),
+            ],
+            hover,
+            hits,
+        )
+    });
+    g.place(|cx, cy, cw| {
+        toggle_row(
+            px,
+            fonts,
+            cx,
+            cy,
+            cw,
+            "Show plaques",
+            show_plaque,
+            plaque_hit,
             hover,
             hits,
         )
@@ -5123,13 +5318,10 @@ fn field_row(
     let h = ROW_H;
     let cluster = 188.0;
     let grabbed = col_drag.is_some_and(|d| d.from as usize == i);
-    let drop = col_drag.is_some_and(|d| d.over as usize == i && d.from as usize != i);
     let hot = hover == Some(drag) || hover == Some(toggle) || hover == Some(wslide);
     if grabbed {
         fill_round(px, x, y, w, h, 10.0, tab_on());
         fill_round(px, x + 4.0, y + 12.0, 3.0, h - 24.0, 1.5, accent());
-    } else if drop {
-        fill_round(px, x, y, w, h, 10.0, accent_dim());
     } else {
         row_card(px, x, y, w, h, hot);
     }
@@ -5170,14 +5362,82 @@ fn field_row(
         hits,
     );
     switch(px, switch_x, y + 14.0, on, toggle, hover, hits);
-    if drop {
-        let from = col_drag.map(|d| d.from as usize).unwrap_or(i);
-        let ly = if from > i { y } else { y + h - 2.0 };
-        if let Some(r) = Rect::from_xywh(x, ly, w, 2.0) {
-            fill_rect(px, r, accent());
-        }
-    }
     y + h + ROW_GAP
+}
+
+/// Draw standings/relative column rows with slide animation on reorder.
+fn paint_col_field_rows<F>(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    cfg: &HudConfig,
+    order: &[F],
+    kind: DragKind,
+    drag: Option<ColDrag>,
+    hover: Option<Hit>,
+    x: f32,
+    base_y: f32,
+    w: f32,
+    hits: &mut Vec<HitBox>,
+    field_id: impl Fn(F) -> i32,
+    label: impl Fn(F) -> &'static str,
+    enabled: impl Fn(F, &HudConfig) -> bool,
+    width: impl Fn(F, &HudConfig) -> i32,
+    width_max: impl Fn(F) -> i32,
+    drag_hit: impl Fn(u8) -> Hit,
+    toggle_hit: impl Fn(F) -> Hit,
+    width_hit: impl Fn(u8) -> Hit,
+) -> f32
+where
+    F: Copy + PartialEq,
+{
+    let n = order.len();
+    let stride = col_stride();
+    let col_drag = drag.filter(|d| d.kind == kind);
+    let preview = match col_drag {
+        Some(d) if d.from != d.over => {
+            preview_move_to(order, d.from as usize, d.over as usize)
+        }
+        _ => order.to_vec(),
+    };
+    let ids: Vec<i32> = preview.iter().copied().map(&field_id).collect();
+    let now = col_anim_now();
+    let anim = {
+        let mut ui = UI.lock().unwrap();
+        let Some(ui) = ui.as_mut() else {
+            return base_y + n as f32 * stride;
+        };
+        ui.col_list_y = base_y;
+        ui.col_list_n = n;
+        ui.col_list_kind = Some(kind);
+        let slides = match kind {
+            DragKind::St => &mut ui.st_col_slides,
+            DragKind::Rel => &mut ui.rel_col_slides,
+        };
+        slides.indices(&ids, now)
+    };
+    for (j, field) in preview.iter().copied().enumerate() {
+        let i = order.iter().position(|f| *f == field).unwrap_or(j);
+        let draw_y = base_y + anim.get(j).copied().unwrap_or(j as f32) * stride;
+        let _ = field_row(
+            px,
+            fonts,
+            x,
+            draw_y,
+            w,
+            label(field),
+            enabled(field, cfg),
+            width(field, cfg),
+            drag_hit(i as u8),
+            toggle_hit(field),
+            width_hit(i as u8),
+            width_max(field),
+            i,
+            hover,
+            col_drag,
+            hits,
+        );
+    }
+    base_y + n as f32 * stride
 }
 
 fn draw_grip(px: &mut Pixmap, x: f32, cy: f32) {
@@ -5338,6 +5598,86 @@ fn sys_app_row(
     y + h + ROW_GAP
 }
 
+/// Opening / loading image picker: label + status, Browse + Default chips.
+fn game_ui_image_row(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    x: f32,
+    y: f32,
+    w: f32,
+    label: &str,
+    path: &str,
+    browse: Hit,
+    reset: Hit,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+) -> f32 {
+    let h = ROW_H + 18.0;
+    let hot = hover == Some(browse) || hover == Some(reset);
+    row_card(px, x, y, w, h, hot);
+    text(
+        px,
+        fonts,
+        label,
+        13.0,
+        x + 16.0,
+        y + 12.0,
+        text_col(),
+        false,
+    );
+    let status = if path.trim().is_empty() {
+        "Default".to_string()
+    } else {
+        std::path::Path::new(path)
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.to_string())
+    };
+    text(
+        px,
+        fonts,
+        &status,
+        11.0,
+        x + 16.0,
+        y + 34.0,
+        dim(),
+        false,
+    );
+    let btn_w = 72.0;
+    let gap = 8.0;
+    let def_x = x + w - 16.0 - btn_w;
+    let br_x = def_x - gap - btn_w;
+    for (hit, bx, caption) in [
+        (browse, br_x, "Browse"),
+        (reset, def_x, "Default"),
+    ] {
+        hits.push(HitBox {
+            id: hit,
+            x: bx,
+            y: y + 14.0,
+            w: btn_w,
+            h: 28.0,
+        });
+        let fill = if hover == Some(hit) {
+            chip_hover()
+        } else {
+            btn_bg()
+        };
+        outlined(px, bx, y + 14.0, btn_w, 28.0, 7.0, fill);
+        text(
+            px,
+            fonts,
+            caption,
+            11.0,
+            bx + btn_w * 0.5,
+            y + 20.0,
+            text_col(),
+            true,
+        );
+    }
+    y + h + ROW_GAP
+}
+
 fn browse_exe(host: HWND) -> Option<String> {
     use windows::core::w;
     use windows::Win32::System::Com::{
@@ -5374,6 +5714,49 @@ fn browse_exe(host: HWND) -> Option<String> {
             return None;
         }
         Some(file)
+    }
+}
+
+fn browse_image(host: HWND) -> Option<String> {
+    use windows::core::w;
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoTaskMemFree, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
+    };
+    use windows::Win32::UI::Shell::Common::COMDLG_FILTERSPEC;
+    use windows::Win32::UI::Shell::{
+        FileOpenDialog, IFileOpenDialog, FOS_FILEMUSTEXIST, FOS_FORCEFILESYSTEM, FOS_PATHMUSTEXIST,
+        SIGDN_FILESYSPATH,
+    };
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let dlg: IFileOpenDialog = CoCreateInstance(&FileOpenDialog, None, CLSCTX_ALL).ok()?;
+        dlg.SetOptions(FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST | FOS_FORCEFILESYSTEM)
+            .ok()?;
+        dlg.SetTitle(w!("Select an image")).ok()?;
+        let filters = [COMDLG_FILTERSPEC {
+            pszName: w!("Images (PNG, JPG)"),
+            pszSpec: w!("*.png;*.jpg;*.jpeg"),
+        }];
+        let _ = dlg.SetFileTypes(&filters);
+        let _ = dlg.SetFileTypeIndex(1);
+        dlg.Show(host).ok()?;
+        let item = dlg.GetResult().ok()?;
+        let name = item.GetDisplayName(SIGDN_FILESYSPATH).ok()?;
+        let path = name.to_string().ok().filter(|s| !s.is_empty());
+        CoTaskMemFree(Some(name.0 as _));
+        let path = path?;
+        let lower = path.to_ascii_lowercase();
+        if !(lower.ends_with(".png") || lower.ends_with(".jpg") || lower.ends_with(".jpeg")) {
+            let _ = windows::Win32::UI::WindowsAndMessaging::MessageBoxW(
+                host,
+                w!("Pick a .png, .jpg, or .jpeg file."),
+                w!("Holeshot HUD"),
+                windows::Win32::UI::WindowsAndMessaging::MB_OK
+                    | windows::Win32::UI::WindowsAndMessaging::MB_ICONWARNING,
+            );
+            return None;
+        }
+        Some(path)
     }
 }
 

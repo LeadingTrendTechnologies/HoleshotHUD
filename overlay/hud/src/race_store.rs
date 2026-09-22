@@ -995,22 +995,28 @@ pub fn session_preset(s: &Snapshot, spectating: bool) -> Option<SessionPreset> {
         return Some(SessionPreset::Race);
     }
     let total = session_len_ms(s.session_length);
-    if extra_laps_field(s.session_laps) && !is_lap_race(s) {
-        return Some(SessionPreset::Race);
-    }
+    // Practice length before leaked extras — kind 5 already returned Warmup above.
     if session_len_minutes(total) >= 40 {
         return Some(SessionPreset::Practice);
+    }
+    if extra_laps_field(s.session_laps) {
+        return Some(SessionPreset::Race);
     }
     if is_warmup(s) {
         return Some(SessionPreset::Warmup);
     }
-    if s.session_length > 0 || s.session_time_ms > 0 || prestart(s) {
+    // Open practice / Testing Setup: no race length and no extras.
+    if s.session_laps <= 0 && s.session_length <= 0 {
+        return Some(SessionPreset::Practice);
+    }
+    // Unpublished timed moto (standard race minutes) still maps to Race.
+    if standard_race_minutes(total) || s.session_length > 0 || prestart(s) {
         return Some(SessionPreset::Race);
     }
     None
 }
 
-/// Open practice (40+ min), not a race moto and not short warmup.
+/// Open practice (40+ min or Testing Setup with no race length), not a race moto and not short warmup.
 pub fn is_practice_session(s: &Snapshot) -> bool {
     matches!(session_preset(s, false), Some(SessionPreset::Practice))
 }

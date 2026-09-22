@@ -7,7 +7,7 @@ This widget is a regular Cockpit widget. Turn it on with **Show on overlay**.
 ## Code
 
 - Draw: `draw_delta` in `overlay/hud/src/render.rs`
-- Store: `overlay/hud/src/delta.rs` — records `local_track_pos → lap clock` on a decent lap, then compares live. The clock is plugin `_fTime` until an official S1/S2, then snaps to that split so the tape matches the game.
+- Store: `overlay/hud/src/delta.rs` — records `local_track_pos → wall-clock lap elapsed` on a decent lap, then compares live. Plugin `_fTime` is used to detect finishes / pit resets only. Official S1/S2 resync the wall-clock anchor so the tape matches the game.
 - Persist: `overlay/hud/src/track_pb.rs` — `%LOCALAPPDATA%\Holeshot HUD\track-pbs\<track>.json` keyed by `track_name`. Field `bikes` is one tape per displacement (`250`, `450`, …). Field `used` is unix seconds last ridden/written. Split positions (`p`) are per track.
 - Tick: `delta::tick` from `overlay/src/main.rs` (not only from `draw`). Skip when `has_telemetry == 0` (replay leftover). Hitch-hold still ticks so a skipped S/F can commit.
 - Settings: `pane_delta` in `overlay/src/settings.rs`
@@ -34,13 +34,14 @@ A decent lap: ~20 s–15 min, coverage across most of 0..1. A dab does not throw
 - Do not treat this as the in-game ghost. We only compare to a lap we recorded.
 - Do not record the out-lap. The tape starts when they cross S/F to begin a flying lap: a new last-lap time, a lap-number bump, a pos wrap, or a clock drop away from the pits (`pos >= 0.18`, new clock under 4 s, old clock under 3 min). Do not arm on a lap-clock start near pos 0 (pits often sit there). Do not arm on a 3:20 `_fTime` collapse. Do not require the line to sit at `track_pos` 0 — MX Bikes origin is not always S/F. A reset to pits is another out-lap (clock drop, last-lap unchanged). A crash that crosses the line with the old clock still up is a finish, not an out-lap — keep LAST and start the next tape from that sample (`held_clock`). A remount teleport is not a cut.
 - Do not tape leftover replay telemetry (`has_telemetry == 0`). Spectate zeros that flag before `delta::tick`.
-- Resync the live clock (and the tape) to official S1 / S2 when those splits first appear. Do not snap to S3 or the full lap time at the line — that would smash the last bins. Until the first split, plugin `_fTime` *is* elapsed (`plugin_at_snap` 0). If the plugin clock then jumps backward, hold the last synced time.
+- Resync the live wall-clock anchor (and the tape) to official S1 / S2 when those splits first appear. Do not snap to S3 or the full lap time at the line — that would smash the last bins. Live elapsed is wall-clock from S/F, not plugin `_fTime`.
 - Do not persist a PB under an empty class. Keep it in memory until the 250/450 name arrives, then write that class. A 250 file already on disk stays put.
 - A hitch that skips the crossing frame must still commit from the live clock / last recorded time.
 - Do not commit a short out-lap as the reference.
 - Do not commit a cut. If `local_track_pos` skips ~100 m of centerline faster than ~140 mph, the lap is dirty. A hitch with proportional clock still commits. Do not flag a jump: ~0.9–3 s in the air covering up to ~200 m of winding centerline is a triple, not a cut.
-- After S/F, do not compare until the lap clock restarts. The plugin often keeps the out-lap / finished-lap clock at pos ~0; that used to show a fake +16s (and smoothing held it). A wrap at the centerline origin mid-lap (often in S3 when origin ≠ the line) is not S/F — keep the delta moving until a real clock drop / last-lap / lap bump. On the first flying lap there is no tape yet: do not treat that origin wrap as a finish or the REC lap is thrown away.
+- After S/F, reset the wall-clock anchor immediately (lap-complete or wrap) even when practice leaves `_fTime` on the finished lap. Do not compare the finished-lap plugin clock mid-lap (~+40s). A wrap at the centerline origin mid-lap (often in S3 when origin ≠ the line) is not S/F — keep the delta moving until a real clock drop / last-lap / lap bump. On the first flying lap there is no tape yet: do not treat that origin wrap as a finish or the REC lap is thrown away.
 - Recording must run from the overlay loop (`delta::tick` in `main`), not only from `draw`. Overlay-off still records.
+- Timing resolution is 1000 bins (legacy 256-bin `track-pbs` files resample on load). Persist the best tape across sessions and races.
 - Do not require `last_lap_ms` to commit. The plugin often zeros it on the crossing; use the live clock drop / pos wrap and the time we just recorded. The inverse also: when last-lap *does* arrive after the clock already restarted (`last_cur` under 8s), still commit. If last-lap is slower than the live clock / tape by more than ~0.4 s (plugin republished the old PB), use the clock. Do not clobber LAST/BEST with that slower last-lap.
 - Do not keep bins whose times are a few hundred ms at `pos=1.0` after a collapsed or restarted clock. They fail spline_ok on the next flying lap.
 - Plugin `RunTelemetry` `_fTime` is seconds. `currentLapMs` must be `dt * 1000`. Do not treat `dt > 200` as already-milliseconds — that collapses the clock at 3:20 and poisons REC.
@@ -62,6 +63,7 @@ A decent lap: ~20 s–15 min, coverage across most of 0..1. A dab does not throw
 
 ## Change log
 
+- 2026-09-22 — Live elapsed is a wall-clock anchor reset at S/F / lap-complete, resynced at S1/S2. Practice no longer flashes ~+40s when `_fTime` stays up. Tape is 1000 bins; old 256-bin files resample. Best tape still saves across sessions/races.
 - 2026-09-10 — A crash at the line no longer drops LAST or freezes REC. MX often leaves the lap clock up and skips last-lap; that wrap still commits, and the next flying lap keeps taping. A remount jump is not a cut.
 - 2026-09-03 — Live clock and tape snap to official S1/S2 so the hairline matches the game. Plugin `_fTime` still runs the clock until that first split. S3 / full lap is not a snap.
 - 2026-09-01 — Faster live clock / tape beats a slower last-lap the plugin republishes (old PB) or zeros at the line. BEST and LAST follow that lap.

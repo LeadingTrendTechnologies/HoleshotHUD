@@ -47,6 +47,11 @@ fn dummy_ui(open: bool) -> SettingsUi {
         map_drag: None,
         profile_all_time: true,
         clear_confirm: None,
+        st_col_slides: ColSlides::new(),
+        rel_col_slides: ColSlides::new(),
+        col_list_y: 0.0,
+        col_list_n: 0,
+        col_list_kind: None,
     }
 }
 

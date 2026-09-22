@@ -48,8 +48,8 @@ pub struct Sampler {
     last_kern: u64,
     last_user: u64,
     last_sample: Option<Instant>,
-    last_seq: u32,
-    last_seq_at: Option<Instant>,
+    last_draw: u32,
+    last_draw_at: Option<Instant>,
     frames: u32,
     frames_at: Instant,
     cpu: f32,
@@ -73,8 +73,8 @@ impl Default for Sampler {
             last_kern: 0,
             last_user: 0,
             last_sample: None,
-            last_seq: 0,
-            last_seq_at: None,
+            last_draw: 0,
+            last_draw_at: None,
             frames: 0,
             frames_at: Instant::now(),
             cpu: 0.0,
@@ -97,8 +97,8 @@ impl Default for Sampler {
 }
 
 impl Sampler {
-    pub fn tick(&mut self, game_seq: Option<u32>, want_meters: bool, apps: &[SysApp]) {
-        self.note_fps(game_seq);
+    pub fn tick(&mut self, game_draw: Option<u32>, want_meters: bool, apps: &[SysApp]) {
+        self.note_fps(game_draw);
         self.ping.set_live(want_meters);
         if !want_meters {
             return;
@@ -206,31 +206,32 @@ impl Sampler {
         mb
     }
 
-    fn note_fps(&mut self, game_seq: Option<u32>) {
+    fn note_fps(&mut self, game_draw: Option<u32>) {
         let now = Instant::now();
-        if let Some(seq) = game_seq {
-            // SHM `seq` is a seqlock, not a frame counter: each plugin Draw
-            // publish does odd (lock) then even (unlock), so it advances by 2.
-            // Using the raw delta made 70 game FPS read as 140, and falling
-            // through to the overlay frame counter then overwrote that with
-            // the HUD loop (~38), so the meter bounced between the two.
-            if let Some(prev) = self.last_seq_at {
+        if let Some(draw) = game_draw {
+            // Snapshot.draw_count increments only on plugin Draw publishes.
+            // Seqlock `seq` also advances on RaceVehicleData and would ~2× FPS.
+            if let Some(prev) = self.last_draw_at {
                 let dt = now.duration_since(prev).as_secs_f32();
                 if dt >= 0.35 {
-                    let n = shm_publishes(self.last_seq, seq);
+                    let n = draw.wrapping_sub(self.last_draw);
                     if n > 0 && n < 400 {
                         self.fps = n as f32 / dt;
+                    } else if n == 0 {
+                        // Hitches: overlay may keep last_snap; do not stick the
+                        // previous high reading while Draw is stalled.
+                        self.fps = 0.0;
                     }
-                    self.last_seq = seq;
-                    self.last_seq_at = Some(now);
+                    self.last_draw = draw;
+                    self.last_draw_at = Some(now);
                 }
             } else {
-                self.last_seq = seq;
-                self.last_seq_at = Some(now);
+                self.last_draw = draw;
+                self.last_draw_at = Some(now);
             }
             return;
         }
-        self.last_seq_at = None;
+        self.last_draw_at = None;
         self.frames += 1;
         let dt = now.duration_since(self.frames_at).as_secs_f32();
         if dt >= 0.4 {
@@ -267,7 +268,8 @@ impl Sampler {
     }
 }
 
-/// Seqlock `seq` advances by 2 per plugin Draw publish (odd lock, even unlock).
+/// Seqlock `seq` advances by 2 per SHM publish (odd lock, even unlock).
+#[cfg(test)]
 fn shm_publishes(prev: u32, next: u32) -> u32 {
     next.wrapping_sub(prev) / 2
 }

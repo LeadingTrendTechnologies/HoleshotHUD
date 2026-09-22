@@ -10,6 +10,7 @@ use super::mnu::{
     splice_multijoin, splice_options, splice_profiles, splice_replay, splice_test,
     splice_testsetup, splice_viewreplays, ui_ui,
 };
+use super::screens::{write_screen_images, LOADING_TGA, SPLASH_TGA};
 use super::sprites::{
     write_accent_pointer, write_spin_arrows, write_sprites, SPRITES, STOCK_CHROME,
 };
@@ -28,12 +29,16 @@ pub fn needs_retry() -> bool {
 }
 
 /// Re-run sync after a prior apply/remove failed (e.g. MX Bikes had `ui/` locked).
-
-/// Re-run sync after a prior apply/remove failed (e.g. MX Bikes had `ui/` locked).
 pub fn retry_if_needed() {
     if needs_retry() {
         sync_from_config();
     }
+}
+
+/// Force a full pack rewrite (image path changes, accent already current).
+pub fn sync_forced() {
+    NEED_RETRY.store(true, Ordering::Relaxed);
+    sync_from_config();
 }
 
 /// Apply or remove from the resolved MX Bikes folder using the live config.
@@ -54,11 +59,32 @@ pub(crate) fn sync_impl(mark_restart_if_game_on: bool) {
     let Some(game) = crate::plugin::game_dir() else {
         return;
     };
-    let (on, accent) = crate::config::with_config(|c| (c.game_ui, c.game_ui_accent()));
-    sync_at(&game, on, accent, mark_restart_if_game_on);
+    let (on, accent, splash, loading) = crate::config::with_config(|c| {
+        (
+            c.game_ui,
+            c.game_ui_accent(),
+            c.game_ui_splash_path.clone(),
+            c.game_ui_loading_path.clone(),
+        )
+    });
+    sync_at(
+        &game,
+        on,
+        accent,
+        &splash,
+        &loading,
+        mark_restart_if_game_on,
+    );
 }
 
-pub(crate) fn sync_at(game: &Path, on: bool, accent: [u8; 3], mark_restart_if_game_on: bool) {
+pub(crate) fn sync_at(
+    game: &Path,
+    on: bool,
+    accent: [u8; 3],
+    splash: &str,
+    loading: &str,
+    mark_restart_if_game_on: bool,
+) {
     let game_on = crate::startup::mx_bikes_pid().is_some();
     let force = NEED_RETRY.load(Ordering::Relaxed);
     let ui = game.join("ui");
@@ -67,11 +93,24 @@ pub(crate) fn sync_at(game: &Path, on: bool, accent: [u8; 3], mark_restart_if_ga
     } else {
         ui.join(MANIFEST).is_file()
     };
+    // Image path changes must rewrite TGAs even when accent is current.
+    let images_dirty = on
+        && (!ui.join(SPLASH_TGA).is_file()
+            || !ui.join(LOADING_TGA).is_file()
+            || force
+            || will_write);
     let result = if on {
         if force {
-            apply(game, accent)
+            apply_paths(game, accent, splash, loading)
+        } else if will_write {
+            apply_with_opts(game, accent, splash, loading, false)
         } else {
-            apply_with_opts(game, accent, false)
+            // Accent unchanged — still refresh splash / loading from config.
+            write_screen_images(&ui, Some(&game.join(BAK_DIR)), splash, loading)
+                .map(|_| {
+                    // Ensure manifest lists the two screens so remove restores bak.
+                    ensure_screen_manifest_entries(&ui, accent);
+                })
         }
     } else {
         remove(game)
@@ -79,7 +118,7 @@ pub(crate) fn sync_at(game: &Path, on: bool, accent: [u8; 3], mark_restart_if_ga
     match result {
         Ok(()) => {
             NEED_RETRY.store(false, Ordering::Relaxed);
-            if mark_restart_if_game_on && game_on && will_write {
+            if mark_restart_if_game_on && game_on && (will_write || images_dirty) {
                 NEED_GAME_RESTART.store(true, Ordering::Relaxed);
             }
         }
@@ -89,15 +128,44 @@ pub(crate) fn sync_at(game: &Path, on: bool, accent: [u8; 3], mark_restart_if_ga
     }
 }
 
+/// Direct pack apply (unit tests / `MXBO_GAME_UI_APPLY` live install helper).
+#[cfg(test)]
 pub fn apply(game: &Path, accent: [u8; 3]) -> Result<(), String> {
-    apply_pack_inner(&game.join("ui"), accent, Some(&game.join(BAK_DIR)), true)
+    let (splash, loading) = crate::config::with_config(|c| {
+        (c.game_ui_splash_path.clone(), c.game_ui_loading_path.clone())
+    });
+    apply_paths(game, accent, &splash, &loading)
 }
 
-pub(crate) fn apply_with_opts(game: &Path, accent: [u8; 3], force: bool) -> Result<(), String> {
+fn apply_paths(
+    game: &Path,
+    accent: [u8; 3],
+    splash: &str,
+    loading: &str,
+) -> Result<(), String> {
     apply_pack_inner(
         &game.join("ui"),
         accent,
         Some(&game.join(BAK_DIR)),
+        splash,
+        loading,
+        true,
+    )
+}
+
+pub(crate) fn apply_with_opts(
+    game: &Path,
+    accent: [u8; 3],
+    splash: &str,
+    loading: &str,
+    force: bool,
+) -> Result<(), String> {
+    apply_pack_inner(
+        &game.join("ui"),
+        accent,
+        Some(&game.join(BAK_DIR)),
+        splash,
+        loading,
         force,
     )
 }
@@ -110,9 +178,13 @@ pub(crate) fn apply_pack_inner(
     ui: &Path,
     accent: [u8; 3],
     bak: Option<&Path>,
+    splash: &str,
+    loading: &str,
     force: bool,
 ) -> Result<(), String> {
     if !force && pack_accent_current(ui, accent) {
+        write_screen_images(ui, bak, splash, loading)?;
+        ensure_screen_manifest_entries(ui, accent);
         return Ok(());
     }
     fs::create_dir_all(ui).map_err(|e| e.to_string())?;
@@ -124,6 +196,8 @@ pub(crate) fn apply_pack_inner(
         "main.mnu".into(),
         "ui.ui".into(),
         "english.str".into(),
+        SPLASH_TGA.into(),
+        LOADING_TGA.into(),
     ];
     files.extend(SPRITES.iter().map(|s| (*s).to_string()));
 
@@ -131,6 +205,7 @@ pub(crate) fn apply_pack_inner(
     write_text(&ui.join("ui.ui"), &ui_ui(accent))?;
     write_english_labels(ui, bak)?;
     ensure_stock_from_bak(ui, bak)?;
+    write_screen_images(ui, bak, splash, loading)?;
     write_accent_pointer(ui, bak, accent)?;
     write_sprites(ui, accent)?;
     write_spin_arrows(ui, bak, accent)?;
@@ -147,6 +222,29 @@ pub(crate) fn apply_pack_inner(
     }
     write_text(&ui.join(MANIFEST), &manifest_body(accent, &files))?;
     Ok(())
+}
+
+/// If an older pack is already current, append splash/loading to the manifest file list.
+fn ensure_screen_manifest_entries(ui: &Path, accent: [u8; 3]) {
+    let path = ui.join(MANIFEST);
+    let Ok(text) = fs::read_to_string(&path) else {
+        return;
+    };
+    let mut files: Vec<String> = text
+        .lines()
+        .filter(|l| !l.starts_with('#') && !l.starts_with("accent=") && !l.trim().is_empty())
+        .map(|l| l.trim().to_string())
+        .collect();
+    let mut dirty = false;
+    for name in [SPLASH_TGA, LOADING_TGA] {
+        if !files.iter().any(|f| f.eq_ignore_ascii_case(name)) {
+            files.push(name.into());
+            dirty = true;
+        }
+    }
+    if dirty {
+        let _ = write_text(&path, &manifest_body(accent, &files));
+    }
 }
 
 pub(crate) struct MenuSplice {

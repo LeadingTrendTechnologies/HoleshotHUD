@@ -59,6 +59,19 @@ pub fn parse_primary_color(s: &str) -> Option<[u8; 3]> {
     ])
 }
 
+/// Keep a custom game-ui image path only when the file still exists.
+pub fn game_ui_image_path(s: &str) -> String {
+    let p = s.trim();
+    if p.is_empty() {
+        return String::new();
+    }
+    if std::path::Path::new(p).is_file() {
+        p.to_string()
+    } else {
+        String::new()
+    }
+}
+
 /// Hue 0..360, saturation 0..1, value 0..1.
 pub fn rgb_to_hsv(rgb: [u8; 3]) -> (f32, f32, f32) {
     let r = rgb[0] as f32 / 255.0;
@@ -1823,9 +1836,17 @@ pub struct HudLayout {
     pub st_hl: i32,
     pub st_text: TableText,
     pub st_stripe: bool,
+    /// Ink on the orange rider-count / track-name plaques. Default black.
+    pub st_plaque_text: TableText,
+    /// Draw the orange rider-count / track-name plaques. Default on.
+    pub st_plaque: bool,
     pub rel_hl: i32,
     pub rel_text: TableText,
     pub rel_stripe: bool,
+    /// Ink on the orange rider-count / track-name plaques. Default black.
+    pub rel_plaque_text: TableText,
+    /// Draw the orange rider-count / track-name plaques. Default on.
+    pub rel_plaque: bool,
     pub mini_zoom: i32,
     pub dash_rev: bool,
     /// Nearby crash wrap on Dash. Off by default.
@@ -1964,9 +1985,13 @@ impl HudLayout {
             st_hl: 50,
             st_text: TableText::White,
             st_stripe: true,
+            st_plaque_text: TableText::Black,
+            st_plaque: true,
             rel_hl: 50,
             rel_text: TableText::White,
             rel_stripe: true,
+            rel_plaque_text: TableText::Black,
+            rel_plaque: true,
             mini_zoom: 70,
             dash_rev: true,
             dash_yellow: false,
@@ -2079,6 +2104,10 @@ pub struct HudConfig {
     pub game_ui_match_primary: bool,
     /// Menu pack accent when `game_ui_match_primary` is false.
     pub game_ui_primary: [u8; 3],
+    /// Custom opening splash (`splash.tga`). Empty = bundled night-ink default.
+    pub game_ui_splash_path: String,
+    /// Custom loading background (`bkgrnd.tga`). Empty = bundled night-ink default.
+    pub game_ui_loading_path: String,
     pub font_family: FontFamily,
     /// HUD / settings / Motos accent. Default Holeshot orange.
     pub primary: [u8; 3],
@@ -2115,6 +2144,8 @@ impl HudConfig {
             game_ui: false,
             game_ui_match_primary: true,
             game_ui_primary: DEFAULT_PRIMARY,
+            game_ui_splash_path: String::new(),
+            game_ui_loading_path: String::new(),
             font_family: FontFamily::Exo2,
             primary: DEFAULT_PRIMARY,
             units: UnitPrefs::all(Units::Metric),
@@ -2323,7 +2354,8 @@ impl HudConfig {
              settings_key={}\nsettings_x={}\nsettings_y={}\nstart_with_windows={}\nminimize_on_close={}\n\
              close_with_game={}\nopen_with_game={}\nauto_update_on_launch={}\nwhats_new_seen={}\n\
              first_install_version={}\nexperimental={}\nreview={}\ningame_hud={}\ngame_ui={}\n\
-             game_ui_match_primary={}\ngame_ui_primary_color={}\nstance_bind={}\nactive_preset={}\n\
+             game_ui_match_primary={}\ngame_ui_primary_color={}\n\
+             game_ui_splash_path={}\ngame_ui_loading_path={}\nstance_bind={}\nactive_preset={}\n\
              \n[Practice]\n{}\n\n[Warmup]\n{}\n\n[Race]\n{}\n\n[Spectate]\n{}\n",
             self.font_family.key(),
             format_primary_color(self.primary),
@@ -2347,6 +2379,8 @@ impl HudConfig {
             b(self.game_ui),
             b(self.game_ui_match_primary),
             format_primary_color(self.game_ui_primary),
+            self.game_ui_splash_path,
+            self.game_ui_loading_path,
             self.stance_bind.key(),
             self.active_preset.key(),
             layout_ini(&self.layouts[SessionPreset::Practice.idx()]),
@@ -2731,6 +2765,12 @@ fn apply_app_key(
                 cfg.game_ui_primary = rgb;
             }
         }
+        "game_ui_splash_path" => {
+            cfg.game_ui_splash_path = game_ui_image_path(val);
+        }
+        "game_ui_loading_path" => {
+            cfg.game_ui_loading_path = game_ui_image_path(val);
+        }
         "font_family" => cfg.font_family = FontFamily::parse(val),
         "primary_color" => {
             if let Some(rgb) = parse_primary_color(val) {
@@ -2855,9 +2895,13 @@ fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last
         "st_hl" => cfg.st_hl = clamp_pct(val),
         "st_text" => cfg.st_text = TableText::parse(val),
         "st_stripe" => cfg.st_stripe = b,
+        "st_plaque_text" => cfg.st_plaque_text = TableText::parse(val),
+        "st_plaque" => cfg.st_plaque = b,
         "rel_hl" => cfg.rel_hl = clamp_pct(val),
         "rel_text" => cfg.rel_text = TableText::parse(val),
         "rel_stripe" => cfg.rel_stripe = b,
+        "rel_plaque_text" => cfg.rel_plaque_text = TableText::parse(val),
+        "rel_plaque" => cfg.rel_plaque = b,
         "mini_zoom" => cfg.mini_zoom = clamp_pct(val),
         "dash_rev" => cfg.dash_rev = b,
         "dash_yellow" => cfg.dash_yellow = b,
@@ -3007,14 +3051,14 @@ fn layout_ini(l: &HudLayout) -> String {
          st_order={}\n\
          st_w_pos={}\nst_w_num={}\nst_w_name={}\nst_w_gap={}\nst_w_interval={}\nst_w_laps={}\n\
          st_w_current={}\nst_w_best={}\nst_w_last={}\nst_w_status={}\nst_w_bike={}\nst_w_penalty={}\nst_w_crashed={}\n\
-         st_bg={}\nst_hl={}\nst_text={}\nst_stripe={}\nst_font={}\nst_bold={}\n\
+         st_bg={}\nst_hl={}\nst_text={}\nst_stripe={}\nst_plaque_text={}\nst_plaque={}\nst_font={}\nst_bold={}\n\
          st_head={}\nst_foot={}\n\
          rel_num={}\nrel_name={}\nrel_gap={}\nrel_laps={}\nrel_current={}\nrel_pos={}\nrel_bike={}\n\
          rel_penalty={}\nrel_interval={}\nrel_crashed={}\nrel_best={}\nrel_last={}\n\
          rel_order={}\n\
          rel_w_num={}\nrel_w_name={}\nrel_w_gap={}\nrel_w_laps={}\nrel_w_current={}\nrel_w_pos={}\n\
          rel_w_bike={}\nrel_w_penalty={}\nrel_w_interval={}\nrel_w_crashed={}\nrel_w_best={}\nrel_w_last={}\n\
-         rel_bg={}\nrel_hl={}\nrel_text={}\nrel_stripe={}\nrel_font={}\nrel_bold={}\n\
+         rel_bg={}\nrel_hl={}\nrel_text={}\nrel_stripe={}\nrel_plaque_text={}\nrel_plaque={}\nrel_font={}\nrel_bold={}\n\
          rel_head={}\nrel_foot={}\n\
          map_others={}\nmap_sf={}\nmap_sectors={}\nmap_name={}\nmap_numbers={}\nmap_arrows={}\n\
          map_crown={}\nmap_place={}\nmap_dot={}\nmap_bg={}\nmap_font={}\nmap_bold={}\n\
@@ -3062,14 +3106,14 @@ fn layout_ini(l: &HudLayout) -> String {
         join_st(&l.st_order),
         l.st_w_pos, l.st_w_num, l.st_w_name, l.st_w_gap, l.st_w_interval, l.st_w_laps,
         l.st_w_current, l.st_w_best, l.st_w_last, l.st_w_status, l.st_w_bike, l.st_w_penalty, l.st_w_crashed,
-        st.bg, l.st_hl, l.st_text.key(), b(l.st_stripe), st.font, b(st.bold),
+        st.bg, l.st_hl, l.st_text.key(), b(l.st_stripe), l.st_plaque_text.key(), b(l.st_plaque), st.font, b(st.bold),
         join_board(&l.st_head), join_board(&l.st_foot),
         b(l.rel_num), b(l.rel_name), b(l.rel_gap), b(l.rel_laps), b(l.rel_current), b(l.rel_pos), b(l.rel_bike),
         b(l.rel_penalty), b(l.rel_interval), b(l.rel_crashed), b(l.rel_best), b(l.rel_last),
         join_rel(&l.rel_order),
         l.rel_w_num, l.rel_w_name, l.rel_w_gap, l.rel_w_laps, l.rel_w_current, l.rel_w_pos,
         l.rel_w_bike, l.rel_w_penalty, l.rel_w_interval, l.rel_w_crashed, l.rel_w_best, l.rel_w_last,
-        rel.bg, l.rel_hl, l.rel_text.key(), b(l.rel_stripe), rel.font, b(rel.bold),
+        rel.bg, l.rel_hl, l.rel_text.key(), b(l.rel_stripe), l.rel_plaque_text.key(), b(l.rel_plaque), rel.font, b(rel.bold),
         join_board(&l.rel_head), join_board(&l.rel_foot),
         b(l.map_others), b(l.map_sf), b(l.map_sectors), b(l.map_name), b(l.map_numbers), b(l.map_arrows),
         b(l.map_crown), b(l.map_place), l.map_dot.key(), map.bg, map.font, b(map.bold),

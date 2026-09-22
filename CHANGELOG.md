@@ -2,6 +2,46 @@
 
 ## Unreleased
 
+## 0.16.0
+
+Custom MX Bikes opening and loading screens, Standings plaque controls, and steadier Delta and flags.
+
+### Overlay
+
+- With **MX Bikes menus** on, **Opening screen** and **Loading screen** under In game HUD ship photo defaults (male + female riders on opening; a male rider on loading). Browse a PNG or JPG, or Use default. Opening centers a PiBoSo mark. Fully quit MX Bikes after changing so the art reloads.
+- Open practice / Testing Setup keeps the **Practice** preset. A live clock alone no longer switches you to Race.
+
+### Standings
+
+- **Plaque text** (Black / White) and **Show plaques** for the orange rider-count and track-name skews. Separate from row **Text color**.
+- Penalty shows whole seconds as `5s`, not `5.000`.
+- Dragging columns in Settings eases neighbors into place instead of snapping.
+
+### Relative
+
+- Same **Plaque text** / **Show plaques**, penalty `#s`, and column-drag ease as Standings.
+
+### Delta Bar
+
+- Live delta no longer flashes a huge positive gap in practice when the game keeps the finished-lap clock up.
+
+### Dash
+
+- Penalty shows whole seconds as `5s`.
+- Yellow wrap still waves in practice and warmup when someone crashes ahead (blue/red stay race-only).
+
+### Flags
+
+- Yellow waves in practice and warmup when someone crashes ahead; blue and red stay race-only.
+
+### Systems
+
+- FPS is the game **Draw** rate from the plugin, not overlay paints.
+
+### Plugin
+
+- Shared memory is `Local\MXBOHudV17`. `drawCount` is published for Systems FPS. Restart MX Bikes after the plugin update.
+
 ## 0.15.0
 
 Optional MX Bikes menu pack, its own accent, and a Settings left rail.

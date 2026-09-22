@@ -360,6 +360,42 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             }
             return;
         }
+        Hit::GameUiSplashBrowse => {
+            close_drop();
+            let host = UI.lock().unwrap().as_ref().map(|u| u.host);
+            let Some(host) = host else {
+                return;
+            };
+            if let Some(path) = browse_image(host) {
+                update_config(|c| c.game_ui_splash_path = path);
+                crate::game_ui::sync_forced();
+            }
+            return;
+        }
+        Hit::GameUiSplashDefault => {
+            close_drop();
+            update_config(|c| c.game_ui_splash_path.clear());
+            crate::game_ui::sync_forced();
+            return;
+        }
+        Hit::GameUiLoadingBrowse => {
+            close_drop();
+            let host = UI.lock().unwrap().as_ref().map(|u| u.host);
+            let Some(host) = host else {
+                return;
+            };
+            if let Some(path) = browse_image(host) {
+                update_config(|c| c.game_ui_loading_path = path);
+                crate::game_ui::sync_forced();
+            }
+            return;
+        }
+        Hit::GameUiLoadingDefault => {
+            close_drop();
+            update_config(|c| c.game_ui_loading_path.clear());
+            crate::game_ui::sync_forced();
+            return;
+        }
         Hit::UnitsOpen(kind) => {
             toggle_drop(Drop::Units(kind));
             return;
@@ -370,6 +406,14 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         }
         Hit::RelTextOpen => {
             toggle_drop(Drop::RelText);
+            return;
+        }
+        Hit::StPlaqueTextOpen => {
+            toggle_drop(Drop::StPlaqueText);
+            return;
+        }
+        Hit::RelPlaqueTextOpen => {
+            toggle_drop(Drop::RelPlaqueText);
             return;
         }
         Hit::SettingsKeyOpen => {
@@ -670,6 +714,8 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::TickerAutoscroll => c.ticker_autoscroll = !c.ticker_autoscroll,
         Hit::StStripe => c.st_stripe = !c.st_stripe,
         Hit::RelStripe => c.rel_stripe = !c.rel_stripe,
+        Hit::StPlaque => c.st_plaque = !c.st_plaque,
+        Hit::RelPlaque => c.rel_plaque = !c.rel_plaque,
         Hit::StPos => c.st_pos = !c.st_pos,
         Hit::StNum => c.st_num = !c.st_num,
         Hit::StName => c.st_name = !c.st_name,
@@ -734,6 +780,10 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::StTextBlack => c.st_text = TableText::Black,
         Hit::RelTextWhite => c.rel_text = TableText::White,
         Hit::RelTextBlack => c.rel_text = TableText::Black,
+        Hit::StPlaqueTextWhite => c.st_plaque_text = TableText::White,
+        Hit::StPlaqueTextBlack => c.st_plaque_text = TableText::Black,
+        Hit::RelPlaqueTextWhite => c.rel_plaque_text = TableText::White,
+        Hit::RelPlaqueTextBlack => c.rel_plaque_text = TableText::Black,
         Hit::SettingsKeyPick(key) => c.settings_key = key,
         Hit::StanceModePick(mode) => c.stance_mode = mode,
         Hit::StanceStylePick(style) => c.stance_style = style,
@@ -816,9 +866,15 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::GameUiPrimaryHue
         | Hit::GameUiPrimarySwatch(_)
         | Hit::GameUiPrimaryReset
+        | Hit::GameUiSplashBrowse
+        | Hit::GameUiSplashDefault
+        | Hit::GameUiLoadingBrowse
+        | Hit::GameUiLoadingDefault
         | Hit::UnitsOpen(_)
         | Hit::StTextOpen
         | Hit::RelTextOpen
+        | Hit::StPlaqueTextOpen
+        | Hit::RelPlaqueTextOpen
         | Hit::SettingsKeyOpen
         | Hit::StanceBindOpen
         | Hit::StanceModeOpen

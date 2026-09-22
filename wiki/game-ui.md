@@ -102,6 +102,7 @@ Same idea inside each splice: dialog name → restyle fn map.
 - `game_ui/pack.rs` — backup, manifest, pkz, apply/remove, `MENU_SPLICES`
 - `game_ui/io.rs` — stock reads, text write, english.str
 - `game_ui/sprites.rs` — TGA writers + `SPRITES` / `STOCK_CHROME`
+- `game_ui/screens.rs` — opening `splash.tga` + loading `bkgrnd.tga` (defaults or Browse PNG/JPG)
 - `game_ui/shell.rs` — P1 primitives + ink recolor
 - `game_ui/mnu/` — authors + splices (further domain files optional)
 - tests remain in `game_ui/mod.rs` for now

@@ -4,7 +4,8 @@ use crate::config::{
     StField, StanceStyle, WidgetId,
 };
 use crate::race_store::{
-    effective_extra_laps, effective_race_laps, live_session, session_preset, ClockMode,
+    effective_extra_laps, effective_race_laps, is_practice_session, live_session, session_preset,
+    ClockMode,
 };
 use crate::shm::{write_name, Point, Rider, Snapshot, Standing, MAGIC, TRACK_NAME, VERSION};
 use tiny_skia::{Color, Pixmap, Rect};
@@ -339,6 +340,7 @@ fn formatters_cover_clock_gap_and_penalty() {
     assert_eq!(format_board_gap(0, 1, false), "1L");
     assert_eq!(format_board_gap(1500, 0, false), "1.5");
     assert_eq!(format_penalty(0), "---");
+    assert_eq!(format_penalty(5000), "5s");
     assert_eq!(format_delta_ms(0), "0.000");
     assert_eq!(format_delta_ms(250), "+0.250");
     assert_eq!(format_delta_ms(-347), "-0.347");
@@ -901,10 +903,44 @@ fn session_preset_from_live_state() {
 
     reset_session();
     s = live_snap();
+    s.session_kind = -1;
+    s.session_length = 40;
+    s.session_laps = 2;
+    assert_eq!(
+        session_preset(&s, false),
+        Some(SessionPreset::Practice),
+        "40+ min practice wins over leaked extras"
+    );
+
+    reset_session();
+    s = live_snap();
+    s.session_kind = -1;
+    s.session_length = 0;
+    s.session_laps = 0;
+    s.session_time_ms = 90_000;
+    assert_eq!(
+        session_preset(&s, false),
+        Some(SessionPreset::Practice),
+        "open practice / Testing Setup with a live clock"
+    );
+
+    reset_session();
+    s = live_snap();
     s.session_kind = 7;
     s.session_length = 8;
     s.session_laps = 0;
     assert_eq!(session_preset(&s, false), Some(SessionPreset::Race));
+
+    reset_session();
+    s = live_snap();
+    s.session_kind = -1;
+    s.session_length = 8;
+    s.session_laps = 2;
+    assert_eq!(
+        session_preset(&s, false),
+        Some(SessionPreset::Race),
+        "short timed with extras stays Race"
+    );
 
     reset_session();
     s = live_snap();
@@ -5342,6 +5378,56 @@ fn caution_blue_and_red_off_in_warmup() {
     lapping_ahead(&mut s);
     assert_eq!(lap_rel(&s, 1), LapRel::Same);
     assert_eq!(wanted_flag(&s, false, true, true), DashFlag::None);
+}
+
+#[test]
+fn caution_yellow_on_in_warmup_and_practice() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = mid_race_snap();
+    s.session_kind = 5;
+    s.session_laps = 2;
+    s.session_length = 15;
+    crash_ahead(&mut s);
+    assert!(is_warmup(&s));
+    assert_eq!(
+        caution_flag(&s, true, true, true),
+        DashFlag::Yellow,
+        "yellow still waves in warmup when someone crashes ahead"
+    );
+    assert_eq!(
+        caution_flag(&s, false, true, true),
+        DashFlag::None,
+        "blue/red stay off in warmup"
+    );
+
+    reset_session();
+    s = mid_race_snap();
+    s.session_kind = -1;
+    s.session_laps = 0;
+    s.session_length = 0;
+    crash_ahead(&mut s);
+    assert!(is_practice_session(&s));
+    assert!(!is_warmup(&s));
+    assert_eq!(
+        caution_flag(&s, true, false, false),
+        DashFlag::Yellow,
+        "yellow waves in Testing Setup practice"
+    );
+
+    reset_session();
+    s = mid_race_snap();
+    s.session_kind = -1;
+    s.session_laps = 2;
+    s.session_length = 40;
+    crash_ahead(&mut s);
+    assert!(is_practice_session(&s), "40 min stays practice when extras leak");
+    assert!(!is_warmup(&s));
+    assert_eq!(
+        caution_flag(&s, true, false, false),
+        DashFlag::Yellow,
+        "yellow waves in open practice"
+    );
 }
 
 #[test]

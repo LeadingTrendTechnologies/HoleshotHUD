@@ -18,6 +18,8 @@ Twin columns inside a night-ink 6px plaque with a 1px hairline frame and a hairl
 - **Right:** MEM — huge percent, gold heat track, process mem rows
 - **Footer:** FPS left (number only, no bar), ping under it — two equal slots filling the left footer. GPU right with the same apps. Same hairline split.
 
+FPS is plugin **Draw** rate (`drawCount`), not overlay paints and not ReShade/display Present. ReShade cost shows on the MX Bikes GPU row (ReShade-as-DLL is `—` for GPU).
+
 Default process apps: **HUD**, **MX Bikes**, **MXB App**, **ReShade**, **OBS**. Settings can hide any of those, add more (Discord, Steam, NVIDIA, Afterburner, RTSS, Medal, Spotify, Game Bar), or pick an `.exe`. The overlay paints at most 8 shown apps. Missing process shows `—` and a dim bar. Mem sub-bars scale to the heaviest of those processes, not total RAM.
 
 Watching is by running process **basename** (`obs64.exe` / `obs32.exe`), not the install folder. Steam, portable, and Program Files all count. Browse stores that filename only, so moving the app later still works.
@@ -43,7 +45,7 @@ One percent: Task Manager's GPU graph — 3D / Graphics on each card, Compute on
 - Do not draw with `snap == None` or an empty session. Same hide rule as race widgets. Layout boxes (`settings_hint`) still force a draw.
 - Labels come from the watch list (`sys_apps`). Overlay paints at most `SYS_PROC_MAX` (8) shown apps. Changing who is sampled is `sys.rs` plus that list; GPU rows use the same set. ReShade as a DLL is `—` for GPU. Defaults include OBS. Match running processes by exe basename, never an install path.
 - Do not paint load with ahead-green or Holeshot orange.
-- FPS is the game’s Draw publish rate, not the overlay loop. SHM `seq` is a seqlock (advances by 2 per publish); divide by 2. Do not mix seq FPS with overlay frame counting while a snapshot is live.
+- FPS is the game’s Draw publish rate (`Snapshot.drawCount`), not the overlay loop and not ReShade/display Present. Do not use seqlock `seq` (RaceVehicleData also publishes and would ~2× the meter). Clear FPS when a sample window sees zero Draws (hitch hold). Do not mix Draw FPS with overlay frame counting while a snapshot is live.
 - Do not Toolhelp-snapshot MX Bikes modules every sample. That stalls the game. ReShade DLL size is cached (~30s). CPU/mem/GPU sampling only runs while this widget is shown in a session.
 - Do not sleep the overlay thread to prime PDH. The first GPU sample after show may be 0 until the next 500ms tick.
 - Do not ICMP on the overlay thread. Ping lives on `holeshot-ping`; ICMP blocked or offline shows `—`.
@@ -52,6 +54,7 @@ One percent: Task Manager's GPU graph — 3D / Graphics on each card, Compute on
 
 ## Change log
 
+- 2026-09-22 — FPS uses `drawCount` (Draw-only, SHM v17). Seqlock publish rate was inflated by `RaceVehicleData`. Stall windows clear the number. Still not ReShade Present — high MXB GPU with soft feel often means post-process cost.
 - 2026-09-10 — FPS and ping scale to two equal slots in the left footer so they fill that pane instead of sitting small under the split.
 - 2026-09-02 — Columns leave a gutter at the split so left percents are not on the hairline.
 - 2026-09-02 — OBS is on the default list. Apps are matched by `.exe` name wherever they are installed.

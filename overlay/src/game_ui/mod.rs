@@ -3,13 +3,14 @@
 mod io;
 mod mnu;
 mod pack;
+mod screens;
 mod shell;
 mod sprites;
 
 #[allow(unused_imports)] // public API surface for settings / uninstall / callers
 pub use pack::{
-    apply, needs_restart, needs_retry, remove, remove_pack, retry_if_needed, sync_from_config,
-    sync_quiet,
+    needs_restart, needs_retry, remove, remove_pack, retry_if_needed, sync_forced,
+    sync_from_config, sync_quiet,
 };
 
 pub const MANIFEST: &str = "holeshot-ui.manifest";
@@ -59,7 +60,11 @@ mod tests {
         assert!(man.contains("accent=#FF9430"));
         assert!(man.contains("main.mnu"));
         assert!(man.contains("english.str"));
+        assert!(man.contains("splash.tga"));
+        assert!(man.contains("bkgrnd.tga"));
         assert!(ui.join("main.mnu").is_file());
+        assert!(ui.join("splash.tga").is_file());
+        assert!(ui.join("bkgrnd.tga").is_file());
         assert!(ui.join("main2.tga").is_file());
         assert!(ui.join("mainbox.tga").is_file());
         assert!(ui.join("main1.tga").is_file());
@@ -89,6 +94,26 @@ mod tests {
         assert!(mnu.contains("sprite logo_ui.tga"));
         assert!(mnu.contains("name ID_LOGO"));
         assert!(
+            !mnu
+                .split("name IDD_SPLASH")
+                .nth(1)
+                .unwrap()
+                .split("name idd_")
+                .next()
+                .unwrap()
+                .contains("sprite logo_ui.tga"),
+            "opening splash uses baked logo in splash.tga, not a .mnu logo item"
+        );
+        let loading = mnu.split("name idd_background").nth(1).unwrap();
+        assert!(
+            !loading
+                .split("name idd_")
+                .next()
+                .unwrap()
+                .contains("sprite logo_ui.tga"),
+            "session loading must not show PiBoSo logo"
+        );
+        assert!(
             mnu.contains("color 0 0 0 0"),
             "main darkbox must stay clear; glass is rounded mainbox.tga"
         );
@@ -114,6 +139,120 @@ mod tests {
         assert!(ui.join("keep-me.txt").is_file());
         let tga = fs::read(ui.join("done1.tga")).unwrap();
         assert!(tga.windows(3).any(|w| w == [48, 148, 255]));
+        let _ = fs::remove_dir_all(&game);
+    }
+
+    #[test]
+    fn apply_writes_default_splash_and_loading_screens() {
+        let game = temp_game();
+        let ui = game.join("ui");
+        let bak = game.join(BAK_DIR);
+        fs::create_dir_all(&bak).unwrap();
+        fs::write(bak.join("english.str"), b"Testing\r\nPractice\r\n").unwrap();
+        fs::write(bak.join("main.fnt"), b"fnt").unwrap();
+        // Tiny stock splash must not pin TGA size — we floor at 1920×1080.
+        let mut tiny = Vec::new();
+        tiny.extend_from_slice(&[
+            0u8, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 2, 0, 32, 8,
+        ]);
+        tiny.extend(vec![0u8; 4 * 2 * 4]);
+        fs::write(bak.join("splash.tga"), &tiny).unwrap();
+        fs::write(bak.join("bkgrnd.tga"), &tiny).unwrap();
+        apply(&game, DEFAULT_PRIMARY).unwrap();
+        let splash = fs::read(ui.join("splash.tga")).unwrap();
+        let loading = fs::read(ui.join("bkgrnd.tga")).unwrap();
+        assert!(splash.len() > 18);
+        assert!(loading.len() > 18);
+        assert_ne!(splash, tiny, "default splash must replace stock bak bytes");
+        assert_ne!(loading, tiny, "default loading must replace stock bak bytes");
+        let w = u16::from_le_bytes([splash[12], splash[13]]);
+        let h = u16::from_le_bytes([splash[14], splash[15]]);
+        assert_eq!((w, h), (1920, 1080));
+        let man = fs::read_to_string(ui.join(MANIFEST)).unwrap();
+        assert!(man.contains("splash.tga"));
+        assert!(man.contains("bkgrnd.tga"));
+        // Custom PNG path.
+        let png = game.join("custom.png");
+        let mut px = tiny_skia::Pixmap::new(8, 8).unwrap();
+        px.fill(tiny_skia::Color::from_rgba8(10, 20, 30, 255));
+        fs::write(&png, px.encode_png().unwrap()).unwrap();
+        apply_pack_inner(
+            &ui,
+            DEFAULT_PRIMARY,
+            Some(&bak),
+            png.to_str().unwrap(),
+            "",
+            true,
+        )
+        .unwrap();
+        let custom = fs::read(ui.join("splash.tga")).unwrap();
+        assert_ne!(custom, splash);
+        // Custom JPG path (same decode → TGA pipeline).
+        let jpg = game.join("custom.jpg");
+        {
+            let mut rgb = image::RgbImage::new(4, 4);
+            for p in rgb.pixels_mut() {
+                *p = image::Rgb([200, 40, 40]);
+            }
+            let mut buf = Vec::new();
+            image::DynamicImage::ImageRgb8(rgb)
+                .write_to(
+                    &mut std::io::Cursor::new(&mut buf),
+                    image::ImageFormat::Jpeg,
+                )
+                .unwrap();
+            fs::write(&jpg, &buf).unwrap();
+        }
+        apply_pack_inner(
+            &ui,
+            DEFAULT_PRIMARY,
+            Some(&bak),
+            jpg.to_str().unwrap(),
+            "",
+            true,
+        )
+        .unwrap();
+        let from_jpg = fs::read(ui.join("splash.tga")).unwrap();
+        assert_ne!(from_jpg, splash, "JPEG custom splash must replace default");
+        assert_ne!(from_jpg, custom, "JPEG splash should differ from PNG custom");
+        // remove restores bak stock
+        remove(&game).unwrap();
+        assert_eq!(fs::read(ui.join("splash.tga")).unwrap(), tiny);
+        assert_eq!(fs::read(ui.join("bkgrnd.tga")).unwrap(), tiny);
+        let _ = fs::remove_dir_all(&game);
+    }
+
+    #[test]
+    fn splash_bakes_centered_piboso_logo() {
+        let game = temp_game();
+        let ui = game.join("ui");
+        let bak = game.join(BAK_DIR);
+        fs::create_dir_all(&bak).unwrap();
+        fs::write(bak.join("english.str"), b"Testing\r\nPractice\r\n").unwrap();
+        fs::write(bak.join("main.fnt"), b"fnt").unwrap();
+        apply(&game, DEFAULT_PRIMARY).unwrap();
+        let splash = fs::read(ui.join("splash.tga")).unwrap();
+        let w = u16::from_le_bytes([splash[12], splash[13]]) as usize;
+        let h = u16::from_le_bytes([splash[14], splash[15]]) as usize;
+        let px = &splash[18..];
+        // Wordmark has gaps between letters — scan a center band for white ink.
+        let mut bright = 0u32;
+        let y0 = h * 45 / 100;
+        let y1 = h * 55 / 100;
+        let x0 = w * 35 / 100;
+        let x1 = w * 65 / 100;
+        for y in y0..y1 {
+            for x in x0..x1 {
+                let i = (y * w + x) * 4;
+                if px[i] > 200 && px[i + 1] > 200 && px[i + 2] > 200 {
+                    bright += 1;
+                }
+            }
+        }
+        assert!(
+            bright > 500,
+            "splash center band must include baked PiBoSo wordmark pixels, got {bright} bright"
+        );
         let _ = fs::remove_dir_all(&game);
     }
 
@@ -263,10 +402,10 @@ mod tests {
         fs::write(ui.join("main.fnt"), b"fnt").unwrap();
         let before = fs::metadata(ui.join("main.mnu")).unwrap().modified().unwrap();
         std::thread::sleep(std::time::Duration::from_millis(20));
-        apply_pack_inner(&ui, DEFAULT_PRIMARY, Some(&game.join(BAK_DIR)), false).unwrap();
+        apply_pack_inner(&ui, DEFAULT_PRIMARY, Some(&game.join(BAK_DIR)), "", "", false).unwrap();
         let after = fs::metadata(ui.join("main.mnu")).unwrap().modified().unwrap();
         assert_eq!(before, after, "matching accent must not rewrite");
-        apply_pack_inner(&ui, [59, 130, 246], Some(&game.join(BAK_DIR)), false).unwrap();
+        apply_pack_inner(&ui, [59, 130, 246], Some(&game.join(BAK_DIR)), "", "", false).unwrap();
         let mnu = fs::read_to_string(ui.join("main.mnu")).unwrap();
         assert!(mnu.contains("246 130 59"));
         let _ = fs::remove_dir_all(&game);
@@ -279,12 +418,12 @@ mod tests {
         // ui as a file → apply cannot create_dir_all / write.
         let _ = fs::remove_dir_all(game.join("ui"));
         fs::write(game.join("ui"), b"blocked").unwrap();
-        sync_at(&game, true, DEFAULT_PRIMARY, false);
+        sync_at(&game, true, DEFAULT_PRIMARY, "", "", false);
         assert!(needs_retry(), "failed apply must request retry");
 
         let _ = fs::remove_file(game.join("ui"));
         fs::create_dir_all(game.join("ui")).unwrap();
-        sync_at(&game, true, DEFAULT_PRIMARY, false);
+        sync_at(&game, true, DEFAULT_PRIMARY, "", "", false);
         assert!(!needs_retry(), "successful apply must clear retry");
         let man = fs::read_to_string(game.join("ui").join(MANIFEST)).unwrap();
         assert!(man.contains("accent=#FF9430"));

@@ -119,6 +119,10 @@ fn default_hud_hides_every_widget() {
     assert_eq!(cfg.units, UnitPrefs::all(Units::Metric));
     assert!(cfg.st_stripe);
     assert!(cfg.rel_stripe);
+    assert_eq!(cfg.st_plaque_text, TableText::Black);
+    assert!(cfg.st_plaque);
+    assert_eq!(cfg.rel_plaque_text, TableText::Black);
+    assert!(cfg.rel_plaque);
     assert_eq!(
         cfg[WidgetId::Standings].rect,
         crate::shm::Rect {
@@ -210,6 +214,36 @@ fn game_ui_defaults_off_and_round_trips() {
     assert!(text.contains("game_ui=1"));
     assert!(text.contains("game_ui_match_primary=0"));
     assert!(text.contains("game_ui_primary_color=#3B82F6"));
+}
+
+#[test]
+fn game_ui_screen_paths_round_trip() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-game-ui-img-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    let png = dir.join("splash.png");
+    std::fs::write(&png, b"not-a-real-png-but-file-exists").unwrap();
+    std::fs::write(
+        &path,
+        "first_install_version=0.1.0\nst_last=1\nrel_last=1\n",
+    )
+    .unwrap();
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let mut cfg = HudConfig::load_file();
+    assert!(cfg.game_ui_splash_path.is_empty());
+    assert!(cfg.game_ui_loading_path.is_empty());
+    cfg.game_ui_splash_path = png.to_string_lossy().into_owned();
+    cfg.game_ui_loading_path = png.to_string_lossy().into_owned();
+    cfg.save();
+    let loaded = HudConfig::load_file();
+    let text = std::fs::read_to_string(&path).unwrap();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(loaded.game_ui_splash_path, png.to_string_lossy());
+    assert_eq!(loaded.game_ui_loading_path, png.to_string_lossy());
+    assert!(text.contains("game_ui_splash_path="));
+    assert!(text.contains("game_ui_loading_path="));
 }
 
 #[test]

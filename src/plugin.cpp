@@ -424,7 +424,7 @@ __declspec(dllexport) void Draw(int _iState, int* _piNumQuads, void** _ppQuad, i
         (void)_iState;
         reloadConfigIfChanged();
         g_layout.update(g_config, g_layoutDirty, g_iniPath);
-        g_shm.publish(g_state, g_config);
+        g_shm.publish(g_state, g_config, true);
 
         // Frozen: standings, relative, and map only. Overlay widgets stay in Rust.
         if (!g_config.ingameHud)

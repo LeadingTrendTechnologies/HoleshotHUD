@@ -59,6 +59,8 @@ pub(crate) fn draw_relative(
             hl: cfg.rel_hl,
             text: cfg.rel_text,
             stripe: cfg.rel_stripe,
+            plaque_text: cfg.rel_plaque_text,
+            show_plaque: cfg.rel_plaque,
             head: &cfg.rel_head,
             foot: &cfg.rel_foot,
         },

@@ -2948,6 +2948,7 @@ pub(crate) fn main_mnu(accent: [u8; 3]) -> String {
     let logo_top = 0.004000;
     let logo_gap = 0.020000;
     let menu_h = logo_top + logo_h + logo_gap;
+    // Opening splash bakes PiBoSo logo into splash.tga (connection wait blits the TGA).
     let logo_y0 = card_y0 + pad + logo_top;
     let logo_y1 = logo_y0 + logo_h;
     let card_y1 = card_y0 + pad + menu_h + block + pad;

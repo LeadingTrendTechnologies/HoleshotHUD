@@ -40,7 +40,7 @@ No column picker; show, **Live sector**, **Compare to session best**, **Lap log*
 - Do not draw off-track unless settings layout boxes are up (same as other race widgets).
 - Hero is the sector you are in, not last completed.
 - Live delta is time vs location in **this** sector (tape at `local_track_pos` minus tape at the sector start). Do not compare live elapsed to the full sector duration — that always looks too fast mid-sector. A wrap at the centerline origin mid-sector (often S3 when origin ≠ the line) is not S/F — keep the live cell ticking.
-- Live elapsed for that location delta uses the same official-synced lap clock as Delta Bar (`delta::lap_clock`). The pill while you are in the sector is the target duration, not the ticking elapsed.
+- Live elapsed for that location delta uses the same wall-clock lap anchor as Delta Bar (`delta::lap_clock`). The pill while you are in the sector is the target duration, not the ticking elapsed.
 - Freeze on leave uses the official split duration vs the **old** saved (or session) best. Do not freeze vs tape-at-pos. A new PB is negative, not `0.000`.
 - Do not require S2's split to sit after S1 in raw `track_pos`. Origin wrap can put S2's end before S1's end on the 0..1 line.
 - **Live sector** off still records and freezes on leave; the current cell stays `--` until the split. Default on (`sector_live=1`).
@@ -65,6 +65,7 @@ No column picker; show, **Live sector**, **Compare to session best**, **Lap log*
 ## Change log
 
 - 2026-09-10 — Split pills follow the Settings font and sit above the plaque corner, so a large font no longer clips them into a flat bar.
+- 2026-09-22 — Live sector elapsed follows Delta Bar’s wall-clock lap anchor, not plugin `_fTime`.
 - 2026-09-10 — Large Settings font no longer piles “vs. your best”, live times, and LAST on top of each other. Caption/log row height follows the scaled type; live delta is capped; shrink can go below a raw 8 px when font is 160%.
 - 2026-09-10 — Crashed practice laps still finish S3 / LAST when the game sends `m_iLapTime` 0. The plugin keeps the live clock; the log no longer skips that crossing.
 - 2026-09-09 — Times center in each column. Columns still reserve the widest format so they do not jump.

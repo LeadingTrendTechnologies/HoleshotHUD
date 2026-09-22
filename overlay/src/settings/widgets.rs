@@ -242,6 +242,13 @@ pub(crate) fn pane_standings(
                 Hit::StTextBlack,
                 cfg.st_stripe,
                 Hit::StStripe,
+                cfg.st_plaque_text,
+                Drop::StPlaqueText,
+                Hit::StPlaqueTextOpen,
+                Hit::StPlaqueTextWhite,
+                Hit::StPlaqueTextBlack,
+                cfg.st_plaque,
+                Hit::StPlaque,
             );
             let mut g = PairGrid::new(x, y, w);
             g.place(|cx, cy, cw| {
@@ -293,27 +300,27 @@ pub(crate) fn pane_standings(
                 y,
                 "Columns  ·  drag to reorder · slide width · toggle to show",
             );
-            for (i, field) in cfg.st_order.iter().enumerate() {
-                y = field_row(
-                    px,
-                    fonts,
-                    x,
-                    y,
-                    w,
-                    field.label(),
-                    field.enabled(cfg),
-                    field.width(cfg),
-                    Hit::StDrag(i as u8),
-                    st_toggle(*field),
-                    Hit::StW(i as u8),
-                    field.width_max(),
-                    i,
-                    hover,
-                    drag.filter(|d| d.kind == DragKind::St),
-                    hits,
-                );
-            }
-            y
+            paint_col_field_rows(
+                px,
+                fonts,
+                cfg,
+                &cfg.st_order,
+                DragKind::St,
+                drag,
+                hover,
+                x,
+                y,
+                w,
+                hits,
+                |f| f as i32,
+                |f| f.label(),
+                |f, c| f.enabled(c),
+                |f, c| f.width(c),
+                |f| f.width_max(),
+                Hit::StDrag,
+                st_toggle,
+                Hit::StW,
+            )
         },
     )
 }
@@ -365,6 +372,13 @@ pub(crate) fn pane_relative(
                 Hit::RelTextBlack,
                 cfg.rel_stripe,
                 Hit::RelStripe,
+                cfg.rel_plaque_text,
+                Drop::RelPlaqueText,
+                Hit::RelPlaqueTextOpen,
+                Hit::RelPlaqueTextWhite,
+                Hit::RelPlaqueTextBlack,
+                cfg.rel_plaque,
+                Hit::RelPlaque,
             );
             let mut g = PairGrid::new(x, y, w);
             g.place(|cx, cy, cw| {
@@ -416,27 +430,27 @@ pub(crate) fn pane_relative(
                 y,
                 "Columns  ·  drag to reorder · slide width · toggle to show",
             );
-            for (i, field) in cfg.rel_order.iter().enumerate() {
-                y = field_row(
-                    px,
-                    fonts,
-                    x,
-                    y,
-                    w,
-                    field.label(),
-                    field.enabled(cfg),
-                    field.width(cfg),
-                    Hit::RelDrag(i as u8),
-                    rel_toggle(*field),
-                    Hit::RelW(i as u8),
-                    field.width_max(),
-                    i,
-                    hover,
-                    drag.filter(|d| d.kind == DragKind::Rel),
-                    hits,
-                );
-            }
-            y
+            paint_col_field_rows(
+                px,
+                fonts,
+                cfg,
+                &cfg.rel_order,
+                DragKind::Rel,
+                drag,
+                hover,
+                x,
+                y,
+                w,
+                hits,
+                |f| f as i32,
+                |f| f.label(),
+                |f, c| f.enabled(c),
+                |f, c| f.width(c),
+                |f| f.width_max(),
+                Hit::RelDrag,
+                rel_toggle,
+                Hit::RelW,
+            )
         },
     )
 }
