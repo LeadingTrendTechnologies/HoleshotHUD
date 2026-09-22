@@ -7,6 +7,28 @@ pub(crate) fn pane_app(
     cfg: &HudConfig,
     hover: Option<Hit>,
     open_drop: Option<Drop>,
+    section: AppSection,
+    hits: &mut Vec<HitBox>,
+    x: f32,
+    y: f32,
+    w: f32,
+) -> f32 {
+    match section {
+        AppSection::Look => pane_app_look(px, fonts, cfg, hover, open_drop, hits, x, y, w),
+        AppSection::Menus => pane_app_menus(px, fonts, cfg, hover, open_drop, hits, x, y, w),
+        AppSection::Install => pane_app_install(px, fonts, hover, hits, x, y, w),
+        AppSection::Startup => pane_app_startup(px, fonts, cfg, hover, hits, x, y, w),
+        AppSection::Labs => pane_app_labs(px, fonts, cfg, hover, hits, x, y, w),
+        AppSection::Updates => pane_app_updates(px, fonts, cfg, hover, hits, x, y, w),
+    }
+}
+
+fn pane_app_look(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    cfg: &HudConfig,
+    hover: Option<Hit>,
+    open_drop: Option<Drop>,
     hits: &mut Vec<HitBox>,
     x: f32,
     y: f32,
@@ -18,13 +40,252 @@ pub(crate) fn pane_app(
         x,
         y,
         w,
-        "Settings",
-        "Font and primary color apply everywhere. Units are per measurement",
+        "Look",
+        "Font and primary color apply to the in-game HUD. Units are per measurement",
         None,
         hover,
         hits,
     );
-    y = section(px, fonts, x, y, "Install");
+    y = dropdown_row(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        "Font",
+        cfg.font_family.label(),
+        open_drop == Some(Drop::FontFamily),
+        Hit::FontOpen,
+        &[
+            (
+                Hit::FontSegoe,
+                "Segoe UI",
+                cfg.font_family == FontFamily::Segoe,
+            ),
+            (
+                Hit::FontArial,
+                "Arial",
+                cfg.font_family == FontFamily::Arial,
+            ),
+            (
+                Hit::FontTahoma,
+                "Tahoma",
+                cfg.font_family == FontFamily::Tahoma,
+            ),
+            (
+                Hit::FontRoboto,
+                "Roboto",
+                cfg.font_family == FontFamily::Roboto,
+            ),
+            (Hit::FontExo2, "Exo 2", cfg.font_family == FontFamily::Exo2),
+            (Hit::FontTeko, "Teko", cfg.font_family == FontFamily::Teko),
+            (
+                Hit::FontGoldman,
+                "Goldman",
+                cfg.font_family == FontFamily::Goldman,
+            ),
+            (
+                Hit::FontMontserrat,
+                "Montserrat",
+                cfg.font_family == FontFamily::Montserrat,
+            ),
+        ],
+        hover,
+        hits,
+    );
+    y = color_row(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        cfg.primary,
+        open_drop == Some(Drop::PrimaryColor),
+        ColorPickKind::App,
+        hover,
+        hits,
+    );
+    for kind in UnitKind::ALL {
+        let selected = cfg.units.get(kind);
+        y = dropdown_row(
+            px,
+            fonts,
+            x,
+            y,
+            w,
+            kind.label(),
+            selected.label(),
+            open_drop == Some(Drop::Units(kind)),
+            Hit::UnitsOpen(kind),
+            &[
+                (
+                    Hit::UnitsPick(kind, Units::Metric),
+                    "Metric",
+                    selected == Units::Metric,
+                ),
+                (
+                    Hit::UnitsPick(kind, Units::Imperial),
+                    "Imperial",
+                    selected == Units::Imperial,
+                ),
+            ],
+            hover,
+            hits,
+        );
+    }
+    y = dropdown_row(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        "Settings key",
+        cfg.settings_key.label(),
+        open_drop == Some(Drop::SettingsKey),
+        Hit::SettingsKeyOpen,
+        &SettingsKey::ALL.map(|key| {
+            (
+                Hit::SettingsKeyPick(key),
+                key.label(),
+                cfg.settings_key == key,
+            )
+        }),
+        hover,
+        hits,
+    );
+    text(
+        px,
+        fonts,
+        "Press again to close. Medal and other clip apps use F8. F9 still rotates the clock log.",
+        11.0,
+        x + 4.0,
+        y + 2.0,
+        dim(),
+        false,
+    );
+    y + 28.0
+}
+
+fn pane_app_menus(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    cfg: &HudConfig,
+    hover: Option<Hit>,
+    open_drop: Option<Drop>,
+    hits: &mut Vec<HitBox>,
+    x: f32,
+    y: f32,
+    w: f32,
+) -> f32 {
+    let mut y = heading(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        "In game HUD",
+        "Optional MX Bikes menu pack. Restart the game after changing",
+        None,
+        hover,
+        hits,
+    );
+    y = toggle_row(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        "MX Bikes menus",
+        cfg.game_ui,
+        Hit::GameUi,
+        hover,
+        hits,
+    );
+    let menu_help = if cfg.game_ui && !cfg.game_ui_match_primary {
+        "Floating dest card, server browser, and Options tabs. Uses Menu color."
+    } else {
+        "Floating dest card, server browser, and Options tabs. Uses your accent."
+    };
+    text(
+        px,
+        fonts,
+        menu_help,
+        11.0,
+        x + 4.0,
+        y + 2.0,
+        if crate::game_ui::needs_restart() {
+            accent()
+        } else {
+            dim()
+        },
+        false,
+    );
+    y += 22.0;
+    if crate::game_ui::needs_restart() {
+        text(
+            px,
+            fonts,
+            crate::game_ui::RESTART_MENUS,
+            11.0,
+            x + 4.0,
+            y + 2.0,
+            accent(),
+            false,
+        );
+        y += 20.0;
+    }
+    if cfg.game_ui {
+        y = toggle_row(
+            px,
+            fonts,
+            x,
+            y,
+            w,
+            "Match app accent",
+            cfg.game_ui_match_primary,
+            Hit::GameUiMatchPrimary,
+            hover,
+            hits,
+        );
+        if !cfg.game_ui_match_primary {
+            y = color_row(
+                px,
+                fonts,
+                x,
+                y,
+                w,
+                cfg.game_ui_primary,
+                open_drop == Some(Drop::GameUiPrimaryColor),
+                ColorPickKind::Menu,
+                hover,
+                hits,
+            );
+        }
+    }
+    y + 28.0
+}
+
+fn pane_app_install(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+    x: f32,
+    y: f32,
+    w: f32,
+) -> f32 {
+    let mut y = heading(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        "Install",
+        "Where the overlay and MX Bikes plugin live",
+        None,
+        hover,
+        hits,
+    );
     text(
         px,
         fonts,
@@ -87,125 +348,31 @@ pub(crate) fn pane_app(
         );
         y += 20.0;
     }
-    y = section(px, fonts, x, y, "Look");
-    y = dropdown_row(
+    y + 28.0
+}
+
+fn pane_app_startup(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    cfg: &HudConfig,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+    x: f32,
+    y: f32,
+    w: f32,
+) -> f32 {
+    let mut y = heading(
         px,
         fonts,
         x,
         y,
         w,
-        "Font",
-        cfg.font_family.label(),
-        open_drop == Some(Drop::FontFamily),
-        Hit::FontOpen,
-        &[
-            (
-                Hit::FontSegoe,
-                "Segoe UI",
-                cfg.font_family == FontFamily::Segoe,
-            ),
-            (
-                Hit::FontArial,
-                "Arial",
-                cfg.font_family == FontFamily::Arial,
-            ),
-            (
-                Hit::FontTahoma,
-                "Tahoma",
-                cfg.font_family == FontFamily::Tahoma,
-            ),
-            (
-                Hit::FontRoboto,
-                "Roboto",
-                cfg.font_family == FontFamily::Roboto,
-            ),
-            (Hit::FontExo2, "Exo 2", cfg.font_family == FontFamily::Exo2),
-            (Hit::FontTeko, "Teko", cfg.font_family == FontFamily::Teko),
-            (
-                Hit::FontGoldman,
-                "Goldman",
-                cfg.font_family == FontFamily::Goldman,
-            ),
-            (
-                Hit::FontMontserrat,
-                "Montserrat",
-                cfg.font_family == FontFamily::Montserrat,
-            ),
-        ],
+        "Startup",
+        "How the overlay opens, hides, and quits with Windows and MX Bikes",
+        None,
         hover,
         hits,
     );
-    y = color_row(
-        px,
-        fonts,
-        x,
-        y,
-        w,
-        cfg.primary,
-        open_drop == Some(Drop::PrimaryColor),
-        hover,
-        hits,
-    );
-    for kind in UnitKind::ALL {
-        let selected = cfg.units.get(kind);
-        y = dropdown_row(
-            px,
-            fonts,
-            x,
-            y,
-            w,
-            kind.label(),
-            selected.label(),
-            open_drop == Some(Drop::Units(kind)),
-            Hit::UnitsOpen(kind),
-            &[
-                (
-                    Hit::UnitsPick(kind, Units::Metric),
-                    "Metric",
-                    selected == Units::Metric,
-                ),
-                (
-                    Hit::UnitsPick(kind, Units::Imperial),
-                    "Imperial",
-                    selected == Units::Imperial,
-                ),
-            ],
-            hover,
-            hits,
-        );
-    }
-    y = dropdown_row(
-        px,
-        fonts,
-        x,
-        y,
-        w,
-        "Settings key",
-        cfg.settings_key.label(),
-        open_drop == Some(Drop::SettingsKey),
-        Hit::SettingsKeyOpen,
-        &SettingsKey::ALL.map(|key| {
-            (
-                Hit::SettingsKeyPick(key),
-                key.label(),
-                cfg.settings_key == key,
-            )
-        }),
-        hover,
-        hits,
-    );
-    text(
-        px,
-        fonts,
-        "Press again to close. Medal and other clip apps use F8. F9 still rotates the clock log.",
-        11.0,
-        x + 4.0,
-        y + 2.0,
-        dim(),
-        false,
-    );
-    y += 22.0;
-    y = section(px, fonts, x, y, "Startup");
     y = toggle_row(
         px,
         fonts,
@@ -304,7 +471,31 @@ pub(crate) fn pane_app(
         text(px, fonts, "Starts the overlay in the tray when MX Bikes launches, including after a reboot or after you Quit overlay. F8 or the HUD mark opens settings.", 11.0, x + 4.0, y + 2.0, dim(), false);
         y += 22.0;
     }
-    y = section(px, fonts, x, y, "Labs");
+    y + 28.0
+}
+
+fn pane_app_labs(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    cfg: &HudConfig,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+    x: f32,
+    y: f32,
+    w: f32,
+) -> f32 {
+    let mut y = heading(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        "Labs",
+        "Early widgets that stay off until you opt in",
+        None,
+        hover,
+        hits,
+    );
     y = toggle_row(
         px,
         fonts,
@@ -327,8 +518,31 @@ pub(crate) fn pane_app(
         dim(),
         false,
     );
-    y += 22.0;
-    y = section(px, fonts, x, y, "Updates");
+    y + 28.0
+}
+
+fn pane_app_updates(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    cfg: &HudConfig,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+    x: f32,
+    y: f32,
+    w: f32,
+) -> f32 {
+    let mut y = heading(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        "Updates",
+        "Version checks, What's new, Quit, and Uninstall",
+        None,
+        hover,
+        hits,
+    );
     let need_admin = crate::update::update_may_need_admin();
     y = toggle_row(
         px,

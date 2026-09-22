@@ -2,7 +2,7 @@
 
 Suggestions only. **No code was changed** when this page was written (2026-08-29). Use it when deciding whether a refactor is worth the risk.
 
-Plugin field inventory: [Home.md](Home.md). Widget behavior: [widgets.md](widgets.md). Live order: [live-order.md](live-order.md).
+Plugin field inventory: [Home.md](Home.md). Widget behavior: [widgets.md](widgets.md). Live order: [live-order.md](live-order.md). MX Bikes menu pack backlog: [game-ui.md](game-ui.md).
 
 ---
 

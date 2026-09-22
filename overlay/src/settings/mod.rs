@@ -368,12 +368,69 @@ impl Tab {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AppSection {
+    Look,
+    Menus,
+    Install,
+    Startup,
+    Labs,
+    Updates,
+}
+
+impl AppSection {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Look => "Look",
+            Self::Menus => "In game HUD",
+            Self::Install => "Install",
+            Self::Startup => "Startup",
+            Self::Labs => "Labs",
+            Self::Updates => "Updates",
+        }
+    }
+
+    fn hit(self) -> Hit {
+        match self {
+            Self::Look => Hit::AppLook,
+            Self::Menus => Hit::AppMenus,
+            Self::Install => Hit::AppInstall,
+            Self::Startup => Hit::AppStartup,
+            Self::Labs => Hit::AppLabs,
+            Self::Updates => Hit::AppUpdates,
+        }
+    }
+}
+
+/// Settings left rail: HUD chrome separate from app install/startup/menus.
+fn app_section_groups() -> [(&'static str, &'static [AppSection]); 2] {
+    [
+        ("HUD", &[AppSection::Look]),
+        (
+            "App",
+            &[
+                AppSection::Menus,
+                AppSection::Install,
+                AppSection::Startup,
+                AppSection::Labs,
+                AppSection::Updates,
+            ],
+        ),
+    ]
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Hit {
     TabWidgets,
     TabApp,
     TabReview,
     TabProfile,
     TabFeedback,
+    AppLook,
+    AppMenus,
+    AppInstall,
+    AppStartup,
+    AppLabs,
+    AppUpdates,
     ReviewFilterAll,
     ReviewFilterRace,
     ReviewFilterPractice,
@@ -607,12 +664,20 @@ pub(crate) enum Hit {
     QuitApp,
     Uninstall,
     GameFolder,
+    GameUi,
+    GameUiMatchPrimary,
     PrimaryOpen,
     PrimaryPanel,
     PrimarySv,
     PrimaryHue,
     PrimarySwatch(u8),
     PrimaryReset,
+    GameUiPrimaryOpen,
+    GameUiPrimaryPanel,
+    GameUiPrimarySv,
+    GameUiPrimaryHue,
+    GameUiPrimarySwatch(u8),
+    GameUiPrimaryReset,
     FbRate,
     FbBug,
     FbFeature,
@@ -660,6 +725,77 @@ pub(crate) enum Drop {
     AnalyzeCompare,
     AnalyzeLap,
     PrimaryColor,
+    GameUiPrimaryColor,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ColorPickKind {
+    App,
+    Menu,
+}
+
+impl ColorPickKind {
+    fn open(self) -> Hit {
+        match self {
+            Self::App => Hit::PrimaryOpen,
+            Self::Menu => Hit::GameUiPrimaryOpen,
+        }
+    }
+
+    fn panel(self) -> Hit {
+        match self {
+            Self::App => Hit::PrimaryPanel,
+            Self::Menu => Hit::GameUiPrimaryPanel,
+        }
+    }
+
+    fn sv(self) -> Hit {
+        match self {
+            Self::App => Hit::PrimarySv,
+            Self::Menu => Hit::GameUiPrimarySv,
+        }
+    }
+
+    fn hue(self) -> Hit {
+        match self {
+            Self::App => Hit::PrimaryHue,
+            Self::Menu => Hit::GameUiPrimaryHue,
+        }
+    }
+
+    fn swatch(self, i: u8) -> Hit {
+        match self {
+            Self::App => Hit::PrimarySwatch(i),
+            Self::Menu => Hit::GameUiPrimarySwatch(i),
+        }
+    }
+
+    fn reset(self) -> Hit {
+        match self {
+            Self::App => Hit::PrimaryReset,
+            Self::Menu => Hit::GameUiPrimaryReset,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::App => "Primary color",
+            Self::Menu => "Menu color",
+        }
+    }
+}
+
+fn sync_menus_after_app_primary_change() {
+    let (on, matched) = with_config(|c| (c.game_ui, c.game_ui_match_primary));
+    if on && matched {
+        crate::game_ui::sync_from_config();
+    }
+}
+
+fn sync_menus_after_menu_accent_change() {
+    if with_config(|c| c.game_ui) {
+        crate::game_ui::sync_from_config();
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -688,6 +824,7 @@ struct SettingsUi {
     host: HWND,
     tab: Tab,
     last_widget: Tab,
+    app_section: AppSection,
     hover: Option<Hit>,
     focus: Option<Hit>,
     hits: Vec<HitBox>,
@@ -800,6 +937,7 @@ pub fn attach(host: HWND) {
         host,
         tab: Tab::Standings,
         last_widget: Tab::Standings,
+        app_section: AppSection::Look,
         hover: None,
         focus: None,
         hits: Vec::new(),
@@ -1012,6 +1150,7 @@ pub fn dump_whats_new(path: &std::path::Path) -> Result<crate::changelog::Notes,
         host: HWND::default(),
         tab: Tab::App,
         last_widget: Tab::Standings,
+        app_section: AppSection::Look,
         hover: None,
         focus: None,
         hits: Vec::new(),
@@ -1125,6 +1264,7 @@ fn paint_review_tab(
         host: HWND::default(),
         tab: Tab::Review,
         last_widget: Tab::Standings,
+        app_section: AppSection::Look,
         hover: None,
         focus: None,
         hits: Vec::new(),
@@ -1528,7 +1668,7 @@ fn press(p: (f32, f32)) {
                 let _ = SetCapture(host);
             }
         }
-        Some(Hit::PrimarySv) => {
+        Some(Hit::PrimarySv) | Some(Hit::GameUiPrimarySv) => {
             start_sv_drag(p, host);
         }
         Some(Hit::StDrag(i)) => start_drag(DragKind::St, i, host),
@@ -1596,6 +1736,7 @@ fn is_slider(hit: Hit) -> bool {
             | Hit::RelW(_)
             | Hit::Font(_)
             | Hit::PrimaryHue
+            | Hit::GameUiPrimaryHue
     )
 }
 
@@ -1621,13 +1762,13 @@ fn slide_range(hit: Hit) -> (i32, i32) {
         }
         Hit::Font(_) => (70, 160),
         Hit::RadarRange => (RADAR_RANGE_MIN, RADAR_RANGE_MAX),
-        Hit::PrimaryHue => (0, 360),
+        Hit::PrimaryHue | Hit::GameUiPrimaryHue => (0, 360),
         _ => (0, 100),
     }
 }
 
 fn start_slide(hit: Hit, mx: f32, host: HWND) {
-    if hit != Hit::PrimaryHue {
+    if !matches!(hit, Hit::PrimaryHue | Hit::GameUiPrimaryHue) {
         close_drop();
     }
     let box_ = {
@@ -1667,7 +1808,7 @@ fn start_sv_drag(p: (f32, f32), host: HWND) {
             u.hits
                 .iter()
                 .rev()
-                .find(|h| h.id == Hit::PrimarySv)
+                .find(|h| matches!(h.id, Hit::PrimarySv | Hit::GameUiPrimarySv))
                 .copied()
         })
     };
@@ -1694,9 +1835,19 @@ fn apply_sv(mx: f32, my: f32, x: f32, y: f32, w: f32, h: f32) {
     } else {
         (1.0 - (my - y) / h).clamp(0.0, 1.0)
     };
+    let menu = UI
+        .lock()
+        .unwrap()
+        .as_ref()
+        .is_some_and(|u| u.open_drop == Some(Drop::GameUiPrimaryColor));
     update_config(|c| {
-        let (hue, _, _) = rgb_to_hsv(c.primary);
-        c.primary = hsv_to_rgb(hue, s, v);
+        if menu {
+            let (hue, _, _) = rgb_to_hsv(c.game_ui_primary);
+            c.game_ui_primary = hsv_to_rgb(hue, s, v);
+        } else {
+            let (hue, _, _) = rgb_to_hsv(c.primary);
+            c.primary = hsv_to_rgb(hue, s, v);
+        }
     });
 }
 
@@ -1741,6 +1892,10 @@ fn apply_slide(hit: Hit, mx: f32, x: f32, w: f32, min: i32, max: i32) {
         Hit::PrimaryHue => {
             let (_, s, val) = rgb_to_hsv(c.primary);
             c.primary = hsv_to_rgb(v as f32, s, val);
+        }
+        Hit::GameUiPrimaryHue => {
+            let (_, s, val) = rgb_to_hsv(c.game_ui_primary);
+            c.game_ui_primary = hsv_to_rgb(v as f32, s, val);
         }
         _ => {}
     });
@@ -1815,16 +1970,37 @@ fn drag_over(hits: &[HitBox], kind: DragKind, y: f32) -> Option<u8> {
 
 fn release(p: (f32, f32)) {
     update_drag(p);
-    if let Some(ui) = UI.lock().unwrap().as_mut() {
-        ui.analyze_scrubbing = false;
-        ui.map_drag = None;
-        ui.sv_drag = None;
-    }
-    let sliding = {
+    let was_sv = {
         let mut ui = UI.lock().unwrap();
-        ui.as_mut().and_then(|u| u.slide.take()).is_some()
+        ui.as_mut().is_some_and(|u| {
+            u.analyze_scrubbing = false;
+            u.map_drag = None;
+            u.sv_drag.take().is_some()
+        })
     };
-    if sliding {
+    let slide_hit = {
+        let mut ui = UI.lock().unwrap();
+        ui.as_mut().and_then(|u| u.slide.take()).map(|s| s.hit)
+    };
+    if was_sv || matches!(slide_hit, Some(Hit::PrimaryHue) | Some(Hit::GameUiPrimaryHue)) {
+        if was_sv {
+            let menu = UI
+                .lock()
+                .unwrap()
+                .as_ref()
+                .is_some_and(|u| u.open_drop == Some(Drop::GameUiPrimaryColor));
+            if menu {
+                sync_menus_after_menu_accent_change();
+            } else {
+                sync_menus_after_app_primary_change();
+            }
+        } else if slide_hit == Some(Hit::GameUiPrimaryHue) {
+            sync_menus_after_menu_accent_change();
+        } else {
+            sync_menus_after_app_primary_change();
+        }
+    }
+    if slide_hit.is_some() {
         unsafe {
             let _ = ReleaseCapture();
         }
@@ -1917,6 +2093,8 @@ fn is_focusable(hit: Hit) -> bool {
             | Hit::ClearPanel
             | Hit::PrimaryPanel
             | Hit::PrimarySv
+            | Hit::GameUiPrimaryPanel
+            | Hit::GameUiPrimarySv
     )
 }
 
@@ -1939,6 +2117,12 @@ fn hit_label(hit: Hit) -> String {
     match hit {
         Hit::TabWidgets => "Widgets".into(),
         Hit::TabApp => "Settings".into(),
+        Hit::AppLook => "Look".into(),
+        Hit::AppMenus => "In game HUD".into(),
+        Hit::AppInstall => "Install".into(),
+        Hit::AppStartup => "Startup".into(),
+        Hit::AppLabs => "Labs".into(),
+        Hit::AppUpdates => "Updates".into(),
         Hit::TabReview => "Motos".into(),
         Hit::TabProfile => "Profile".into(),
         Hit::TabFeedback => "Feedback".into(),
@@ -2003,6 +2187,7 @@ fn hit_label(hit: Hit) -> String {
         Hit::PresetCopyTo(p) => format!("Replace {} with this layout", p.label()),
         Hit::PresetCopyAll => "Replace all presets with this layout".into(),
         Hit::FeatureSector => "Experimental widgets".into(),
+        Hit::GameUi => "MX Bikes menus".into(),
         Hit::StShow
         | Hit::RelShow
         | Hit::MapShow
@@ -2046,6 +2231,12 @@ fn hit_label(hit: Hit) -> String {
         Hit::PrimaryHue => "Hue".into(),
         Hit::PrimarySwatch(_) => "Color swatch".into(),
         Hit::PrimaryReset => "Reset primary color".into(),
+        Hit::GameUiMatchPrimary => "Match app accent".into(),
+        Hit::GameUiPrimaryOpen | Hit::GameUiPrimaryPanel => "Menu color".into(),
+        Hit::GameUiPrimarySv => "Saturation and brightness".into(),
+        Hit::GameUiPrimaryHue => "Hue".into(),
+        Hit::GameUiPrimarySwatch(_) => "Color swatch".into(),
+        Hit::GameUiPrimaryReset => "Reset menu color".into(),
         Hit::UnitsOpen(kind) => kind.label().into(),
         Hit::UnitsPick(_, units) => units.label().into(),
         Hit::SettingsKeyOpen => "Settings key".into(),
@@ -2367,6 +2558,7 @@ fn nudge_slider(hit: Hit, delta: i32) {
             .unwrap_or(min),
         Hit::Font(id) => c.font_pct(id),
         Hit::PrimaryHue => rgb_to_hsv(c.primary).0.round() as i32,
+        Hit::GameUiPrimaryHue => rgb_to_hsv(c.game_ui_primary).0.round() as i32,
         _ => min,
     });
     let v = (v + delta).clamp(min, max);
@@ -2405,8 +2597,17 @@ fn nudge_slider(hit: Hit, delta: i32) {
             let (_, s, val) = rgb_to_hsv(c.primary);
             c.primary = hsv_to_rgb(v as f32, s, val);
         }
+        Hit::GameUiPrimaryHue => {
+            let (_, s, val) = rgb_to_hsv(c.game_ui_primary);
+            c.game_ui_primary = hsv_to_rgb(v as f32, s, val);
+        }
         _ => {}
     });
+    if hit == Hit::PrimaryHue {
+        sync_menus_after_app_primary_change();
+    } else if hit == Hit::GameUiPrimaryHue {
+        sync_menus_after_menu_accent_change();
+    }
 }
 
 fn set_tab(tab: Tab) {
@@ -2416,6 +2617,20 @@ fn set_tab(tab: Tab) {
             ui.last_widget = tab;
         }
         ui.tab = tab;
+        ui.open_drop = None;
+        ui.drop_scroll = 0.0;
+        ui.drop_menu = None;
+        ui.drag = None;
+        ui.slide = None;
+        ui.scroll = 0.0;
+        ui.bind_listen = false;
+    }
+}
+
+fn set_app_section(section: AppSection) {
+    crate::feedback::set_focus(false);
+    if let Some(ui) = UI.lock().unwrap().as_mut() {
+        ui.app_section = section;
         ui.open_drop = None;
         ui.drop_scroll = 0.0;
         ui.drop_menu = None;
@@ -2506,6 +2721,7 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
         reply_id,
         ui_all_time,
         clear_confirm,
+        app_section,
     ) = {
         let mut ui = UI.lock().unwrap();
         if let Some(u) = ui.as_mut() {
@@ -2534,6 +2750,7 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
             ui.and_then(|u| u.reply_id.clone()),
             ui.map(|u| u.profile_all_time).unwrap_or(true),
             ui.and_then(|u| u.clear_confirm),
+            ui.map(|u| u.app_section).unwrap_or(AppSection::Look),
         )
     };
     if tab.is_labs() && !cfg.experimental_unlocked() {
@@ -2564,54 +2781,61 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
     let clip_top = top_y + TOP_H;
     let clip_bottom = h;
     let widgets = tab.is_widget();
-    let side_w = if widgets { SIDE_W } else { 0.0 };
+    let show_side = widgets || tab == Tab::App;
+    let side_w = if show_side { SIDE_W } else { 0.0 };
 
     let mut nav_content_h = 0.0;
     let mut nav_scroll = nav_scroll;
-    if widgets {
+    if show_side {
         if let Some(r) = Rect::from_xywh(0.0, clip_top, SIDE_W, (h - clip_top).max(0.0)) {
             fill_rect(px, r, side());
         }
         if let Some(r) = Rect::from_xywh(SIDE_W, clip_top, 1.0, (h - clip_top).max(0.0)) {
             fill_rect(px, r, row_line());
         }
-        nav_content_h = widget_rail_height(&cfg);
-        let view_h = (clip_bottom - clip_top).max(0.0);
-        let nav_max = (nav_content_h - view_h).max(0.0);
-        nav_scroll = nav_scroll.clamp(0.0, nav_max);
-        draw_widget_rail(
-            px,
-            fonts,
-            &cfg,
-            tab,
-            hover,
-            &mut hits,
-            clip_top,
-            clip_bottom,
-            nav_scroll,
-        );
-        if nav_max > 1.0 && view_h > 8.0 {
-            let track_x = SIDE_W - 7.0;
-            let thumb_h = (view_h * view_h / nav_content_h).clamp(16.0, view_h);
-            let thumb_y = clip_top + nav_scroll / nav_max * (view_h - thumb_h);
-            fill_round(
+        if widgets {
+            nav_content_h = widget_rail_height(&cfg);
+            let view_h = (clip_bottom - clip_top).max(0.0);
+            let nav_max = (nav_content_h - view_h).max(0.0);
+            nav_scroll = nav_scroll.clamp(0.0, nav_max);
+            draw_widget_rail(
                 px,
-                track_x,
-                clip_top + 4.0,
-                3.0,
-                (view_h - 8.0).max(4.0),
-                1.5,
-                Color::from_rgba8(255, 255, 255, 18),
+                fonts,
+                &cfg,
+                tab,
+                hover,
+                &mut hits,
+                clip_top,
+                clip_bottom,
+                nav_scroll,
             );
-            fill_round(
-                px,
-                track_x,
-                thumb_y,
-                3.0,
-                thumb_h,
-                1.5,
-                Color::from_rgba8(255, 255, 255, 48),
-            );
+            if nav_max > 1.0 && view_h > 8.0 {
+                let track_x = SIDE_W - 7.0;
+                let thumb_h = (view_h * view_h / nav_content_h).clamp(16.0, view_h);
+                let thumb_y = clip_top + nav_scroll / nav_max * (view_h - thumb_h);
+                fill_round(
+                    px,
+                    track_x,
+                    clip_top + 4.0,
+                    3.0,
+                    (view_h - 8.0).max(4.0),
+                    1.5,
+                    Color::from_rgba8(255, 255, 255, 18),
+                );
+                fill_round(
+                    px,
+                    track_x,
+                    thumb_y,
+                    3.0,
+                    thumb_h,
+                    1.5,
+                    Color::from_rgba8(255, 255, 255, 48),
+                );
+            }
+        } else {
+            draw_app_rail(px, fonts, app_section, hover, &mut hits, clip_top);
+            nav_scroll = 0.0;
+            nav_content_h = 0.0;
         }
     }
 
@@ -2651,7 +2875,18 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
         )
     };
     let bottom = match tab {
-        Tab::App => pane_app(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
+        Tab::App => pane_app(
+            px,
+            fonts,
+            &cfg,
+            hover,
+            open_drop,
+            app_section,
+            &mut hits,
+            x,
+            py,
+            cw,
+        ),
         Tab::Review => {
             let b = pane_review(
                 px,
@@ -2782,7 +3017,22 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
         paint_focus(px, &hits, focus);
     } else {
         paint_drop_menus(px, fonts, hover, &mut hits);
-        paint_color_picker(px, fonts, hover, &mut hits, cfg.primary);
+        match open_drop {
+            Some(Drop::PrimaryColor) => {
+                paint_color_picker(px, fonts, hover, &mut hits, ColorPickKind::App, cfg.primary);
+            }
+            Some(Drop::GameUiPrimaryColor) => {
+                paint_color_picker(
+                    px,
+                    fonts,
+                    hover,
+                    &mut hits,
+                    ColorPickKind::Menu,
+                    cfg.game_ui_primary,
+                );
+            }
+            _ => {}
+        }
         paint_focus(px, &hits, focus);
         paint_snap_tooltip(px, fonts, &cfg, hover, focus, &hits, w, h, clip_top);
     }
@@ -3150,6 +3400,37 @@ fn draw_widget_rail(
                 hover,
                 hits,
                 clip,
+            );
+            y += 40.0;
+        }
+        y += 6.0;
+    }
+}
+
+fn draw_app_rail(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    section: AppSection,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+    clip_top: f32,
+) {
+    let mut y = clip_top + 10.0;
+    for (title, items) in app_section_groups() {
+        y = nav_group(px, fonts, 12.0, y, title);
+        for &item in items {
+            section_nav_tab(
+                px,
+                fonts,
+                12.0,
+                y,
+                SIDE_W - 24.0,
+                36.0,
+                item == section,
+                item.label(),
+                item.hit(),
+                hover,
+                hits,
             );
             y += 40.0;
         }
@@ -3609,6 +3890,56 @@ fn nav_icon(px: &mut Pixmap, hit: Hit, cx: f32, cy: f32, c: Color) {
             fill_circle(px, cx + 2.5, cy, 2.1, c);
             fill_circle(px, cx - 1.0, cy + 4.5, 2.1, c);
         }
+        Hit::AppLook => {
+            icon_stroke_circle(px, cx, cy, 5.8, c);
+            fill_circle(px, cx + 1.6, cy - 1.4, 2.4, c);
+        }
+        Hit::AppMenus => {
+            fill_round(px, cx - 6.0, cy - 5.0, 12.0, 2.0, 1.0, c);
+            fill_round(px, cx - 6.0, cy - 1.0, 12.0, 2.0, 1.0, c);
+            fill_round(px, cx - 6.0, cy + 3.0, 8.0, 2.0, 1.0, c);
+        }
+        Hit::AppInstall => {
+            if let Some(path) = round_path(cx - 6.2, cy - 2.4, 12.4, 8.0, 1.6) {
+                icon_stroke(px, &path, c, 1.5);
+            }
+            fill_round(px, cx - 4.0, cy - 5.2, 5.6, 3.0, 1.0, c);
+        }
+        Hit::AppStartup => {
+            let mut pb = PathBuilder::new();
+            pb.move_to(cx - 3.2, cy - 5.4);
+            pb.line_to(cx + 5.2, cy);
+            pb.line_to(cx - 3.2, cy + 5.4);
+            pb.close();
+            if let Some(path) = pb.finish() {
+                icon_stroke(px, &path, c, 1.5);
+            }
+        }
+        Hit::AppLabs => {
+            let mut pb = PathBuilder::new();
+            pb.move_to(cx - 2.4, cy - 6.0);
+            pb.line_to(cx + 2.4, cy - 6.0);
+            pb.line_to(cx + 5.6, cy + 5.6);
+            pb.line_to(cx - 5.6, cy + 5.6);
+            pb.close();
+            if let Some(path) = pb.finish() {
+                icon_stroke(px, &path, c, 1.5);
+            }
+            icon_stroke_line(px, cx - 2.0, cy - 1.0, cx + 2.0, cy - 1.0, c, 1.4);
+        }
+        Hit::AppUpdates => {
+            icon_stroke_circle(px, cx, cy, 5.6, c);
+            let mut up = PathBuilder::new();
+            up.move_to(cx, cy - 4.4);
+            up.line_to(cx - 3.0, cy - 0.6);
+            up.move_to(cx, cy - 4.4);
+            up.line_to(cx + 3.0, cy - 0.6);
+            up.move_to(cx, cy - 4.4);
+            up.line_to(cx, cy + 3.6);
+            if let Some(path) = up.finish() {
+                icon_stroke(px, &path, c, 1.5);
+            }
+        }
         Hit::TabFeedback => {
             if let Some(path) = round_path(cx - 6.5, cy - 5.5, 13.0, 9.5, 2.5) {
                 icon_stroke(px, &path, c, 1.5);
@@ -3880,6 +4211,42 @@ fn nav_tab(
     } else {
         icon_stroke_circle(px, dx, dy, 3.5, muted());
     }
+}
+
+/// Settings section rail tab — same chrome as `nav_tab`, without the widget on/off dot.
+fn section_nav_tab(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    selected: bool,
+    name: &str,
+    hit: Hit,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+) {
+    hits.push(HitBox {
+        id: hit,
+        x,
+        y,
+        w,
+        h,
+    });
+    if selected {
+        fill_round(px, x, y, w, h, 8.0, tab_on());
+        fill_round(px, x, y + 8.0, 3.0, h - 16.0, 1.5, accent());
+    } else if hover == Some(hit) {
+        fill_round(px, x, y, w, h, 8.0, Color::from_rgba8(255, 255, 255, 10));
+    }
+    let name_c = if selected {
+        accent()
+    } else {
+        Color::from_rgba8(210, 210, 216, 255)
+    };
+    nav_icon(px, hit, x + 18.0, y + h * 0.5, name_c);
+    text(px, fonts, name, 13.0, x + 32.0, y + 10.0, name_c, false);
 }
 
 fn kind_chip(
@@ -5330,12 +5697,15 @@ fn color_row(
     w: f32,
     rgb: [u8; 3],
     open: bool,
+    kind: ColorPickKind,
     hover: Option<Hit>,
     hits: &mut Vec<HitBox>,
 ) -> f32 {
     let h = ROW_H;
+    let open_hit = kind.open();
+    let reset_hit = kind.reset();
     hits.push(HitBox {
-        id: Hit::PrimaryOpen,
+        id: open_hit,
         x,
         y,
         w,
@@ -5347,12 +5717,12 @@ fn color_row(
         y,
         w,
         h,
-        open || hover == Some(Hit::PrimaryOpen) || hover == Some(Hit::PrimaryReset),
+        open || hover == Some(open_hit) || hover == Some(reset_hit),
     );
     text(
         px,
         fonts,
-        "Primary color",
+        kind.label(),
         13.0,
         x + 16.0,
         y + 16.0,
@@ -5360,7 +5730,7 @@ fn color_row(
         false,
     );
     let hex = format_primary_color(rgb);
-    let label_w = measure(fonts, "Primary color", 13.0);
+    let label_w = measure(fonts, kind.label(), 13.0);
     let bh = 28.0;
     let by = y + 10.0;
     let reset_label = "Reset";
@@ -5372,13 +5742,13 @@ fn color_row(
     let bx = right - bw;
     let rx = bx - gap - rw;
     hits.push(HitBox {
-        id: Hit::PrimaryOpen,
+        id: open_hit,
         x: bx,
         y: by,
         w: bw,
         h: bh,
     });
-    let hot = open || hover == Some(Hit::PrimaryOpen);
+    let hot = open || hover == Some(open_hit);
     outlined(
         px,
         bx,
@@ -5424,7 +5794,7 @@ fn color_row(
     );
     chevron(px, bx + bw - 14.0, by + bh * 0.5, open, muted());
     hits.push(HitBox {
-        id: Hit::PrimaryReset,
+        id: reset_hit,
         x: rx,
         y: by,
         w: rw,
@@ -5437,7 +5807,7 @@ fn color_row(
         rw,
         bh,
         7.0,
-        if hover == Some(Hit::PrimaryReset) {
+        if hover == Some(reset_hit) {
             chip_hover()
         } else {
             bg()
@@ -5605,6 +5975,7 @@ fn paint_color_picker(
     fonts: &Fonts,
     hover: Option<Hit>,
     hits: &mut Vec<HitBox>,
+    kind: ColorPickKind,
     rgb: [u8; 3],
 ) {
     let Some((bx, by, bw, bh)) = COLOR_PICKER_ANCHOR.with(|a| a.get()) else {
@@ -5634,7 +6005,7 @@ fn paint_color_picker(
     }
 
     hits.push(HitBox {
-        id: Hit::PrimaryPanel,
+        id: kind.panel(),
         x: mx,
         y: my,
         w: picker_w,
@@ -5666,7 +6037,7 @@ fn paint_color_picker(
     let gap = ((inner_w - sw * n as f32) / (n as f32 - 1.0)).max(4.0);
     for (i, chip) in PRIMARY_SWATCHES.iter().copied().enumerate() {
         let sx = inner_x + i as f32 * (sw + gap);
-        let hit = Hit::PrimarySwatch(i as u8);
+        let hit = kind.swatch(i as u8);
         hits.push(HitBox {
             id: hit,
             x: sx,
@@ -5705,8 +6076,9 @@ fn paint_color_picker(
     cy += sw + 10.0;
     let sv_x = inner_x;
     let sv_y = cy;
+    let sv_hit = kind.sv();
     hits.push(HitBox {
-        id: Hit::PrimarySv,
+        id: sv_hit,
         x: sv_x,
         y: sv_y,
         w: inner_w,
@@ -5726,8 +6098,9 @@ fn paint_color_picker(
     );
 
     cy += sv_h + 10.0;
+    let hue_hit = kind.hue();
     hits.push(HitBox {
-        id: Hit::PrimaryHue,
+        id: hue_hit,
         x: inner_x,
         y: cy,
         w: inner_w,
@@ -5736,11 +6109,7 @@ fn paint_color_picker(
     paint_hue_bar(px, inner_x, cy, inner_w, hue_h);
     let t = (hue / 360.0).clamp(0.0, 1.0);
     let kx = inner_x + inner_w * t;
-    let kr = if hover == Some(Hit::PrimaryHue) {
-        7.0
-    } else {
-        6.0
-    };
+    let kr = if hover == Some(hue_hit) { 7.0 } else { 6.0 };
     fill_circle(
         px,
         kx,
@@ -5765,14 +6134,15 @@ fn paint_color_picker(
         let label = "Reset";
         let rw = measure(fonts, label, 12.0) + 16.0;
         let rx = mx + picker_w - pad - rw;
+        let reset_hit = kind.reset();
         hits.push(HitBox {
-            id: Hit::PrimaryReset,
+            id: reset_hit,
             x: rx,
             y: cy,
             w: rw,
             h: foot_h,
         });
-        let hot = hover == Some(Hit::PrimaryReset);
+        let hot = hover == Some(reset_hit);
         fill_round(
             px,
             rx,

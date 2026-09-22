@@ -2073,6 +2073,12 @@ pub struct HudConfig {
     /// Plugin-only: when true the frozen in-game HUD draws standings / relative / map.
     /// Overlay still saves this key. The plugin never writes the ini.
     pub ingame_hud: bool,
+    /// F8 Look: install the Floating F8 MX Bikes menu pack into the game `ui/` folder.
+    pub game_ui: bool,
+    /// When true, MX Bikes menus use Look `primary`. When false, use `game_ui_primary`.
+    pub game_ui_match_primary: bool,
+    /// Menu pack accent when `game_ui_match_primary` is false.
+    pub game_ui_primary: [u8; 3],
     pub font_family: FontFamily,
     /// HUD / settings / Motos accent. Default Holeshot orange.
     pub primary: [u8; 3],
@@ -2106,6 +2112,9 @@ impl HudConfig {
             experimental: false,
             review: false,
             ingame_hud: false,
+            game_ui: false,
+            game_ui_match_primary: true,
+            game_ui_primary: DEFAULT_PRIMARY,
             font_family: FontFamily::Exo2,
             primary: DEFAULT_PRIMARY,
             units: UnitPrefs::all(Units::Metric),
@@ -2144,6 +2153,15 @@ impl HudConfig {
         let mut c = self.clone();
         c.settings_preset = c.active_preset;
         c
+    }
+
+    /// Accent written into the MX Bikes menu pack.
+    pub fn game_ui_accent(&self) -> [u8; 3] {
+        if self.game_ui_match_primary {
+            self.primary
+        } else {
+            self.game_ui_primary
+        }
     }
 
     pub fn copy_settings_to(&mut self, dst: SessionPreset) {
@@ -2304,7 +2322,8 @@ impl HudConfig {
              font_family={}\nprimary_color={}\nunits={}\nunits_speed={}\nunits_liquids={}\nunits_temperature={}\n\
              settings_key={}\nsettings_x={}\nsettings_y={}\nstart_with_windows={}\nminimize_on_close={}\n\
              close_with_game={}\nopen_with_game={}\nauto_update_on_launch={}\nwhats_new_seen={}\n\
-             first_install_version={}\nexperimental={}\nreview={}\ningame_hud={}\nstance_bind={}\nactive_preset={}\n\
+             first_install_version={}\nexperimental={}\nreview={}\ningame_hud={}\ngame_ui={}\n\
+             game_ui_match_primary={}\ngame_ui_primary_color={}\nstance_bind={}\nactive_preset={}\n\
              \n[Practice]\n{}\n\n[Warmup]\n{}\n\n[Race]\n{}\n\n[Spectate]\n{}\n",
             self.font_family.key(),
             format_primary_color(self.primary),
@@ -2325,6 +2344,9 @@ impl HudConfig {
             b(self.experimental),
             b(self.review),
             b(self.ingame_hud),
+            b(self.game_ui),
+            b(self.game_ui_match_primary),
+            format_primary_color(self.game_ui_primary),
             self.stance_bind.key(),
             self.active_preset.key(),
             layout_ini(&self.layouts[SessionPreset::Practice.idx()]),
@@ -2702,6 +2724,13 @@ fn apply_app_key(
         "experimental" | "feature_experimental" | "feature_sector" => cfg.experimental = b,
         "review" => cfg.review = b,
         "ingame_hud" => cfg.ingame_hud = b,
+        "game_ui" => cfg.game_ui = b,
+        "game_ui_match_primary" => cfg.game_ui_match_primary = b,
+        "game_ui_primary_color" => {
+            if let Some(rgb) = parse_primary_color(val) {
+                cfg.game_ui_primary = rgb;
+            }
+        }
         "font_family" => cfg.font_family = FontFamily::parse(val),
         "primary_color" => {
             if let Some(rgb) = parse_primary_color(val) {

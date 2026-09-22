@@ -7,6 +7,7 @@ fn dummy_ui(open: bool) -> SettingsUi {
         host: HWND::default(),
         tab: Tab::App,
         last_widget: Tab::Standings,
+        app_section: AppSection::Look,
         hover: None,
         focus: None,
         hits: Vec::new(),

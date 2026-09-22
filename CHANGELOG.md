@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.15.0
+
+Optional MX Bikes menu pack, its own accent, and a Settings left rail.
+
+### Overlay
+
+- Settings uses a left rail: **HUD** (Look: font, primary, units, settings key) separate from **App** (In game HUD, Install, Startup, Labs, Updates).
+- **In game HUD** holds **MX Bikes menus**, **Match app accent**, and **Menu color**.
+- **MX Bikes menus** (default off) installs a generated `ui/` pack — floating dest card, server browser board, Options form + tabs, Practice / Host / Race setup chrome, Profiles, Replays, pits, and shared accent chrome. Off restores the previous folder. Fully quit MX Bikes after changing so menus reload.
+- **Match app accent** (default on). Off shows **Menu color** with the same picker as Primary; Look changes no longer rewrite menus until you match again.
+
 ## 0.14.1
 
 Uninstall no longer deletes MX Bikes if the overlay was installed into the game folder.

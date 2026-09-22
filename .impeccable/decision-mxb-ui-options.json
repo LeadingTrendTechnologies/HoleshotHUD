@@ -1,0 +1,49 @@
+{
+  "title": "Choose the Options composition",
+  "question": "Same F8 night-ink world. All six tabs and every stock control stay. Pick how Options sits on the studio.",
+  "options": [
+    {
+      "id": "pit-bar",
+      "label": "Pit bottom tabs",
+      "kicker": "THE ROLL",
+      "thesis": "A floating night-ink form board owns the stage; the six tabs live as a modern bottom chrome strip with Back and a skew Done — instrument-dense rows, not a flat settings sheet.",
+      "palette": ["#0A0A0A", "#141416", "#FF9430", "#E4E4E6", "#2A2A2E"],
+      "materials": ["8px floating plaque", "hairline", "bottom tab strip", "orange pip + wash", "ExtraBold Italic", "Done skew"],
+      "viewport": "Grey studio. Large inset form board. Graphics pane dense. Bottom: six tabs with Graphics orange pip, Back left, Done skew right.",
+      "risk": "Tabs fight Done for the bottom edge if the strip is too tight.",
+      "raised": [
+        {
+          "from": "oscilloscope-signal-bench",
+          "raise": "Rows read as a signal bench: tighter label/value columns, detented spin/slider chrome, active tab locks like a triggered channel."
+        }
+      ],
+      "comp": ".impeccable/mocks/decision/mxb-ui-options-pit-bar.png"
+    },
+    {
+      "id": "left-rail",
+      "label": "Left category rail",
+      "thesis": "Options borrows the main dest card: a left night-ink rail of the six categories with orange pip; the active pane is a separate floating form board on the right.",
+      "palette": ["#0A0A0A", "#141416", "#FF9430", "#E4E4E6", "#2A2A2E"],
+      "materials": ["left floating rail", "8px rows", "orange pip + wash", "right form plaque", "ExtraBold Italic", "Done skew"],
+      "viewport": "Studio peeks. Left rail lists Input…Simulation; Graphics selected. Right board holds the Graphics form. Back and Done on the form board.",
+      "risk": "Two plaques can feel heavier than main’s single dest card.",
+      "comp": ".impeccable/mocks/decision/mxb-ui-options-left-rail.png"
+    },
+    {
+      "id": "seg-sheet",
+      "label": "Segment + sheet",
+      "thesis": "Server grammar: a single inset board with a Local/World-style segment row for the six categories, then the form sheet under it — Join’s cousin is Done.",
+      "palette": ["#0A0A0A", "#141416", "#FF9430", "#E4E4E6", "#2A2A2E"],
+      "materials": ["inset board", "segment caps", "tab-on wash", "form rows", "ExtraBold Italic", "Done skew"],
+      "viewport": "Inset board on studio. Top segment strip of six categories; Graphics on. Dense form below. Back and Done on the board chrome.",
+      "risk": "Six segments can crowd; labels may truncate.",
+      "comp": ".impeccable/mocks/decision/mxb-ui-options-seg-sheet.png"
+    }
+  ],
+  "reroll": {
+    "registers": ["safer", "bolder"]
+  },
+  "buildPath": { "value": "comp", "toggle": true },
+  "canon": false,
+  "steer": true
+}

@@ -41,7 +41,7 @@ To add a widget: if the field is **Overlay**, draw it. If **Cached** / **Receive
 
 Per-widget behavior, pitfalls, and change history for agents: **[widgets.md](widgets.md)**. Wishlist (not shipped): **[future.md](widgets/future.md)**. Streaming (OBS Browser Source, not shipped): **[streaming.md](streaming.md)**.
 
-Rust overlay structure and possible refactors (suggestions only): **[rust-patterns.md](rust-patterns.md)**.
+Rust overlay structure and possible refactors (suggestions only): **[rust-patterns.md](rust-patterns.md)**. MX Bikes menu pack (`game_ui/`) cleanup backlog: **[game-ui.md](game-ui.md)**.
 
 ## What the overlay already shows
 

@@ -335,6 +335,9 @@ Blocking note on Settings (What’s new after an in-app update). Charcoal Side s
 ### Download Plaque (signature)
 Web-only CTA in the top bar. Clip-path orange parallelogram, Windows four-square mark, “Download for Windows” (shortens to “Download” when the pit stacks). Ink-on-accent ExtraBold Italic. Not a rounded Material button.
 
+### MX Bikes native menus (optional pack)
+When **MX Bikes menus** is on, `game_ui` writes night-ink TGA + `.mnu` into the game `ui/` folder. Main is a floating left dest card; server browser is an inset board; Options is an inset form board with a bottom category tab strip; Practice (Testing Setup) uses a night-ink track bar, field plaques, and an orange skew Start. Shared grammar: night-ink `#0A0A0A`, hairline `#2A2A2E`, text `#E4E4E6`, Look accent for selected/CTA only, content-sized orange skew for Done/Join/Start, tab pip + wash on active tabs. No Holeshot mark. Engine still uses `main.fnt` for most labels.
+
 ## Do's and Don'ts
 
 ### Do:

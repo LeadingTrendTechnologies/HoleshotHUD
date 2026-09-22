@@ -130,6 +130,7 @@ pub fn pick_game_folder(host: windows::Win32::Foundation::HWND) -> bool {
     save_game_dir(&picked);
     NEED_RETRY.store(true, Ordering::Relaxed);
     sync();
+    crate::game_ui::sync_from_config();
     true
 }
 

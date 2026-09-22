@@ -1,0 +1,9 @@
+- Settings left tabs: HUD (Look) vs App (In game HUD / Install / Startup / Labs / Updates)
+- Clean up positions updating better live, in every widget including maps
+- Create dark and light mode of controllers
+- MX Bikes menus: Floating F8 dest card pack + inset server board (Look toggle, Match app accent / Menu color, restart)
+- bug where I was racing there a table top, I was in the second and I as I was going over the table top the leader was going under and it showed that I got lapped when I didn't
+- fix yellow flags showing in practice and warmups
+- clean up how penalty seconds are displayed
+- add ability to make plaque text for standings to be white
+- add light mode for settings app

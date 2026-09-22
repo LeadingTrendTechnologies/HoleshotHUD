@@ -1,0 +1,30 @@
+{
+  "title": "Choose the server-browser layout",
+  "question": "The live list stays. Same dests, same session rows. Pick how that table sits.",
+  "options": [
+    {
+      "id": "inset",
+      "label": "Inset board",
+      "thesis": "A floating night-ink board on the grey studio, same family as the main dest card.",
+      "palette": ["#0A0A0A", "#141416", "#FF9430", "#E4E4E6", "#2A2A2E"],
+      "materials": ["8px floating plaque", "hairline", "orange pip", "ExtraBold Italic", "Join skew"],
+      "viewport": "Grey studio around an inset board. Filters on top, 12-column list, Local/World and Join on the card.",
+      "risk": "Less row space than a full-bleed table.",
+      "comp": ".impeccable/mocks/decision/mxb-ui-server-inset.png"
+    },
+    {
+      "id": "bleed",
+      "label": "Full-bleed table",
+      "thesis": "Edge-to-edge scan. Studio goes away so every column can breathe.",
+      "palette": ["#0A0A0A", "#141416", "#FF9430", "#E4E4E6", "#2A2A2E"],
+      "materials": ["full-bleed night-ink", "8px rows", "orange pip", "ExtraBold Italic", "Join skew"],
+      "viewport": "No studio. Header filters, full-width list, Local/World left, Join skew bottom-right.",
+      "risk": "Drops the rider/bike stage on this screen.",
+      "comp": ".impeccable/mocks/decision/mxb-ui-server-bleed.png"
+    }
+  ],
+  "reroll": false,
+  "buildPath": { "value": "comp", "toggle": true },
+  "canon": false,
+  "steer": true
+}

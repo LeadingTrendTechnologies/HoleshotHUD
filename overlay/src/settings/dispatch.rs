@@ -22,6 +22,30 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             set_tab(Tab::App);
             return;
         }
+        Hit::AppLook => {
+            set_app_section(AppSection::Look);
+            return;
+        }
+        Hit::AppMenus => {
+            set_app_section(AppSection::Menus);
+            return;
+        }
+        Hit::AppInstall => {
+            set_app_section(AppSection::Install);
+            return;
+        }
+        Hit::AppStartup => {
+            set_app_section(AppSection::Startup);
+            return;
+        }
+        Hit::AppLabs => {
+            set_app_section(AppSection::Labs);
+            return;
+        }
+        Hit::AppUpdates => {
+            set_app_section(AppSection::Updates);
+            return;
+        }
         Hit::TabProfile => {
             set_tab(Tab::Profile);
             return;
@@ -292,11 +316,47 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::PrimaryPanel | Hit::PrimarySv | Hit::PrimaryHue => return,
         Hit::PrimaryReset => {
             update_config(|c| c.primary = DEFAULT_PRIMARY);
+            sync_menus_after_app_primary_change();
             return;
         }
         Hit::PrimarySwatch(i) => {
             if let Some(&rgb) = PRIMARY_SWATCHES.get(i as usize) {
                 update_config(|c| c.primary = rgb);
+                sync_menus_after_app_primary_change();
+            }
+            return;
+        }
+        Hit::GameUi => {
+            close_drop();
+            crate::config::update_config(|c| c.game_ui = !c.game_ui);
+            crate::game_ui::sync_from_config();
+            return;
+        }
+        Hit::GameUiMatchPrimary => {
+            close_drop();
+            crate::config::update_config(|c| {
+                c.game_ui_match_primary = !c.game_ui_match_primary;
+                if !c.game_ui_match_primary {
+                    c.game_ui_primary = c.primary;
+                }
+            });
+            crate::game_ui::sync_from_config();
+            return;
+        }
+        Hit::GameUiPrimaryOpen => {
+            toggle_drop(Drop::GameUiPrimaryColor);
+            return;
+        }
+        Hit::GameUiPrimaryPanel | Hit::GameUiPrimarySv | Hit::GameUiPrimaryHue => return,
+        Hit::GameUiPrimaryReset => {
+            update_config(|c| c.game_ui_primary = DEFAULT_PRIMARY);
+            sync_menus_after_menu_accent_change();
+            return;
+        }
+        Hit::GameUiPrimarySwatch(i) => {
+            if let Some(&rgb) = PRIMARY_SWATCHES.get(i as usize) {
+                update_config(|c| c.game_ui_primary = rgb);
+                sync_menus_after_menu_accent_change();
             }
             return;
         }
@@ -707,6 +767,12 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::SectorHistInc => c.sector_hist_laps = (c.sector_hist_laps + 1).min(5),
         Hit::TabWidgets
         | Hit::TabApp
+        | Hit::AppLook
+        | Hit::AppMenus
+        | Hit::AppInstall
+        | Hit::AppStartup
+        | Hit::AppLabs
+        | Hit::AppUpdates
         | Hit::TabReview
         | Hit::TabProfile
         | Hit::TabFeedback
@@ -743,6 +809,13 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::PrimaryHue
         | Hit::PrimarySwatch(_)
         | Hit::PrimaryReset
+        | Hit::GameUiMatchPrimary
+        | Hit::GameUiPrimaryOpen
+        | Hit::GameUiPrimaryPanel
+        | Hit::GameUiPrimarySv
+        | Hit::GameUiPrimaryHue
+        | Hit::GameUiPrimarySwatch(_)
+        | Hit::GameUiPrimaryReset
         | Hit::UnitsOpen(_)
         | Hit::StTextOpen
         | Hit::RelTextOpen
@@ -771,6 +844,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::ReplyScrim
         | Hit::ReplyPanel
         | Hit::StartWithWindows
+        | Hit::GameUi
         | Hit::MinimizeOnClose
         | Hit::CloseWithGame
         | Hit::OpenWithGame

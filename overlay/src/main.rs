@@ -4,6 +4,7 @@ mod changelog;
 mod compat;
 mod config;
 mod feedback;
+mod game_ui;
 mod gpu;
 mod layout;
 mod ping;
@@ -269,6 +270,7 @@ fn main() {
     *crate::config::CONFIG
         .lock()
         .unwrap_or_else(|e| e.into_inner()) = loaded;
+    crate::game_ui::sync_from_config();
     let fonts = Fonts::for_family(family)
         .or_else(Fonts::load)
         .expect("need a HUD font (bundled or Windows\\Fonts)");
@@ -423,6 +425,10 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
                 if let Some(path) = pid.and_then(compat::exe_path_for_pid) {
                     let wrote = compat::ensure_disable_fullscreen_optimizations(&path);
                     restart_hint = wrote && had_game;
+                    // Fresh MX Bikes process: keep menu pack on the Look primary.
+                    if !had_game {
+                        crate::game_ui::sync_quiet();
+                    }
                 } else {
                     restart_hint = false;
                     shm = None;
@@ -432,6 +438,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
             }
             if !game_on {
                 crate::plugin::retry_if_needed();
+                crate::game_ui::retry_if_needed();
                 crate::plugin::clear_game_restart();
             }
             if game_on {

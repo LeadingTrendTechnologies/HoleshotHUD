@@ -109,6 +109,7 @@ fn default_hud_hides_every_widget() {
     assert!(!cfg.stance_show_sit);
     assert!(!cfg.experimental);
     assert!(!cfg.review);
+    assert!(!cfg.game_ui);
     assert!(!cfg.gamepad_visible());
     assert!(cfg.whats_new_seen.is_empty());
     assert!(cfg.first_install_version.is_empty());
@@ -172,6 +173,54 @@ fn review_defaults_off_and_round_trips() {
     let _ = std::fs::remove_dir_all(&dir);
     assert!(loaded.review);
     assert!(text.contains("review=1"));
+}
+
+#[test]
+fn game_ui_defaults_off_and_round_trips() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-game-ui-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    std::fs::write(
+        &path,
+        "first_install_version=0.1.0\nst_last=1\nrel_last=1\n",
+    )
+    .unwrap();
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let mut cfg = HudConfig::load_file();
+    assert!(!cfg.game_ui, "missing game_ui= key stays off");
+    assert!(
+        cfg.game_ui_match_primary,
+        "missing game_ui_match_primary stays on"
+    );
+    assert_eq!(cfg.game_ui_primary, DEFAULT_PRIMARY);
+    assert_eq!(cfg.game_ui_accent(), cfg.primary);
+    cfg.game_ui = true;
+    cfg.game_ui_match_primary = false;
+    cfg.game_ui_primary = [59, 130, 246];
+    cfg.save();
+    let loaded = HudConfig::load_file();
+    let text = std::fs::read_to_string(&path).unwrap();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(loaded.game_ui);
+    assert!(!loaded.game_ui_match_primary);
+    assert_eq!(loaded.game_ui_primary, [59, 130, 246]);
+    assert_eq!(loaded.game_ui_accent(), [59, 130, 246]);
+    assert!(text.contains("game_ui=1"));
+    assert!(text.contains("game_ui_match_primary=0"));
+    assert!(text.contains("game_ui_primary_color=#3B82F6"));
+}
+
+#[test]
+fn game_ui_accent_follows_primary_when_matched() {
+    let mut cfg = HudConfig::new();
+    cfg.primary = [59, 130, 246];
+    cfg.game_ui_primary = DEFAULT_PRIMARY;
+    cfg.game_ui_match_primary = true;
+    assert_eq!(cfg.game_ui_accent(), [59, 130, 246]);
+    cfg.game_ui_match_primary = false;
+    assert_eq!(cfg.game_ui_accent(), DEFAULT_PRIMARY);
 }
 
 #[test]
