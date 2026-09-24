@@ -764,7 +764,19 @@ fn lap_rel_colors_lapping_and_lapped_riders() {
     s.riders[0].track_pos = 0.02;
     s.local_track_pos = 0.98;
     s.riders[1].track_pos = 0.98;
-    assert_eq!(rel(&s, 1), LapRel::Same);
+    assert_eq!(
+        rel(&s, 1),
+        LapRel::Same,
+        "same-race S/F straddle is not a lap up"
+    );
+
+    // True lap-up hold: already a lap ahead, just gone by, still on the same
+    // side of the line (not an S/F straddle).
+    s.standings[0].num_laps = 6;
+    s.riders[0].track_pos = 0.96;
+    s.local_track_pos = 0.88;
+    s.riders[1].track_pos = 0.88;
+    assert_eq!(rel(&s, 1), LapRel::LappingMe, "lap up, just gone by, still nearby");
 
     s.standings[0].num_laps = 4;
     s.riders[0].track_pos = 0.97;
@@ -776,7 +788,7 @@ fn lap_rel_colors_lapping_and_lapped_riders() {
     s.riders[0].track_pos = 0.20;
     s.local_track_pos = 0.90;
     s.riders[1].track_pos = 0.90;
-    assert_eq!(rel(&s, 1), LapRel::Same, "lap up but not closing from behind");
+    assert_eq!(rel(&s, 1), LapRel::Same, "lap up but far ahead outside catch span");
 
     s.standings[0].num_laps = 5;
     s.standings[0].gap_laps = 0;
@@ -796,8 +808,81 @@ fn lap_rel_colors_lapping_and_lapped_riders() {
     s.riders[0].track_pos = 0.96;
     s.local_track_pos = 0.88;
     s.riders[1].track_pos = 0.88;
+    assert_eq!(
+        rel(&s, 1),
+        LapRel::Same,
+        "more laps down to the leader is not red until you lap them"
+    );
+
+    // You actually gained a lap on them — red via pairwise num_laps.
+    s.standings[1].num_laps = 6;
+    s.riders[0].track_pos = 0.96;
+    s.local_track_pos = 0.88;
+    s.riders[1].track_pos = 0.88;
     assert_eq!(rel(&s, 1), LapRel::LappedByMe);
     assert_eq!(rel(&s, 12), LapRel::Same);
+}
+
+#[test]
+fn lap_rel_same_lap_sf_straddle_stays_same() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    let rel = |s: &Snapshot, n| {
+        let _ = RaceStore::tick(s);
+        lap_rel(s, n)
+    };
+
+    // They crossed first: raw num_laps says +1, but continuous progress is ~0.
+    s.standings[0].num_laps = 6;
+    s.standings[1].num_laps = 5;
+    s.standings[0].gap_laps = 0;
+    s.standings[1].gap_laps = 0;
+    s.riders[0].track_pos = 0.03;
+    s.local_track_pos = 0.97;
+    s.riders[1].track_pos = 0.97;
+    assert_eq!(
+        rel(&s, 1),
+        LapRel::Same,
+        "them across the line first is not lapping"
+    );
+
+    // You crossed first: raw num_laps says -1 until they cross.
+    s.standings[0].num_laps = 5;
+    s.standings[1].num_laps = 6;
+    s.riders[0].track_pos = 0.97;
+    s.local_track_pos = 0.03;
+    s.riders[1].track_pos = 0.03;
+    assert_eq!(
+        rel(&s, 1),
+        LapRel::Same,
+        "you across the line first is not lapping them"
+    );
+}
+
+#[test]
+fn lap_rel_leader_lapped_rider_behind_stays_same() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    let rel = |s: &Snapshot, n| {
+        let _ = RaceStore::tick(s);
+        lap_rel(s, n)
+    };
+
+    // Leader lapped them; you have not. Equal num_laps, they sit just behind.
+    s.standings[0].num_laps = 5;
+    s.standings[1].num_laps = 5;
+    s.standings[0].gap_laps = 1;
+    s.standings[1].gap_laps = 0;
+    s.riders[0].track_pos = 0.84;
+    s.local_track_pos = 0.92;
+    s.riders[1].track_pos = 0.92;
+    assert_eq!(
+        rel(&s, 1),
+        LapRel::Same,
+        "leader lapping them is not you lapping them"
+    );
 }
 
 #[test]
@@ -821,7 +906,7 @@ fn lap_rel_leader_two_laps_up_stays_blue() {
     s.riders[0].track_pos = 0.96;
     s.local_track_pos = 0.88;
     s.riders[1].track_pos = 0.88;
-    assert_eq!(rel(&s, 1), LapRel::Same, "two down, already gone by");
+    assert_eq!(rel(&s, 1), LapRel::LappingMe, "two down, already gone by, still nearby");
 
     // Completed laps can sit on the race lap (or run ahead after our crossing)
     // while gap_laps still says we are two down. Must not flip the leader to red.
@@ -835,8 +920,11 @@ fn lap_rel_leader_two_laps_up_stays_blue() {
     s.riders[0].track_pos = 0.96;
     s.local_track_pos = 0.88;
     s.riders[1].track_pos = 0.88;
-    assert_eq!(rel(&s, 1), LapRel::Same, "inverted laps after they pass is not red");
-}
+    assert_eq!(
+        rel(&s, 1),
+        LapRel::LappingMe,
+        "inverted laps after they pass stays blue, not red"
+    );}
 
 #[test]
 fn lap_rel_off_in_warmup() {
@@ -2228,15 +2316,136 @@ fn lapped_by_leader_on_track_is_not_a_wave_off() {
     s.current_lap = 6;
     assert!(extras_started(&s));
     ride_to(&mut s, 0.50);
-    s.riders[0].track_pos = 0.20;
+    // Stay inside PAIR_MAX_M (250 m on this 1000 m fixture) and move continuously.
+    s.riders[0].track_pos = 0.35;
     assert_eq!(session_banner(&s).1, "0/1", "leader behind is not a lap yet");
     assert!(!lapped(&s), "extras starting is not getting lapped");
 
+    s.riders[0].track_pos = 0.42;
+    assert!(!lapped(&s), "still closing from behind");
     s.riders[0].track_pos = 0.54;
     assert!(lapped(&s), "~Lapped the moment the leader goes past");
     assert_eq!(session_banner(&s).1, "0/1", "still the uncounted lap");
     assert_eq!(laps_left(&s), Some(2), "the extra is still ahead");
     assert_eq!(s.standings[1].gap_laps, 0, "must not wait for the game gap");
+}
+
+/// Timed +2 on `1/2`: leader has finished (`lead == 1`) and goes past you. ~Lapped and
+/// the waved-off `1/1` banner must flip on that pass, not at your next line.
+#[test]
+fn lapped_on_first_of_plus_two_latches_when_leader_finished_passes() {
+    let _g = session_lock();
+    let mut s = live_snap();
+    expire_timed_extras(&mut s, 2);
+    s.local_speed = 18.0;
+    // Match timed +2 setup: your lap ticks before the leader starts extras so
+    // OVERTIME_LOCAL_BASE high-waters onto this uncounted crossing.
+    s.standings[1].num_laps = 6;
+    s.current_lap = 7;
+    let _ = session_banner(&s);
+    s.standings[0].num_laps = 6;
+    assert!(extras_started(&s));
+    assert_eq!(session_banner(&s).1, "0/2");
+    cross_line(&mut s, 7, 8);
+    assert_eq!(session_banner(&s).1, "1/2");
+
+    // Leader finished their +2; one completed lap ahead while you are still on 1/2.
+    s.standings[0].num_laps = 8;
+    assert!(leader_finished(&s));
+    assert_eq!(leader_num_laps(&s) - s.standings[1].num_laps, 1);
+    ride_to(&mut s, 0.50);
+    assert_eq!(session_banner(&s).1, "1/1", "wave-off total once leader finished");
+    assert!(!lapped(&s), "leader finished ahead is not ~Lapped until they pass");
+
+    s.riders[0].track_pos = 0.35;
+    assert!(!lapped(&s));
+    s.riders[0].track_pos = 0.42;
+    assert!(!lapped(&s), "still closing from behind");
+    s.riders[0].track_pos = 0.54;
+    assert!(lapped(&s), "~Lapped the moment the finished leader goes past");
+    assert_eq!(session_banner(&s).1, "1/1");
+    assert_eq!(s.standings[1].gap_laps, 0, "must not wait for the game gap");
+}
+
+/// On the last timed extra, +1 completed lap after the leader finishes is still the same
+/// last lap — not ~Lapped until a real second lap down.
+#[test]
+fn finishing_last_extra_after_the_leader_is_not_lapped() {
+    let _g = session_lock();
+    let mut s = live_snap();
+    expire_timed_extras(&mut s, 2);
+    s.local_speed = 18.0;
+    s.standings[1].num_laps = 6;
+    s.current_lap = 7;
+    let _ = session_banner(&s);
+    s.standings[0].num_laps = 6;
+    cross_line(&mut s, 7, 8);
+    cross_line(&mut s, 8, 9);
+    assert_eq!(session_banner(&s).1, "2/2");
+
+    s.standings[0].num_laps = 9;
+    assert!(leader_finished(&s));
+    assert_eq!(leader_num_laps(&s) - s.standings[1].num_laps, 1);
+    ride_to(&mut s, 0.50);
+    assert!(!lapped(&s), "same last extra the leader just finished");
+}
+
+/// Over a tabletop while the leader goes under: centerline projection can snap them
+/// half a lap "behind" then correct ahead. That must not sticky-latch ~Lapped.
+#[test]
+fn tabletop_track_pos_spike_does_not_latch_lapped() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.local_speed = 18.0;
+    s.standings[0].num_laps = 5;
+    s.standings[1].num_laps = 5;
+    s.current_lap = 6;
+    ride_to(&mut s, 0.50);
+    // Same lap battle: not armed, spike must not latch.
+    s.riders[0].track_pos = 0.10;
+    assert!(!lapped(&s), "same lap never arms the pass latch");
+    s.riders[0].track_pos = 0.54;
+    assert!(!lapped(&s), "projection flip on the same lap is not a lap-down");
+
+    // Lap-up but the under-path teleports beyond PAIR_MAX then corrects ahead.
+    s.standings[0].num_laps = 6;
+    s.riders[0].track_pos = 0.52;
+    assert!(!lapped(&s), "armed but not yet behind");
+    s.riders[0].track_pos = 0.15;
+    assert!(!lapped(&s), "far projection spike clears behind-state");
+    s.riders[0].track_pos = 0.54;
+    assert!(
+        !lapped(&s),
+        "teleport from far behind to ahead is not a continuous pass"
+    );
+
+    // Real continuous pass still latches.
+    s.riders[0].track_pos = 0.35;
+    assert!(!lapped(&s));
+    s.riders[0].track_pos = 0.42;
+    assert!(!lapped(&s));
+    s.riders[0].track_pos = 0.54;
+    assert!(lapped(&s), "a real lap-up pass still latches");
+}
+
+/// Equal completed laps during extras is the same physical lap — do not arm ~Lapped
+/// on a mid-pack battle even if track_pos wraps.
+#[test]
+fn equal_extras_laps_tabletop_spike_does_not_latch_lapped() {
+    let _g = session_lock();
+    let mut s = live_snap();
+    expire_timed_extras(&mut s, 1);
+    s.local_speed = 18.0;
+    s.standings[0].num_laps = 6;
+    s.standings[1].num_laps = 6;
+    s.current_lap = 7;
+    assert!(extras_started(&s));
+    ride_to(&mut s, 0.50);
+    s.riders[0].track_pos = 0.15;
+    assert!(!lapped(&s), "equal extras laps do not arm the latch");
+    s.riders[0].track_pos = 0.54;
+    assert!(!lapped(&s), "tabletop flip with equal extras laps is not ~Lapped");
 }
 
 /// A frame where the session fields glitch into looking like a lap race puts extras (2)
@@ -2266,6 +2475,40 @@ fn glitched_lap_race_frame_does_not_latch_checkered() {
     assert_eq!(ride_lap_to_line(&mut s), DashFlag::White);
     assert_eq!(cross_line(&mut s, 7, 8), DashFlag::White);
     assert_eq!(cross_line(&mut s, 8, 9), DashFlag::Checkered);
+}
+
+/// A stuck checkered from a glitched finish must clear once laps remain again, so Extra
+/// `2/2` mid-race does not keep looking finished while live place still moves.
+#[test]
+fn premature_checkered_latch_clears_while_extras_remain() {
+    let _g = session_lock();
+    let mut s = live_snap();
+    expire_timed_extras(&mut s, 2);
+    s.local_speed = 18.0;
+    s.standings[0].num_laps = 6;
+    cross_line(&mut s, 6, 7); // first extra
+    cross_line(&mut s, 7, 8); // second extra — banner 2/2, still racing
+    assert_eq!(session_banner(&s).1, "2/2");
+    assert_eq!(laps_left(&s), Some(1));
+    age_white_wave();
+    assert_eq!(ride_to(&mut s, 0.40), DashFlag::None, "mid-lap last extra is bare");
+
+    CHECKERED_LATCH.store(1, Ordering::Relaxed);
+    assert_ne!(
+        dash_race_flag(&s),
+        DashFlag::Checkered,
+        "latched checkered must not stick while laps remain"
+    );
+    assert_eq!(CHECKERED_LATCH.load(Ordering::Relaxed), 0);
+    assert_eq!(session_banner(&s).1, "2/2");
+
+    assert_eq!(ride_lap_to_line(&mut s), DashFlag::Checkered, "finish run-in still waves");
+    assert_eq!(cross_line(&mut s, 8, 9), DashFlag::Checkered);
+    assert_eq!(CHECKERED_LATCH.load(Ordering::Relaxed), 1);
+    // True finish: latch holds even if standings keep shuffling.
+    s.standings[0].position = 2;
+    s.standings[1].position = 1;
+    assert_eq!(dash_race_flag(&s), DashFlag::Checkered);
 }
 
 /// Two agreeing crossings pin the line down even when `sf_meters` points elsewhere.
@@ -3370,7 +3613,7 @@ fn four_lap_race_ignores_leftover_eight_minute_length() {
 }
 
 #[test]
-fn later_start_board_does_not_show_locked_eight_minutes() {
+fn later_start_board_shows_race_length() {
     let _g = session_lock();
     reset_session();
     let mut s = live_snap();
@@ -3385,13 +3628,49 @@ fn later_start_board_does_not_show_locked_eight_minutes() {
     s.session_time_ms = 1_980;
     assert_eq!(session_banner(&s).1, "00:01");
     s.session_time_ms = 45_000;
-    assert_eq!(session_banner(&s).1, "00:45");
+    assert_eq!(session_banner(&s).1, "08:00");
+    s.session_time_ms = 30_000;
+    assert_eq!(session_banner(&s).1, "08:00");
     s.session_time_ms = 479_328;
     s.local_speed = 3.8;
     let _ = session_remain_ms(&s);
     s.session_time_ms = 478_998;
     s.local_speed = 5.8;
     assert_eq!(session_banner(&s).1, "07:58");
+    assert!(!overtime_active(&s));
+}
+
+/// After the live clock has started ticking, a republish of session length must not
+/// snap the dash back to full race time (07:58 → 08:00).
+#[test]
+fn armed_countdown_ignores_near_full_length_republish() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_length = 8;
+    s.session_laps = 1;
+    s.session_time_ms = 43_980;
+    s.current_lap = 1;
+    s.local_speed = 0.0;
+    s.standings[0].num_laps = 0;
+    s.standings[1].num_laps = 0;
+    assert_eq!(session_banner(&s).1, "00:43");
+    s.session_time_ms = 1_980;
+    assert_eq!(session_banner(&s).1, "00:01");
+    s.session_time_ms = 8 * 60 * 1000;
+    assert_eq!(session_banner(&s).1, "08:00");
+    s.session_time_ms = 8 * 60 * 1000 - 2_000;
+    s.local_speed = 18.0;
+    assert_eq!(session_banner(&s).1, "07:58");
+    // Game republishes full length while still inside the near-full 30 s band.
+    s.session_time_ms = 8 * 60 * 1000;
+    assert_eq!(
+        session_banner(&s).1,
+        "07:58",
+        "near-full republish must not snap back to 08:00"
+    );
+    s.session_time_ms = 8 * 60 * 1000 - 3_000;
+    assert_eq!(session_banner(&s).1, "07:57");
     assert!(!overtime_active(&s));
 }
 
@@ -4540,6 +4819,28 @@ fn table_plaque_covers_rows_when_saved_box_is_short() {
 fn stripe_row_bg_lifts_when_panel_is_opaque() {
     assert_eq!(rgba8(stripe_row_bg(bg_a(78))), (0, 0, 0, 54));
     assert_eq!(rgba8(stripe_row_bg(bg_a(100))), (255, 255, 255, 34));
+}
+
+#[test]
+fn row_washes_are_spider_scaled() {
+    let [r, g, b] = crate::config::accent_rgb();
+    assert_eq!(rgba8(you_row_bg(50)), (r, g, b, 52));
+    assert_eq!(rgba8(you_row_bg(100)), (r, g, b, 104));
+    assert_eq!(rgba8(lapping_row_bg(50)), (59, 130, 246, 52));
+    assert_eq!(rgba8(lapped_row_bg(50)), (239, 68, 68, 52));
+}
+
+#[test]
+fn finished_status_is_flag_even_when_crashed() {
+    let _g = session_lock();
+    reset_session();
+    LEADER_FIN_LOCAL_BASE.store(4, Ordering::Relaxed);
+    let mut s = live_snap();
+    s.standing_count = 1;
+    s.standings[0] = standing(12, 1, 5);
+    s.standings[0].crashed = 1;
+    assert_eq!(standing_mark(&s, 12, true), RiderMark::Finish);
+    LEADER_FIN_LOCAL_BASE.store(-1, Ordering::Relaxed);
 }
 
 #[test]

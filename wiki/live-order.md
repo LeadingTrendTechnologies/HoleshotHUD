@@ -43,8 +43,12 @@ cannot stick — the previous order is only read for the hysteresis margin.
   republished when *any* rider crosses the line, and that would undo a pass made since the
   pair's own crossing.
 - Do not compare riders more than half a lap apart without knowing where the line is.
+- The same `PAIR_MAX_M` / continuous-motion rule applies to the Dash `~Lapped` pass latch
+  (`note_lapped_by_leader`): an over/under tabletop projection spike must not sticky-latch.
 
 ## Change log
 
+- 2026-09-24 — `~Lapped` pass latch shares `PAIR_MAX_M` and rejects discontinuous leader
+  teleports; see Dash wiki.
 - 2026-08-25 — Added. Passes now show on standings, relative, dash, H-standings, and the
   map/minimap dot labels, crown and ahead/behind rings without waiting for the line.

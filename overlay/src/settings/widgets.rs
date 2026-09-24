@@ -156,7 +156,11 @@ pub(crate) fn open_widget_pane(
         w,
         spec.title,
         spec.subtitle,
-        Some((cfg[spec.id].show, spec.show, "Show on overlay")),
+        Some((
+            cfg[spec.id].show,
+            spec.show,
+            "Show on overlay",
+        )),
         hover,
         hits,
     );
@@ -995,6 +999,18 @@ pub(crate) fn pane_ticker(
                 "Autoscroll",
                 cfg.ticker_autoscroll,
                 Hit::TickerAutoscroll,
+                hover,
+                hits,
+            );
+            y = toggle_row(
+                px,
+                fonts,
+                x,
+                y,
+                w,
+                "Status",
+                cfg.ticker_status,
+                Hit::TickerStatus,
                 hover,
                 hits,
             );

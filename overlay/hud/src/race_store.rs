@@ -235,7 +235,7 @@ fn out_of_race(st: &Standing) -> bool {
 /// Scored and cruising: after the leader takes the flag a cool-down pass must not move
 /// anyone in the results. Reads the latch `build_clock` already set this tick — calling
 /// `leader_finished` / `effective_race_laps` here would move it.
-fn done_racing(st: &Standing) -> bool {
+pub(crate) fn done_racing(st: &Standing) -> bool {
     let base = LEADER_FIN_LOCAL_BASE.load(Ordering::Relaxed);
     base >= 0 && st.num_laps > base
 }
@@ -447,8 +447,13 @@ pub(crate) fn timed_race_flag(s: &Snapshot) -> RaceFlag {
     if is_lap_race(s) || timed_clock_live(s) || prestart(s) || !overtime_active(s) {
         return RaceFlag::None;
     }
+    // Same recovery as `dash_race_flag`: do not keep a latched finish while laps remain.
     if CHECKERED_LATCH.load(Ordering::Relaxed) == 1 {
-        return RaceFlag::Checkered;
+        if extras_started(s) && laps_left(s).is_some_and(|n| n > 0) {
+            CHECKERED_LATCH.store(0, Ordering::Relaxed);
+        } else {
+            return RaceFlag::Checkered;
+        }
     }
     if !extras_started(s) {
         return RaceFlag::None;
@@ -1179,15 +1184,26 @@ fn leader_lap_lead(s: &Snapshot) -> i32 {
 
 fn leader_is_lap_up(s: &Snapshot) -> bool {
     let lead = leader_lap_lead(s);
-    // After the leader takes the flag, +1 completed lap is "they finished, you have
-    // not crossed yet" — you are still on the same last lap, not lapped.
-    let need = if leader_finished(s) { 2 } else { 1 };
+    // After the leader takes the flag, +1 completed lap is usually "they finished,
+    // you have not crossed yet" — same last lap, not lapped (`need = 2`). Timed
+    // extras are different: on `1/2` while they have finished `2/2`, lead is often
+    // only 1 and you are a full extra behind, not on their finishing lap.
+    let need = if leader_finished(s) {
+        if extras_started(s) && raw_overtime_taken(s) < extra_laps(s).max(1) {
+            1
+        } else {
+            2
+        }
+    } else {
+        1
+    };
     if lead >= need {
         return true;
     }
-    // Extras started and you have not taken one: the leader is a lap up even when
-    // the game leaves both `num_laps` on the race lap.
-    !leader_finished(s) && extras_started(s) && raw_overtime_taken(s) == 0 && lead >= 0
+    // Extras started and you have not taken one: the leader is a lap up when they
+    // hold at least one completed lap more. Equal `num_laps` during extras is the
+    // same physical lap — do not arm the pass latch on a mid-pack battle.
+    !leader_finished(s) && extras_started(s) && raw_overtime_taken(s) == 0 && lead >= 1
 }
 
 /// Latch the moment the lap-up leader goes past you. `gap_laps` waits for a line crossing.
@@ -1220,9 +1236,26 @@ fn note_lapped_by_leader(s: &Snapshot) {
         1000.0
     };
     let along = wrap_signed(lp - fp) * len;
+    // Same as live order: centerline projection is only trustworthy nearby. An
+    // over/under tabletop can snap one bike to a wrong spline segment half a lap away.
+    if along.abs() > PAIR_MAX_M {
+        LEADER_BEHIND.store(0, Ordering::Relaxed);
+        LAST_LEAD_FRAC.store((lp * 10_000.0).round() as i32, Ordering::Relaxed);
+        return;
+    }
     let prev = LAST_LEAD_FRAC.load(Ordering::Relaxed);
     LAST_LEAD_FRAC.store((lp * 10_000.0).round() as i32, Ordering::Relaxed);
-    let lead_moved = prev >= 0 && wrap_signed(lp - prev as f32 / 10_000.0) * len > PASS_M;
+    let lead_delta_m = if prev >= 0 {
+        wrap_signed(lp - prev as f32 / 10_000.0) * len
+    } else {
+        0.0
+    };
+    // A real pass is continuous. A tabletop under-path teleport must not count as moving.
+    if lead_delta_m.abs() > PAIR_MAX_M {
+        LEADER_BEHIND.store(0, Ordering::Relaxed);
+        return;
+    }
+    let lead_moved = prev >= 0 && lead_delta_m > PASS_M;
     if along < -PASS_M {
         LEADER_BEHIND.store(1, Ordering::Relaxed);
     } else if along > PASS_M {
@@ -1415,13 +1448,16 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
             return Some(0);
         }
     }
+    // Once armed and counting down, a republish of session length must not snap
+    // the dash back to full race time (07:59 → 08:00). Near-full is a 30 s band, so
+    // the opening minute of an 8:00 race is still "near full" on every tick.
     if !board_dip
-        && saw
         && armed
+        && !in_gate_now
         && last > 0
-        && last + 30_000 < total
+        && last + 1_000 < total
         && near_full
-        && clock > last + 20_000
+        && clock > last
     {
         clock = last;
     }
@@ -1466,11 +1502,9 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
     let leave_gate = in_gate && !gate_clock && !near_full && clock > 180_000;
     let wait_off_gate = in_gate && !gate_clock && near_full;
     let board_restart = in_gate && !post && last > 0 && clock > last + 2_000 && clock <= 180_000;
-    // A later 45s/30s board after 00:10 must stay a countdown. Don't swap in leftover 08:00
-    // until we've actually seen the race clock tick (Maryland 4-lap / 8:00 leftover).
-    let hold_gate_board =
-        gate_clock && !moving(s) && !armed && SAW_SESSION_TIME.load(Ordering::Relaxed) == 0;
-    let gate = gate_clock && !drop_off_gate && !armed && (!board_restart || hold_gate_board);
+    // Timed: first gate board only. After it runs down or jumps up (45s/30s),
+    // show race length — do not re-enter a short countdown.
+    let gate = gate_clock && !drop_off_gate && !armed && !board_restart;
     let race_ticking = !gate_clock
         && last > 180_000
         && clock > 5_000
@@ -1478,7 +1512,7 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
         && last - clock >= 50
         && last - clock < 5_000;
     let waiting_for_race =
-        (post || board_restart) && !armed && !race_ticking && clock <= 180_000 && !hold_gate_board;
+        (post || board_restart) && !armed && !race_ticking && clock <= 180_000;
 
     if drop_off_gate {
         IN_GATE.store(0, Ordering::Relaxed);

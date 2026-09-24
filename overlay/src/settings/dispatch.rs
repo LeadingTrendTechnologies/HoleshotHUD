@@ -50,8 +50,12 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             set_tab(Tab::Profile);
             return;
         }
-        Hit::TabReview => {
-            set_tab(Tab::Review);
+        Hit::ProfileNavOverview => {
+            set_profile_section(ProfileSection::Overview);
+            return;
+        }
+        Hit::ProfileNavMotos => {
+            set_profile_section(ProfileSection::Motos);
             open_live_analyze(true);
             return;
         }
@@ -65,15 +69,9 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             }
             return;
         }
-        Hit::ReviewFilterRace => {
+        Hit::ReviewFilterRanked => {
             if let Some(ui) = UI.lock().unwrap().as_mut() {
-                ui.review_filter = crate::review::ListFilter::Race;
-            }
-            return;
-        }
-        Hit::ReviewFilterPractice => {
-            if let Some(ui) = UI.lock().unwrap().as_mut() {
-                ui.review_filter = crate::review::ListFilter::Practice;
+                ui.review_filter = crate::review::ListFilter::Ranked;
             }
             return;
         }
@@ -85,6 +83,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         }
         Hit::ReviewOpen(id) => {
             if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.motos_list_scroll = ui.scroll;
                 ui.analyze_id = Some(id as i64);
                 ui.analyze_compare = -1;
                 ui.analyze_you_lap = -1;
@@ -113,7 +112,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             if let Some(ui) = UI.lock().unwrap().as_mut() {
                 if ui.analyze_id == Some(id as i64) {
                     ui.analyze_id = None;
-                    ui.scroll = 0.0;
+                    ui.scroll = ui.motos_list_scroll;
                 }
                 if was_live {
                     ui.review_stay_on_list = true;
@@ -124,7 +123,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::ReviewBack => {
             if let Some(ui) = UI.lock().unwrap().as_mut() {
                 ui.analyze_id = None;
-                ui.scroll = 0.0;
+                ui.scroll = ui.motos_list_scroll;
                 ui.review_stay_on_list = true;
             }
             return;
@@ -137,11 +136,6 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             });
             if !now_on {
                 crate::review::tick(&mxbo_hud::shm::Snapshot::default(), false);
-                if let Some(ui) = UI.lock().unwrap().as_mut() {
-                    if ui.tab == Tab::Profile {
-                        ui.tab = Tab::Review;
-                    }
-                }
             }
             return;
         }
@@ -418,6 +412,10 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         }
         Hit::SettingsKeyOpen => {
             toggle_drop(Drop::SettingsKey);
+            return;
+        }
+        Hit::ThemeOpen => {
+            toggle_drop(Drop::Theme);
             return;
         }
         Hit::StanceBindOpen => {
@@ -712,6 +710,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::StanceShowSit => c.stance_show_sit = !c.stance_show_sit,
         Hit::TickerTitle => c.ticker_title = !c.ticker_title,
         Hit::TickerAutoscroll => c.ticker_autoscroll = !c.ticker_autoscroll,
+        Hit::TickerStatus => c.ticker_status = !c.ticker_status,
         Hit::StStripe => c.st_stripe = !c.st_stripe,
         Hit::RelStripe => c.rel_stripe = !c.rel_stripe,
         Hit::StPlaque => c.st_plaque = !c.st_plaque,
@@ -738,7 +737,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::RelBike => c.rel_bike = !c.rel_bike,
         Hit::RelPenalty => c.rel_penalty = !c.rel_penalty,
         Hit::RelInterval => c.rel_interval = !c.rel_interval,
-        Hit::RelCrashed => c.rel_crashed = !c.rel_crashed,
+        Hit::RelStatus => c.rel_status = !c.rel_status,
         Hit::RelBest => c.rel_best = !c.rel_best,
         Hit::RelLast => c.rel_last = !c.rel_last,
         Hit::MapOthers => c.map_others = !c.map_others,
@@ -785,6 +784,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::RelPlaqueTextWhite => c.rel_plaque_text = TableText::White,
         Hit::RelPlaqueTextBlack => c.rel_plaque_text = TableText::Black,
         Hit::SettingsKeyPick(key) => c.settings_key = key,
+        Hit::ThemePick(theme) => c.settings_theme = theme,
         Hit::StanceModePick(mode) => c.stance_mode = mode,
         Hit::StanceStylePick(style) => c.stance_style = style,
         Hit::LeanStylePick(style) => c.lean_style = style,
@@ -823,8 +823,9 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::AppStartup
         | Hit::AppLabs
         | Hit::AppUpdates
-        | Hit::TabReview
         | Hit::TabProfile
+        | Hit::ProfileNavOverview
+        | Hit::ProfileNavMotos
         | Hit::TabFeedback
         | Hit::ProfileAllTime
         | Hit::ProfileTwoWeeks
@@ -876,6 +877,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::StPlaqueTextOpen
         | Hit::RelPlaqueTextOpen
         | Hit::SettingsKeyOpen
+        | Hit::ThemeOpen
         | Hit::StanceBindOpen
         | Hit::StanceModeOpen
         | Hit::StanceStyleOpen
@@ -943,8 +945,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::StanceReset
         | Hit::TrackPbClear
         | Hit::ReviewFilterAll
-        | Hit::ReviewFilterRace
-        | Hit::ReviewFilterPractice
+        | Hit::ReviewFilterRanked
         | Hit::ReviewFilterSaved
         | Hit::ReviewOpen(_)
         | Hit::ReviewKeep(_)
@@ -959,6 +960,12 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::AnalyzeMap
         | Hit::AnalyzeFollow => {}
     });
+    if matches!(id, Hit::ThemePick(_)) {
+        if let Some(host) = UI.lock().unwrap().as_ref().map(|u| u.host) {
+            refresh_palette();
+            sync_titlebar(host);
+        }
+    }
     if id == Hit::FeatureSector && !with_config(|c| c.experimental_unlocked()) {
         let on_labs = UI.lock().unwrap().as_ref().is_some_and(|u| u.tab.is_labs());
         if on_labs {
@@ -1007,6 +1014,7 @@ pub(crate) fn open_live_analyze(force: bool) {
         ui.analyze_pan_x = 0.0;
         ui.analyze_pan_z = 0.0;
         ui.analyze_follow = false;
+        ui.motos_list_scroll = ui.scroll;
         ui.scroll = 0.0;
     }
     reset_analyze_scrub();

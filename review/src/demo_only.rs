@@ -13,7 +13,10 @@ pub struct SessionRow {
     pub id: i64,
     pub started: i64,
     pub track: String,
+    pub server_name: String,
+    pub ranked: bool,
     pub rider_count: i32,
+    pub your_position: i32,
     pub your_best_ms: i32,
     pub fastest_name: String,
     pub fastest_ms: i32,
@@ -21,15 +24,10 @@ pub struct SessionRow {
     pub you_won: bool,
 }
 
-pub fn you_won_race(position: i32, rider_count: i32) -> bool {
-    position == 1 && rider_count > 1
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ListFilter {
     All,
-    Race,
-    Practice,
+    Ranked,
     Saved,
 }
 
@@ -41,6 +39,8 @@ pub struct RiderRow {
     pub position: i32,
     pub best_ms: i32,
     pub last_ms: i32,
+    pub state: i32,
+    pub penalty_ms: i32,
     pub has_line: bool,
 }
 
@@ -132,7 +132,10 @@ pub fn demo_session() -> SessionDetail {
             id: 1,
             started: now - 40 * 60,
             track: "Hangtown".into(),
+            server_name: String::new(),
+            ranked: false,
             rider_count: 12,
+            your_position: 3,
             your_best_ms: 113_080,
             fastest_name: "Cole".into(),
             fastest_ms: 111_420,
@@ -151,6 +154,8 @@ pub fn demo_session() -> SessionDetail {
                 position: 2,
                 best_ms: 112_040,
                 last_ms: 112_460,
+                state: 0,
+                penalty_ms: 0,
                 has_line: true,
             },
             RiderRow {
@@ -160,6 +165,8 @@ pub fn demo_session() -> SessionDetail {
                 position: 3,
                 best_ms: 113_080,
                 last_ms: 113_500,
+                state: 0,
+                penalty_ms: 0,
                 has_line: true,
             },
         ],

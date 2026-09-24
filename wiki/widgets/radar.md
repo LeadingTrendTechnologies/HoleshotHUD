@@ -20,7 +20,7 @@ Proximity blips beside and behind you. Settings subtitle: “Riders beside and b
 
 `radar_in_view`: rear blips if `radar_rear` and behind; side blips if `radar_sides` and `|lat| > 0.4`. You are a white bike silhouette near the top (`radar_you_frac` from the 3 m forward cap vs range), with a night-ink outline so the mark still reads on a light sky when the panel is glass.
 
-Blips heat by distance (closer = larger, more orange). Farther blips draw first so near ones sit on top. Colors follow the Range Arcs mock: close `#FA7602`, far cream `#E4C670`, both opaque with a same-hue glow (no dark halo). Size is `0.020 + heat×0.014` of the widget, clamped 7–15 px. Crashed riders (and pit / DNS / out / DSQ) use the same `draw_state_mark` triangle as map/minimap — crash is the common one on radar. You get the mark on the white bike if you are down.
+Blips heat by distance (closer = larger, more orange). Farther blips draw first so near ones sit on top. Colors follow the Range Arcs mock: close `#FA7602`, far cream `#E4C670`, both opaque with a same-hue glow (no dark halo). Size is `0.020 + heat×0.014` of the widget, clamped 7–15 px. When `lap_rel` is set (same rules as map / relative — see [widgets.md](../widgets.md) § Shared rider colors), a **blue** or **red** ring strokes just outside the solid fill; heat fill stays. Crashed riders (and pit / DNS / out / DSQ) use the same `draw_state_mark` triangle as map/minimap — crash is the common one on radar. You get the mark on the white bike if you are down.
 
 **Range rings** (default on) can be toggled in settings / the demo. Off: panel, bike, and blips only. Stroke and the two outer labels lift with panel opacity so they still read on a solid `#0E0E10` plaque (100% background). Rings are always 3 / 6 / 12 m. Raising **Range** past 12 m leaves those rings in place and puts farther blips outside the 12 m ring.
 
@@ -34,6 +34,9 @@ Local position is predicted with `age`, same as map/minimap. Requires telemetry;
 - Default `radar_range` is 12 m so the 12 m ring still fills the plaque. Past 12 m, only the view grows so extra dots sit outside that ring.
 - Panel opacity default is 86, unlike map/minimap.
 - Nearby crashed riders keep the map crash triangle (`\u{f071}`), not a color-only blip.
+- Lapper rings only for `lap_rel` within catch span (blue / red, either side); heat fill stays orange→cream. Do not recolor the whole blip.
+- Red rings only when you gained a lap on them (pairwise). Leader lapping someone behind you is not red.
+- Same-race S/F straddles must not get lapper rings. `lap_rel` uses continuous progress when `num_laps` differ.
 - Do not draw the old orange side/rear zone wedges again; the panel is range arcs + blips + your bike.
 - Range rings are circles fitted inside the plaque (at 12 m the 12 m ring touches the sides or the bottom, not stretched to fill height). Past 12 m, that extra distance is what touches the edge. The two outer rings sit in a gap on the stroke. Do not draw ovals, a sci-fi sweep, or a compass.
 - Range rings default on; `radar_rings` off still draws the panel, bike, and blips.
@@ -42,6 +45,10 @@ Local position is predicted with `age`, same as map/minimap. Requires telemetry;
 
 ## Change log
 
+- 2026-09-24 — Red rings are pairwise only: leader lapping someone behind you is not red.
+- 2026-09-24 — Same-race S/F straddles no longer get blue/red lapper rings (`lap_rel` continuous progress when `gap_laps` match).
+- 2026-09-22 — Lapper rings follow sticky `lap_rel` (hold through a pass while nearby).
+- 2026-09-22 — Lapper / lapped closing blips get a blue or red ring (`lap_rel`); heat fill unchanged.
 - Overlay radar added as a separate widget from map/minimap (side + rear only).
 - 0.1.8 — Hidden until **Show on overlay**.
 - 2026-08-18 — Wiki created. Stretch filter and meter caps documented.

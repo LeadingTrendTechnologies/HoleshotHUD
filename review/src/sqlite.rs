@@ -19,7 +19,12 @@ pub struct SessionRow {
     pub id: i64,
     pub started: i64,
     pub track: String,
+    /// Online server name from SHM (empty offline / unknown). Used for Ranked chip / trophy.
+    pub server_name: String,
+    /// True when `server_name` contains a `#lobby_id` present in `ranked_servers`.
+    pub ranked: bool,
     pub rider_count: i32,
+    pub your_position: i32,
     pub your_best_ms: i32,
     pub fastest_name: String,
     pub fastest_ms: i32,
@@ -27,15 +32,10 @@ pub struct SessionRow {
     pub you_won: bool,
 }
 
-pub fn you_won_race(position: i32, rider_count: i32) -> bool {
-    position == 1 && rider_count > 1
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ListFilter {
     All,
-    Race,
-    Practice,
+    Ranked,
     Saved,
 }
 
@@ -47,6 +47,8 @@ pub struct RiderRow {
     pub position: i32,
     pub best_ms: i32,
     pub last_ms: i32,
+    pub state: i32,
+    pub penalty_ms: i32,
     #[allow(dead_code)]
     pub has_line: bool,
 }
@@ -164,6 +166,9 @@ fn apply_field(d: &mut SessionDetail, s: &Snapshot, you: i32, fastest: i32) {
         d.poly = next;
     }
     d.row.rider_count = n as i32;
+    d.row.server_name = cstr(&s.server_name);
+    d.row.ranked = lobby_id_from_server_name(&d.row.server_name)
+        .is_some_and(|id| RANKED_LOBBY_IDS.contains(&id));
     let prev: Vec<(i32, bool, i32)> = d
         .riders
         .iter()
@@ -193,6 +198,8 @@ fn apply_field(d: &mut SessionDetail, s: &Snapshot, you: i32, fastest: i32) {
                 position: row.position,
                 best_ms,
                 last_ms: row.last_lap_ms,
+                state: row.state,
+                penalty_ms: row.penalty_ms.max(0),
                 has_line: prev
                     .iter()
                     .find(|(n, _, _)| *n == row.race_num)
@@ -264,6 +271,81 @@ pub fn reset() {
 pub fn serial() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: Mutex<()> = Mutex::new(());
     LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Known MXB-Ranked lobby ids (allowlist for the Motos Ranked chip).
+const RANKED_LOBBY_IDS: &[i64] = &[
+    105004, 105010, 105001, 105005, 105019, 105020, 105014, 105017, 105013, 104785, 104847,
+    104840, 104982, 104986, 105016, 105009, 104964, 104981, 105012, 105011, 104819, 104945,
+    104999, 104996, 105008, 105018, 105015,
+];
+
+/// First `#` + digits in a server name (e.g. `… | #105019`).
+pub fn lobby_id_from_server_name(s: &str) -> Option<i64> {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'#' {
+            let start = i + 1;
+            let mut end = start;
+            while end < bytes.len() && bytes[end].is_ascii_digit() {
+                end += 1;
+            }
+            if end > start {
+                return s[start..end].parse().ok();
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+fn ranked_lobby_set(c: &Connection) -> std::collections::HashSet<i64> {
+    let mut set = std::collections::HashSet::new();
+    if let Ok(mut stmt) = c.prepare("SELECT lobby_id FROM ranked_servers") {
+        if let Ok(rows) = stmt.query_map([], |r| r.get::<_, i64>(0)) {
+            for id in rows.flatten() {
+                set.insert(id);
+            }
+        }
+    }
+    if set.is_empty() {
+        set.extend(RANKED_LOBBY_IDS.iter().copied());
+    }
+    set
+}
+
+fn server_name_is_ranked(ids: &std::collections::HashSet<i64>, server_name: &str) -> bool {
+    lobby_id_from_server_name(server_name).is_some_and(|id| ids.contains(&id))
+}
+
+fn seed_ranked_servers(c: &Connection) {
+    let _ = c.execute_batch(
+        "CREATE TABLE IF NOT EXISTS ranked_servers (
+           lobby_id INTEGER PRIMARY KEY,
+           host TEXT NOT NULL DEFAULT '',
+           series TEXT NOT NULL DEFAULT '',
+           class TEXT NOT NULL DEFAULT '',
+           split TEXT NOT NULL DEFAULT '',
+           region TEXT NOT NULL DEFAULT ''
+         );",
+    );
+    for id in RANKED_LOBBY_IDS {
+        let _ = c.execute(
+            "INSERT OR IGNORE INTO ranked_servers (lobby_id) VALUES (?1)",
+            params![id],
+        );
+    }
+    // Freebies 250 S3- regional lobbies (metadata known).
+    for (id, region) in [(105019i64, "EU"), (105020, "NA"), (105005, "NZ")] {
+        let _ = c.execute(
+            "UPDATE ranked_servers
+             SET host = 'MXB-Ranked.com', series = 'MX Freebies', class = '250',
+                 split = 'S3-', region = ?1
+             WHERE lobby_id = ?2",
+            params![region, id],
+        );
+    }
 }
 
 pub fn init(dir: PathBuf) {
@@ -341,10 +423,30 @@ pub fn init(dir: PathBuf) {
     }
     let _ = conn.execute("ALTER TABLE sessions ADD COLUMN holeshot INTEGER", []);
     let _ = conn.execute(
+        "ALTER TABLE sessions ADD COLUMN server_name TEXT NOT NULL DEFAULT ''",
+        [],
+    );
+    let _ = conn.execute(
         "ALTER TABLE profile_races ADD COLUMN name TEXT NOT NULL DEFAULT ''",
         [],
     );
     let _ = conn.execute("ALTER TABLE profile_races ADD COLUMN holeshot INTEGER", []);
+    let _ = conn.execute(
+        "ALTER TABLE riders ADD COLUMN state INTEGER NOT NULL DEFAULT 0",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE riders ADD COLUMN penalty_ms INTEGER NOT NULL DEFAULT 0",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE profile_races ADD COLUMN state INTEGER NOT NULL DEFAULT 0",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE profile_races ADD COLUMN penalty_ms INTEGER NOT NULL DEFAULT 0",
+        [],
+    );
     let _ = conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS profile_races (
            session_id INTEGER PRIMARY KEY,
@@ -359,13 +461,16 @@ pub fn init(dir: PathBuf) {
            air_hot INTEGER NOT NULL,
            air_n INTEGER NOT NULL,
            name TEXT NOT NULL DEFAULT '',
-           holeshot INTEGER
+           holeshot INTEGER,
+           state INTEGER NOT NULL DEFAULT 0,
+           penalty_ms INTEGER NOT NULL DEFAULT 0
          );
          CREATE TABLE IF NOT EXISTS profile_meta (
            k TEXT PRIMARY KEY,
            v INTEGER NOT NULL
          );",
     );
+    seed_ranked_servers(&conn);
     let mut st = live();
     st.conn = Some(conn);
     drop(st);
@@ -385,38 +490,63 @@ pub fn tick(s: &Snapshot, in_session: bool) {
         }
         return;
     }
-    location_tape::tick(s);
-    let commits = location_tape::take_commits();
     let track = cstr(&s.track_name);
     if track.is_empty() {
         return;
     }
+    // Practice is never stored; close any open race visit and leave Motos idle.
+    if mxbo_hud::is_practice_session(s) {
+        let mut st = live();
+        if let Some(open) = st.live.take() {
+            if let Some(c) = st.conn.as_ref() {
+                if open.practice {
+                    wipe_session(c, open.id);
+                } else {
+                    finish_visit(c, open.id);
+                    compact_and_prune(c);
+                }
+            }
+            location_tape::reset();
+            bump(&mut st, Some(open.id));
+        } else {
+            location_tape::reset();
+        }
+        return;
+    }
+    location_tape::tick(s);
+    let commits = location_tape::take_commits();
     let you = if s.local_race_num >= 0 {
         s.local_race_num
     } else {
         s.focus_race_num
     };
     let fastest = location_tape::fastest_num();
-    let practice = mxbo_hud::is_practice_session(s);
     {
         let mut st = live();
         let need_new = match &st.live {
             None => true,
-            Some(l) => l.track != track || l.practice != practice,
+            Some(l) => l.track != track || l.practice,
         };
         if need_new {
             if let Some(old) = st.live.take() {
                 if let Some(c) = st.conn.as_ref() {
-                    finish_visit(c, old.id);
+                    if old.practice {
+                        wipe_session(c, old.id);
+                    } else {
+                        finish_visit(c, old.id);
+                    }
                 }
                 bump(&mut st, Some(old.id));
             }
             if let Some(c) = st.conn.as_ref() {
-                if let Ok(id) = open_session(c, &track, s.session_kind, you, fastest, practice) {
+                let server = cstr(&s.server_name);
+                if let Ok(id) =
+                    open_session(c, &track, s.session_kind, you, fastest, false, &server)
+                {
                     st.live = Some(Live {
                         id,
                         track: track.clone(),
-                        practice,
+                        practice: false,
                     });
                     st.field_at = None;
                     st.field_key = None;
@@ -438,7 +568,7 @@ pub fn tick(s: &Snapshot, in_session: bool) {
             for lap in &commits {
                 let _ = upsert_lap(c, id, lap);
             }
-            note_holeshot(c, id, s, you, practice);
+            note_holeshot(c, id, s, you, false);
         }
         if due && st.conn.is_some() && id.is_some() {
             st.field_at = Some(Instant::now());
@@ -460,34 +590,15 @@ pub fn list(filter: ListFilter) -> Vec<SessionRow> {
         return Vec::new();
     };
     let sql = match filter {
-        ListFilter::All => {
+        ListFilter::All | ListFilter::Ranked => {
             "SELECT s.id, s.started, s.track, s.rider_count, s.fastest_race_num, s.your_race_num, s.kept,
                     (SELECT MIN(best_ms) FROM riders r WHERE r.session_id = s.id AND r.race_num = s.your_race_num),
                     (SELECT name FROM riders r WHERE r.session_id = s.id AND r.race_num = s.fastest_race_num),
                     (SELECT MIN(best_ms) FROM riders r WHERE r.session_id = s.id AND r.race_num = s.fastest_race_num),
-                    (SELECT position FROM riders r WHERE r.session_id = s.id AND r.race_num = s.your_race_num)
-             FROM sessions s
-             WHERE EXISTS (SELECT 1 FROM laps l WHERE l.session_id = s.id)
-             ORDER BY s.started DESC LIMIT 200"
-        }
-        ListFilter::Race => {
-            "SELECT s.id, s.started, s.track, s.rider_count, s.fastest_race_num, s.your_race_num, s.kept,
-                    (SELECT MIN(best_ms) FROM riders r WHERE r.session_id = s.id AND r.race_num = s.your_race_num),
-                    (SELECT name FROM riders r WHERE r.session_id = s.id AND r.race_num = s.fastest_race_num),
-                    (SELECT MIN(best_ms) FROM riders r WHERE r.session_id = s.id AND r.race_num = s.fastest_race_num),
-                    (SELECT position FROM riders r WHERE r.session_id = s.id AND r.race_num = s.your_race_num)
+                    (SELECT position FROM riders r WHERE r.session_id = s.id AND r.race_num = s.your_race_num),
+                    s.server_name
              FROM sessions s
              WHERE s.practice = 0 AND EXISTS (SELECT 1 FROM laps l WHERE l.session_id = s.id)
-             ORDER BY s.started DESC LIMIT 200"
-        }
-        ListFilter::Practice => {
-            "SELECT s.id, s.started, s.track, s.rider_count, s.fastest_race_num, s.your_race_num, s.kept,
-                    (SELECT MIN(best_ms) FROM riders r WHERE r.session_id = s.id AND r.race_num = s.your_race_num),
-                    (SELECT name FROM riders r WHERE r.session_id = s.id AND r.race_num = s.fastest_race_num),
-                    (SELECT MIN(best_ms) FROM riders r WHERE r.session_id = s.id AND r.race_num = s.fastest_race_num),
-                    (SELECT position FROM riders r WHERE r.session_id = s.id AND r.race_num = s.your_race_num)
-             FROM sessions s
-             WHERE s.practice = 1 AND EXISTS (SELECT 1 FROM laps l WHERE l.session_id = s.id)
              ORDER BY s.started DESC LIMIT 200"
         }
         ListFilter::Saved => {
@@ -495,9 +606,10 @@ pub fn list(filter: ListFilter) -> Vec<SessionRow> {
                     (SELECT MIN(best_ms) FROM riders r WHERE r.session_id = s.id AND r.race_num = s.your_race_num),
                     (SELECT name FROM riders r WHERE r.session_id = s.id AND r.race_num = s.fastest_race_num),
                     (SELECT MIN(best_ms) FROM riders r WHERE r.session_id = s.id AND r.race_num = s.fastest_race_num),
-                    (SELECT position FROM riders r WHERE r.session_id = s.id AND r.race_num = s.your_race_num)
+                    (SELECT position FROM riders r WHERE r.session_id = s.id AND r.race_num = s.your_race_num),
+                    s.server_name
              FROM sessions s
-             WHERE s.kept = 1 AND EXISTS (SELECT 1 FROM laps l WHERE l.session_id = s.id)
+             WHERE s.kept = 1 AND s.practice = 0 AND EXISTS (SELECT 1 FROM laps l WHERE l.session_id = s.id)
              ORDER BY s.started DESC LIMIT 200"
         }
     };
@@ -510,17 +622,58 @@ pub fn list(filter: ListFilter) -> Vec<SessionRow> {
             started: row.get(1)?,
             track: row.get(2)?,
             rider_count: row.get(3)?,
+            your_position: row.get::<_, Option<i32>>(10)?.unwrap_or(0),
             fastest_name: row.get::<_, Option<String>>(8)?.unwrap_or_default(),
             fastest_ms: row.get::<_, Option<i32>>(9)?.unwrap_or(0),
             your_best_ms: row.get::<_, Option<i32>>(7)?.unwrap_or(0),
             kept: row.get::<_, i32>(6)? != 0,
-            you_won: you_won_race(row.get::<_, Option<i32>>(10)?.unwrap_or(0), row.get(3)?),
+            you_won: false,
+            server_name: row.get::<_, Option<String>>(11)?.unwrap_or_default(),
+            ranked: false,
         })
     });
-    match rows {
+    let mut rows: Vec<SessionRow> = match rows {
         Ok(it) => it.filter_map(|r| r.ok()).collect(),
-        Err(_) => Vec::new(),
+        Err(_) => return Vec::new(),
+    };
+    let ranked_ids = ranked_lobby_set(c);
+    for row in &mut rows {
+        row.you_won = session_you_won(c, row.id, row.rider_count);
+        row.ranked = server_name_is_ranked(&ranked_ids, &row.server_name);
     }
+    if filter == ListFilter::Ranked {
+        rows.retain(|row| row.ranked);
+    }
+    rows
+}
+
+fn session_you_won(c: &Connection, id: i64, rider_count: i32) -> bool {
+    let Ok((practice, kind, your_race_num)) = c.query_row(
+        "SELECT practice, kind, your_race_num FROM sessions WHERE id = ?1",
+        params![id],
+        |r| Ok((r.get::<_, i32>(0)?, r.get::<_, i32>(1)?, r.get::<_, i32>(2)?)),
+    ) else {
+        return false;
+    };
+    let position: i32 = c
+        .query_row(
+            "SELECT position FROM riders WHERE session_id = ?1 AND race_num = ?2",
+            params![id, your_race_num],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    let has_race_lap: bool = c
+        .query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM laps
+                WHERE session_id = ?1 AND race_num = ?2 AND COALESCE(warmup,0)=0 AND ms > 0
+             )",
+            params![id, your_race_num],
+            |r| r.get::<_, i32>(0),
+        )
+        .ok()
+        .is_some_and(|n| n != 0);
+    crate::counts_as_profile_win(practice != 0, kind, rider_count, position, has_race_lap)
 }
 
 static WEB_DEMO: std::sync::OnceLock<SessionDetail> = std::sync::OnceLock::new();
@@ -554,7 +707,8 @@ pub fn load(id: i64) -> Option<Arc<SessionDetail>> {
 fn load_from(c: &Connection, id: i64) -> Option<SessionDetail> {
     let row = c
         .query_row(
-            "SELECT id, started, track, rider_count, fastest_race_num, your_race_num, kept, poly, sf_meters
+            "SELECT id, started, track, rider_count, fastest_race_num, your_race_num, kept, poly, sf_meters,
+                    practice, kind, server_name
              FROM sessions WHERE id = ?1",
             params![id],
             |r| {
@@ -564,26 +718,32 @@ fn load_from(c: &Connection, id: i64) -> Option<SessionDetail> {
                         started: r.get(1)?,
                         track: r.get(2)?,
                         rider_count: r.get(3)?,
+                        your_position: 0,
                         fastest_name: String::new(),
                         fastest_ms: 0,
                         your_best_ms: 0,
                         kept: r.get::<_, i32>(6)? != 0,
                         you_won: false,
+                        server_name: r.get::<_, Option<String>>(11)?.unwrap_or_default(),
+                        ranked: false,
                     },
                     r.get::<_, i32>(4)?,
                     r.get::<_, i32>(5)?,
                     r.get::<_, Option<Vec<u8>>>(7)?,
                     r.get::<_, f32>(8).unwrap_or(-1.0),
+                    r.get::<_, i32>(9).unwrap_or(0) != 0,
+                    r.get::<_, i32>(10).unwrap_or(0),
                 ))
             },
         )
         .optional()
         .ok()
         .flatten()?;
-    let (mut row, fastest_race_num, your_race_num, poly_blob, sf_meters) = row;
+    let (mut row, fastest_race_num, your_race_num, poly_blob, sf_meters, practice, kind) = row;
+    row.ranked = server_name_is_ranked(&ranked_lobby_set(c), &row.server_name);
     let mut riders = Vec::new();
     if let Ok(mut stmt) = c.prepare(
-        "SELECT race_num, name, bike, position, best_ms, last_ms,
+        "SELECT race_num, name, bike, position, best_ms, last_ms, state, penalty_ms,
                 EXISTS(SELECT 1 FROM laps l WHERE l.session_id = riders.session_id AND l.race_num = riders.race_num)
          FROM riders WHERE session_id = ?1 ORDER BY position, race_num",
     ) {
@@ -595,7 +755,9 @@ fn load_from(c: &Connection, id: i64) -> Option<SessionDetail> {
                 position: r.get(3)?,
                 best_ms: r.get(4)?,
                 last_ms: r.get(5)?,
-                has_line: r.get::<_, i32>(6)? != 0,
+                state: r.get::<_, i32>(6).unwrap_or(0),
+                penalty_ms: r.get::<_, i32>(7).unwrap_or(0),
+                has_line: r.get::<_, i32>(8)? != 0,
             })
         }) {
             riders = it.filter_map(|r| r.ok()).collect();
@@ -607,7 +769,7 @@ fn load_from(c: &Connection, id: i64) -> Option<SessionDetail> {
     }
     if let Some(y) = riders.iter().find(|r| r.race_num == your_race_num) {
         row.your_best_ms = y.best_ms;
-        row.you_won = you_won_race(y.position, row.rider_count);
+        row.your_position = y.position;
     }
     let mut laps = Vec::new();
     if let Ok(mut stmt) = c.prepare(
@@ -655,6 +817,18 @@ fn load_from(c: &Connection, id: i64) -> Option<SessionDetail> {
                 })
                 .collect();
         }
+    }
+    if let Some(y) = riders.iter().find(|r| r.race_num == your_race_num) {
+        let has_race_lap = laps
+            .iter()
+            .any(|l| l.race_num == your_race_num && !l.warmup && l.lap_ms > 0);
+        row.you_won = crate::counts_as_profile_win(
+            practice,
+            kind,
+            row.rider_count,
+            y.position,
+            has_race_lap,
+        );
     }
     Some(SessionDetail {
         row,
@@ -760,14 +934,7 @@ pub fn set_kept(id: i64, kept: bool) {
 pub fn delete(id: i64) {
     let mut st = live();
     if let Some(c) = st.conn.as_ref() {
-        let _ = c.execute("DELETE FROM crashes WHERE session_id = ?1", params![id]);
-        let _ = c.execute("DELETE FROM riders WHERE session_id = ?1", params![id]);
-        let _ = c.execute("DELETE FROM laps WHERE session_id = ?1", params![id]);
-        let _ = c.execute(
-            "DELETE FROM profile_races WHERE session_id = ?1",
-            params![id],
-        );
-        let _ = c.execute("DELETE FROM sessions WHERE id = ?1", params![id]);
+        wipe_session(c, id);
     }
     if st.live.as_ref().is_some_and(|l| l.id == id) {
         st.live = None;
@@ -810,6 +977,7 @@ pub fn clear_motos() {
 pub fn prune() {
     let mut st = live();
     if let Some(c) = st.conn.as_ref() {
+        purge_practice(c);
         compact_and_prune(c);
     }
     let cached = st.cached.as_ref().map(|(id, _, _)| *id);
@@ -1078,6 +1246,8 @@ pub fn demo_session() -> SessionDetail {
             position: 1,
             best_ms: 111_420,
             last_ms: 111_840,
+            state: 0,
+            penalty_ms: 0,
             has_line: true,
         },
         RiderRow {
@@ -1087,6 +1257,8 @@ pub fn demo_session() -> SessionDetail {
             position: 3,
             best_ms: 113_080,
             last_ms: 113_500,
+            state: 0,
+            penalty_ms: 0,
             has_line: true,
         },
         RiderRow {
@@ -1096,6 +1268,8 @@ pub fn demo_session() -> SessionDetail {
             position: 4,
             best_ms: 114_210,
             last_ms: 114_630,
+            state: 0,
+            penalty_ms: 0,
             has_line: false,
         },
         RiderRow {
@@ -1105,6 +1279,8 @@ pub fn demo_session() -> SessionDetail {
             position: 2,
             best_ms: 112_040,
             last_ms: 112_460,
+            state: 0,
+            penalty_ms: 0,
             has_line: true,
         },
     ];
@@ -1137,7 +1313,10 @@ pub fn demo_session() -> SessionDetail {
             id: 1,
             started: now - 40 * 60,
             track: "Hangtown".into(),
+            server_name: String::new(),
+            ranked: false,
             rider_count: 12,
+            your_position: 3,
             your_best_ms: 113_080,
             fastest_name: "Cole".into(),
             fastest_ms: 111_420,
@@ -1223,6 +1402,7 @@ fn open_session(
     you: i32,
     fastest: i32,
     practice: bool,
+    server_name: &str,
 ) -> rusqlite::Result<i64> {
     let recent = c
         .query_row(
@@ -1233,10 +1413,16 @@ fn open_session(
         .optional()?;
     if let Some((id, started, was_practice)) = recent {
         if now_secs() - started <= RESUME_SECS && was_practice == practice {
+            if !server_name.is_empty() {
+                let _ = c.execute(
+                    "UPDATE sessions SET server_name = ?1 WHERE id = ?2 AND server_name = ''",
+                    params![server_name, id],
+                );
+            }
             return Ok(id);
         }
     }
-    insert_typed(c, track, kind, you, fastest, practice)
+    insert_typed(c, track, kind, you, fastest, practice, server_name)
 }
 
 #[cfg(test)]
@@ -1247,7 +1433,7 @@ fn insert_session(
     you: i32,
     fastest: i32,
 ) -> rusqlite::Result<i64> {
-    insert_typed(c, track, kind, you, fastest, false)
+    insert_typed(c, track, kind, you, fastest, false, "")
 }
 
 fn insert_typed(
@@ -1257,10 +1443,20 @@ fn insert_typed(
     you: i32,
     fastest: i32,
     practice: bool,
+    server_name: &str,
 ) -> rusqlite::Result<i64> {
     c.execute(
-        "INSERT INTO sessions (started, track, kind, your_race_num, fastest_race_num, practice) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![now_secs(), track, kind, you, fastest, if practice { 1 } else { 0 }],
+        "INSERT INTO sessions (started, track, kind, your_race_num, fastest_race_num, practice, server_name)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            now_secs(),
+            track,
+            kind,
+            you,
+            fastest,
+            if practice { 1 } else { 0 },
+            server_name
+        ],
     )?;
     Ok(c.last_insert_rowid())
 }
@@ -1273,6 +1469,32 @@ fn session_has_laps(c: &Connection, id: i64) -> bool {
     )
     .ok()
     .is_some_and(|n| n != 0)
+}
+
+fn wipe_session(c: &Connection, id: i64) {
+    let _ = c.execute("DELETE FROM crashes WHERE session_id = ?1", params![id]);
+    let _ = c.execute("DELETE FROM riders WHERE session_id = ?1", params![id]);
+    let _ = c.execute("DELETE FROM laps WHERE session_id = ?1", params![id]);
+    let _ = c.execute(
+        "DELETE FROM profile_races WHERE session_id = ?1",
+        params![id],
+    );
+    let _ = c.execute("DELETE FROM sessions WHERE id = ?1", params![id]);
+}
+
+fn purge_practice(c: &Connection) {
+    let ids: Vec<i64> = c
+        .prepare("SELECT id FROM sessions WHERE practice = 1")
+        .ok()
+        .and_then(|mut stmt| {
+            stmt.query_map([], |r| r.get(0))
+                .ok()
+                .map(|it| it.filter_map(|r| r.ok()).collect())
+        })
+        .unwrap_or_default();
+    for id in ids {
+        wipe_session(c, id);
+    }
 }
 
 fn delete_if_empty(c: &Connection, id: i64) {
@@ -1319,7 +1541,7 @@ fn upsert_field(
         .standing_count
         .clamp(0, mxbo_hud::shm::MAX_STANDINGS as i32) as usize;
     c.execute(
-        "UPDATE sessions SET rider_count = ?1, your_race_num = ?2, fastest_race_num = ?3, poly = ?4, sf_meters = ?5, practice = ?6 WHERE id = ?7",
+        "UPDATE sessions SET rider_count = ?1, your_race_num = ?2, fastest_race_num = ?3, poly = ?4, sf_meters = ?5, practice = ?6, server_name = ?7 WHERE id = ?8",
         params![
             n as i32,
             you,
@@ -1327,6 +1549,7 @@ fn upsert_field(
             pack_poly(s),
             s.sf_meters,
             if mxbo_hud::is_practice_session(s) { 1 } else { 0 },
+            cstr(&s.server_name),
             id
         ],
     )?;
@@ -1335,14 +1558,16 @@ fn upsert_field(
             continue;
         }
         c.execute(
-            "INSERT INTO riders (session_id, race_num, name, bike, position, best_ms, last_ms)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "INSERT INTO riders (session_id, race_num, name, bike, position, best_ms, last_ms, state, penalty_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
              ON CONFLICT(session_id, race_num) DO UPDATE SET
                name = excluded.name, bike = excluded.bike, position = excluded.position,
                best_ms = CASE
                  WHEN excluded.best_ms > 0 AND (riders.best_ms = 0 OR excluded.best_ms < riders.best_ms)
                  THEN excluded.best_ms ELSE riders.best_ms END,
-               last_ms = excluded.last_ms",
+               last_ms = excluded.last_ms,
+               state = excluded.state,
+               penalty_ms = excluded.penalty_ms",
             params![
                 id,
                 row.race_num,
@@ -1350,7 +1575,9 @@ fn upsert_field(
                 cstr(&row.bike),
                 row.position,
                 row.best_lap_ms,
-                row.last_lap_ms
+                row.last_lap_ms,
+                row.state,
+                row.penalty_ms.max(0)
             ],
         )?;
     }
@@ -1525,8 +1752,8 @@ fn upsert_profile_race(c: &Connection, id: i64) {
     let _ = c.execute(
         "INSERT INTO profile_races (
             session_id, started, rider_count, position, your_best_ms, fastest_ms,
-            laps, attack_hot, attack_n, air_hot, air_n, name, holeshot
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+            laps, attack_hot, attack_n, air_hot, air_n, name, holeshot, state, penalty_ms
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
          ON CONFLICT(session_id) DO UPDATE SET
             started = excluded.started,
             rider_count = excluded.rider_count,
@@ -1539,7 +1766,9 @@ fn upsert_profile_race(c: &Connection, id: i64) {
             air_hot = excluded.air_hot,
             air_n = excluded.air_n,
             name = excluded.name,
-            holeshot = excluded.holeshot",
+            holeshot = excluded.holeshot,
+            state = excluded.state,
+            penalty_ms = excluded.penalty_ms",
         params![
             compact.session_id,
             compact.started,
@@ -1553,7 +1782,9 @@ fn upsert_profile_race(c: &Connection, id: i64) {
             compact.air_hot,
             compact.air_n,
             compact.name,
-            compact.holeshot
+            compact.holeshot,
+            compact.state,
+            compact.penalty_ms
         ],
     );
 }
@@ -1596,6 +1827,8 @@ fn race_input_from(c: &Connection, id: i64) -> Option<crate::RaceInput> {
             .collect(),
         name: you.map(|r| r.name.clone()).unwrap_or_default(),
         holeshot,
+        state: you.map(|r| r.state).unwrap_or(0),
+        penalty_ms: you.map(|r| r.penalty_ms.max(0)).unwrap_or(0),
     })
 }
 
@@ -1613,6 +1846,8 @@ fn load_compact_row(
     air_n: i32,
     name: String,
     holeshot: Option<i32>,
+    state: i32,
+    penalty_ms: i32,
 ) -> crate::CompactRace {
     crate::CompactRace {
         session_id,
@@ -1628,6 +1863,8 @@ fn load_compact_row(
         air_n,
         name,
         holeshot,
+        state,
+        penalty_ms,
     }
 }
 
@@ -1645,7 +1882,7 @@ fn profile_from(c: &Connection, window: crate::ProfileWindow, now: i64) -> crate
     let mut races = Vec::new();
     if let Ok(mut stmt) = c.prepare(
         "SELECT session_id, started, rider_count, position, your_best_ms, fastest_ms,
-                laps, attack_hot, attack_n, air_hot, air_n, name, holeshot
+                laps, attack_hot, attack_n, air_hot, air_n, name, holeshot, state, penalty_ms
          FROM profile_races",
     ) {
         if let Ok(it) = stmt.query_map([], |r| {
@@ -1663,6 +1900,8 @@ fn profile_from(c: &Connection, window: crate::ProfileWindow, now: i64) -> crate
                 r.get(10)?,
                 r.get(11)?,
                 r.get(12)?,
+                r.get::<_, i32>(13).unwrap_or(0),
+                r.get::<_, i32>(14).unwrap_or(0),
             ))
         }) {
             races.extend(it.filter_map(|r| r.ok()));
@@ -1689,13 +1928,73 @@ fn profile_from(c: &Connection, window: crate::ProfileWindow, now: i64) -> crate
         .iter()
         .map(|r| crate::scores_from_compact(r))
         .collect();
-    crate::RiderProfile {
+    let mut profile = crate::RiderProfile {
         name,
         race_count: window_races.len() as i32,
         all_time_count,
         holeshots,
         scores: crate::mean_scores(&scores),
+        ..crate::RiderProfile::empty()
+    };
+    crate::apply_window_stats(&mut profile, &window_races);
+    let cleared_at = profile_cleared_at(c);
+    let mut win_ids: std::collections::HashSet<i64> = window_races
+        .iter()
+        .filter(|r| crate::you_won_race(r.position, r.rider_count))
+        .map(|r| r.session_id)
+        .collect();
+    win_ids.extend(live_eligible_win_ids(
+        c,
+        cleared_at,
+        cutoff,
+        matches!(window, crate::ProfileWindow::AllTime),
+    ));
+    profile.wins = win_ids.len() as i32;
+    let rate_n = profile.race_count.max(profile.wins);
+    if rate_n > 0 {
+        profile.win_rate = Some(profile.wins as f32 / rate_n as f32);
     }
+    profile
+}
+
+fn live_eligible_win_ids(
+    c: &Connection,
+    cleared_at: i64,
+    cutoff: i64,
+    all_time: bool,
+) -> std::collections::HashSet<i64> {
+    let rows: Vec<(i64, i64)> = c
+        .prepare("SELECT id, started FROM sessions")
+        .ok()
+        .and_then(|mut stmt| {
+            stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+                .ok()
+                .map(|it| it.filter_map(|r| r.ok()).collect())
+        })
+        .unwrap_or_default();
+    let mut out = std::collections::HashSet::new();
+    for (id, started) in rows {
+        if started <= cleared_at {
+            continue;
+        }
+        if !all_time && started < cutoff {
+            continue;
+        }
+        let Some(input) = race_input_from(c, id) else {
+            continue;
+        };
+        let has_lap = input.laps.iter().any(|l| !l.warmup && l.ms > 0);
+        if crate::counts_as_profile_win(
+            input.practice,
+            input.kind,
+            input.rider_count,
+            input.position,
+            has_lap,
+        ) {
+            out.insert(id);
+        }
+    }
+    out
 }
 
 fn profile_cleared_at(c: &Connection) -> i64 {
@@ -1709,15 +2008,6 @@ fn profile_cleared_at(c: &Connection) -> i64 {
 
 fn backfill_profile_races(c: &Connection) {
     let cleared_at = profile_cleared_at(c);
-    let existing: std::collections::HashSet<i64> = c
-        .prepare("SELECT session_id FROM profile_races")
-        .ok()
-        .and_then(|mut stmt| {
-            stmt.query_map([], |r| r.get(0))
-                .ok()
-                .map(|it| it.filter_map(|r| r.ok()).collect())
-        })
-        .unwrap_or_default();
     let rows: Vec<(i64, i64)> = c
         .prepare("SELECT id, started FROM sessions")
         .ok()
@@ -1728,9 +2018,6 @@ fn backfill_profile_races(c: &Connection) {
         })
         .unwrap_or_default();
     for (id, started) in rows {
-        if existing.contains(&id) {
-            continue;
-        }
         if started <= cleared_at {
             continue;
         }
@@ -1857,11 +2144,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn practice_p1_is_not_profile_win() {
+        assert!(!crate::counts_as_profile_win(true, 7, 8, 1, true));
+        assert!(crate::counts_as_profile_win(false, 7, 8, 1, true));
+        assert!(!crate::counts_as_profile_win(false, crate::WARMUP_KIND, 8, 1, true));
+        assert!(!crate::counts_as_profile_win(false, 7, 1, 1, true));
+        assert!(!crate::counts_as_profile_win(false, 7, 8, 1, false));
+    }
+
+    #[test]
     fn you_won_race_p1_with_field() {
-        assert!(you_won_race(1, 8));
-        assert!(!you_won_race(1, 1));
-        assert!(!you_won_race(2, 8));
-        assert!(!you_won_race(0, 8));
+        assert!(crate::you_won_race(1, 8));
+        assert!(!crate::you_won_race(1, 1));
+        assert!(!crate::you_won_race(2, 8));
+        assert!(!crate::you_won_race(0, 8));
     }
 
     #[test]
@@ -1976,7 +2272,7 @@ mod tests {
         let again = {
             let st = live();
             let c = st.conn.as_ref().expect("conn");
-            open_session(c, "Pala", 7, 14, 9, false).expect("resume")
+            open_session(c, "Pala", 7, 14, 9, false, "").expect("resume")
         };
         assert_eq!(first, again);
         reset();
@@ -1994,12 +2290,12 @@ mod tests {
         let first = {
             let st = live();
             let c = st.conn.as_ref().expect("conn");
-            insert_typed(c, "Pala", -1, 14, 9, true).expect("practice")
+            insert_typed(c, "Pala", -1, 14, 9, true, "").expect("practice")
         };
         let again = {
             let st = live();
             let c = st.conn.as_ref().expect("conn");
-            open_session(c, "Pala", 7, 14, 9, false).expect("race")
+            open_session(c, "Pala", 7, 14, 9, false, "").expect("race")
         };
         assert_ne!(first, again);
         reset();
@@ -2007,7 +2303,7 @@ mod tests {
     }
 
     #[test]
-    fn list_filters_practice_and_race() {
+    fn list_filters_exclude_practice() {
         let _g = serial();
         reset();
         let dir = std::env::temp_dir().join(format!("mxbo-review-filter-{}", std::process::id()));
@@ -2016,25 +2312,24 @@ mod tests {
         {
             let st = live();
             let c = st.conn.as_ref().expect("conn");
-            let race = insert_typed(c, "Hangtown", 7, 2, 7, false).expect("race");
+            let race = insert_typed(c, "Hangtown", 7, 2, 7, false, "").expect("race");
             upsert_lap(c, race, &dummy_lap(2, 113_000, true, false)).expect("race lap");
-            let prac = insert_typed(c, "Pala", -1, 2, 7, true).expect("practice");
+            let prac = insert_typed(c, "Pala", -1, 2, 7, true, "").expect("practice");
             upsert_lap(c, prac, &dummy_lap(2, 120_000, true, false)).expect("prac lap");
+            c.execute("UPDATE sessions SET kept = 1 WHERE id = ?1", params![prac])
+                .expect("keep practice");
         }
         let all = list(ListFilter::All);
-        assert_eq!(all.len(), 2);
-        let races = list(ListFilter::Race);
-        assert_eq!(races.len(), 1);
-        assert_eq!(races[0].track, "Hangtown");
-        let practice = list(ListFilter::Practice);
-        assert_eq!(practice.len(), 1);
-        assert_eq!(practice[0].track, "Pala");
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].track, "Hangtown");
+        assert!(list(ListFilter::Ranked).is_empty());
+        assert!(list(ListFilter::Saved).is_empty());
         reset();
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn backfill_practice_from_kind() {
+    fn purge_removes_legacy_practice() {
         let _g = serial();
         reset();
         let dir = std::env::temp_dir().join(format!("mxbo-review-backfill-{}", std::process::id()));
@@ -2045,13 +2340,34 @@ mod tests {
             let c = st.conn.as_ref().expect("conn");
             let id = insert_session(c, "Hangtown", 5, 2, 7).expect("old");
             upsert_lap(c, id, &dummy_lap(2, 113_000, true, false)).expect("lap");
-            c.execute("UPDATE sessions SET practice = 0", [])
-                .expect("clear");
-            c.execute("UPDATE sessions SET practice = 1 WHERE kind < 6", [])
-                .expect("backfill");
+            c.execute("UPDATE sessions SET practice = 1 WHERE id = ?1", params![id])
+                .expect("mark practice");
         }
-        assert_eq!(list(ListFilter::Practice).len(), 1);
-        assert!(list(ListFilter::Race).is_empty());
+        prune();
+        assert!(list(ListFilter::All).is_empty());
+        assert!(list(ListFilter::Ranked).is_empty());
+        reset();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn tick_practice_does_not_record() {
+        let _g = serial();
+        reset();
+        let dir = std::env::temp_dir().join(format!("mxbo-review-prac-tick-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        init(dir.clone());
+        let mut s = Snapshot::default();
+        let name = b"Hangtown";
+        s.track_name[..name.len()].copy_from_slice(name);
+        s.has_telemetry = 1;
+        s.session_laps = 0;
+        s.session_length = 0;
+        s.local_race_num = 2;
+        s.focus_race_num = 2;
+        tick(&s, true);
+        assert_eq!(live_id(), None);
+        assert!(list(ListFilter::All).is_empty());
         reset();
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -2067,6 +2383,7 @@ mod tests {
         let name = b"Hangtown";
         s.track_name[..name.len()].copy_from_slice(name);
         s.has_telemetry = 1;
+        s.session_kind = 7;
         tick(&s, true);
         assert!(live_id().is_some());
         s.has_telemetry = 0;
@@ -2407,6 +2724,7 @@ mod tests {
         let name = b"Hangtown";
         s.track_name[..name.len()].copy_from_slice(name);
         s.has_telemetry = 1;
+        s.session_kind = 7;
         tick(&s, false);
         assert_eq!(live_id(), None);
         assert!(list(ListFilter::All).is_empty());
@@ -2441,6 +2759,7 @@ mod tests {
         let name = b"Hangtown";
         s.track_name[..name.len()].copy_from_slice(name);
         s.has_telemetry = 1;
+        s.session_kind = 7;
         s.local_race_num = 2;
         s.standing_count = 2;
         s.standings[0].race_num = 2;
@@ -2489,6 +2808,7 @@ mod tests {
         let name = b"Hangtown";
         s.track_name[..name.len()].copy_from_slice(name);
         s.has_telemetry = 1;
+        s.session_kind = 7;
         s.local_race_num = 2;
         s.standing_count = 2;
         s.standings[0].race_num = 2;
@@ -2587,7 +2907,7 @@ mod tests {
     }
 
     fn put_eligible_race(c: &Connection, started: i64, you: i32, laps: &[i32]) -> i64 {
-        let id = insert_typed(c, "Hangtown", 7, you, 7, false).expect("session");
+        let id = insert_typed(c, "Hangtown", 7, you, 7, false, "").expect("session");
         c.execute(
             "UPDATE sessions SET rider_count = 8, started = ?1 WHERE id = ?2",
             params![started, id],
@@ -2630,21 +2950,21 @@ mod tests {
         {
             let st = live();
             let c = st.conn.as_ref().expect("conn");
-            let prac = insert_typed(c, "Pala", -1, 2, 7, true).expect("prac");
+            let prac = insert_typed(c, "Pala", -1, 2, 7, true, "").expect("prac");
             c.execute(
                 "UPDATE sessions SET rider_count = 12 WHERE id = ?1",
                 params![prac],
             )
             .ok();
             upsert_lap(c, prac, &dummy_lap(2, 110_000, true, false)).expect("p");
-            let wu = insert_typed(c, "Pala", crate::WARMUP_KIND, 2, 7, false).expect("wu");
+            let wu = insert_typed(c, "Pala", crate::WARMUP_KIND, 2, 7, false, "").expect("wu");
             c.execute(
                 "UPDATE sessions SET rider_count = 12 WHERE id = ?1",
                 params![wu],
             )
             .ok();
             upsert_lap(c, wu, &dummy_lap(2, 110_000, true, false)).expect("w");
-            let solo = insert_typed(c, "Pala", 7, 2, 2, false).expect("solo");
+            let solo = insert_typed(c, "Pala", 7, 2, 2, false, "").expect("solo");
             c.execute(
                 "UPDATE sessions SET rider_count = 1 WHERE id = ?1",
                 params![solo],
@@ -2725,6 +3045,330 @@ mod tests {
         let p = profile(crate::ProfileWindow::AllTime);
         assert_eq!(p.holeshots, 1);
         assert_eq!(p.name, "You");
+        reset();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn list_keeps_eligible_race_with_you_won_post_pass() {
+        let _g = serial();
+        reset();
+        let dir = std::env::temp_dir().join(format!("mxbo-list-win-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        init(dir.clone());
+        {
+            let st = live();
+            let c = st.conn.as_ref().expect("conn");
+            let id = put_eligible_race(c, now_secs(), 2, &[113_000, 114_000, 112_500, 113_400]);
+            c.execute(
+                "UPDATE riders SET position = 1 WHERE session_id = ?1 AND race_num = 2",
+                params![id],
+            )
+            .expect("p1");
+        }
+        let rows = list(ListFilter::All);
+        assert_eq!(rows.len(), 1);
+        assert!(rows[0].you_won);
+        assert_eq!(rows[0].your_position, 1);
+        assert_eq!(profile(crate::ProfileWindow::AllTime).wins, 1);
+        reset();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn practice_p1_list_has_no_crown() {
+        let _g = serial();
+        reset();
+        let dir = std::env::temp_dir().join(format!("mxbo-prac-crown-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        init(dir.clone());
+        {
+            let st = live();
+            let c = st.conn.as_ref().expect("conn");
+            let id = insert_typed(c, "Pala", 7, 2, 7, true, "").expect("prac");
+            c.execute(
+                "UPDATE sessions SET rider_count = 8 WHERE id = ?1",
+                params![id],
+            )
+            .ok();
+            upsert_lap(c, id, &dummy_lap(2, 110_000, true, false)).expect("lap");
+            c.execute(
+                "UPDATE riders SET position = 1 WHERE session_id = ?1 AND race_num = 2",
+                params![id],
+            )
+            .expect("p1");
+            assert!(!session_you_won(c, id, 8));
+        }
+        assert!(list(ListFilter::All).is_empty());
+        assert_eq!(profile(crate::ProfileWindow::AllTime).wins, 0);
+        reset();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn profile_backfill_refreshes_stale_win() {
+        let _g = serial();
+        reset();
+        let dir = std::env::temp_dir().join(format!("mxbo-profile-refresh-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        init(dir.clone());
+        let id = {
+            let st = live();
+            let c = st.conn.as_ref().expect("conn");
+            let id = put_eligible_race(c, now_secs(), 2, &[113_000, 114_000, 112_500, 113_400]);
+            c.execute(
+                "UPDATE riders SET position = 2 WHERE session_id = ?1 AND race_num = 2",
+                params![id],
+            )
+            .expect("p2");
+            upsert_profile_race(c, id);
+            c.execute(
+                "UPDATE riders SET position = 1 WHERE session_id = ?1 AND race_num = 2",
+                params![id],
+            )
+            .expect("p1");
+            id
+        };
+        assert!(crate::you_won_race(1, 8));
+        let _ = id;
+        let p = profile(crate::ProfileWindow::AllTime);
+        assert_eq!(p.wins, 1);
+        reset();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn profile_aggregates_results_state_and_penalty() {
+        let _g = serial();
+        reset();
+        let dir = std::env::temp_dir().join(format!("mxbo-profile-agg-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        init(dir.clone());
+        {
+            let st = live();
+            let c = st.conn.as_ref().expect("conn");
+            let win = put_eligible_race(c, now_secs(), 2, &[113_000, 114_000, 112_500, 113_400]);
+            c.execute(
+                "UPDATE riders SET position = 1, state = 0, penalty_ms = 2000
+                 WHERE session_id = ?1 AND race_num = 2",
+                params![win],
+            )
+            .expect("win");
+            c.execute(
+                "UPDATE sessions SET holeshot = 1 WHERE id = ?1",
+                params![win],
+            )
+            .ok();
+            upsert_profile_race(c, win);
+
+            let dnf = put_eligible_race(
+                c,
+                now_secs() - 10,
+                2,
+                &[115_000, 116_000, 114_500, 115_400],
+            );
+            c.execute(
+                "UPDATE riders SET position = 8, state = 3, penalty_ms = 0
+                 WHERE session_id = ?1 AND race_num = 2",
+                params![dnf],
+            )
+            .expect("dnf");
+            c.execute(
+                "UPDATE sessions SET holeshot = 0 WHERE id = ?1",
+                params![dnf],
+            )
+            .ok();
+            upsert_profile_race(c, dnf);
+        }
+        let p = profile(crate::ProfileWindow::AllTime);
+        assert_eq!(p.race_count, 2);
+        assert_eq!(p.wins, 1);
+        assert!((p.win_rate.unwrap() - 0.5).abs() < 0.001);
+        assert_eq!(p.dnf_count, 1);
+        assert!((p.holeshot_rate.unwrap() - 0.5).abs() < 0.001);
+        assert!((p.avg_penalty_ms.unwrap() - 1000.0).abs() < 0.001);
+        assert_eq!(p.avg_finish, Some(1.0)); // DNF excluded from finish avg
+        reset();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn upsert_field_persists_server_name() {
+        let _g = serial();
+        reset();
+        let dir = std::env::temp_dir().join(format!("mxbo-server-name-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        init(dir.clone());
+        {
+            let st = live();
+            let c = st.conn.as_ref().expect("conn");
+            let id = insert_typed(c, "Hangtown", 7, 2, 7, false, "").expect("session");
+            upsert_lap(c, id, &dummy_lap(2, 113_000, true, false)).expect("lap");
+        }
+        assert_eq!(list(ListFilter::All)[0].server_name, "");
+        let mut s = Snapshot::default();
+        let name = b"Hangtown";
+        s.track_name[..name.len()].copy_from_slice(name);
+        let server = b"Ranked MX #1";
+        s.server_name[..server.len()].copy_from_slice(server);
+        s.has_telemetry = 1;
+        s.local_race_num = 2;
+        s.session_kind = 7;
+        s.standing_count = 2;
+        s.standings[0].race_num = 2;
+        s.standings[1].race_num = 7;
+        tick(&s, true);
+        let id = live_id().expect("live");
+        let stored: String = {
+            let st = live();
+            let c = st.conn.as_ref().expect("conn");
+            c.query_row(
+                "SELECT server_name FROM sessions WHERE id = ?1",
+                params![id],
+                |r| r.get(0),
+            )
+            .expect("server")
+        };
+        assert_eq!(stored, "Ranked MX #1");
+        let detail = load(id).expect("load");
+        assert_eq!(detail.row.server_name, "Ranked MX #1");
+        reset();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn init_seeds_ranked_servers_allowlist() {
+        let _g = serial();
+        reset();
+        let dir = std::env::temp_dir().join(format!("mxbo-ranked-servers-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        init(dir.clone());
+        let st = live();
+        let c = st.conn.as_ref().expect("conn");
+        let count: i64 = c
+            .query_row("SELECT COUNT(*) FROM ranked_servers", [], |r| r.get(0))
+            .expect("count");
+        assert_eq!(count, RANKED_LOBBY_IDS.len() as i64);
+        for id in RANKED_LOBBY_IDS {
+            let found: i64 = c
+                .query_row(
+                    "SELECT lobby_id FROM ranked_servers WHERE lobby_id = ?1",
+                    params![id],
+                    |r| r.get(0),
+                )
+                .unwrap_or(0);
+            assert_eq!(found, *id, "missing lobby {id}");
+        }
+        let freebies: Vec<(i64, String, String, String)> = c
+            .prepare(
+                "SELECT lobby_id, series, class, region FROM ranked_servers
+                 WHERE lobby_id IN (105019, 105020, 105005) ORDER BY lobby_id",
+            )
+            .expect("prep")
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+            .expect("q")
+            .map(|r| r.expect("row"))
+            .collect();
+        assert_eq!(
+            freebies,
+            vec![
+                (105005, "MX Freebies".into(), "250".into(), "NZ".into()),
+                (105019, "MX Freebies".into(), "250".into(), "EU".into()),
+                (105020, "MX Freebies".into(), "250".into(), "NA".into()),
+            ]
+        );
+        drop(st);
+        reset();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn lobby_id_from_server_name_parses_hash() {
+        assert_eq!(
+            lobby_id_from_server_name("MXB-Ranked.com | MX Freebies | 250 | S3- | EU | #105019"),
+            Some(105019)
+        );
+        assert_eq!(lobby_id_from_server_name("#105020"), Some(105020));
+        assert_eq!(lobby_id_from_server_name(""), None);
+        assert_eq!(lobby_id_from_server_name("offline practice"), None);
+        assert_eq!(lobby_id_from_server_name("no hash 105019"), None);
+    }
+
+    #[test]
+    fn list_marks_ranked_when_server_lobby_in_allowlist() {
+        let _g = serial();
+        reset();
+        let dir = std::env::temp_dir().join(format!("mxbo-ranked-flag-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        init(dir.clone());
+        {
+            let st = live();
+            let c = st.conn.as_ref().expect("conn");
+            let ranked = insert_typed(
+                c,
+                "Norwood",
+                7,
+                2,
+                7,
+                false,
+                "MXB-Ranked.com | MX Freebies | 250 | S3- | EU | #105019",
+            )
+            .expect("ranked session");
+            upsert_lap(c, ranked, &dummy_lap(2, 113_000, true, false)).expect("lap");
+            let casual = insert_typed(c, "Hangtown", 7, 2, 7, false, "Some casual server").expect("casual");
+            upsert_lap(c, casual, &dummy_lap(2, 114_000, true, false)).expect("lap");
+            let offline = insert_typed(c, "Millville", 7, 2, 7, false, "").expect("offline");
+            upsert_lap(c, offline, &dummy_lap(2, 115_000, true, false)).expect("lap");
+        }
+        let rows = list(ListFilter::All);
+        let by_track = |t: &str| rows.iter().find(|r| r.track == t).expect(t);
+        assert!(by_track("Norwood").ranked);
+        assert!(!by_track("Hangtown").ranked);
+        assert!(!by_track("Millville").ranked);
+        let detail = load(by_track("Norwood").id).expect("load");
+        assert!(detail.row.ranked);
+        let ranked_only = list(ListFilter::Ranked);
+        assert_eq!(ranked_only.len(), 1);
+        assert_eq!(ranked_only[0].track, "Norwood");
+        assert!(ranked_only[0].ranked);
+        reset();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn upsert_field_persists_state_and_penalty() {
+        let _g = serial();
+        reset();
+        let dir = std::env::temp_dir().join(format!("mxbo-profile-pen-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        init(dir.clone());
+        let mut s = Snapshot::default();
+        let name = b"Hangtown";
+        s.track_name[..name.len()].copy_from_slice(name);
+        s.has_telemetry = 1;
+        s.local_race_num = 2;
+        s.session_kind = 7;
+        s.standing_count = 2;
+        s.standings[0].race_num = 2;
+        s.standings[0].position = 1;
+        s.standings[0].state = 0;
+        s.standings[0].penalty_ms = 5000;
+        s.standings[1].race_num = 7;
+        s.standings[1].position = 2;
+        tick(&s, true);
+        let id = live_id().expect("live");
+        let (state, pen): (i32, i32) = {
+            let st = live();
+            let c = st.conn.as_ref().expect("conn");
+            c.query_row(
+                "SELECT state, penalty_ms FROM riders WHERE session_id = ?1 AND race_num = 2",
+                params![id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .expect("row")
+        };
+        assert_eq!(state, 0);
+        assert_eq!(pen, 5000);
         reset();
         let _ = std::fs::remove_dir_all(&dir);
     }

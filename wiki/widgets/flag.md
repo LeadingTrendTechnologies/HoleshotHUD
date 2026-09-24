@@ -22,6 +22,8 @@ Fresh install: `show_flag = false`, `flag_yellow = false`, `flag_blue = false`, 
 - Do not hide Dash wrap when Flags is on. They are independent.
 - Do not paint Flags-widget yellow/blue/red onto the Dash wrap. `dash_wrap_flag` only keeps them when `dash_yellow` / `dash_blue` / `dash_red` are on.
 - Do not treat `lapped()` (whole-race gap) as a blue or red flag. Blue is situational `LapRel::LappingMe` only. Red is situational `LapRel::LappedByMe` only.
+- Red only when you gained a lap on them (pairwise). Leader lapping someone behind you must not wave red.
+- Same-race S/F straddles must not wave blue or red. `lap_rel` uses continuous progress when `num_laps` differ.
 - Do not suppress yellow in practice or warmup. A crash ahead still waves yellow in every live session; only blue/red stay race-only.
 - Do not wave blue or red in warmup (`session_kind` 5). Practice lap counts are not a race, even when extras leak.
 - Do not paint Holeshot orange on the cloth. Checkers and white stripes match the Dash banners. Yellow is `#CCB046`, blue is `#5276AC`, red is `#BA5252`.
@@ -30,6 +32,8 @@ Fresh install: `show_flag = false`, `flag_yellow = false`, `flag_blue = false`, 
 
 ## Change log
 
+- 2026-09-24 — Red is pairwise only: leader lapping someone behind you no longer waves red.
+- 2026-09-24 — Same-race S/F straddles no longer wave blue/red (`lap_rel` continuous progress when `gap_laps` match).
 - 2026-09-22 — Yellow waves in practice and warmup when someone crashes ahead; blue/red stay race-only (`caution_flag` no longer blank-returns on `is_warmup` before yellow).
 - 2026-09-08 — Same white/checkered timing as Dash: checkered is your finish, not the leader's.
 - 2026-09-07 — Same white/checkered timing as Dash: no white flash when you are lapped and the next line is checkered (or a first-lap crash that is not a last lap).

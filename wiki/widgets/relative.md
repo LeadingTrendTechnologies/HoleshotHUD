@@ -17,10 +17,12 @@ Sorts `riders[].track_pos` wrapped around you (`wrap` so +0.5 / −0.5 is the fa
 
 Classification is joined by race number for position, laps, bike, best/last, penalty, interval, status. The **Position** column is the live place (`RaceField` rows), so a pass shows there even though the row order is track order. See [live race order](../live-order.md).
 
+**Status** column (`rel_status`, default off) uses the same icons as Standings Status (finish, crash, DNS/OUT/DSQ, pit). Finished riders show only the flag. No column header title. Out / crashed riders keep bright **Position**, **Number**, and **Name**; other cells can still dim.
+
 ## Behavior
 
 - Same chrome as Standings (header bar, track name, column headers, optional footer). Header/footer slots include **Fuel**, **Setup**, **Gap ahead**, and **Gap behind**. Those gaps are race place (P−1 / P+1), not the riders in this table. Same lap ticks along the track toward that rider; a live lap or more is `1L` / `-1L`.
-- Your row is highlighted. Lapping colors on **other** rows: blue if they are a lap ahead and closing from behind, red if you are a lap ahead and closing on them (`lap_rel` / `lap_row_bg`). Off in warmup. **Row highlight** opacity (`rel_hl`) scales your row and the blue/red lapping tints. **Text color** is White or Black (`rel_text`); bike pills keep brand colors. **Alternating rows** (`rel_stripe`, default on) paints every other row near-black. Same opaque-panel lift as Standings. **Plaque text** is Black or White on the orange rider-count / track-name skews (`rel_plaque_text`, default Black). **Show plaques** (`rel_plaque`, default on) hides those skews and collapses their band.
+- Your row is highlighted. Lapping colors on **other** rows: blue if they are a lap ahead and within catch span (either side), red if you are a lap ahead and within catch span (either side) — colors hold through a pass while still nearby (`lap_rel` / `lap_row_bg`). Off in warmup. **Row highlight** opacity (`rel_hl`) scales your row and the blue/red lapping tints. **Text color** is White or Black (`rel_text`); bike pills keep brand colors. **Alternating rows** (`rel_stripe`, default on) paints every other row near-black. Same opaque-panel lift as Standings. **Plaque text** is Black or White on the orange rider-count / track-name skews (`rel_plaque_text`, default Black). **Show plaques** (`rel_plaque`, default on) hides those skews and collapses their band.
 - **Gap column is not classification gap.** It is `|wrapped_frac * track_length / local_speed|` in seconds (you show `0.0`). Speed floor is 4 so a stopped rider does not explode the number.
 - Rows slide when the nearby set changes (`REL_SLIDE`).
 - Duplicate race numbers are skipped. Empty names with `race_num <= 0` are skipped.
@@ -34,7 +36,10 @@ Default columns on: Number, Name, Gap, Fastest, Last lap.
 - Keep the wrap (`d > 0.5` subtract 1, `d < -0.5` add 1) or the “nearest” set jumps across S/F.
 - Empty / no telemetry shows “Waiting for positions”.
 - No blue/red lapping row tints in warmup. `session_kind` 5 wins even when extras leak.
-- Two laps down must not tint a better-placed rider red. `gap_laps` wins over `num_laps`.
+- Two laps down must not tint a better-placed rider red. `gap_laps` wins for blue when they are ahead of you.
+- Red only when you gained a lap on them (pairwise `num_laps`). Leader lapping someone behind you is not red.
+- Same-race S/F straddles must not tint blue/red. When `num_laps` differ, continuous `num_laps + track_pos` must also round non-zero.
+- Blue/red lapping tints hold through a pass while still inside catch span (either side).
 - Missing `rel_stripe` in the ini keeps alternating rows on.
 - Missing `rel_plaque` / `rel_plaque_text` keep plaques on with black ink.
 - Alternating rows must still read at **Background** 100% (lift, not extra black on night-ink).
@@ -42,9 +47,18 @@ Default columns on: Number, Name, Gap, Fastest, Last lap.
 - Setup header/footer is the loaded bike setup filename stem. `--` when `RunInit` has not sent it. Restart MX Bikes after the V13 plugin.
 - Ctrl+resize chrome is the hugged plaque (column pack × row stack), not leftover widget glass. Dragging it larger grows Name / nearby count.
 - The night-ink plaque must cover every visible row. Do not clamp stack height to a shorter saved `relative_h`.
+- Finished riders show only the Status finish flag — not crash / pit / DNS / OUT / DSQ on top of it.
 
 ## Change log
 
+- 2026-09-24 — Red is pairwise only: leader lapping someone behind you no longer tints them red.
+- 2026-09-24 — Same-race S/F straddles no longer tint blue/red (`other_laps_ahead` continuous progress when `gap_laps` match).
+- 2026-09-22 — Status finish flag wins over crash/pit for done riders. Your-row / lapping wash alpha 52 at default **Row highlight** (spider-scaled).
+- 2026-09-22 — Your-row and blue/red lapping washes match Profile spider fill (full chroma, alpha 40 at default **Row highlight**).
+- 2026-09-22 — Blue/red lapping row tints hold through a pass while still within catch span (either side).
+- 2026-09-22 — Out / crashed **Position** and **Number** stay normal ink (same as Name), not greyed.
+- 2026-09-22 — Removed the separate **Crashed** text column. Status header is blank. Out / crashed names stay full ink (not greyed).
+- 2026-09-22 — **Status** column (`rel_status`, default off) with the same crash / finish / DNS / OUT / DSQ / pit icons as Standings.
 - 2026-09-22 — Settings column drag slides neighboring rows into place (ease-out), instead of snapping on drop.
 - 2026-09-22 — Penalty column shows whole seconds as `#s` (e.g. `5s`), not lap-style `5.000`.
 - 2026-09-22 — **Plaque text** (Black/White, default Black) and **Show plaques** for the orange rider-count / track-name skews. Same controls as Standings. Hidden plaques collapse the track band height.

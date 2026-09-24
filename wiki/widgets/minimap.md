@@ -24,7 +24,9 @@ Toggles match Map, plus **Zoom**. Default background 0.
 ## Do not regress
 
 - Sparse centerline used to blank the widget; keep drawing with whatever poly exists (0.1.0).
-- Same lapping color rules as Map. Do not invent a second palette. Off in warmup, same as Map. Two laps down stays blue when they close from behind.
+- Same lapping color rules as Map. Do not invent a second palette. Off in warmup, same as Map. Two laps down stays blue when nearby within catch span.
+- Red only when you gained a lap on them (pairwise). Leader lapping someone behind you is not red.
+- Same-race S/F straddles must not paint blue/red (same continuous-progress rule as Map).
 - Position labels, leader crown and ahead / behind rings use live `RaceStore` rank during a race (same as Map). See [live race order](../live-order.md).
 - When live, keep north-up (along-track forward = up). Do not rotate the circle with bike roll/yaw as a radar.
 - Follow / north-up must use `subject_pose`, not `has_telemetry` alone, or spectate falls back to a whole-track fit with no orange you-dot.
@@ -33,6 +35,9 @@ Toggles match Map, plus **Zoom**. Default background 0.
 
 ## Change log
 
+- 2026-09-24 — Shares Map: red is pairwise only; leader lapping someone behind you is not red.
+- 2026-09-24 — Shares Map: same-race S/F straddles no longer paint blue/red.
+- 2026-09-22 — Shares Map: blue/red hold through a pass while still within catch span.
 - 2026-09-13 — Review lines stay off the live minimap; they only draw in Analyze.
 - 2026-09-12 — Location tape records for Review (not drawn live).
 - 2026-09-07 — Shares the Map fix: warmup (`session_kind` 5) keeps dots slate when extras leak.

@@ -214,7 +214,18 @@ pub(crate) fn draw_ticker(
                     x
                 };
                 draw_ticker_card(
-                    &mut layer, fonts, s, card, focus_row, best_ms, x, 0.0, card_w, card_h, k,
+                    &mut layer,
+                    fonts,
+                    s,
+                    cfg,
+                    card,
+                    focus_row,
+                    best_ms,
+                    x,
+                    0.0,
+                    card_w,
+                    card_h,
+                    k,
                 );
                 push_click_rider(card.race_num, cards_x + x, card_y, card_w, card_h);
             }
@@ -380,6 +391,7 @@ pub(crate) fn draw_ticker_card(
     px: &mut Pixmap,
     fonts: &Fonts,
     s: &Snapshot,
+    cfg: &HudConfig,
     row: &crate::shm::Standing,
     focus: &crate::shm::Standing,
     best_ms: i32,
@@ -418,11 +430,21 @@ pub(crate) fn draw_ticker_card(
     let text_x = bar_x + 7.0;
     let name_sz = (h * 0.28).clamp(10.5, 13.5);
     let gap_sz = (h * 0.22).clamp(8.5, 11.0);
+    let mark = if cfg.ticker_status {
+        standing_mark(s, row.race_num, row.crashed != 0)
+    } else {
+        RiderMark::None
+    };
+    let status_pad = if matches!(mark, RiderMark::None) {
+        0.0
+    } else {
+        (h * 0.42).clamp(14.0, 20.0)
+    };
     let name = ellipsize(
         fonts,
         &cstr(&row.name),
         name_sz,
-        (w - (text_x - x) - 8.0).max(24.0),
+        (w - (text_x - x) - 8.0 - status_pad).max(24.0),
     );
     let name_c = if out {
         Color::from_rgba8(110, 110, 116, 255)
@@ -455,8 +477,18 @@ pub(crate) fn draw_ticker_card(
             row.best_lap_ms
         };
         format_lap(ms)
-    } else if let Some(st) = standing_status(row) {
-        st.to_string()
+    } else if !cfg.ticker_status {
+        if let Some(st) = standing_status(row) {
+            st.to_string()
+        } else {
+            RaceStore::with(|store| {
+                store
+                    .field
+                    .row_by_num(row.race_num)
+                    .map(ticker_delta_from_row)
+                    .unwrap_or_else(|| ticker_delta(focus, row))
+            })
+        }
     } else {
         RaceStore::with(|store| {
             store
@@ -467,6 +499,10 @@ pub(crate) fn draw_ticker_card(
         })
     };
     text(px, fonts, &gap, gap_sz, text_x, y + h * 0.52, gap_c, false);
+    if !matches!(mark, RiderMark::None) {
+        let r = (h * 0.22).clamp(7.0, 10.0);
+        draw_state_mark(px, fonts, x + w - r * 2.0 - 6.0, y + (h - r * 2.0) * 0.5, r, mark);
+    }
     if best_ms > 0 && row.best_lap_ms == best_ms && !out {
         let tag = "FASTEST LAP";
         let tag_sz = (7.5 * k).clamp(6.5, 8.5);
@@ -476,7 +512,7 @@ pub(crate) fn draw_ticker_card(
             fonts,
             tag,
             tag_sz,
-            x + w - tw - 6.0,
+            x + w - tw - 6.0 - status_pad,
             y + h - tag_sz - 5.0,
             Color::from_rgba8(232, 232, 236, 255),
             false,

@@ -19,7 +19,7 @@ Orange marker is `subject_pose`: predicted `local + vel * age` while riding. Ove
 
 - Fits the whole polyline in the rect (10% pad). Y is unused; Z is the track plane.
 - Track fill + stroke is cached in `MAP_LAYER` until poly / size / S/F / arrows change. Rider dots and sector lines are redrawn every frame.
-- You: larger orange dot on the camera subject (you while riding, the spectated rider in replay). Others: slate, or blue/red only when lapping and closing (see [widgets.md](../widgets.md)). Two laps down is still blue if they are closing from behind.
+- You: larger orange dot on the camera subject (you while riding, the spectated rider in replay). Others: slate, or blue/red when lap-delta and within catch span either side (see [widgets.md](../widgets.md)). Two laps down is still blue if they are nearby.
 - Chevrons show heading. Optional: S/F, **sector lines**, track arrows, leader crown, nearest ahead/behind marks, numbers in dots (bike number or classification position).
 - **Sector lines** are thin violet dotted gates at where each sector **starts** (same tape as Sectors). **S1** is the start/finish line. **S2** / **S3** appear after those splits are known for this track. Do not mark the split that *ends* S1 as S1.
 - Missing poly (`< 2` points) shows “No track map”.
@@ -29,8 +29,10 @@ Toggles: other riders, start/finish, sector lines, track arrows, leader crown, n
 ## Do not regress
 
 - Do not flash the track blank when segments are sparse; the cache and polyline close path are what stopped that (0.1.0).
-- Lapping color is **not** “anyone a lap up is blue”. They must also be behind you and inside `catch_span_m`.
-- Do not trust `num_laps` over `gap_laps` for blue/red. A rider two down can have a completed-lap count that looks a lap *up*; that used to paint the leader red the second time they went by. `other_laps_ahead` prefers `gap_laps`.
+- Lapping color is **not** “anyone a lap up is blue”. They must also be inside `catch_span_m` (either side — holds through a pass while nearby).
+- Do not trust `num_laps` over `gap_laps` for **blue**. A rider two down can have a completed-lap count that looks a lap *up*; that used to paint the leader red the second time they went by. `other_laps_ahead` uses `gap_laps` only when they are ahead of you.
+- Red only when you gained a lap on them (pairwise). Leader lapping someone behind you is not red.
+- Same-race S/F straddles must not paint blue/red. When `num_laps` differ, `other_laps_ahead` requires continuous `num_laps + track_pos` to round non-zero.
 - Dot **Position** labels, leader crown and the nearest ahead / behind rings use live `RaceStore` rank during a race (`standing_pos` / `leader_num` prefer `live_position` / `live_leader`). See [live race order](../live-order.md).
 - No blue/red lapping dots in warmup; `lap_rel` is `Same` until the race starts. `session_kind` 5 wins even when extras leak.
 - Map uses snapshot rect `s.map` (copied from config), not only `cfg.map` at draw time.
@@ -40,6 +42,9 @@ Toggles: other riders, start/finish, sector lines, track arrows, leader crown, n
 
 ## Change log
 
+- 2026-09-24 — Red is pairwise only: leader lapping someone behind you no longer paints them red.
+- 2026-09-24 — Same-race S/F straddles no longer paint blue/red (`other_laps_ahead` continuous progress when `gap_laps` match).
+- 2026-09-22 — Blue/red dots hold through a pass while still within catch span (either side).
 - 2026-09-13 — Review lines stay off the live map; they only draw in Analyze.
 - 2026-09-12 — Location tape records for Review (not drawn live).
 - 2026-09-07 — Warmup (`session_kind` 5) keeps dots slate even when leaked extras make the lap field look like a race.

@@ -192,6 +192,19 @@ pub(crate) const PIT_GROUP_X0: f32 = 0.200;
 pub(crate) const PIT_GROUP_X1: f32 = 0.560;
 
 pub(crate) const PIT_GROUP_N: usize = 3;
+
+/// Vertical Event Info / Results / Track Info rail on the multiplayer pit.
+pub(crate) const SIDE_TABS_X0: f32 = 0.006250;
+
+pub(crate) const SIDE_TABS_X1: f32 = 0.131250;
+
+pub(crate) const SIDE_TABS_Y0: f32 = 0.200000;
+
+/// Multi Event Info / Results / Track Info (3 tabs).
+pub(crate) const SIDE_TABS_Y1: f32 = 0.300000;
+
+/// Practice Event Info / Laps / Track Info / Trainer (4 tabs).
+pub(crate) const PRACTICE_SIDE_TABS_Y1: f32 = 0.333333;
 /// Shared Chat chrome slot — `idd_chatswitch` on pit + garage.
 
 /// Shared Chat chrome slot — `idd_chatswitch` on pit + garage.
@@ -917,9 +930,92 @@ pub(crate) fn restyle_pit_shell(body: &str, accent: [u8; 3], kind: PitShellKind)
         s = center_bike_chrome_button(&s, name, tip_y);
         s = paint_bike_chrome_button(&s, name, &ink, &ink, &ink);
     }
-    // Side tabs — keep geometry; light idle / accent hot.
-    s = s.replace("color1 255 240 240 240", &format!("color1 {idle}"));
-    s = s.replace("color2 255 0 0 0", &format!("color2 {hot}"));
+    if matches!(kind, PitShellKind::Multi) {
+        s = restyle_pit_side_tabs(
+            &s,
+            &idle,
+            &hot,
+            SIDE_TABS_Y1,
+            &[
+                ("id_eventinfo", "sevt1.tga", "sevt2.tga"),
+                ("id_results", "sevm1.tga", "sevm2.tga"),
+                ("ID_TRACKINFO", "sevb1.tga", "sevb2.tga"),
+            ],
+        );
+    } else {
+        s = restyle_pit_side_tabs(
+            &s,
+            &idle,
+            &hot,
+            PRACTICE_SIDE_TABS_Y1,
+            &[
+                ("id_eventinfo", "sevt1.tga", "sevt2.tga"),
+                ("id_laps", "sevm1.tga", "sevm2.tga"),
+                ("ID_TRACKINFO", "sevm1.tga", "sevm2.tga"),
+                ("ID_TRAINER", "sevb1.tga", "sevb2.tga"),
+            ],
+        );
+    }
+    s
+}
+
+/// Pit left rail → contiguous vertical sevt/sevm/sevb + track.
+pub(crate) fn restyle_pit_side_tabs(
+    body: &str,
+    idle: &str,
+    hot: &str,
+    track_y1: f32,
+    tabs: &[(&str, &str, &str)],
+) -> String {
+    let mut s = body.to_string();
+    let track = format!(
+        "\titem_bitmap\n\t{{\n\t\tname ID_SIDETABS\n\t\trect {SIDE_TABS_X0:.6} {SIDE_TABS_Y0:.6} {SIDE_TABS_X1:.6} {track_y1:.6}\n\t\tsprite vsegtrack.tga\n\t}}\n"
+    );
+    if !s.contains("name ID_SIDETABS\n") {
+        // Insert ahead of whichever side tab appears first in the dialog.
+        let mut insert_at: Option<usize> = None;
+        for (name, _, _) in tabs {
+            let needle = format!("\titem_tab\n\t{{\n\t\tname {name}\n");
+            if let Some(at) = s.find(&needle) {
+                insert_at = Some(insert_at.map_or(at, |cur| cur.min(at)));
+            }
+        }
+        if let Some(at) = insert_at {
+            s.insert_str(at, &track);
+        }
+    }
+    for (name, s1, s2) in tabs {
+        let marker = format!("name {name}\n");
+        let Some(at) = s.find(&marker) else {
+            continue;
+        };
+        let end = s[at..].find("\n\titem_").map(|i| at + i).unwrap_or(s.len());
+        let tab = s[at..end].to_string();
+        let mut kept = String::new();
+        for line in tab.lines() {
+            let t = line.trim_start();
+            if t.starts_with("sprite1 ")
+                || t.starts_with("sprite2 ")
+                || t.starts_with("color1 ")
+                || t.starts_with("color2 ")
+            {
+                continue;
+            }
+            kept.push_str(line);
+            kept.push('\n');
+        }
+        let insert_at = kept
+            .find("group 0\n")
+            .map(|i| i + "group 0\n".len())
+            .unwrap_or(kept.find('\n').map(|i| i + 1).unwrap_or(0));
+        kept.insert_str(
+            insert_at,
+            &format!("\t\tsprite1 {s1}\n\t\tsprite2 {s2}\n"),
+        );
+        let kept = kept.trim_end().trim_end_matches('}').trim_end().to_string();
+        let kept = format!("{kept}\n\t\tcolor1 {idle}\n\t\tcolor2 {hot}\n\t}}\n");
+        s.replace_range(at..end, &kept);
+    }
     s
 }
 
@@ -1278,6 +1374,8 @@ pub(crate) fn restyle_garage(body: &str, accent: [u8; 3]) -> String {
         &format!("pullbackcolor 255 {night}"),
     );
     s = inject_pull_fieldboxes(&s);
+    // Fieldbox pills are light grey — closed pull values must be pure black.
+    s = force_pull_textcolor_black(&s);
     // Right action / tyre panels → frosted glass, stop above chrome.
     s = s.replace("sprite dialog440x170.tga", "sprite garagepanel_t.tga");
     s = s.replace("sprite dialog440x470.tga", "sprite garagepanel_r.tga");
@@ -1473,10 +1571,9 @@ pub(crate) fn restyle_garage_pane(body: &str, accent: [u8; 3]) -> String {
     // Cream (tyres/brakes) + ROW (Mapping etc.) fills → clear; fieldbox pills underneath.
     s = s.replace("backcolor 255 240 240 240", "backcolor 0 0 0 0");
     s = s.replace(&format!("backcolor 255 {row}"), "backcolor 0 0 0 0");
-    // Stock Mapping used black textcolor — invisible once the fill goes dark.
-    s = s.replace("textcolor 255 0 0 0", &format!("textcolor {idle}"));
-    s = s.replace("textcolor 255 80 80 80", &format!("textcolor {idle}"));
     s = inject_pull_fieldboxes(&s);
+    // Fieldbox pills are light grey — closed pull values must be pure black.
+    s = force_pull_textcolor_black(&s);
     s = s.replace("color1 255 240 240 240", &format!("color1 {idle}"));
     s = s.replace("color2 255 0 0 0", &format!("color2 {hot}"));
     s
@@ -2174,7 +2271,7 @@ dialog
 		name id_done
 		button
 		{{
-			rect 0.700000 {cy0:.6} 0.970000 {cy1:.6}
+			rect 0.850000 {cy0:.6} 0.970000 {cy1:.6}
 			sprite1 done1.tga
 			sprite2 done1.tga
 			sprite3 done2.tga
@@ -2632,6 +2729,9 @@ dialog
 
 pub(crate) fn browser_chrome(accent: [u8; 3]) -> String {
     let sprites = dest_sprites();
+    // (chrome_h - fontsize) / 2 — same recipe as Options / Track Info labels.
+    let tab_pos = (CHROME_Y1 - CHROME_Y0 - 0.020000) * 0.5;
+    let btn_pos = (CHROME_Y1 - CHROME_Y0 - 0.022222) * 0.5;
     format!(
         r#"
 dialog
@@ -2674,7 +2774,7 @@ dialog
 		text
 		{{
 			font main.fnt
-			pos 0.000000 0.005556
+			pos 0.000000 {bpos:.6}
 			fontsize 0.022222
 			align center
 		}}
@@ -2699,7 +2799,7 @@ dialog
 		text
 		{{
 			font main.fnt
-			pos 0.000000 0.005556
+			pos 0.000000 {tpos:.6}
 			fontsize 0.020000
 			align center
 		}}
@@ -2719,7 +2819,7 @@ dialog
 		text
 		{{
 			font main.fnt
-			pos 0.000000 0.005556
+			pos 0.000000 {tpos:.6}
 			fontsize 0.020000
 			align center
 		}}
@@ -2741,7 +2841,7 @@ dialog
 		text
 		{{
 			font main.fnt
-			pos 0.000000 0.005556
+			pos 0.000000 {bpos:.6}
 			fontsize 0.022222
 			align center
 		}}
@@ -2763,7 +2863,7 @@ dialog
 		text
 		{{
 			font main.fnt
-			pos 0.000000 0.005556
+			pos 0.000000 {bpos:.6}
 			fontsize 0.022222
 			align center
 		}}
@@ -2787,7 +2887,7 @@ dialog
 		text
 		{{
 			font main.fnt
-			pos 0.000000 0.005556
+			pos 0.000000 {bpos:.6}
 			fontsize 0.022222
 			align center
 		}}
@@ -2804,6 +2904,8 @@ dialog
 "#,
         cy0 = CHROME_Y0,
         cy1 = CHROME_Y1,
+        tpos = tab_pos,
+        bpos = btn_pos,
         dim = argb(255, DIM),
         bar = argb(230, NIGHT),
         idle = argb(255, TEXT),

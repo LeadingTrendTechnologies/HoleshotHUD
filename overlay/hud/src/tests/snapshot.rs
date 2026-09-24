@@ -128,7 +128,7 @@ fn snapshot_abi_is_prefix_of_checked_in_layout() {
         path.display()
     );
     for line in snap.lines() {
-        if line.starts_with("MAGIC=") || line.starts_with("VERSION=") || line.starts_with("MAX_") || line.starts_with("NAME=") || line.starts_with("TRACK_NAME=") {
+        if line.starts_with("MAGIC=") || line.starts_with("VERSION=") || line.starts_with("MAX_") || line.starts_with("NAME=") || line.starts_with("TRACK_NAME=") || line.starts_with("GUID=") {
             assert!(
                 file.lines().any(|l| l == line),
                 "src/shm/abi.txt missing {line}"

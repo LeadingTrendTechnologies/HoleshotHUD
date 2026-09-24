@@ -8,6 +8,7 @@ fn dummy_ui(open: bool) -> SettingsUi {
         tab: Tab::App,
         last_widget: Tab::Standings,
         app_section: AppSection::Look,
+        profile_section: ProfileSection::Overview,
         hover: None,
         focus: None,
         hits: Vec::new(),
@@ -18,6 +19,7 @@ fn dummy_ui(open: bool) -> SettingsUi {
         scroll: 0.0,
         content_h: 0.0,
         scroll_max: 0.0,
+        motos_list_scroll: 0.0,
         nav_scroll: 0.0,
         nav_content_h: 0.0,
         nav_top: 0.0,
@@ -180,17 +182,18 @@ fn review_empty_paints_enable_gate() {
     refresh_palette();
     let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
     let mut ui = dummy_ui(false);
-    ui.tab = Tab::Review;
+    ui.tab = Tab::Profile;
+    ui.profile_section = ProfileSection::Motos;
     *UI.lock().unwrap() = Some(ui);
     let mut px = Pixmap::new(1000, 720).expect("pixmap");
     draw(&mut px, &fonts, 1000.0, 720.0);
     let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
     let ids = hit_ids(&hits);
-    assert!(ids.contains(&Hit::TabReview));
+    assert!(ids.contains(&Hit::TabProfile));
+    assert!(ids.contains(&Hit::ProfileNavMotos));
     assert!(ids.contains(&Hit::ReviewToggle));
     assert!(!ids.contains(&Hit::ReviewFilterAll));
-    assert!(!ids.contains(&Hit::ReviewFilterRace));
-    assert!(!ids.contains(&Hit::ReviewFilterPractice));
+    assert!(!ids.contains(&Hit::ReviewFilterRanked));
     assert!(!ids.contains(&Hit::ReviewFilterSaved));
     assert_golden("review-empty", &px);
     *UI.lock().unwrap() = None;
@@ -207,17 +210,16 @@ fn review_empty_recording_on_paints_filters() {
     refresh_palette();
     let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
     let mut ui = dummy_ui(false);
-    ui.tab = Tab::Review;
+    ui.tab = Tab::Profile;
+    ui.profile_section = ProfileSection::Motos;
     *UI.lock().unwrap() = Some(ui);
     let mut px = Pixmap::new(1000, 720).expect("pixmap");
     draw(&mut px, &fonts, 1000.0, 720.0);
     let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
     let ids = hit_ids(&hits);
     assert!(ids.contains(&Hit::ReviewFilterAll));
-    assert!(ids.contains(&Hit::ReviewFilterRace));
-    assert!(ids.contains(&Hit::ReviewFilterPractice));
+    assert!(ids.contains(&Hit::ReviewFilterRanked));
     assert!(ids.contains(&Hit::ReviewFilterSaved));
-    assert!(ids.contains(&Hit::ReviewToggle));
     *UI.lock().unwrap() = None;
     {
         let mut g = crate::config::CONFIG.lock().unwrap();
@@ -235,7 +237,8 @@ fn review_list_sheet_has_icon_hits() {
     refresh_palette();
     let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
     let mut ui = dummy_ui(false);
-    ui.tab = Tab::Review;
+    ui.tab = Tab::Profile;
+    ui.profile_section = ProfileSection::Motos;
     *UI.lock().unwrap() = Some(ui);
     let mut px = Pixmap::new(1000, 720).expect("pixmap");
     draw(&mut px, &fonts, 1000.0, 720.0);
@@ -244,7 +247,6 @@ fn review_list_sheet_has_icon_hits() {
     assert!(ids.iter().any(|h| matches!(h, Hit::ReviewOpen(_))));
     assert!(ids.iter().any(|h| matches!(h, Hit::ReviewDelete(_))));
     assert!(ids.iter().any(|h| matches!(h, Hit::ReviewKeep(_))));
-    assert!(ids.contains(&Hit::ReviewToggle));
     assert!(ids.contains(&Hit::ReviewClear));
     *UI.lock().unwrap() = None;
     crate::review::reset();
@@ -260,7 +262,8 @@ fn review_analyze_has_lap_map_and_compare_drop() {
     refresh_palette();
     let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
     let mut ui = dummy_ui(false);
-    ui.tab = Tab::Review;
+    ui.tab = Tab::Profile;
+    ui.profile_section = ProfileSection::Motos;
     ui.analyze_id = Some(id);
     ui.analyze_zoom = 2.0;
     *UI.lock().unwrap() = Some(ui);
@@ -289,7 +292,8 @@ fn review_follow_paint_stores_pan() {
     refresh_palette();
     let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
     let mut ui = dummy_ui(false);
-    ui.tab = Tab::Review;
+    ui.tab = Tab::Profile;
+    ui.profile_section = ProfileSection::Motos;
     ui.analyze_id = Some(id);
     ui.analyze_zoom = 2.0;
     ui.analyze_follow = true;
@@ -323,7 +327,8 @@ fn review_analyze_open_lap_drop_has_you_lap_hits() {
     refresh_palette();
     let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
     let mut ui = dummy_ui(false);
-    ui.tab = Tab::Review;
+    ui.tab = Tab::Profile;
+    ui.profile_section = ProfileSection::Motos;
     ui.analyze_id = Some(id);
     ui.open_drop = Some(Drop::AnalyzeLap);
     *UI.lock().unwrap() = Some(ui);
@@ -346,7 +351,8 @@ fn review_analyze_open_lap_drop_has_you_lap_hits() {
     *UI.lock().unwrap() = None;
 
     let mut ui = dummy_ui(false);
-    ui.tab = Tab::Review;
+    ui.tab = Tab::Profile;
+    ui.profile_section = ProfileSection::Motos;
     ui.analyze_id = Some(id);
     ui.open_drop = Some(Drop::AnalyzeCompare);
     *UI.lock().unwrap() = Some(ui);
@@ -359,6 +365,37 @@ fn review_analyze_open_lap_drop_has_you_lap_hits() {
     );
     *UI.lock().unwrap() = None;
     crate::review::reset();
+}
+
+#[test]
+fn open_dropdown_menu_sits_above_focus_ring() {
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::App;
+    ui.app_section = AppSection::Look;
+    ui.open_drop = Some(Drop::Theme);
+    ui.focus = Some(Hit::ThemeOpen);
+    *UI.lock().unwrap() = Some(ui);
+    let mut px = Pixmap::new(1000, 720).expect("pixmap");
+    draw(&mut px, &fonts, 1000.0, 720.0);
+    let (mx, my, mw, mh) = {
+        let ui = UI.lock().unwrap();
+        let menu = ui.as_ref().unwrap().drop_menu.expect("theme menu painted");
+        (menu.0, menu.1, menu.2, menu.3)
+    };
+    *UI.lock().unwrap() = None;
+    // Focus ring used to stroke the full setting row after the menu; sample just
+    // inside the menu top where that stroke crossed the panel.
+    let sx = (mx + mw * 0.5).round() as u32;
+    let sy = (my + 3.0).round() as u32;
+    assert!(sy < (my + mh) as u32, "sample must stay inside menu");
+    let p = px.pixel(sx, sy).expect("menu pixel");
+    assert_eq!(
+        (p.red(), p.green(), p.blue()),
+        (24, 24, 28),
+        "menu fill must sit above the setting focus ring at ({sx},{sy})"
+    );
 }
 
 #[test]
@@ -392,7 +429,8 @@ fn open_live_analyze_cases() {
     crate::review::set_live(7, "Hangtown");
 
     let mut ui = dummy_ui(false);
-    ui.tab = Tab::Review;
+    ui.tab = Tab::Profile;
+    ui.profile_section = ProfileSection::Motos;
     *UI.lock().unwrap() = Some(ui);
     open_live_analyze(true);
     let (id, stay, compare, you_lap, warmup, _) = snap_analyze();
@@ -403,7 +441,8 @@ fn open_live_analyze_cases() {
     assert!(!warmup);
 
     let mut ui = dummy_ui(false);
-    ui.tab = Tab::Review;
+    ui.tab = Tab::Profile;
+    ui.profile_section = ProfileSection::Motos;
     ui.review_stay_on_list = true;
     *UI.lock().unwrap() = Some(ui);
     open_live_analyze(false);
@@ -412,7 +451,8 @@ fn open_live_analyze_cases() {
     assert!(stay);
 
     let mut ui = dummy_ui(false);
-    ui.tab = Tab::Review;
+    ui.tab = Tab::Profile;
+    ui.profile_section = ProfileSection::Motos;
     ui.analyze_id = Some(7);
     ui.analyze_compare = 3;
     ui.analyze_you_lap = 2;
@@ -428,7 +468,8 @@ fn open_live_analyze_cases() {
 
     crate::review::set_live(7, "Hangtown");
     let mut ui = dummy_ui(false);
-    ui.tab = Tab::Review;
+    ui.tab = Tab::Profile;
+    ui.profile_section = ProfileSection::Motos;
     *UI.lock().unwrap() = Some(ui);
     open_live_analyze(false);
     let (id, stay, _, _, _, _) = snap_analyze();
@@ -614,7 +655,7 @@ fn clamp_snaps_to_nearest_when_monitor_is_gone() {
 }
 
 #[test]
-fn profile_tab_hidden_when_motos_off() {
+fn profile_tab_visible_when_motos_off() {
     let _g = crate::review::serial();
     crate::review::reset();
     {
@@ -625,13 +666,15 @@ fn profile_tab_hidden_when_motos_off() {
     let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
     let mut ui = dummy_ui(false);
     ui.tab = Tab::Profile;
+    ui.profile_section = ProfileSection::Overview;
     *UI.lock().unwrap() = Some(ui);
     let mut px = Pixmap::new(1000, 720).expect("pixmap");
     draw(&mut px, &fonts, 1000.0, 720.0);
     let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
     let ids = hit_ids(&hits);
-    assert!(!ids.contains(&Hit::TabProfile));
-    assert!(ids.contains(&Hit::TabReview));
+    assert!(ids.contains(&Hit::TabProfile));
+    assert!(ids.contains(&Hit::ProfileNavOverview));
+    assert!(ids.contains(&Hit::ProfileNavMotos));
     *UI.lock().unwrap() = None;
 }
 
@@ -653,6 +696,7 @@ fn profile_empty_paints_teach_copy() {
     let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
     let ids = hit_ids(&hits);
     assert!(ids.contains(&Hit::TabProfile));
+    assert!(ids.contains(&Hit::ProfileNavOverview));
     assert!(ids.contains(&Hit::ProfileAllTime));
     assert!(ids.contains(&Hit::ProfileTwoWeeks));
     assert!(!ids.contains(&Hit::ProfileClear));

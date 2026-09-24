@@ -20,6 +20,8 @@ Primary SHM fields: race num, position, state, best / last lap, laps, gap ms / l
 
 Status labels: `1` DNS, `3` OUT, `4` DSQ, else PIT if `pit != 0`.
 
+**Status** column (`st_status`, default off) draws Font Awesome icons (same marks as map/radar): finish (after the leader takes the flag), crash, DNS, OUT, DSQ, pit. Priority: finish → crash → DNS/OUT/DSQ → pit. Finished riders show only the flag. No column header title.
+
 ## Behavior
 
 - Height grows with visible rows, even when the saved widget box is shorter (a Ctrl+move can write a hugged 1-row `standings_h`). If the field is larger than **Rows**, the window centers on you.
@@ -31,11 +33,11 @@ Status labels: `1` DNS, `3` OUT, `4` DSQ, else PIT if `pit != 0`.
 - Name column uses its configured width (and only shrinks when the table is too narrow); other columns keep configured widths. The plaque hugs that column pack, so leftover widget width is not empty glass. Ctrl+resize width grows the Name column so the plaque actually gets bigger; height grows **Rows** (3–40).
 - Rows slide when order changes (`ST_SLIDE`).
 
-Default columns on: Position, Number, Name, Gap, Fastest, Last lap.
+Default columns on: Position, Number, Name, Gap to leader, Fastest, Last lap.
 
 ## Do not regress
 
-- Gap to P1 uses `gap_ms` / `gap_laps`. Interval is gap to the rider one place ahead, not to the leader.
+- Settings labels: **Gap to leader** (`StField::Gap`) uses `gap_ms` / `gap_laps` to P1. **Gap to rider ahead** (`StField::Interval`) is gap to the rider one place ahead, not to the leader. Ini keys stay `gap` / `int`.
 - Header/footer **Gap ahead** / **Gap behind** are live-order P−1 / P+1. A pass switches the rider immediately. Same lap is seconds along the track toward them, not Interval’s line time and not Relative’s shortest wrap. A live lap or more is `1L` / `-1L`.
 - Last lap for you can fall back to `s.last_lap_ms` when the row has no last lap yet.
 - Practice / warmup **Laps** for you can follow `current_lap - 1` when classification skipped a crashed crossing. Do not do that in a moto.
@@ -51,9 +53,15 @@ Default columns on: Position, Number, Name, Gap, Fastest, Last lap.
 - Setup header/footer is the loaded bike setup filename stem. `--` when `RunInit` has not sent it. Restart MX Bikes after the V13 plugin.
 - Ctrl+resize chrome is the hugged plaque (column pack × row stack), not leftover widget glass. Dragging it larger still grows Name / Rows — do not leave the orange box as a no-op hug.
 - The night-ink plaque must cover every visible row. Do not clamp stack height to a shorter saved `standings_h`.
+- Finished riders show only the Status finish flag — not crash / pit / DNS / OUT / DSQ on top of it.
 
 ## Change log
 
+- 2026-09-22 — Status finish flag wins over crash/pit for done riders. Your-row wash alpha 52 at default **Row highlight** (spider-scaled).
+- 2026-09-22 — Your-row highlight wash matches Profile spider fill (full chroma, alpha 40 at default **Row highlight**).
+- 2026-09-22 — Settings column names: **Gap** → **Gap to leader**, **Interval** → **Gap to rider ahead**. Same columns and ini keys.
+- 2026-09-22 — Removed the separate **Crashed** text column; crash is only on **Status** icons. Status header label is blank.
+- 2026-09-22 — **Status** column paints crash / DNS / OUT / DSQ / finish / pit icons (map-style marks) instead of DNS/OUT/DSQ/PIT text. Finish is inferred after the leader finishes (`done_racing`).
 - 2026-09-22 — Settings column drag slides neighboring rows into place (ease-out), instead of snapping on drop.
 - 2026-09-22 — Penalty column shows whole seconds as `#s` (e.g. `5s`), not lap-style `5.000`.
 - 2026-09-22 — **Plaque text** (Black/White, default Black) and **Show plaques** for the orange rider-count / track-name skews. Separate from row **Text color**. Hidden plaques collapse the track band height.

@@ -304,6 +304,27 @@ pub(crate) fn inject_pull_fieldboxes(dialog: &str) -> String {
     out
 }
 
+/// Closed pull value on a light fieldbox — pure black (A B G R). Garage only.
+pub(crate) fn force_pull_textcolor_black(dialog: &str) -> String {
+    let mut out = String::with_capacity(dialog.len());
+    for line in dialog.lines() {
+        let t = line.trim_start();
+        if t.starts_with("textcolor ") {
+            let indent = &line[..line.len() - t.len()];
+            out.push_str(indent);
+            out.push_str("textcolor 255 0 0 0\n");
+        } else {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    // Preserve a trailing newline if the input had one; lines() drops it.
+    if dialog.ends_with('\n') && !out.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}
+
 pub(crate) fn pull_name(pull: &str) -> Option<&str> {
     let line = pull.lines().find(|l| l.trim_start().starts_with("name "))?;
     Some(line.trim().trim_start_matches("name ").trim())

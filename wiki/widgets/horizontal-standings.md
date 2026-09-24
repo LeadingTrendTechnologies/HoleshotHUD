@@ -17,6 +17,7 @@ Settings subtitle: “Your name is highlighted in the field”.
 - Optional title: `WARMUP` / `LAP RACE` / `TIMED` / `EXTRA` / `SESSION` plus track name. Warmup is 10:00 (or 12/15/20 / 30+ min practice) with no extras; not a leftover 8-minute race.
 - Side slots (`ticker_left` / `ticker_right`) are `BoardField` (default Lap, Air). **Fuel**, **Fuel %**, **Setup**, **Gap ahead**, and **Gap behind** are options. Ahead/behind are live-order place neighbors, not the card delta vs you.
 - Cards show position, name, gap vs you (`ticker_delta` = signed gap difference), last/best. Session-best lap is purple.
+- Optional **Status** (`ticker_status`, default off) appends a finish / crash / DNS / OUT / DSQ / pit icon at the **end** of each card. Finished riders show only the flag. When on, gap stays gap (status is not written over it). When off, DNS/OUT/DSQ/PIT still replace the gap text for out riders (legacy).
 - In replay / spectate, clicking a card follows that rider (same camera path as standings names).
 - **Riders shown** (`ticker_count`, 3–15) is a target; `hstand_layout` shrinks to what fits at a minimum card width.
 - Default: keep you in view (scroll start from your index). **Autoscroll** loops the whole field when there are more cards than fit.
@@ -32,9 +33,13 @@ Settings subtitle: “Your name is highlighted in the field”.
 - Cards iterate `RaceField::board()` (live order), not `s.standings`. Scroll index, slide animation, and the focus card follow that order.
 - Click-to-follow only while spectating / replay. Do not capture overlay clicks while riding.
 - Setup side-slot is the loaded bike setup filename stem. `--` when `RunInit` has not sent it.
+- With **Status** on, keep gap/delta on the card and put the mark at the trailing edge — do not replace gap with status text.
+- Finished riders show only the Status finish flag — not crash / pit / DNS / OUT / DSQ on top of it.
 
 ## Change log
 
+- 2026-09-22 — Status finish flag wins over crash/pit for done riders (same `standing_mark` as Standings / Relative).
+- 2026-09-22 — **Status** toggle (`ticker_status`) appends crash / finish / DNS / OUT / DSQ / pit icons at the end of each card; gap stays when the toggle is on.
 - 2026-09-09 — Side-slot **Gap ahead** / **Gap behind** use along-track time on the same lap and `1L` / `-1L` when live laps differ. Times have no leading `+`; ahead is an up arrow, behind a down arrow.
 - 2026-09-08 — Side-slot **Gap ahead** / **Gap behind** tick a live running gap to place neighbors. Card gaps stay the signed classification delta vs you.
 - 2026-09-08 — **Gap ahead** and **Gap behind** are side-slot options (shared `BoardField`). Place neighbors, not the signed card gap vs you.

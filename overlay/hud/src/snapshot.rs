@@ -1,11 +1,12 @@
 pub const MAGIC: u32 = 0x4F42584D;
-pub const VERSION: u32 = 17;
+pub const VERSION: u32 = 18;
 pub const MAX_POLY: usize = 1024;
 pub const MAX_RIDERS: usize = 64;
 pub const MAX_STANDINGS: usize = 40;
 pub const MAX_SECTORS: usize = 3;
 pub const NAME: usize = 32;
 pub const TRACK_NAME: usize = 64;
+pub const GUID: usize = 100;
 
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
@@ -178,6 +179,8 @@ pub struct Snapshot {
     pub holeshot_time: i32,
     /// Monotonic Draw publishes only (not RaceVehicleData / lifecycle). Systems FPS.
     pub draw_count: u32,
+    pub server_name: [u8; TRACK_NAME],
+    pub event_guid: [u8; GUID],
 }
 
 impl Default for Snapshot {
@@ -269,6 +272,8 @@ impl Default for Snapshot {
             holeshot_race_num: 0,
             holeshot_time: 0,
             draw_count: 0,
+            server_name: [0; TRACK_NAME],
+            event_guid: [0; GUID],
         }
     }
 }
@@ -375,6 +380,24 @@ pub fn write_name(dest: &mut [u8], src: &str) {
 }
 
 impl Snapshot {
+    /// Byte length of the SHM-shaped struct (for stream / WASM ingest).
+    pub const BYTE_LEN: usize = std::mem::size_of::<Self>();
+
+    /// Copy a full SHM-sized blob into this snapshot. Returns false if too short.
+    pub fn copy_from_bytes(&mut self, bytes: &[u8]) -> bool {
+        if bytes.len() < Self::BYTE_LEN {
+            return false;
+        }
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                bytes.as_ptr(),
+                self as *mut Self as *mut u8,
+                Self::BYTE_LEN,
+            );
+        }
+        true
+    }
+
     /// Race / replay payload is present. Menus with an empty snapshot are not.
     ///
     /// Standings alone are leftover after `RunDeinit` (garage / lobby). Replay and
@@ -569,6 +592,7 @@ pub fn abi_text() -> String {
     let _ = writeln!(o, "MAX_SECTORS={MAX_SECTORS}");
     let _ = writeln!(o, "NAME={NAME}");
     let _ = writeln!(o, "TRACK_NAME={TRACK_NAME}");
+    let _ = writeln!(o, "GUID={GUID}");
     fn field(o: &mut String, ty: &str, name: &str, off: usize, size: usize) {
         let _ = writeln!(o, "{ty}.{name} {off} {size}");
     }
@@ -1240,5 +1264,23 @@ pub fn abi_text() -> String {
         offset_of!(Snapshot, draw_count),
         4,
     );
+    field(
+        &mut o,
+        "MxboShmSnapshot",
+        "serverName",
+        offset_of!(Snapshot, server_name),
+        TRACK_NAME,
+    );
+    field(
+        &mut o,
+        "MxboShmSnapshot",
+        "eventGuid",
+        offset_of!(Snapshot, event_guid),
+        GUID,
+    );
     o
 }
+
+#[cfg(test)]
+#[path = "tests/snapshot.rs"]
+mod tests;

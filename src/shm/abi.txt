@@ -1,5 +1,5 @@
 MAGIC=0x4F42584D
-VERSION=17
+VERSION=18
 CMD_MAGIC=0x4342584D
 MAX_POLY=1024
 MAX_RIDERS=64
@@ -7,6 +7,7 @@ MAX_STANDINGS=40
 MAX_SECTORS=3
 NAME=32
 TRACK_NAME=64
+GUID=100
 MxboShmPoint.size 8
 MxboShmPoint.x 0 4
 MxboShmPoint.z 4 4
@@ -45,7 +46,7 @@ MxboShmRect.x 0 4
 MxboShmRect.y 4 4
 MxboShmRect.w 8 4
 MxboShmRect.h 12 4
-MxboShmSnapshot.size 19632
+MxboShmSnapshot.size 19800
 MxboShmSnapshot.magic 0 4
 MxboShmSnapshot.version 4 4
 MxboShmSnapshot.seq 8 4
@@ -117,6 +118,8 @@ MxboShmSnapshot.localClutch 19616 4
 MxboShmSnapshot.holeshotRaceNum 19620 4
 MxboShmSnapshot.holeshotTime 19624 4
 MxboShmSnapshot.drawCount 19628 4
+MxboShmSnapshot.serverName 19632 64
+MxboShmSnapshot.eventGuid 19696 100
 MxboShmCmd.size 12
 MxboShmCmd.magic 0 4
 MxboShmCmd.spectating 4 4

@@ -5,8 +5,8 @@ use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use crate::config::{
-    accent_rgb, BoardField, DashField, DotLabel, FontFamily, HudConfig, LeanStyle, RelField,
-    StField, StanceStyle, TableText, WidgetId, SYS_PROC_MAX,
+    accent_rgb, BoardField, DashField, DotLabel, FontFamily, HudConfig, LeanStyle,
+    RelField, StField, StanceStyle, TableText, WidgetId, SYS_PROC_MAX,
 };
 pub use crate::race_store::{clock_sample, ClockSample};
 use crate::shm::{cstr, Snapshot, MAX_STANDINGS};
@@ -1277,18 +1277,14 @@ fn fill_focus_row(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, c: Color) {
     }
 }
 
-fn scale_a(opacity_pct: i32) -> u8 {
-    ((255u32 * opacity_pct.clamp(0, 100) as u32) / 100).min(255) as u8
+/// Spider-scaled wash: full chroma, alpha 52 at default 50% highlight.
+fn wash_a(opacity_pct: i32) -> u8 {
+    ((52u32 * opacity_pct.clamp(0, 100) as u32) / 50).min(255) as u8
 }
 
 fn you_row_bg(opacity_pct: i32) -> Color {
     let [r, g, b] = accent_rgb();
-    Color::from_rgba8(
-        (r as f32 * 0.77) as u8,
-        (g as f32 * 0.77) as u8,
-        (b as f32 * 0.77) as u8,
-        scale_a(opacity_pct),
-    )
+    Color::from_rgba8(r, g, b, wash_a(opacity_pct))
 }
 
 /// Extra black only reads while the game still shows through. Opaque night-ink
@@ -1308,11 +1304,11 @@ fn stripe_row_bg(panel_a: u8) -> Color {
 }
 
 fn lapping_row_bg(opacity_pct: i32) -> Color {
-    Color::from_rgba8(59, 130, 246, scale_a(opacity_pct))
+    Color::from_rgba8(59, 130, 246, wash_a(opacity_pct))
 }
 
 fn lapped_row_bg(opacity_pct: i32) -> Color {
-    Color::from_rgba8(239, 68, 68, scale_a(opacity_pct))
+    Color::from_rgba8(239, 68, 68, wash_a(opacity_pct))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1354,16 +1350,37 @@ fn rider_norm_pos(s: &Snapshot, race_num: i32) -> Option<f32> {
 
 /// Integer laps `other` is ahead of `me`.
 ///
-/// `gap_laps` is laps behind the leader (0 for P1). Prefer it over raw
-/// `num_laps`: MX Bikes can keep a lapped rider on the race lap, so after you
-/// complete another crossing you look a lap *up* while still two down. That
-/// used to paint the leader red once they went by the second time.
-fn other_laps_ahead(other: &crate::shm::Standing, me: &crate::shm::Standing) -> i32 {
+/// `gap_laps` is laps behind the leader (0 for P1). Use it only when it says
+/// they are ahead of you (`by_gap >= 1`): MX Bikes can keep a lapped rider on
+/// the race lap, so after you complete another crossing you look a lap *up*
+/// while still two down — that used to paint the leader red the second time
+/// they went by. Do not use a negative gap alone for red: the leader can lap
+/// someone behind you who you have not lapped yet.
+///
+/// Otherwise use pairwise `num_laps`, confirmed with continuous progress
+/// (`num_laps + track_pos`) so an S/F straddle is not a lap.
+fn other_laps_ahead(
+    other: &crate::shm::Standing,
+    me: &crate::shm::Standing,
+    other_pos: f32,
+    me_pos: f32,
+) -> i32 {
     let by_gap = me.gap_laps - other.gap_laps;
-    if by_gap != 0 {
+    let by_laps = other.num_laps - me.num_laps;
+    let by_progress = if by_laps == 0 {
+        0
+    } else {
+        let delta = (other.num_laps as f32 + other_pos) - (me.num_laps as f32 + me_pos);
+        if delta.round() as i32 == 0 {
+            0
+        } else {
+            by_laps
+        }
+    };
+    if by_gap >= 1 {
         by_gap
     } else {
-        other.num_laps - me.num_laps
+        by_progress
     }
 }
 
@@ -1417,14 +1434,14 @@ fn lap_rel(s: &Snapshot, race_num: i32) -> LapRel {
         let Some(mp) = rider_norm_pos(s, focus) else {
             return LapRel::Same;
         };
-        let ahead = other_laps_ahead(other, me);
+        let ahead = other_laps_ahead(other, me, op, mp);
         let w = wrap_frac(op, mp);
-        let behind_m = if w < 0.0 { closing_m(s, -w) } else { 0.0 };
-        let ahead_m = if w > 0.0 { closing_m(s, w) } else { 0.0 };
+        let dist_m = closing_m(s, w.abs());
         let span = catch_span_m(s);
-        if ahead >= 1 && behind_m > 2.0 && behind_m <= span {
+        // Either side of the bike: keep blue/red through a pass while still nearby.
+        if ahead >= 1 && dist_m > 2.0 && dist_m <= span {
             LapRel::LappingMe
-        } else if ahead <= -1 && ahead_m > 2.0 && ahead_m <= span {
+        } else if ahead <= -1 && dist_m > 2.0 && dist_m <= span {
             LapRel::LappedByMe
         } else {
             LapRel::Same
@@ -1507,6 +1524,7 @@ trait BoardCol: Copy + PartialEq {
     fn is_name(self) -> bool;
     fn is_bike(self) -> bool;
     fn is_pos(self) -> bool;
+    fn is_status(self) -> bool;
 }
 
 impl BoardCol for StField {
@@ -1519,7 +1537,7 @@ impl BoardCol for StField {
             Self::Current => "Current Lap",
             Self::Best => "Fastest",
             Self::Last => "Last",
-            Self::Status => "ST",
+            Self::Status => "",
             Self::Gap => "GAP",
             Self::Interval => "INT",
             Self::Bike => "BIKE",
@@ -1543,6 +1561,10 @@ impl BoardCol for StField {
     fn is_pos(self) -> bool {
         matches!(self, Self::Pos)
     }
+
+    fn is_status(self) -> bool {
+        matches!(self, Self::Status)
+    }
 }
 
 impl BoardCol for RelField {
@@ -1557,7 +1579,7 @@ impl BoardCol for RelField {
             Self::Bike => "BIKE",
             Self::Penalty => "Pen",
             Self::Interval => "Int",
-            Self::Crashed => "Crash",
+            Self::Status => "",
             Self::Best => "Fastest",
             Self::Last => "Last",
         }
@@ -1577,6 +1599,10 @@ impl BoardCol for RelField {
 
     fn is_pos(self) -> bool {
         matches!(self, Self::Pos)
+    }
+
+    fn is_status(self) -> bool {
+        matches!(self, Self::Status)
     }
 }
 
@@ -2085,10 +2111,16 @@ fn dash_race_flag(s: &Snapshot) -> DashFlag {
         if prestart(s) {
             return reset_flag_state();
         }
-        if CHECKERED_LATCH.load(Ordering::Relaxed) == 1 {
-            return DashFlag::Checkered;
-        }
         let left = laps_left(s);
+        // A glitched finish can latch checkered while extras still remain. Drop it so
+        // live place updates are not paired with a stuck finished flag.
+        if CHECKERED_LATCH.load(Ordering::Relaxed) == 1 {
+            if left.is_some_and(|n| n > 0) {
+                CHECKERED_LATCH.store(0, Ordering::Relaxed);
+            } else {
+                return DashFlag::Checkered;
+            }
+        }
         note_laps_to_run(s, left);
         let no_white = skip_last_lap_white(s, left);
         let flag = match left {
@@ -2837,6 +2869,19 @@ fn paint_table_row<C: BoardCol>(
         }
         if kind.is_bike() && !val.is_empty() {
             draw_bike_pill(px, fonts, &val, *cx, row.cy, *cw, row.row_h, accent);
+        } else if kind.is_status() {
+            let mark = mark_from_key(&val);
+            if !matches!(mark, RiderMark::None) {
+                let r = (row.row_h * 0.32).clamp(7.0, 11.0);
+                draw_state_mark(
+                    px,
+                    fonts,
+                    *cx + (*cw - r * 2.0) * 0.5,
+                    row.cy + (row.row_h - r * 2.0) * 0.5,
+                    r,
+                    mark,
+                );
+            }
         } else {
             col_text(
                 px,
@@ -3736,7 +3781,7 @@ fn draw_place_mark(px: &mut Pixmap, x: f32, y: f32, r: f32, ahead: bool) {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RiderMark {
     None,
     Crash,
@@ -3744,6 +3789,7 @@ enum RiderMark {
     Dns,
     Out,
     Dsq,
+    Finish,
 }
 
 fn rider_mark(s: &Snapshot, race_num: i32, crashed: bool) -> RiderMark {
@@ -3767,6 +3813,58 @@ fn rider_mark(s: &Snapshot, race_num: i32, crashed: bool) -> RiderMark {
     }
 }
 
+/// Status column / H-Standings trailing mark: finish, crash, DNS/OUT/DSQ, then pit.
+fn standing_mark(s: &Snapshot, race_num: i32, crashed: bool) -> RiderMark {
+    let Some(row) = s
+        .standings
+        .iter()
+        .take(s.standing_count.max(0) as usize)
+        .find(|st| st.race_num == race_num)
+    else {
+        if crashed || rider_crashed(s, race_num) {
+            return RiderMark::Crash;
+        }
+        return RiderMark::None;
+    };
+    if crate::race_store::done_racing(row) {
+        return RiderMark::Finish;
+    }
+    if crashed || rider_crashed(s, race_num) {
+        return RiderMark::Crash;
+    }
+    match row.state {
+        1 => RiderMark::Dns,
+        3 => RiderMark::Out,
+        4 => RiderMark::Dsq,
+        _ if row.pit != 0 => RiderMark::Pit,
+        _ => RiderMark::None,
+    }
+}
+
+fn mark_key(mark: RiderMark) -> String {
+    match mark {
+        RiderMark::None => String::new(),
+        RiderMark::Crash => "crash".into(),
+        RiderMark::Pit => "pit".into(),
+        RiderMark::Dns => "dns".into(),
+        RiderMark::Out => "out".into(),
+        RiderMark::Dsq => "dsq".into(),
+        RiderMark::Finish => "fin".into(),
+    }
+}
+
+fn mark_from_key(key: &str) -> RiderMark {
+    match key {
+        "crash" => RiderMark::Crash,
+        "pit" => RiderMark::Pit,
+        "dns" => RiderMark::Dns,
+        "out" => RiderMark::Out,
+        "dsq" => RiderMark::Dsq,
+        "fin" => RiderMark::Finish,
+        _ => RiderMark::None,
+    }
+}
+
 fn draw_state_mark(px: &mut Pixmap, fonts: &Fonts, x: f32, y: f32, r: f32, mark: RiderMark) {
     let (ch, col) = match mark {
         RiderMark::None => return,
@@ -3775,6 +3873,7 @@ fn draw_state_mark(px: &mut Pixmap, fonts: &Fonts, x: f32, y: f32, r: f32, mark:
         RiderMark::Dns => ('\u{f017}', Color::from_rgba8(180, 180, 186, 255)),
         RiderMark::Out => ('\u{f05e}', Color::from_rgba8(200, 80, 80, 255)),
         RiderMark::Dsq => ('\u{f00d}', Color::from_rgba8(232, 64, 64, 255)),
+        RiderMark::Finish => ('\u{f11e}', Color::from_rgba8(232, 232, 236, 255)),
     };
     let k = style_k().max(0.01);
     let size = (r * 1.05).clamp(8.0 * k, 13.0 * k) / k;

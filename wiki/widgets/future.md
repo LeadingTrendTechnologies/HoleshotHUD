@@ -12,7 +12,6 @@ Streaming (OBS Browser Source, stream-only layout) is not a widget — see [stre
 | [Battle card](#battle-card) | [Relative](relative.md) | Overlay gaps. Rival speed Need SHM (`RaceVehicleData`) |
 | [Spectate nameplate](#spectate-nameplate) | Dash / Standings | Overlay (`focus_race_num`, live order, last lap) |
 | [Line](#line) | [Map](map.md) centerline | Overlay `poly[]` + XZ. **Needs in-game dumps** |
-| [Radar lappers](#radar-lappers) | [Radar](radar.md) + map `lap_rel` | Overlay — not a new widget |
 | [G-Force](#g-force) | — | Need SHM (`m_fAccelerationX/Y/Z`) |
 | [Fuel calculator](#fuel-calculator) | Dash / table **Fuel** and **Fuel %** | Overlay (`fuel` / `maxFuel`) |
 | [Ideal Lap](#ideal-lap) | [Sectors](sector.md) — shipped as IDEAL | Overlay splits + `track_pb` |
@@ -63,16 +62,6 @@ Unknown (log before a widget page):
 - Off-track, crash, pits, remount teleports.
 - Height is on the segment (`m_fHeight`) but unused — plan-view only unless we decide otherwise.
 - Units, update rate, numeric plaque vs a L\|R bar.
-
-## Radar lappers
-
-Not a new widget. Map and minimap already color with `lap_rel` / `rider_dot_col`: **blue** = they are a lap up and closing from behind, **red** = you are a lap up and closing on them. Off in warmup. `gap_laps` wins.
-
-Radar blips are heat only (orange → cream). A lapper looks like anyone else.
-
-Future Radar pane toggle (**Lappers**, default on): when `lap_rel` is set, paint that blip blue or red; keep heat for size. Same-lap blips stay the heat gradient. Same warmup / `gap_laps` rules as the map. When it ships, log it on [radar.md](radar.md) and drop this section.
-
----
 
 ## G-Force
 
@@ -125,6 +114,7 @@ Timestamped race-event feed.
 
 ## Change log
 
+- 2026-09-22 — Radar lappers shipped as blue/red rings on [radar.md](radar.md); dropped from this page.
 - 2026-09-10 — Dropped unapproved ideas (ahead plate, interval bar, hunt, remount, finish projection, bike health, and the parked list).
 - 2026-09-10 — Added Holeshot / Start, Battle card, Spectate nameplate, Line (needs dumps), Radar lappers. Streaming moved to [streaming.md](../streaming.md). Event Log no longer owns holeshot.
 - 2026-09-09 — Telemetry shipped (traces + bars + gear/speed). Suspension graphs stay here.

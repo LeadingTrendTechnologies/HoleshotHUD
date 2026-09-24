@@ -58,6 +58,7 @@ mod tests {
         apply(&game, DEFAULT_PRIMARY).unwrap();
         let man = fs::read_to_string(ui.join(MANIFEST)).unwrap();
         assert!(man.contains("accent=#FF9430"));
+        assert!(man.contains("pack=5"));
         assert!(man.contains("main.mnu"));
         assert!(man.contains("english.str"));
         assert!(man.contains("splash.tga"));
@@ -472,6 +473,29 @@ mod tests {
             back.contains(&format!("rect 0.030000 {CHROME_Y0:.6} 0.140000 {CHROME_Y1:.6}")),
             "Back sits left of Local/World"
         );
+        let tab_pos = (CHROME_Y1 - CHROME_Y0 - 0.020000) * 0.5;
+        let local = join
+            .split("name ID_LOCAL")
+            .nth(1)
+            .unwrap()
+            .split("name ID_WORLD")
+            .next()
+            .unwrap();
+        assert!(
+            local.contains(&format!("pos 0.000000 {tab_pos:.6}")),
+            "Local label must be vertically centered on chrome"
+        );
+        let world = join
+            .split("name ID_WORLD")
+            .nth(1)
+            .unwrap()
+            .split("name ID_SPECTATE")
+            .next()
+            .unwrap();
+        assert!(
+            world.contains(&format!("pos 0.000000 {tab_pos:.6}")),
+            "World label must be vertically centered on chrome"
+        );
         assert!(ui.join("serverboard.tga").is_file());
         let board = fs::read(ui.join("serverboard.tga")).unwrap();
         let bw = u16::from_le_bytes([board[12], board[13]]) as usize;
@@ -599,6 +623,12 @@ mod tests {
         assert!(opt.contains(&format!(
             "rect 0.030000 {OPT_CHROME_Y0:.6} 0.140000 {OPT_CHROME_Y1:.6}"
         )));
+        assert!(
+            opt.contains(&format!(
+                "rect 0.850000 {OPT_CHROME_Y0:.6} 0.970000 {OPT_CHROME_Y1:.6}"
+            )),
+            "Done must stay compact, right-aligned"
+        );
         assert!(opt.contains("sprite1 done1.tga"));
         assert!(opt.contains("sprite1 back1.tga"));
         assert!(opt.contains("48 148 255"));
@@ -1507,6 +1537,26 @@ mod tests {
                 "\t\ttextid garage\r\n\t\ttext\r\n\t\t{\r\n\t\t\tpos 0.000000 0.005556\r\n\t\t\talign center\r\n\t\t}\r\n",
                 "\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 0 0 0\r\n\t\tcolor3 255 0 0 0\r\n\t}\r\n",
                 "\titem_button\r\n\t{\r\n\t\tname ID_PHOTO\r\n\t\tbutton\r\n\t\t{\r\n\t\t\trect 0.243750 0.966667 0.262500 1.000000\r\n\t\t}\r\n\t}\r\n",
+                "\titem_tab\r\n\t{\r\n\t\tname id_eventinfo\r\n\t\tgroup 0\r\n",
+                "\t\trect 0.006250 0.200000 0.131250 0.233333\r\n",
+                "\t\tsprite1 tabv1.tga\r\n\t\tsprite2 tabv2.tga\r\n",
+                "\t\ttextid event_info\r\n\t\ttext\r\n\t\t{\r\n\t\t\tfont main.fnt\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\tfontsize 0.022222\r\n\t\t\talign right\r\n\t\t}\r\n",
+                "\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 0 0 0\r\n\t}\r\n",
+                "\titem_tab\r\n\t{\r\n\t\tname id_laps\r\n\t\tgroup 0\r\n",
+                "\t\trect 0.006250 0.233333 0.131250 0.266667\r\n",
+                "\t\tsprite1 tabv1.tga\r\n\t\tsprite2 tabv2.tga\r\n",
+                "\t\ttextid laps\r\n\t\ttext\r\n\t\t{\r\n\t\t\tfont main.fnt\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\tfontsize 0.022222\r\n\t\t\talign right\r\n\t\t}\r\n",
+                "\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 0 0 0\r\n\t}\r\n",
+                "\titem_tab\r\n\t{\r\n\t\tname ID_TRACKINFO\r\n\t\tgroup 0\r\n",
+                "\t\trect 0.006250 0.266667 0.131250 0.300000\r\n",
+                "\t\tsprite1 tabv1.tga\r\n\t\tsprite2 tabv2.tga\r\n",
+                "\t\ttextid track_info\r\n\t\ttext\r\n\t\t{\r\n\t\t\tfont main.fnt\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\tfontsize 0.022222\r\n\t\t\talign right\r\n\t\t}\r\n",
+                "\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 0 0 0\r\n\t}\r\n",
+                "\titem_tab\r\n\t{\r\n\t\tname ID_TRAINER\r\n\t\tgroup 0\r\n",
+                "\t\trect 0.006250 0.300000 0.131250 0.333333\r\n",
+                "\t\tsprite1 tabv1.tga\r\n\t\tsprite2 tabv2.tga\r\n",
+                "\t\ttextid trainer\r\n\t\ttext\r\n\t\t{\r\n\t\t\tfont main.fnt\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\tfontsize 0.022222\r\n\t\t\talign right\r\n\t\t}\r\n",
+                "\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 0 0 0\r\n\t}\r\n",
                 "\titem_text\r\n\t{\r\n\t\tname id_weather\r\n\t\trect 0.006250 0.166667 0.993750 0.188889\r\n",
                 "\t\tcolor 255 0 0 0\r\n\t\tbackcolor 240 170 180 190\r\n\t}\r\n",
                 "\titem_text\r\n\t{\r\n\t\tname ID_TEXT\r\n\t\ttextid Testing\r\n\t\tcolor 255 240 240 240\r\n\t\tbackcolor 127 0 0 0\r\n\t}\r\n}\r\n\r\n",
@@ -1553,6 +1603,16 @@ mod tests {
         assert!(pit.contains("sprite1 segl1.tga"));
         assert!(pit.contains("sprite1 segm1.tga"));
         assert!(pit.contains("sprite1 segr1.tga"));
+        assert!(pit.contains("name ID_SIDETABS\n"));
+        assert!(pit.contains("sprite vsegtrack.tga"));
+        assert!(pit.contains(&format!(
+            "rect {SIDE_TABS_X0:.6} {SIDE_TABS_Y0:.6} {SIDE_TABS_X1:.6} {PRACTICE_SIDE_TABS_Y1:.6}"
+        )));
+        assert!(pit.contains("sprite1 sevt1.tga"));
+        assert!(pit.contains("sprite1 sevm1.tga"));
+        assert!(pit.contains("sprite1 sevb1.tga"));
+        assert!(!pit.contains("tabv1.tga"));
+        assert!(!pit.contains("tabv2.tga"));
         assert!(pit.contains(&format!(
             "rect {PIT_GROUP_X0:.6} {SETUP_CHROME_Y0:.6} {PIT_GROUP_X1:.6} {SETUP_CHROME_Y1:.6}"
         )));
@@ -1732,6 +1792,21 @@ mod tests {
                 "\titem_text\r\n\t{\r\n\t\tname id_weather\r\n\t\trect 0.006250 0.166667 0.993750 0.188889\r\n\t\tcolor 255 0 0 0\r\n\t\tbackcolor 240 170 180 190\r\n\t}\r\n",
                 "\titem_text\r\n\t{\r\n\t\tname id_raceinfo\r\n\t\trect 0.006250 0.133333 0.993750 0.155556\r\n\t\tcolor 255 0 0 0\r\n\t\tbackcolor 240 170 180 190\r\n\t}\r\n",
                 "\titem_text\r\n\t{\r\n\t\tname ID_TEXT\r\n\t\ttextid raceweekend\r\n\t\tcolor 255 240 240 240\r\n\t\tbackcolor 127 0 0 0\r\n\t}\r\n",
+                "\titem_tab\r\n\t{\r\n\t\tname id_eventinfo\r\n\t\tgroup 0\r\n",
+                "\t\trect 0.006250 0.200000 0.131250 0.233333\r\n",
+                "\t\tsprite1 tabv1.tga\r\n\t\tsprite2 tabv2.tga\r\n",
+                "\t\ttextid event_info\r\n\t\ttext\r\n\t\t{\r\n\t\t\tfont main.fnt\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\tfontsize 0.022222\r\n\t\t\talign right\r\n\t\t}\r\n",
+                "\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 0 0 0\r\n\t}\r\n",
+                "\titem_tab\r\n\t{\r\n\t\tname id_results\r\n\t\tgroup 0\r\n",
+                "\t\trect 0.006250 0.233333 0.131250 0.266667\r\n",
+                "\t\tsprite1 tabv1.tga\r\n\t\tsprite2 tabv2.tga\r\n",
+                "\t\ttextid results_tab\r\n\t\ttext\r\n\t\t{\r\n\t\t\tfont main.fnt\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\tfontsize 0.022222\r\n\t\t\talign right\r\n\t\t}\r\n",
+                "\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 0 0 0\r\n\t}\r\n",
+                "\titem_tab\r\n\t{\r\n\t\tname ID_TRACKINFO\r\n\t\tgroup 0\r\n",
+                "\t\trect 0.006250 0.266667 0.131250 0.300000\r\n",
+                "\t\tsprite1 tabv1.tga\r\n\t\tsprite2 tabv2.tga\r\n",
+                "\t\ttextid track_info\r\n\t\ttext\r\n\t\t{\r\n\t\t\tfont main.fnt\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\tfontsize 0.022222\r\n\t\t\talign right\r\n\t\t}\r\n",
+                "\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 0 0 0\r\n\t}\r\n",
                 "\titem_button\r\n\t{\r\n\t\tname id_join\r\n\t\tbutton\r\n\t\t{\r\n\t\t\trect 0.875000 0.966667 1.000000 1.000000\r\n\t\t\tsprite2 done1.tga\r\n\t\t\tsprite3 done2.tga\r\n\t\t}\r\n",
                 "\t\ttextid join\r\n\t\ttext\r\n\t\t{\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\talign right\r\n\t\t}\r\n",
                 "\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 240 240 240\r\n\t\tcolor3 255 240 240 240\r\n\t}\r\n}\r\n\r\n",
@@ -1816,6 +1891,16 @@ mod tests {
         )));
         assert!(pit.contains("sprite1 segl1.tga"));
         assert!(pit.contains("sprite1 segm1.tga"));
+        assert!(pit.contains("name ID_SIDETABS\n"));
+        assert!(pit.contains("sprite vsegtrack.tga"));
+        assert!(pit.contains(&format!(
+            "rect {SIDE_TABS_X0:.6} {SIDE_TABS_Y0:.6} {SIDE_TABS_X1:.6} {SIDE_TABS_Y1:.6}"
+        )));
+        assert!(pit.contains("sprite1 sevt1.tga"));
+        assert!(pit.contains("sprite1 sevm1.tga"));
+        assert!(pit.contains("sprite1 sevb1.tga"));
+        assert!(!pit.contains("tabv1.tga"));
+        assert!(!pit.contains("tabv2.tga"));
         let chat = mnu
             .split("name idd_chatswitch\n")
             .nth(1)
@@ -1972,6 +2057,18 @@ mod tests {
             "setup-select pulls must not keep cream fills"
         );
         assert!(
+            garage.contains("textcolor 255 0 0 0"),
+            "Current/Compare pull values must be pure black on fieldbox pills"
+        );
+        assert!(
+            !garage.contains(&format!("textcolor {}", argb(255, TEXT))),
+            "pull selected values must not stay light TEXT on fieldboxes"
+        );
+        assert!(
+            !garage.contains(&format!("textcolor {}", argb(255, INK))),
+            "near-black INK still reads grey — use pure black"
+        );
+        assert!(
             garage.contains(&format!("pullbackcolor 255 {}", bgr(NIGHT))),
             "open pull lists need an opaque night panel"
         );
@@ -2025,6 +2122,10 @@ mod tests {
         assert!(
             !general.contains("backcolor 255 240 240 240"),
             "tyre/brake pulls must not stay cream/white"
+        );
+        assert!(
+            general.contains("textcolor 255 0 0 0"),
+            "pane pull values must be pure black on fieldbox pills"
         );
         assert!(
             general.contains("sprite fieldbox.tga"),

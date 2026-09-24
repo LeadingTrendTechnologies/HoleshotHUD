@@ -16,6 +16,9 @@ use super::sprites::{
 };
 use super::{BAK_DIR, MANIFEST};
 
+/// Bump when MNU splice / sprite pack logic changes so accent-matched sync still rewrites.
+pub(crate) const PACK_REV: u32 = 5;
+
 pub(crate) static NEED_GAME_RESTART: AtomicBool = AtomicBool::new(false);
 
 pub(crate) static NEED_RETRY: AtomicBool = AtomicBool::new(false);
@@ -232,7 +235,12 @@ fn ensure_screen_manifest_entries(ui: &Path, accent: [u8; 3]) {
     };
     let mut files: Vec<String> = text
         .lines()
-        .filter(|l| !l.starts_with('#') && !l.starts_with("accent=") && !l.trim().is_empty())
+        .filter(|l| {
+            !l.starts_with('#')
+                && !l.starts_with("accent=")
+                && !l.starts_with("pack=")
+                && !l.trim().is_empty()
+        })
         .map(|l| l.trim().to_string())
         .collect();
     let mut dirty = false;
@@ -461,7 +469,12 @@ pub(crate) fn read_manifest_files(ui: &Path) -> Vec<String> {
             .collect();
     };
     text.lines()
-        .filter(|l| !l.starts_with('#') && !l.starts_with("accent=") && !l.trim().is_empty())
+        .filter(|l| {
+            !l.starts_with('#')
+                && !l.starts_with("accent=")
+                && !l.starts_with("pack=")
+                && !l.trim().is_empty()
+        })
         .map(|l| l.trim().to_string())
         .collect()
 }
@@ -476,14 +489,28 @@ pub(crate) fn read_manifest_accent(ui: &Path) -> Option<[u8; 3]> {
     None
 }
 
+pub(crate) fn read_manifest_pack(ui: &Path) -> Option<u32> {
+    let text = fs::read_to_string(ui.join(MANIFEST)).ok()?;
+    for line in text.lines() {
+        if let Some(v) = line.strip_prefix("pack=") {
+            return v.trim().parse().ok();
+        }
+    }
+    None
+}
+
 pub(crate) fn pack_accent_current(ui: &Path, accent: [u8; 3]) -> bool {
     read_manifest_accent(ui) == Some(accent)
+        && read_manifest_pack(ui) == Some(PACK_REV)
         && ui.join("main.mnu").is_file()
         && ui.join("main.fnt").is_file()
 }
 
 pub(crate) fn manifest_body(accent: [u8; 3], files: &[String]) -> String {
-    let mut s = format!("# holeshot-ui\naccent={}\n", format_primary_color(accent));
+    let mut s = format!(
+        "# holeshot-ui\naccent={}\npack={PACK_REV}\n",
+        format_primary_color(accent)
+    );
     for f in files {
         s.push_str(f);
         s.push('\n');

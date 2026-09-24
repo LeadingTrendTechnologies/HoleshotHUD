@@ -124,11 +124,7 @@ pub(crate) fn pane_feedback(
         w: w - 32.0,
         h: box_h,
     });
-    let box_fill = if fb.focused {
-        Color::from_rgba8(20, 20, 24, 255)
-    } else {
-        btn_bg()
-    };
+    let box_fill = if fb.focused { menu_fill() } else { btn_bg() };
     outlined(px, x + 16.0, box_y, w - 32.0, box_h, 8.0, box_fill);
     let placeholder = match fb.kind {
         crate::feedback::Kind::Bug => "What went wrong?",

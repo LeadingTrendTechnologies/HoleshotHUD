@@ -23,7 +23,7 @@ Fixed body: gear | RPM + speed | position + lap/clock text. P1 puts a gold Font 
 Practice, gate, and race time share **one** slot (`session_banner`).
 
 - **Lap moto:** `session_laps >= 5` is always a lap race, even if leftover warmup `10:00` or a leftover timed length (`8:00`) is still in `session_length`. **4-lap** motos are lap races unless a live **5–60 min** clock has already proved timed +4 (`TIMED_EXTRAS_HINT`) — leftover `08:00` on a 4-lap stays `1 / 4`. 2- and 3-lap motos are lap races when length is not leftover practice or a standard timed length (5–60 min set). A leftover start board (`00:50` stored as length) is still `1 / 2`, not `0 / +2`. Leaked extras during warmup (length 0, live `05:00`) stay a countdown. If a live **5–60 min** clock has already been seen with 1–4 extras and length is unset/start-board (`TIMED_EXTRAS_HINT`), stay timed — do not flip to `1 / 2` after the gate (6:00+2, 60:00+4). A 2–4-lap **gate board** (≤2 min) latches `LAP_MOTO_GATE` so a later dump into that window (then elapsed counting up) stays `1 / N`. Do not reuse `POST_GATE` for this — timed 6:00+2 sets `POST_GATE` too.
-- Lap motos show `current / N` after green, not leftover minutes. Gate boards (about 8 s–2 min) still show a countdown until the clock runs up or you move. A later 45 s / 30 s board after `00:10` stays a countdown; leftover `08:00` must not replace it until the race clock actually ticks.
+- Lap motos show `current / N` after green, not leftover minutes. Gate boards (about 8 s–2 min) still show a countdown until the clock runs up or you move. A later 45 s / 30 s board after `00:10` on a **lap** moto stays a countdown until green (leftover `08:00` must not replace it). On a **timed** race, the first gate board is the only short countdown; after it hits ~0 or jumps up to another board, show race length (`08:00`) until the live clock ticks.
 - Timed race: countdown while `session_time_ms` is live (`07:32` only — no `+#` while the clock runs). When time expires, extras use `0/1` then `1/1` for +1, or `0/2` … `2/2` for +2. Crossing as a backmarker at time-zero does **not** start extras (`local_overtime_taken`). `0/1` is the uncounted lap after the clock; `1/1` is the extra. It must advance — do not stick on `1/1` for laps you still have to run. Getting a lap put on you, or the leader finishing, is `~Lapped` only — you still run the extra, and checkered waits until you complete it.
 - Clock stays `00:00` until you cross or the leader puts a lap on you (0.1.0).
 - Warmup `10:00` must not stick after a race: prefer the ticking clock (0.1.4).
@@ -59,7 +59,8 @@ One path for lap motos and timed extras, driven by `laps_left`. Lap motos count 
 - Do not treat a 2–4-lap gate (≤2 min) that glitches into a 5–60 min `session_time_ms` as timed extras. Latch `LAP_MOTO_GATE` from that gate; do not treat `POST_GATE` as “this is a lap moto” (6:00+2 sets it too). That dump shows `16:20` then counts elapsed; it must stay `1 / N`.
 - Do not let a leftover start-board length cap the live timed countdown (`effective_session_len_ms`).
 - Do not treat leaked extras during a live warmup clock (length 0, `05:00`) as a 2-lap moto.
-- Do not replace a later start board (`00:45` after `00:10`) with frozen `08:00` unless a live remaining clock has already been shown.
+- Do not replace a later start board (`00:45` after `00:10`) with frozen `08:00` on a **lap** moto unless a live remaining clock has already been shown. On a **timed** race, that later board must show race length, not another short countdown.
+- Do not snap an armed timed countdown back to full race length when `session_time_ms` republishes near the session total. Near-full is a 30 s band; hold the last ticking remain instead.
 - Do not stick 8:00+1 on `1/1` for laps still to run. After the clock: `0/1` until you start the extra, `1/1` on that lap (clock alone while time remains — no `08:00 +1`).
 - Do not lower `OVERTIME_LOCAL_BASE` / `OVERTIME_BASE_LAP` when standings reset to 0 after extras appear late on an 8:00+1. Those counts are high-water marks from the timed lap.
 - Do not append `+#` to the live timed countdown; extras text is only after the clock hits zero.
@@ -68,6 +69,7 @@ One path for lap motos and timed extras, driven by `laps_left`. Lap motos count 
 - Do not let one glitched frame wave you off. Checkered needs `finish_earned` (a lap completed since laps were last known to remain), because `session_length` dropping out for a frame makes a timed set read as a lap moto.
 - Do not read `OVERTIME_LOCAL_BASE` without calling `note_overtime_base` first. The pre-extras re-basing used to be a side effect of `local_overtime_done`, so the base was only correct if something happened to format the banner that frame.
 - Do not **latch** checkered from the S/F approach on either race type. The run-in shows it, but only a line crossing with `laps_left == 0` sets `CHECKERED_LATCH`, so a rider who stops or crashes in the window is not finished.
+- Do not keep a latched checkered while `laps_left > 0`. A glitched finish can set the latch; clear it so Extra `2/2` mid-race does not look finished while place still moves.
 - Do not let track geometry decide the latched checkered. The approach window only gates the run-in flags, so a bad `sf_meters` or missing centerline degrades to "no run-in flag", never to a wrong finish.
 - Do not hold the white up for the whole final lap again. It is waved at the line for `WHITE_WAVE_MS`; the bare mid-lap stretch is the point.
 - Do not read the lap rules as authoritative in the frames just after the line. The classification lags the crossing, so a flag that was out on the run-in has to be carried across it (`hold_across_line`).
@@ -77,7 +79,9 @@ One path for lap motos and timed extras, driven by `laps_left`. Lap motos count 
 - Do not wave white on lap 1 of a lap moto, or when `laps_left` drops by two or more in one step (`skip_last_lap_white`). That is a crash / `session_laps` glitch, not a last lap.
 - Do not wave the checkered because someone put a lap on you during timed extras. `0/1` with `~Lapped` still has the extra to run.
 - Do not wait for classification `gap_laps` to show `~Lapped`. The game only republishes that at the line; latch the pass when the lap-up leader goes past you. That pass does not start extras or wave you off.
-- Do not show `~Lapped` because the leader finished and you are still on that last lap. One extra completed lap is "they crossed, you have not". A real lap down is two or more (`leader_lap_lead >= 2` after `leader_finished`).
+- On timed extras short of the distance (`1/2` while they finished `2/2`), `lead >= 1` after `leader_finished` is enough to arm the pass latch. Do not require `lead >= 2` there or `~Lapped` waits for your line.
+- Do not latch `~Lapped` from a centerline `track_pos` spike (over/under a tabletop). Pass samples beyond `PAIR_MAX_M`, or a leader teleport larger than that in one frame, clear behind-state and do not stick the latch. Equal completed laps during extras do not arm the latch.
+- Do not show `~Lapped` because the leader finished and you are still on that **last** lap / last extra. One extra completed lap there is "they crossed, you have not" (`lead >= 2` after `leader_finished` on the finishing lap). On an earlier extra (`raw_overtime_taken < extras`), `lead >= 1` is a real lap down.
 - Do not count a finisher up past what they ran; once `i_finished`, the banner freezes.
 - Do not let the effective total exceed the race distance. Your own finish latches `LEADER_FIN_LOCAL_BASE` at your full lap count, so an unclamped `base + 1` gives a winner `5 / 6`.
 - Do not show `~Lapped` in warmup, on the gate, or off track. `gap_laps` has no meaning without a race leader.
@@ -103,6 +107,11 @@ One path for lap motos and timed extras, driven by `laps_left`. Lap motos count 
 
 ## Change log
 
+- 2026-09-24 — Timed +2 on `1/2`: `~Lapped` (and waved-off `1/1`) latches when the finished leader goes past you with `lead >= 1`. Same-last-extra still needs `lead >= 2`.
+- 2026-09-24 — Armed timed countdown holds the last remain when `session_time_ms` republishes near session length (`07:58` must not snap back to `08:00`).
+- 2026-09-24 — `~Lapped` pass latch ignores centerline projection spikes beyond `PAIR_MAX_M` and discontinuous leader teleports (over/under tabletop). Extras arm requires a real lap lead (`lead >= 1`), not equal `num_laps`.
+- 2026-09-24 — Timed race: after the first gate board (~50 s) ends or jumps to a later 45 s / 30 s board, show race length (`08:00`) instead of another short countdown. Lap motos still keep later boards as countdowns until green.
+- 2026-09-23 — Latched checkered clears when `laps_left > 0` again (`dash_race_flag` / `timed_race_flag`). A glitched finish no longer leaves Extra `2/2` looking done while live place still moves.
 - 2026-09-22 — Penalty field shows whole seconds as `#s` (e.g. `5s`), not lap-style `5.000`.
 - 2026-09-22 — Yellow wrap waves in practice and warmup when `dash_yellow` is on; blue/red stay race-only.
 - 2026-09-16 — **P#** is Look primary color (`dash_pos_col` → `accent()`).

@@ -34,15 +34,35 @@ fn pane_app_look(
     y: f32,
     w: f32,
 ) -> f32 {
-    let mut y = heading(
+    let mut     y = heading(
         px,
         fonts,
         x,
         y,
         w,
         "Look",
-        "Font and primary color apply to the in-game HUD. Units are per measurement",
+        "Theme is the settings window. Font and primary color apply to the in-game HUD. Units are per measurement",
         None,
+        hover,
+        hits,
+    );
+    y = dropdown_row(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        "Theme",
+        cfg.settings_theme.label(),
+        open_drop == Some(Drop::Theme),
+        Hit::ThemeOpen,
+        &SettingsTheme::ALL.map(|theme| {
+            (
+                Hit::ThemePick(theme),
+                theme.label(),
+                cfg.settings_theme == theme,
+            )
+        }),
         hover,
         hits,
     );

@@ -4,6 +4,7 @@ slug: "overlay-src-settings-profile-rs"
 primary_target: "overlay/src/settings/profile.rs"
 related_targets:
   - "overlay/src/settings/mod.rs"
+  - "overlay/src/settings/review.rs"
   - "review/src/profile.rs"
   - "wiki/review.md"
 ---
@@ -11,23 +12,23 @@ related_targets:
 # Profile
 
 ## Scope
-Operate · F8 host mode (`overlay/src/settings/profile.rs`). Widgets | Motos | **Profile** | Settings | Feedback. Profile tab only while Motos recording is on.
+Operate · F8 host mode. Top bar: Widgets | **Profile** | Settings | Feedback. Profile sub-nav: **Overview** | **Motos**. Motos list/Analyze lives under Profile → Motos (no top Motos tab).
 
 ## Audience / job
-After racing: see what kind of rider you are from stored motos, at a glance, without Analyze.
+After racing: see what kind of rider you are at a glance; open Motos from the same Profile home when you want tapes.
 
 ## Direction
-Name is the chart. Same settings world: charcoal, Exo ExtraBold Italic, orange skew on the selected Profile tab and on All time / 14 days chips. Outline spider, no score table.
+Name is still the chart. Overview uses spider flank cards — center spider panel, left/right KPI cards — charcoal / Exo / orange skew chips. Motos keeps its existing sheet + Analyze.
 
 ## Memorable moment
-Huge in-game name over an 8-spoke outline spider.
+Huge in-game name over a spider card flanked by Win/Podium/Avg and Clean/HS/Pen cards.
 
 ## Direction contract
-THESIS: The rider’s in-game name is the page. The spider is the graphic under it. Refuses a settings table of 0–100 bars.
-OWN-WORLD: Charcoal pane, orange skew only on selected Profile tab and window chips, Exo ExtraBold Italic, hairline graticule, orange stroke.
-STORY: Open Profile, read who you are, see the shape of your races. Numbers are not the first read.
-FIRST VIEWPORT: Top bar Widgets / Motos / Profile / Settings / Feedback (Profile only if Motos is enabled). Centered huge cream name. Dim N race motos. Chips All time / 14 days. Outline 8-spoke spider. No score table. Empty: teach copy, no fake spider. Banner on the chart until five all-time races.
-FORM: Name is the chart (dealt index 4). Seed 0df63356.
+THESIS: Profile is the home for you-as-rider: Overview spider flanks for shape, Motos nested for tapes. Refuses a top Motos tab and a settings score table.
+OWN-WORLD: Charcoal pane, horizontal Overview/Motos sub-nav under the top bar, panel KPI cards (#141416), orange skew only on selected chips/nav, Exo ExtraBold Italic, hairline spider.
+STORY: Open Profile, read who you are on Overview; switch to Motos when you need a session.
+FIRST VIEWPORT: Top Widgets / Profile / Settings / Feedback. Profile sub-nav Overview / Motos. Overview: centered name, race count, All time / 14 days, Clear; left Win·Podium·Avg cards; center spider card; right Clean·HS·Pen (+ DNF/DNS/DSQ when present). Empty Overview: teach copy, no fake spider. Banner on spider until five all-time races.
+FORM: Spider flank cards (surface seed a3bf8e82, assigned spider-flank).
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 
 ## Unresolved
