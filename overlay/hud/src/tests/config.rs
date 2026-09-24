@@ -1092,3 +1092,100 @@ fn atomic_save_round_trip_leaves_no_tmp() {
     assert!(text.contains("show_map=1"));
     assert!(!tmp_left, "atomic save must not leave a .tmp sibling");
 }
+
+#[test]
+fn stream_show_independent_of_game() {
+    let mut cfg = HudConfig::new();
+    cfg.settings_preset = SessionPreset::Race;
+    cfg.edit_surface = EditSurface::Game;
+    cfg[WidgetId::Standings].show = true;
+    cfg.edit_surface = EditSurface::Stream;
+    assert!(!cfg[WidgetId::Standings].show);
+    cfg[WidgetId::Standings].show = true;
+    cfg.edit_surface = EditSurface::Game;
+    assert!(cfg[WidgetId::Standings].show);
+    cfg.edit_surface = EditSurface::Stream;
+    assert!(cfg[WidgetId::Standings].show);
+    assert!(cfg.stream_edit()[WidgetId::Standings].show);
+    assert!(cfg.live()[WidgetId::Standings].show); // game live still on for Race
+}
+
+#[test]
+fn copy_game_edit_to_stream() {
+    let mut cfg = HudConfig::new();
+    cfg.settings_preset = SessionPreset::Race;
+    cfg.edit_surface = EditSurface::Game;
+    cfg[WidgetId::Relative].show = true;
+    cfg[WidgetId::Relative].rect.x = 0.42;
+    cfg.copy_game_edit_to_stream();
+    assert!(cfg.stream_edit()[WidgetId::Relative].show);
+    assert!((cfg.stream_edit()[WidgetId::Relative].rect.x - 0.42).abs() < 0.0001);
+    cfg.edit_surface = EditSurface::Game;
+    cfg[WidgetId::Relative].show = false;
+    assert!(cfg.stream_edit()[WidgetId::Relative].show);
+}
+
+#[test]
+fn stream_sections_round_trip() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-stream-rt-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    std::env::set_var("MXBO_TEST_INI", &path);
+
+    let mut cfg = HudConfig::new();
+    cfg.first_install_version = "0.1.0".into();
+    cfg.settings_preset = SessionPreset::Race;
+    cfg.edit_surface = EditSurface::Stream;
+    cfg[WidgetId::Standings].show = true;
+    cfg[WidgetId::Standings].rect.y = 0.25;
+    cfg.save();
+
+    let text = std::fs::read_to_string(&path).unwrap();
+    let loaded = HudConfig::load_file();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert!(text.contains("[RaceStream]"));
+    assert!(text.contains("show_standings=1"));
+    let mut loaded = loaded;
+    loaded.edit_surface = EditSurface::Stream;
+    loaded.settings_preset = SessionPreset::Race;
+    assert!(loaded[WidgetId::Standings].show);
+    assert!((loaded[WidgetId::Standings].rect.y - 0.25).abs() < 0.0001);
+    loaded.edit_surface = EditSurface::Game;
+    assert!(!loaded[WidgetId::Standings].show);
+}
+
+#[test]
+fn for_stream_uses_stream_live_layout() {
+    let mut cfg = HudConfig::new();
+    cfg.active_preset = SessionPreset::Warmup;
+    cfg.settings_preset = SessionPreset::Warmup;
+    cfg.edit_surface = EditSurface::Stream;
+    cfg[WidgetId::Delta].show = true;
+    let stream = cfg.for_stream();
+    assert!(stream.live()[WidgetId::Delta].show);
+    assert!(!cfg.for_overlay().live()[WidgetId::Delta].show);
+}
+
+#[test]
+fn apply_stream_live_to_snapshot_ignores_game_show() {
+    let mut cfg = HudConfig::new();
+    cfg.active_preset = SessionPreset::Race;
+    cfg.settings_preset = SessionPreset::Race;
+    cfg.edit_surface = EditSurface::Game;
+    cfg[WidgetId::Map].show = false;
+    cfg.edit_surface = EditSurface::Stream;
+    cfg[WidgetId::Map].show = true;
+    cfg[WidgetId::Map].rect.x = 0.11;
+    cfg.edit_surface = EditSurface::Game;
+
+    let mut snap = Snapshot::default();
+    cfg.apply_to_snapshot(&mut snap);
+    assert_eq!(snap.show_map, 0);
+
+    cfg.apply_stream_live_to_snapshot(&mut snap);
+    assert_eq!(snap.show_map, 1);
+    assert!((snap.map.x - 0.11).abs() < 0.0001);
+}

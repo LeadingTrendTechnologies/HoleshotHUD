@@ -1228,3 +1228,69 @@ fn refresh_standings(s: &mut Snapshot) {
         write_name(&mut s.standings[i].category, cat);
     }
 }
+
+/// OBS / Browser Source live feed — no demo tick, no twin editor chrome.
+#[wasm_bindgen]
+pub struct Live {
+    fonts: Fonts,
+    cfg: HudConfig,
+    snap: Snapshot,
+    has_snap: bool,
+}
+
+#[wasm_bindgen]
+impl Live {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Result<Live, JsValue> {
+        let fonts = Fonts::for_family(FontFamily::Exo2)
+            .or_else(Fonts::load)
+            .ok_or_else(|| JsValue::from_str("failed to load fonts"))?;
+        Ok(Self {
+            fonts,
+            cfg: HudConfig::new(),
+            snap: Snapshot::default(),
+            has_snap: false,
+        })
+    }
+
+    /// Apply a Holeshot-HUD.ini fragment (App + layout section).
+    pub fn apply_ini(&mut self, text: &str) {
+        self.cfg.apply_ini_str(text);
+        self.cfg.apply_to_snapshot(&mut self.snap);
+    }
+
+    /// Ingest a raw SHM-sized Snapshot blob.
+    pub fn apply_snapshot(&mut self, bytes: &[u8]) -> bool {
+        if !self.snap.copy_from_bytes(bytes) {
+            return false;
+        }
+        self.cfg.apply_to_snapshot(&mut self.snap);
+        self.has_snap = true;
+        true
+    }
+
+    pub fn frame(&mut self, width: u32, height: u32) -> Vec<u8> {
+        let w = width.clamp(320, 1920);
+        let h = height.clamp(180, 1080);
+        let mut px = Pixmap::new(w, h).expect("pixmap");
+        let snap = if self.has_snap {
+            Some(&self.snap)
+        } else {
+            None
+        };
+        draw(
+            &mut px,
+            &self.fonts,
+            snap,
+            &self.cfg,
+            w,
+            h,
+            0.0,
+            false,
+            false,
+            false,
+        );
+        px.data().to_vec()
+    }
+}
+

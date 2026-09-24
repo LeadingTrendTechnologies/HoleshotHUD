@@ -1,79 +1,79 @@
 # Streaming
 
-**Not shipped.** Agent context for putting Holeshot widgets on a stream without drawing them on the game. When this lands, keep this page and append a **Change log** bullet (why, not just what).
+**Browser Source + `/edit`** — OBS paints `/`; stream Show / move / resize / basic prefs live at `/edit`. F8 configures the in-game HUD only. When you change this page, append a **Change log** bullet (why, not just what).
 
 Widget wishlist: [widgets/future.md](widgets/future.md). Shipped widgets: [widgets.md](widgets.md).
 
 ## Today
 
-The HUD is one layered window on MX Bikes. OBS **Game Capture** of the game never sees it. Discord **Share this window** (MX Bikes) is the same. Streamers must **Display Capture** (desktop junk) or add a **Window Capture** of **Holeshot HUD** and stack it over the game. That capture is the *in-game* layout — there is no stream-only set.
+OBS **Game Capture** of MX Bikes misses the layered Holeshot HWND. Streamers turn on **Settings → Stream → Browser Source**, copy `http://127.0.0.1:<port>/` into OBS, and open `http://127.0.0.1:<port>/edit` in Chrome to toggle and place stream widgets.
 
-`web/` is the same HUD renderer in the browser with **demo data**, not live telemetry. It is not an OBS source.
+Four stream layouts (Practice / Warmup / Race / Spectate). The Browser Source follows `session_preset()` on the **stream** slots. The editor chips pick which stream slot you are editing.
+
+The overlay binds localhost only (default port **8765**, through **8775** if busy), serves a transparent OBS page, pushes live PNG frames from `draw()` using `for_stream()`, and serves `/edit` with a second PNG feed plus HTML chrome.
+
+`web/index.html` remains the marketing twin editor with **demo data**.
 
 ## Why Browser Source
 
 | Approach | Stream-only? | Streamer work |
 | --- | --- | --- |
-| Local HTTP + OBS **Browser Source** | Yes | Paste `http://127.0.0.1:<port>`, set 1920×1080 |
-| Companion / second HWND | Yes, if that window is what you capture | Second monitor + Window Capture. Layered HWNDs are flaky in OBS — we already miss Game Capture |
+| Local HTTP + OBS **Browser Source** | Yes | Paste `/`, set 1920×1080 |
+| Companion / second HWND | Later | Second monitor + Window Capture |
 | Capture the overlay window | No | Display Capture or Window Capture of Holeshot HUD |
 
-**Ship Browser Source first.** Streamers already know it (alerts, chat). Transparent page above Game Capture. No second monitor. Do not start with a companion HWND.
-
-Edit the stream layout in F8. OBS only paints the URL. Do not ship a second settings surface inside the browser page.
+Edit layout in the browser `/edit` page. OBS only paints `/`. Do not put edit chrome on the OBS URL.
 
 ## Intended streamer steps
 
-1. F8 → Stream → **On** (copy `http://127.0.0.1:<port>`).
-2. OBS → Browser Source → paste → width/height = canvas (1920×1080 default) → shutdown source when not visible.
-3. Pick Practice / Warmup / Race / Spectate and turn on widgets for **that** stream layout. Those never draw on the game.
+1. F8 → Settings → **Stream** → **Browser Source** On (copy OBS `/` URL).
+2. OBS → Browser Source → paste `/` → width/height = canvas (1920×1080 default).
+3. Open `/edit` in a normal browser → pick Practice / Warmup / Race / Spectate → **Show on stream**, tune settings in the subnav, drag boxes on the canvas.
+4. Optional: F8 Stream pane **Copy game → stream** seeds that chip’s stream slot from the game layout.
 
-Port conflict → pick another and show it. Localhost only.
+Port conflict → next port; the Stream pane shows it. Localhost only.
 
 ## Layout: add, remove, move
 
-OBS places **one** Browser Source (the whole 16:9 canvas). You cannot add Standings as its own OBS source or drag it in the OBS preview. Moving/cropping the source moves every widget. One URL; the page follows the live session.
+OBS places **one** Browser Source (the whole 16:9 canvas). Moving/cropping the source moves every widget. One OBS URL; the page follows the live session.
 
-**Four stream layouts**, not a fifth chip. Practice / Warmup / Race / Spectate each keep an in-game `HudLayout` **and** a stream `HudLayout`. The browser uses the same `session_preset()` as the game HUD ([widgets.md](widgets.md)): warmup on track → Warmup stream, race → Race stream, spectate/replay → Spectate stream. Garage/menus hold the last stream slot, same as the game.
-
-F8 still has those four chips. A **Game / Stream** surface (next to the chips) chooses which one you are editing. Game is **Show on overlay** + Ctrl-drag as today. Stream is **Show on stream** + Ctrl-drag that writes the stream slot for the open chip.
+**Four stream layouts**, not a fifth chip. Practice / Warmup / Race / Spectate each keep an in-game `HudLayout` **and** a stream `HudLayout`.
 
 | Action | Where | What happens |
 | --- | --- | --- |
-| Add / remove | Chip (e.g. Race) + Stream surface → **Show on stream** | That preset’s browser page shows or hides the widget. Game HUD unchanged. |
-| Move / resize | Stream surface + chip selected → **Ctrl-drag on the game** | Orange boxes are that preset’s stream layout. Live in-game widgets hide while Stream is the edit surface. Writes the **stream** slot for that chip. |
-| Copy | **Copy to** | Can copy a stream slot onto another stream slot (Race stream → all stream slots), or copy a game layout onto that chip’s stream. Does not overwrite the other surface unless they pick that. |
-| OBS | Place / scale the one Browser Source | Nudge the whole HUD. Not per-widget. Session still swaps which of the four stream layouts draw. |
+| Add / remove | `/edit` left nav toggles | That preset’s browser page shows or hides the widget. Game HUD unchanged. |
+| Move / resize | `/edit` canvas drag | Orange boxes over the live stream PNG. Writes the **stream** slot for that chip. |
+| Widget prefs | `/edit` settings subnav | Font / bold / background for the selected stream widget (v1). |
+| Seed | F8 Stream → Copy game → stream | Copies the open chip’s game layout onto its stream slot. |
+| OBS | Place / scale the one Browser Source | Nudge the whole HUD. Not per-widget. |
 
-Today Ctrl-drag writes the **live** preset, not the F8 edit slot ([widgets.md](widgets.md)). Stream edit must write the **stream** slot for the open chip, even when the live session is a different preset (same as editing Race in F8 while you warmup — the game HUD stays on Warmup; stream chrome is the Race stream board).
+Fresh install: every stream **Show** starts off. Coords stay normalized 0–1. F8 Ctrl-drag only moves the **game** board.
 
-Coords stay normalized 0–1 against a 16:9 stream canvas. Snap on a stream slot is snap-to-canvas. Close F8 or switch back to Game → the game returns to the live in-game preset; the browser keeps following `session_preset()`.
+## Build notes
 
-Garage with Stream + Spectate (or any chip) open still needs chrome to drag — same as editing Spectate in the garage today.
+- Tiny HTTP server in the overlay process (`overlay/src/stream/`), localhost only.
+- PNG over `/ws` (OBS, live session stream board) and `/ws/edit` (editor preset).
+- `GET`/`POST` `/api/stream-layout` for Show, rects, and basic prefs.
+- INI: `[PracticeStream]` / `[WarmupStream]` / `[RaceStream]` / `[SpectateStream]`.
 
-Typical split: Race stream = standings + nameplate; Practice / Warmup stream = delta + sectors; Spectate stream = nameplate + standings. All optional. Fresh install: every stream **Show** starts off, same as the game.
-
-Do **not** drag inside OBS Interact or save layout in `localStorage`. That splits state from `Holeshot-HUD.ini`. A later “open in browser to preview” still reads the four stream slots from the overlay.
-
-## Build notes (when we start)
-
-- Tiny HTTP server in the overlay process, localhost only.
-- Page reuses the WASM HUD (`web/` / `web-preview`) fed live over WebSocket or SSE from the snapshot — not demo data.
-- Copy-URL control in F8. Show the port. If bind fails, try the next port and say so.
-- Each of the four presets stores stream show + rects separately from the in-game slot. Stream **Show** never paints the game window.
-- The browser page switches with `session_preset()`. Do not make a fifth Stream chip win that picker.
-
-A second-monitor companion window can come later for a pit tablet without OBS. Not v1.
+A second-monitor companion window can come later.
 
 ## Do not
 
 - Do not treat Window Capture of **Holeshot HUD** as stream-only.
-- Do not draw a stream layout on the game except as F8 edit chrome while the Stream surface is selected.
-- Do not give OBS a second settings surface (gear + localStorage) for positions.
+- Do not draw a stream layout on the game HWND.
+- Do not put edit chrome on the OBS `/` URL.
 - Do not serve past localhost.
-- Do not collapse the four stream layouts into one board. Do not add a fifth Stream chip that ignores Practice / Warmup / Race / Spectate.
+- Do not collapse the four stream layouts into one board. Do not add a fifth Stream chip.
 
 ## Change log
 
+- 2026-09-24 — Stream layout editor at `/edit` (Show, drag/resize, basic prefs); OBS stays paint-only `/`; F8 Game|Stream surface removed.
+- 2026-09-24 — Stream surface edit chrome is orange Ctrl-drag boxes only; stream Shows never paint the game HWND (Browser Source / OBS only).
+- 2026-09-24 — Browser Source keeps painting while you alt-tab; it does not follow game-overlay z-order, and holds the last frame across brief SHM gaps.
+- 2026-09-24 — Browser Source stamps stream-live Map/Standings/Relative show+rects onto a snapshot copy before draw (those widgets gate on SHM fields, not cfg show).
+- 2026-09-24 — F8 Game/Stream chips only when Browser Source is on; hairline divider before preset chips; turning Stream off forces Game surface.
+- 2026-09-24 — Phase 2: four stream HudLayouts, F8 Game/Stream surface, Show on stream, Ctrl-drag → stream edit slot, Browser Source uses `for_stream()`.
+- 2026-09-24 — Phase 1: Settings → Stream Browser Source, localhost HTTP + WS PNG feed, live game layout.
 - 2026-09-10 — Four stream layouts (Practice / Warmup / Race / Spectate), switched with `session_preset()`. F8 Game / Stream surface. Not a fifth chip.
 - 2026-09-10 — Page created. Browser Source is the intended path. Not shipped.

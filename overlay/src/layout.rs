@@ -269,57 +269,57 @@ impl Editor {
         let gamepad = self.gamepad;
         let telemetry = self.telemetry;
         crate::config::update_config(|cfg| {
-            let live = cfg.live_mut();
-            live[WidgetId::Map].rect = map;
-            live[WidgetId::Standings].rect = standings;
-            live[WidgetId::Relative].rect = relative;
+            let lay = cfg.live_mut();
+            lay[WidgetId::Map].rect = map;
+            lay[WidgetId::Standings].rect = standings;
+            lay[WidgetId::Relative].rect = relative;
             if let Some(m) = minimap {
-                live[WidgetId::Minimap].rect = m;
+                lay[WidgetId::Minimap].rect = m;
             }
             if let Some(r) = radar {
-                live[WidgetId::Radar].rect = r;
+                lay[WidgetId::Radar].rect = r;
             }
             if let Some(d) = dash {
-                live[WidgetId::Dash].rect = d;
+                lay[WidgetId::Dash].rect = d;
             }
             if let Some(t) = ticker {
-                live[WidgetId::Ticker].rect = t;
+                lay[WidgetId::Ticker].rect = t;
             }
             if let Some(s) = sys {
-                live[WidgetId::Sys].rect = s;
+                lay[WidgetId::Sys].rect = s;
             }
             if let Some(s) = sector {
-                live[WidgetId::Sector].rect = s;
+                lay[WidgetId::Sector].rect = s;
             }
             if let Some(s) = delta {
-                live[WidgetId::Delta].rect = s;
+                lay[WidgetId::Delta].rect = s;
             }
             if let Some(s) = stance {
-                live[WidgetId::Stance].rect = s;
+                lay[WidgetId::Stance].rect = s;
             }
             if let Some(s) = flag {
-                live[WidgetId::Flag].rect = s;
+                lay[WidgetId::Flag].rect = s;
             }
             if let Some(s) = lean {
-                live[WidgetId::Lean].rect = s;
+                lay[WidgetId::Lean].rect = s;
             }
             if let Some(s) = gamepad {
-                live[WidgetId::Gamepad].rect = s;
+                lay[WidgetId::Gamepad].rect = s;
             }
             if let Some(s) = telemetry {
-                live[WidgetId::Telemetry].rect = s;
+                lay[WidgetId::Telemetry].rect = s;
             }
             if let Some(w) = self.st_w_name {
-                live.st_w_name = w;
+                lay.st_w_name = w;
             }
             if let Some(w) = self.rel_w_name {
-                live.rel_w_name = w;
+                lay.rel_w_name = w;
             }
             if let Some(n) = self.standings_rows {
-                live.standings_rows = n;
+                lay.standings_rows = n;
             }
             if let Some(n) = self.relative_count {
-                live.relative_count = n;
+                lay.relative_count = n;
             }
         });
     }

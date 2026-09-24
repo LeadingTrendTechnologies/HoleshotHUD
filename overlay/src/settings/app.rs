@@ -18,6 +18,7 @@ pub(crate) fn pane_app(
         AppSection::Menus => pane_app_menus(px, fonts, cfg, hover, open_drop, hits, x, y, w),
         AppSection::Install => pane_app_install(px, fonts, hover, hits, x, y, w),
         AppSection::Startup => pane_app_startup(px, fonts, cfg, hover, hits, x, y, w),
+        AppSection::Stream => pane_app_stream(px, fonts, cfg, hover, hits, x, y, w),
         AppSection::Labs => pane_app_labs(px, fonts, cfg, hover, hits, x, y, w),
         AppSection::Updates => pane_app_updates(px, fonts, cfg, hover, hits, x, y, w),
     }
@@ -34,15 +35,35 @@ fn pane_app_look(
     y: f32,
     w: f32,
 ) -> f32 {
-    let mut y = heading(
+    let mut     y = heading(
         px,
         fonts,
         x,
         y,
         w,
         "Look",
-        "Font and primary color apply to the in-game HUD. Units are per measurement",
+        "Theme is the settings window. Font and primary color apply to the in-game HUD. Units are per measurement",
         None,
+        hover,
+        hits,
+    );
+    y = dropdown_row(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        "Theme",
+        cfg.settings_theme.label(),
+        open_drop == Some(Drop::Theme),
+        Hit::ThemeOpen,
+        &SettingsTheme::ALL.map(|theme| {
+            (
+                Hit::ThemePick(theme),
+                theme.label(),
+                cfg.settings_theme == theme,
+            )
+        }),
         hover,
         hits,
     );
@@ -507,6 +528,137 @@ fn pane_app_startup(
     if cfg.open_with_game {
         text(px, fonts, "Starts the overlay in the tray when MX Bikes launches, including after a reboot or after you Quit overlay. F8 or the HUD mark opens settings.", 11.0, x + 4.0, y + 2.0, dim(), false);
         y += 22.0;
+    }
+    y + 28.0
+}
+
+fn pane_app_stream(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    cfg: &HudConfig,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+    x: f32,
+    y: f32,
+    w: f32,
+) -> f32 {
+    let mut y = heading(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        "Stream",
+        "OBS Browser Source for the live HUD layout",
+        None,
+        hover,
+        hits,
+    );
+    y = toggle_row(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        "Browser Source",
+        cfg.stream_enabled,
+        Hit::StreamEnabled,
+        hover,
+        hits,
+    );
+    if cfg.stream_enabled {
+        text(
+            px,
+            fonts,
+            "OBS uses /. Edit stream Show and positions at /edit. Transparent; canvas 1920×1080.",
+            11.0,
+            x + 4.0,
+            y + 2.0,
+            dim(),
+            false,
+        );
+        y += 36.0;
+        let copy_w = 88.0;
+        let gap = 10.0;
+        let field_w = (w - copy_w - gap).max(120.0);
+        let field_h = 36.0;
+        let obs = crate::stream::url();
+        outlined(px, x, y, field_w, field_h, 8.0, panel());
+        text(
+            px,
+            fonts,
+            &obs,
+            12.0,
+            x + 12.0,
+            y + 10.0,
+            text_col(),
+            false,
+        );
+        action_btn(
+            px,
+            fonts,
+            x + field_w + gap,
+            y,
+            copy_w,
+            field_h,
+            "Copy",
+            Hit::StreamCopyUrl,
+            hover,
+            hits,
+            true,
+        );
+        y += field_h + 10.0;
+        let edit = crate::stream::edit_url();
+        outlined(px, x, y, field_w, field_h, 8.0, panel());
+        text(
+            px,
+            fonts,
+            &edit,
+            12.0,
+            x + 12.0,
+            y + 10.0,
+            text_col(),
+            false,
+        );
+        action_btn(
+            px,
+            fonts,
+            x + field_w + gap,
+            y,
+            copy_w,
+            field_h,
+            "Copy",
+            Hit::StreamCopyEditUrl,
+            hover,
+            hits,
+            true,
+        );
+        y += field_h + 10.0;
+        text(
+            px,
+            fonts,
+            &crate::stream::status_line(),
+            11.0,
+            x + 4.0,
+            y,
+            dim(),
+            false,
+        );
+        y += 22.0;
+        action_btn(
+            px,
+            fonts,
+            x,
+            y,
+            w.min(280.0),
+            36.0,
+            &format!("Copy game {} → stream", cfg.settings_preset.label()),
+            Hit::StreamCopyGameToStream,
+            hover,
+            hits,
+            true,
+        );
+        y += 44.0;
     }
     y + 28.0
 }

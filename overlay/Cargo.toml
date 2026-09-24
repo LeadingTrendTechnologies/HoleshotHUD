@@ -1,6 +1,6 @@
 [package]
 name = "mxbo-overlay"
-version = "0.16.0"
+version = "0.18.0"
 edition = "2021"
 
 [[bin]]
@@ -25,6 +25,7 @@ tiny-skia = { version = "0.11", features = ["png-format"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 fontdue = "0.9"
 ureq = "2.12"
+sha1 = "0.10"
 sha2 = "0.10"
 zip = { version = "0.6", default-features = false, features = ["deflate"] }
 hidapi = { version = "2.6", default-features = false, features = ["windows-native"] }

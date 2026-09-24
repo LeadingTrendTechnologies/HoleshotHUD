@@ -33,6 +33,7 @@ pub const PRIMARY_SWATCHES: [[u8; 3]; 7] = [
 
 thread_local! {
     static ACCENT_RGB: Cell<[u8; 3]> = const { Cell::new(DEFAULT_PRIMARY) };
+    static SETTINGS_THEME_LIGHT: Cell<bool> = const { Cell::new(false) };
 }
 
 pub fn set_accent_rgb(rgb: [u8; 3]) {
@@ -41,6 +42,15 @@ pub fn set_accent_rgb(rgb: [u8; 3]) {
 
 pub fn accent_rgb() -> [u8; 3] {
     ACCENT_RGB.with(|c| c.get())
+}
+
+/// Cached for paint paths that already hold the config lock (settings / Motos chrome).
+pub fn set_settings_theme_light(light: bool) {
+    SETTINGS_THEME_LIGHT.with(|c| c.set(light));
+}
+
+pub fn settings_theme_light() -> bool {
+    SETTINGS_THEME_LIGHT.with(|c| c.get())
 }
 
 pub fn format_primary_color(rgb: [u8; 3]) -> String {
@@ -486,6 +496,42 @@ impl SettingsKey {
             Self::Home => 0x24,
             Self::End => 0x23,
         }
+    }
+}
+
+/// F8 Settings window chrome. Does not retheme in-game HUD plaques.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SettingsTheme {
+    Dark,
+    Light,
+}
+
+impl SettingsTheme {
+    pub const ALL: [Self; 2] = [Self::Dark, Self::Light];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Dark => "Dark",
+            Self::Light => "Light",
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Dark => "dark",
+            Self::Light => "light",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "light" => Self::Light,
+            _ => Self::Dark,
+        }
+    }
+
+    pub fn is_dark(self) -> bool {
+        matches!(self, Self::Dark)
     }
 }
 
@@ -1135,6 +1181,23 @@ pub enum SessionPreset {
     Spectate,
 }
 
+/// F8 Widgets: edit the in-game board or the OBS stream board. Runtime only — not saved.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum EditSurface {
+    #[default]
+    Game,
+    Stream,
+}
+
+impl EditSurface {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Game => "Game",
+            Self::Stream => "Stream",
+        }
+    }
+}
+
 impl SessionPreset {
     pub const ALL: [Self; 4] = [Self::Practice, Self::Warmup, Self::Race, Self::Spectate];
     pub const COUNT: usize = 4;
@@ -1200,11 +1263,10 @@ pub enum StField {
     Status,
     Bike,
     Penalty,
-    Crashed,
 }
 
 impl StField {
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 12] = [
         Self::Pos,
         Self::Num,
         Self::Name,
@@ -1217,7 +1279,6 @@ impl StField {
         Self::Status,
         Self::Bike,
         Self::Penalty,
-        Self::Crashed,
     ];
 
     pub fn key(self) -> &'static str {
@@ -1234,7 +1295,6 @@ impl StField {
             Self::Status => "status",
             Self::Bike => "bike",
             Self::Penalty => "pen",
-            Self::Crashed => "crash",
         }
     }
 
@@ -1243,8 +1303,8 @@ impl StField {
             Self::Pos => "Position",
             Self::Num => "Number",
             Self::Name => "Name",
-            Self::Gap => "Gap",
-            Self::Interval => "Interval",
+            Self::Gap => "Gap to leader",
+            Self::Interval => "Gap to rider ahead",
             Self::Laps => "Completed Laps",
             Self::Current => "Current lap",
             Self::Best => "Fastest",
@@ -1252,7 +1312,6 @@ impl StField {
             Self::Status => "Status",
             Self::Bike => "Bike",
             Self::Penalty => "Penalty",
-            Self::Crashed => "Crashed",
         }
     }
 
@@ -1270,7 +1329,6 @@ impl StField {
             "status" => Self::Status,
             "bike" => Self::Bike,
             "pen" | "penalty" => Self::Penalty,
-            "crash" | "crashed" => Self::Crashed,
             _ => return None,
         })
     }
@@ -1289,7 +1347,6 @@ impl StField {
             Self::Status => c.st_status,
             Self::Bike => c.st_bike,
             Self::Penalty => c.st_penalty,
-            Self::Crashed => c.st_crashed,
         }
     }
 
@@ -1307,7 +1364,6 @@ impl StField {
             Self::Status => c.st_w_status,
             Self::Bike => c.st_w_bike,
             Self::Penalty => c.st_w_penalty,
-            Self::Crashed => c.st_w_crashed,
         }
     }
 
@@ -1337,7 +1393,6 @@ impl StField {
             Self::Status => c.st_w_status = next,
             Self::Bike => c.st_w_bike = next,
             Self::Penalty => c.st_w_penalty = next,
-            Self::Crashed => c.st_w_crashed = next,
         }
     }
 }
@@ -1382,7 +1437,7 @@ pub enum RelField {
     Bike,
     Penalty,
     Interval,
-    Crashed,
+    Status,
     Best,
     Last,
 }
@@ -1398,7 +1453,7 @@ impl RelField {
         Self::Bike,
         Self::Penalty,
         Self::Interval,
-        Self::Crashed,
+        Self::Status,
         Self::Best,
         Self::Last,
     ];
@@ -1414,7 +1469,7 @@ impl RelField {
             Self::Bike => "bike",
             Self::Penalty => "pen",
             Self::Interval => "int",
-            Self::Crashed => "crash",
+            Self::Status => "status",
             Self::Best => "best",
             Self::Last => "last",
         }
@@ -1431,7 +1486,7 @@ impl RelField {
             Self::Bike => "Bike",
             Self::Penalty => "Penalty",
             Self::Interval => "Interval",
-            Self::Crashed => "Crashed",
+            Self::Status => "Status",
             Self::Best => "Fastest",
             Self::Last => "Last lap",
         }
@@ -1448,7 +1503,7 @@ impl RelField {
             "bike" => Self::Bike,
             "pen" | "penalty" => Self::Penalty,
             "int" | "interval" => Self::Interval,
-            "crash" | "crashed" => Self::Crashed,
+            "status" => Self::Status,
             "best" => Self::Best,
             "last" => Self::Last,
             _ => return None,
@@ -1466,7 +1521,7 @@ impl RelField {
             Self::Bike => c.rel_bike,
             Self::Penalty => c.rel_penalty,
             Self::Interval => c.rel_interval,
-            Self::Crashed => c.rel_crashed,
+            Self::Status => c.rel_status,
             Self::Best => c.rel_best,
             Self::Last => c.rel_last,
         }
@@ -1483,7 +1538,7 @@ impl RelField {
             Self::Bike => c.rel_w_bike,
             Self::Penalty => c.rel_w_penalty,
             Self::Interval => c.rel_w_interval,
-            Self::Crashed => c.rel_w_crashed,
+            Self::Status => c.rel_w_status,
             Self::Best => c.rel_w_best,
             Self::Last => c.rel_w_last,
         }
@@ -1512,7 +1567,7 @@ impl RelField {
             Self::Bike => c.rel_w_bike = next,
             Self::Penalty => c.rel_w_penalty = next,
             Self::Interval => c.rel_w_interval = next,
-            Self::Crashed => c.rel_w_crashed = next,
+            Self::Status => c.rel_w_status = next,
             Self::Best => c.rel_w_best = next,
             Self::Last => c.rel_w_last = next,
         }
@@ -1785,6 +1840,7 @@ pub struct HudLayout {
     pub ticker_count: i32,
     pub ticker_title: bool,
     pub ticker_autoscroll: bool,
+    pub ticker_status: bool,
     pub st_pos: bool,
     pub st_num: bool,
     pub st_name: bool,
@@ -1797,7 +1853,6 @@ pub struct HudLayout {
     pub st_status: bool,
     pub st_bike: bool,
     pub st_penalty: bool,
-    pub st_crashed: bool,
     pub rel_num: bool,
     pub rel_name: bool,
     pub rel_gap: bool,
@@ -1807,7 +1862,7 @@ pub struct HudLayout {
     pub rel_bike: bool,
     pub rel_penalty: bool,
     pub rel_interval: bool,
-    pub rel_crashed: bool,
+    pub rel_status: bool,
     pub rel_best: bool,
     pub rel_last: bool,
     pub map_others: bool,
@@ -1903,7 +1958,6 @@ pub struct HudLayout {
     pub st_w_status: i32,
     pub st_w_bike: i32,
     pub st_w_penalty: i32,
-    pub st_w_crashed: i32,
     pub rel_w_num: i32,
     pub rel_w_name: i32,
     pub rel_w_gap: i32,
@@ -1913,7 +1967,7 @@ pub struct HudLayout {
     pub rel_w_bike: i32,
     pub rel_w_penalty: i32,
     pub rel_w_interval: i32,
-    pub rel_w_crashed: i32,
+    pub rel_w_status: i32,
     pub rel_w_best: i32,
     pub rel_w_last: i32,
 }
@@ -1936,6 +1990,7 @@ impl HudLayout {
             ticker_count: 7,
             ticker_title: true,
             ticker_autoscroll: false,
+            ticker_status: false,
             st_pos: true,
             st_num: true,
             st_name: true,
@@ -1948,7 +2003,6 @@ impl HudLayout {
             st_status: false,
             st_bike: false,
             st_penalty: false,
-            st_crashed: false,
             rel_num: true,
             rel_name: true,
             rel_gap: true,
@@ -1958,7 +2012,7 @@ impl HudLayout {
             rel_bike: false,
             rel_penalty: false,
             rel_interval: false,
-            rel_crashed: false,
+            rel_status: false,
             rel_best: true,
             rel_last: true,
             map_others: true,
@@ -2039,7 +2093,6 @@ impl HudLayout {
             st_w_status: 40,
             st_w_bike: 56,
             st_w_penalty: 48,
-            st_w_crashed: 44,
             rel_w_num: 32,
             rel_w_name: 80,
             rel_w_gap: 58,
@@ -2049,7 +2102,7 @@ impl HudLayout {
             rel_w_bike: 56,
             rel_w_penalty: 48,
             rel_w_interval: 58,
-            rel_w_crashed: 44,
+            rel_w_status: 40,
             rel_w_best: 54,
             rel_w_last: 54,
         }
@@ -2087,10 +2140,14 @@ impl IndexMut<WidgetId> for HudLayout {
 #[derive(Clone)]
 pub struct HudConfig {
     layouts: [HudLayout; SessionPreset::COUNT],
+    /// Parallel stream boards (OBS Browser Source). Same preset index as `layouts`.
+    stream_layouts: [HudLayout; SessionPreset::COUNT],
     pub active_preset: SessionPreset,
     pub settings_preset: SessionPreset,
     /// True while a session is live. The HUD uses `active_preset`; F8 can edit another slot.
     pub session_live: bool,
+    /// F8 Game / Stream surface. Not written to the ini.
+    pub edit_surface: EditSurface,
     /// Kept in the ini for older builds. No widget is gated on this anymore.
     pub experimental: bool,
     /// F8 Motos records motos only when this is on. Default off; missing ini key stays off.
@@ -2116,6 +2173,10 @@ pub struct HudConfig {
     pub minimize_on_close: bool,
     pub close_with_game: bool,
     pub open_with_game: bool,
+    /// F8 Settings → Stream: localhost Browser Source server.
+    pub stream_enabled: bool,
+    /// Last bound localhost port for the stream page (0 = use default).
+    pub stream_port: u16,
     pub auto_update_on_launch: bool,
     /// Last version whose What's new modal was dismissed with Got it.
     pub whats_new_seen: String,
@@ -2123,6 +2184,8 @@ pub struct HudConfig {
     /// `"unknown"` if they already had settings before this field existed.
     pub first_install_version: String,
     pub settings_key: SettingsKey,
+    /// F8 Settings chrome theme. Dark is the default charcoal look.
+    pub settings_theme: SettingsTheme,
     /// Settings host origin in virtual-screen pixels. A second monitor can be `x >= primary` or negative.
     pub settings_x: i32,
     pub settings_y: i32,
@@ -2133,11 +2196,14 @@ pub struct HudConfig {
 impl HudConfig {
     pub fn new() -> Self {
         let layout = HudLayout::new();
+        let stream = HudLayout::new();
         Self {
             layouts: [layout.clone(), layout.clone(), layout.clone(), layout],
+            stream_layouts: [stream.clone(), stream.clone(), stream.clone(), stream],
             active_preset: SessionPreset::Race,
             settings_preset: SessionPreset::Race,
             session_live: false,
+            edit_surface: EditSurface::Game,
             experimental: false,
             review: false,
             ingame_hud: false,
@@ -2153,10 +2219,13 @@ impl HudConfig {
             minimize_on_close: false,
             close_with_game: false,
             open_with_game: false,
+            stream_enabled: false,
+            stream_port: 0,
             auto_update_on_launch: false,
             whats_new_seen: String::new(),
             first_install_version: String::new(),
             settings_key: SettingsKey::F8,
+            settings_theme: SettingsTheme::Dark,
             settings_x: 80,
             settings_y: 80,
             stance_bind: StanceBind::PadRb,
@@ -2172,17 +2241,87 @@ impl HudConfig {
         &mut self.layouts[self.active_preset.idx()]
     }
 
+    pub fn stream_live(&self) -> &HudLayout {
+        &self.stream_layouts[self.active_preset.idx()]
+    }
+
+    pub fn stream_live_mut(&mut self) -> &mut HudLayout {
+        &mut self.stream_layouts[self.active_preset.idx()]
+    }
+
     pub fn edit(&self) -> &HudLayout {
-        &self.layouts[self.settings_preset.idx()]
+        match self.edit_surface {
+            EditSurface::Game => &self.layouts[self.settings_preset.idx()],
+            EditSurface::Stream => &self.stream_layouts[self.settings_preset.idx()],
+        }
     }
 
     pub fn edit_mut(&mut self) -> &mut HudLayout {
-        &mut self.layouts[self.settings_preset.idx()]
+        match self.edit_surface {
+            EditSurface::Game => &mut self.layouts[self.settings_preset.idx()],
+            EditSurface::Stream => &mut self.stream_layouts[self.settings_preset.idx()],
+        }
+    }
+
+    pub fn stream_edit(&self) -> &HudLayout {
+        &self.stream_layouts[self.settings_preset.idx()]
+    }
+
+    pub fn stream_edit_mut(&mut self) -> &mut HudLayout {
+        &mut self.stream_layouts[self.settings_preset.idx()]
     }
 
     pub fn for_overlay(&self) -> Self {
         let mut c = self.clone();
         c.settings_preset = c.active_preset;
+        c.edit_surface = EditSurface::Game;
+        c
+    }
+
+    /// Browser Source paint: live stream board for `active_preset`.
+    pub fn for_stream(&self) -> Self {
+        let mut c = self.clone();
+        c.layouts = c.stream_layouts.clone();
+        c.settings_preset = c.active_preset;
+        c.edit_surface = EditSurface::Game;
+        c
+    }
+
+    /// Editor preview: stream board for a chosen session chip.
+    pub fn for_stream_preset(&self, preset: SessionPreset) -> Self {
+        let mut c = self.clone();
+        c.active_preset = preset;
+        c.settings_preset = preset;
+        c.layouts = c.stream_layouts.clone();
+        c.edit_surface = EditSurface::Game;
+        c
+    }
+
+    pub fn stream_slot(&self, preset: SessionPreset) -> &HudLayout {
+        &self.stream_layouts[preset.idx()]
+    }
+
+    pub fn stream_slot_mut(&mut self, preset: SessionPreset) -> &mut HudLayout {
+        &mut self.stream_layouts[preset.idx()]
+    }
+
+    /// Game HWND while F8 is editing Stream: hide live widgets; chrome uses stream edit.
+    pub fn for_stream_edit_chrome(&self) -> Self {
+        let mut c = self.clone();
+        c.edit_surface = EditSurface::Stream;
+        for layout in &mut c.layouts {
+            for id in WidgetId::ALL {
+                layout[id].show = false;
+            }
+        }
+        // Orange boxes / draw path for edit chrome read stream edit via layouts swap:
+        c.layouts[c.settings_preset.idx()] = c.stream_layouts[c.settings_preset.idx()].clone();
+        for id in WidgetId::ALL {
+            // Keep show true for widgets that are on the stream edit board so chrome can hit them.
+            let on = c.stream_layouts[c.settings_preset.idx()][id].show;
+            c.layouts[c.settings_preset.idx()][id].show = on;
+        }
+        c.active_preset = c.settings_preset;
         c
     }
 
@@ -2199,13 +2338,35 @@ impl HudConfig {
         if dst == self.settings_preset {
             return;
         }
-        let src = self.edit().clone();
-        self.layouts[dst.idx()] = src;
+        match self.edit_surface {
+            EditSurface::Game => {
+                let src = self.layouts[self.settings_preset.idx()].clone();
+                self.layouts[dst.idx()] = src;
+            }
+            EditSurface::Stream => {
+                let src = self.stream_layouts[self.settings_preset.idx()].clone();
+                self.stream_layouts[dst.idx()] = src;
+            }
+        }
     }
 
     pub fn copy_settings_to_all(&mut self) {
-        let src = self.edit().clone();
-        self.layouts = [src.clone(), src.clone(), src.clone(), src];
+        match self.edit_surface {
+            EditSurface::Game => {
+                let src = self.layouts[self.settings_preset.idx()].clone();
+                self.layouts = [src.clone(), src.clone(), src.clone(), src];
+            }
+            EditSurface::Stream => {
+                let src = self.stream_layouts[self.settings_preset.idx()].clone();
+                self.stream_layouts = [src.clone(), src.clone(), src.clone(), src];
+            }
+        }
+    }
+
+    /// Copy the open chip's game layout onto that chip's stream slot.
+    pub fn copy_game_edit_to_stream(&mut self) {
+        let src = self.layouts[self.settings_preset.idx()].clone();
+        self.stream_layouts[self.settings_preset.idx()] = src;
     }
 
     /// Follow the live session. When `hold_settings` is set and F8 is on another
@@ -2255,10 +2416,45 @@ impl HudConfig {
         for layout in &mut cfg.layouts {
             layout.migrate_rects();
         }
+        for layout in &mut cfg.stream_layouts {
+            layout.migrate_rects();
+        }
         if let Some(p) = meta_path {
             cfg.loaded_mtime = fs::metadata(p).and_then(|m| m.modified()).ok();
         }
         cfg
+    }
+
+    /// Apply an INI body (App + layout sections) without touching disk.
+    pub fn apply_ini_str(&mut self, text: &str) {
+        let scan = apply_ini_text(self, text);
+        apply_scanned_layouts(self, scan);
+        for layout in &mut self.layouts {
+            layout.migrate_rects();
+        }
+        for layout in &mut self.stream_layouts {
+            layout.migrate_rects();
+        }
+    }
+
+    /// Full ini body for the live stream layout (WASM feed).
+    pub fn stream_ini(&self) -> String {
+        let live = self.for_stream();
+        format!(
+            "[App]\n\
+             font_family={}\nprimary_color={}\nunits={}\nunits_speed={}\nunits_liquids={}\nunits_temperature={}\n\
+             active_preset={}\n\
+             \n[{}]\n{}",
+            live.font_family.key(),
+            format_primary_color(live.primary),
+            live.units.speed.key(),
+            live.units.speed.key(),
+            live.units.liquids.key(),
+            live.units.temperature.key(),
+            live.active_preset.key(),
+            live.active_preset.label(),
+            layout_ini(live.live()),
+        )
     }
 
     pub fn add_sys_preset(&mut self, key: &str) {
@@ -2351,12 +2547,13 @@ impl HudConfig {
             "# Holeshot HUD layout (normalized 0..1, origin top-left)\n\
              [App]\n\
              font_family={}\nprimary_color={}\nunits={}\nunits_speed={}\nunits_liquids={}\nunits_temperature={}\n\
-             settings_key={}\nsettings_x={}\nsettings_y={}\nstart_with_windows={}\nminimize_on_close={}\n\
-             close_with_game={}\nopen_with_game={}\nauto_update_on_launch={}\nwhats_new_seen={}\n\
+             settings_key={}\nsettings_theme={}\nsettings_x={}\nsettings_y={}\nstart_with_windows={}\nminimize_on_close={}\n\
+             close_with_game={}\nopen_with_game={}\nstream_enabled={}\nstream_port={}\nauto_update_on_launch={}\nwhats_new_seen={}\n\
              first_install_version={}\nexperimental={}\nreview={}\ningame_hud={}\ngame_ui={}\n\
              game_ui_match_primary={}\ngame_ui_primary_color={}\n\
              game_ui_splash_path={}\ngame_ui_loading_path={}\nstance_bind={}\nactive_preset={}\n\
-             \n[Practice]\n{}\n\n[Warmup]\n{}\n\n[Race]\n{}\n\n[Spectate]\n{}\n",
+             \n[Practice]\n{}\n\n[Warmup]\n{}\n\n[Race]\n{}\n\n[Spectate]\n{}\n\
+             \n[PracticeStream]\n{}\n\n[WarmupStream]\n{}\n\n[RaceStream]\n{}\n\n[SpectateStream]\n{}\n",
             self.font_family.key(),
             format_primary_color(self.primary),
             self.units.speed.key(),
@@ -2364,12 +2561,15 @@ impl HudConfig {
             self.units.liquids.key(),
             self.units.temperature.key(),
             self.settings_key.key(),
+            self.settings_theme.key(),
             self.settings_x,
             self.settings_y,
             b(self.start_with_windows),
             b(self.minimize_on_close),
             b(self.close_with_game),
             b(self.open_with_game),
+            b(self.stream_enabled),
+            self.stream_port,
             b(self.auto_update_on_launch),
             self.whats_new_seen,
             self.first_install_version,
@@ -2387,6 +2587,10 @@ impl HudConfig {
             layout_ini(&self.layouts[SessionPreset::Warmup.idx()]),
             layout_ini(&self.layouts[SessionPreset::Race.idx()]),
             layout_ini(&self.layouts[SessionPreset::Spectate.idx()]),
+            layout_ini(&self.stream_layouts[SessionPreset::Practice.idx()]),
+            layout_ini(&self.stream_layouts[SessionPreset::Warmup.idx()]),
+            layout_ini(&self.stream_layouts[SessionPreset::Race.idx()]),
+            layout_ini(&self.stream_layouts[SessionPreset::Spectate.idx()]),
         );
         if write_atomic(&path, &body).is_ok() {
             self.loaded_mtime = fs::metadata(&path).and_then(|m| m.modified()).ok();
@@ -2398,7 +2602,17 @@ impl HudConfig {
     }
 
     pub fn apply_to_snapshot(&self, s: &mut Snapshot) {
-        let lay = self.live();
+        // Game HWND always follows the in-game board. Stream edits live in /edit.
+        Self::write_layout_to_snapshot(self.live(), s);
+    }
+
+    /// Map / Standings / Relative draw from snapshot show+rects. Browser Source must
+    /// stamp the live stream board, not the game (or F8 stream-edit) board.
+    pub fn apply_stream_live_to_snapshot(&self, s: &mut Snapshot) {
+        Self::write_layout_to_snapshot(self.stream_live(), s);
+    }
+
+    fn write_layout_to_snapshot(lay: &HudLayout, s: &mut Snapshot) {
         s.standings_rect = lay[WidgetId::Standings].rect;
         s.relative = lay[WidgetId::Relative].rect;
         s.map = lay[WidgetId::Map].rect;
@@ -2564,14 +2778,17 @@ impl DerefMut for HudConfig {
 enum IniSection {
     App,
     Preset(SessionPreset),
+    StreamPreset(SessionPreset),
     Legacy,
 }
 
 struct IniScan {
     saw_last_cols: [bool; SessionPreset::COUNT],
+    saw_stream_last_cols: [bool; SessionPreset::COUNT],
     saw_first_install: bool,
     saw_unit: [bool; UnitKind::COUNT],
     saw_preset: [bool; SessionPreset::COUNT],
+    saw_stream_preset: [bool; SessionPreset::COUNT],
     saw_legacy_layout: bool,
     legacy_last_cols: bool,
     legacy_layout: HudLayout,
@@ -2581,9 +2798,11 @@ impl Default for IniScan {
     fn default() -> Self {
         Self {
             saw_last_cols: [false; SessionPreset::COUNT],
+            saw_stream_last_cols: [false; SessionPreset::COUNT],
             saw_first_install: false,
             saw_unit: [false; UnitKind::COUNT],
             saw_preset: [false; SessionPreset::COUNT],
+            saw_stream_preset: [false; SessionPreset::COUNT],
             saw_legacy_layout: false,
             legacy_last_cols: false,
             legacy_layout: HudLayout::new(),
@@ -2598,7 +2817,9 @@ impl IniScan {
 
     fn take_layout(&mut self, extra: Self) {
         self.saw_last_cols = extra.saw_last_cols;
+        self.saw_stream_last_cols = extra.saw_stream_last_cols;
         self.saw_preset = extra.saw_preset;
+        self.saw_stream_preset = extra.saw_stream_preset;
         self.saw_legacy_layout = extra.saw_legacy_layout;
         self.legacy_last_cols = extra.legacy_last_cols;
         self.legacy_layout = extra.legacy_layout;
@@ -2643,6 +2864,14 @@ fn apply_ini_text(cfg: &mut HudConfig, text: &str) -> IniScan {
                     continue;
                 }
                 apply_layout_key(layout, key, val, b, &mut scan.saw_last_cols[p.idx()]);
+            }
+            IniSection::StreamPreset(p) => {
+                scan.saw_stream_preset[p.idx()] = true;
+                let layout = &mut cfg.stream_layouts[p.idx()];
+                if apply_widget_prefs(layout, key, val, f, b) {
+                    continue;
+                }
+                apply_layout_key(layout, key, val, b, &mut scan.saw_stream_last_cols[p.idx()]);
             }
             IniSection::Legacy => {
                 if apply_app_key(
@@ -2705,6 +2934,15 @@ fn apply_scanned_layouts(cfg: &mut HudConfig, scan: IniScan) {
             legacy_layout,
         ];
     }
+    // Missing stream sections stay HudLayout::new() (all Show off). Only fill last-cols defaults.
+    for p in SessionPreset::ALL {
+        if scan.saw_stream_preset[p.idx()] && !scan.saw_stream_last_cols[p.idx()] {
+            cfg.stream_layouts[p.idx()].st_best = true;
+            cfg.stream_layouts[p.idx()].st_last = true;
+            cfg.stream_layouts[p.idx()].rel_best = true;
+            cfg.stream_layouts[p.idx()].rel_last = true;
+        }
+    }
 }
 
 fn ini_tmp_path(path: &Path) -> PathBuf {
@@ -2742,6 +2980,10 @@ fn parse_ini_section(line: &str) -> IniSection {
         "warmup" => IniSection::Preset(SessionPreset::Warmup),
         "race" => IniSection::Preset(SessionPreset::Race),
         "spectate" | "spectating" => IniSection::Preset(SessionPreset::Spectate),
+        "practicestream" => IniSection::StreamPreset(SessionPreset::Practice),
+        "warmupstream" => IniSection::StreamPreset(SessionPreset::Warmup),
+        "racestream" => IniSection::StreamPreset(SessionPreset::Race),
+        "spectatestream" | "spectatingstream" => IniSection::StreamPreset(SessionPreset::Spectate),
         _ => IniSection::Legacy,
     }
 }
@@ -2789,6 +3031,12 @@ fn apply_app_key(
         "minimize_on_close" => cfg.minimize_on_close = b,
         "close_with_game" => cfg.close_with_game = b,
         "open_with_game" => cfg.open_with_game = b,
+        "stream_enabled" => cfg.stream_enabled = b,
+        "stream_port" => {
+            if let Ok(n) = val.parse::<u16>() {
+                cfg.stream_port = n;
+            }
+        }
         "auto_update_on_launch" => cfg.auto_update_on_launch = b,
         "whats_new_seen" => cfg.whats_new_seen = val.trim().to_string(),
         "first_install_version" => {
@@ -2796,6 +3044,7 @@ fn apply_app_key(
             *saw_first_install = true;
         }
         "settings_key" => cfg.settings_key = SettingsKey::parse(val),
+        "settings_theme" => cfg.settings_theme = SettingsTheme::parse(val),
         "settings_x" => {
             if let Ok(n) = val.parse::<i32>() {
                 cfg.settings_x = n;
@@ -2843,6 +3092,7 @@ fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last
         "ticker_count" => cfg.ticker_count = val.parse().unwrap_or(7).clamp(3, 15),
         "ticker_title" => cfg.ticker_title = b,
         "ticker_autoscroll" => cfg.ticker_autoscroll = b,
+        "ticker_status" => cfg.ticker_status = b,
         "st_pos" => cfg.st_pos = b,
         "st_num" => cfg.st_num = b,
         "st_name" => cfg.st_name = b,
@@ -2858,7 +3108,6 @@ fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last
         "st_status" => cfg.st_status = b,
         "st_bike" => cfg.st_bike = b,
         "st_penalty" => cfg.st_penalty = b,
-        "st_crashed" => cfg.st_crashed = b,
         "rel_num" => cfg.rel_num = b,
         "rel_name" => cfg.rel_name = b,
         "rel_gap" => cfg.rel_gap = b,
@@ -2868,7 +3117,7 @@ fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last
         "rel_bike" => cfg.rel_bike = b,
         "rel_penalty" => cfg.rel_penalty = b,
         "rel_interval" => cfg.rel_interval = b,
-        "rel_crashed" => cfg.rel_crashed = b,
+        "rel_status" => cfg.rel_status = b,
         "rel_best" => cfg.rel_best = b,
         "rel_last" => cfg.rel_last = b,
         "map_others" => cfg.map_others = b,
@@ -2944,7 +3193,6 @@ fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last
         "st_w_status" => cfg.st_w_status = clamp_w(val),
         "st_w_bike" => cfg.st_w_bike = clamp_w(val),
         "st_w_penalty" => cfg.st_w_penalty = clamp_w(val),
-        "st_w_crashed" => cfg.st_w_crashed = clamp_w(val),
         "rel_w_num" => cfg.rel_w_num = clamp_w(val),
         "rel_w_name" => cfg.rel_w_name = clamp_name_w(val),
         "rel_w_gap" => cfg.rel_w_gap = clamp_w(val),
@@ -2954,7 +3202,7 @@ fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last
         "rel_w_bike" => cfg.rel_w_bike = clamp_w(val),
         "rel_w_penalty" => cfg.rel_w_penalty = clamp_w(val),
         "rel_w_interval" => cfg.rel_w_interval = clamp_w(val),
-        "rel_w_crashed" => cfg.rel_w_crashed = clamp_w(val),
+        "rel_w_status" => cfg.rel_w_status = clamp_w(val),
         "rel_w_best" => cfg.rel_w_best = clamp_w(val),
         "rel_w_last" => cfg.rel_w_last = clamp_w(val),
         "telemetry_traces" => cfg.telemetry_traces = b,
@@ -3047,17 +3295,17 @@ fn layout_ini(l: &HudLayout) -> String {
          show_stance={}\nshow_flag={}\nshow_lean={}\nshow_gamepad={}\nshow_telemetry={}\n\
          standings_rows={}\nrelative_count={}\nticker_count={}\n\
          st_pos={}\nst_num={}\nst_name={}\nst_gap={}\nst_interval={}\nst_laps={}\nst_current={}\n\
-         st_best={}\nst_last={}\nst_status={}\nst_bike={}\nst_penalty={}\nst_crashed={}\n\
+         st_best={}\nst_last={}\nst_status={}\nst_bike={}\nst_penalty={}\n\
          st_order={}\n\
          st_w_pos={}\nst_w_num={}\nst_w_name={}\nst_w_gap={}\nst_w_interval={}\nst_w_laps={}\n\
-         st_w_current={}\nst_w_best={}\nst_w_last={}\nst_w_status={}\nst_w_bike={}\nst_w_penalty={}\nst_w_crashed={}\n\
+         st_w_current={}\nst_w_best={}\nst_w_last={}\nst_w_status={}\nst_w_bike={}\nst_w_penalty={}\n\
          st_bg={}\nst_hl={}\nst_text={}\nst_stripe={}\nst_plaque_text={}\nst_plaque={}\nst_font={}\nst_bold={}\n\
          st_head={}\nst_foot={}\n\
          rel_num={}\nrel_name={}\nrel_gap={}\nrel_laps={}\nrel_current={}\nrel_pos={}\nrel_bike={}\n\
-         rel_penalty={}\nrel_interval={}\nrel_crashed={}\nrel_best={}\nrel_last={}\n\
+         rel_penalty={}\nrel_interval={}\nrel_status={}\nrel_best={}\nrel_last={}\n\
          rel_order={}\n\
          rel_w_num={}\nrel_w_name={}\nrel_w_gap={}\nrel_w_laps={}\nrel_w_current={}\nrel_w_pos={}\n\
-         rel_w_bike={}\nrel_w_penalty={}\nrel_w_interval={}\nrel_w_crashed={}\nrel_w_best={}\nrel_w_last={}\n\
+         rel_w_bike={}\nrel_w_penalty={}\nrel_w_interval={}\nrel_w_status={}\nrel_w_best={}\nrel_w_last={}\n\
          rel_bg={}\nrel_hl={}\nrel_text={}\nrel_stripe={}\nrel_plaque_text={}\nrel_plaque={}\nrel_font={}\nrel_bold={}\n\
          rel_head={}\nrel_foot={}\n\
          map_others={}\nmap_sf={}\nmap_sectors={}\nmap_name={}\nmap_numbers={}\nmap_arrows={}\n\
@@ -3067,7 +3315,7 @@ fn layout_ini(l: &HudLayout) -> String {
          radar_sides={}\nradar_rear={}\nradar_rings={}\nradar_range={}\nradar_bg={}\nradar_font={}\nradar_bold={}\n\
          dash_rev={}\ndash_yellow={}\ndash_blue={}\ndash_red={}\ndash_simple={}\ndash_shift_color={}\ndash_left={}\ndash_mid={}\ndash_right={}\n\
          dash_bg={}\ndash_font={}\ndash_bold={}\n\
-         ticker_left={}\nticker_right={}\nticker_title={}\nticker_autoscroll={}\n\
+         ticker_left={}\nticker_right={}\nticker_title={}\nticker_autoscroll={}\nticker_status={}\n\
          ticker_bg={}\nticker_font={}\nticker_bold={}\n\
          sys_bg={}\nsys_font={}\nsys_bold={}\nsys_apps={}\n\
          sector_live={}\nsector_session={}\nsector_hist={}\nsector_hist_laps={}\n\
@@ -3102,17 +3350,17 @@ fn layout_ini(l: &HudLayout) -> String {
         b(stance.show), b(flag.show), b(lean.show), b(gamepad.show), b(telemetry.show),
         l.standings_rows, l.relative_count, l.ticker_count,
         b(l.st_pos), b(l.st_num), b(l.st_name), b(l.st_gap), b(l.st_interval), b(l.st_laps), b(l.st_current),
-        b(l.st_best), b(l.st_last), b(l.st_status), b(l.st_bike), b(l.st_penalty), b(l.st_crashed),
+        b(l.st_best), b(l.st_last), b(l.st_status), b(l.st_bike), b(l.st_penalty),
         join_st(&l.st_order),
         l.st_w_pos, l.st_w_num, l.st_w_name, l.st_w_gap, l.st_w_interval, l.st_w_laps,
-        l.st_w_current, l.st_w_best, l.st_w_last, l.st_w_status, l.st_w_bike, l.st_w_penalty, l.st_w_crashed,
+        l.st_w_current, l.st_w_best, l.st_w_last, l.st_w_status, l.st_w_bike, l.st_w_penalty,
         st.bg, l.st_hl, l.st_text.key(), b(l.st_stripe), l.st_plaque_text.key(), b(l.st_plaque), st.font, b(st.bold),
         join_board(&l.st_head), join_board(&l.st_foot),
         b(l.rel_num), b(l.rel_name), b(l.rel_gap), b(l.rel_laps), b(l.rel_current), b(l.rel_pos), b(l.rel_bike),
-        b(l.rel_penalty), b(l.rel_interval), b(l.rel_crashed), b(l.rel_best), b(l.rel_last),
+        b(l.rel_penalty), b(l.rel_interval), b(l.rel_status), b(l.rel_best), b(l.rel_last),
         join_rel(&l.rel_order),
         l.rel_w_num, l.rel_w_name, l.rel_w_gap, l.rel_w_laps, l.rel_w_current, l.rel_w_pos,
-        l.rel_w_bike, l.rel_w_penalty, l.rel_w_interval, l.rel_w_crashed, l.rel_w_best, l.rel_w_last,
+        l.rel_w_bike, l.rel_w_penalty, l.rel_w_interval, l.rel_w_status, l.rel_w_best, l.rel_w_last,
         rel.bg, l.rel_hl, l.rel_text.key(), b(l.rel_stripe), l.rel_plaque_text.key(), b(l.rel_plaque), rel.font, b(rel.bold),
         join_board(&l.rel_head), join_board(&l.rel_foot),
         b(l.map_others), b(l.map_sf), b(l.map_sectors), b(l.map_name), b(l.map_numbers), b(l.map_arrows),
@@ -3122,7 +3370,7 @@ fn layout_ini(l: &HudLayout) -> String {
         b(l.radar_sides), b(l.radar_rear), b(l.radar_rings), l.radar_range, radar.bg, radar.font, b(radar.bold),
         b(l.dash_rev), b(l.dash_yellow), b(l.dash_blue), b(l.dash_red), b(l.dash_simple), b(l.dash_shift_color), l.dash_left.key(), l.dash_mid.key(), l.dash_right.key(),
         dash.bg, dash.font, b(dash.bold),
-        l.ticker_left.key(), l.ticker_right.key(), b(l.ticker_title), b(l.ticker_autoscroll),
+        l.ticker_left.key(), l.ticker_right.key(), b(l.ticker_title), b(l.ticker_autoscroll), b(l.ticker_status),
         ticker.bg, ticker.font, b(ticker.bold),
         sys.bg, sys.font, b(sys.bold), encode_sys_apps(&l.sys_apps),
         b(l.sector_live), b(l.sector_session), b(l.sector_hist), l.sector_hist_laps.clamp(1, 5),

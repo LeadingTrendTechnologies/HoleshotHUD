@@ -16,6 +16,7 @@ mod settings;
 mod shm;
 mod stance;
 mod startup;
+mod stream;
 mod sys;
 mod tray;
 mod uninstall;
@@ -71,6 +72,7 @@ pub(crate) fn quit_app() {
     if QUITTING.swap(true, Ordering::SeqCst) {
         return;
     }
+    crate::stream::set_enabled(false);
     crate::startup::handover_game_waiter();
     crate::tray::remove();
     crate::compat::stop_background_threads();
@@ -127,7 +129,7 @@ fn f9_dump_text(shm: Option<&Shm>, snap: Option<&Snapshot>) -> String {
         std::mem::size_of::<Snapshot>()
     ));
     match shm {
-        None => o.push_str("OpenFileMapping Local\\MXBOHudV17 failed. Start MX Bikes with Holeshot-HUD.dlo loaded.\n"),
+        None => o.push_str("OpenFileMapping Local\\MXBOHudV18 failed. Start MX Bikes with Holeshot-HUD.dlo loaded.\n"),
         Some(s) => match s.header() {
             Some((magic, version, seq, size)) => {
                 o.push_str(&format!(
@@ -316,6 +318,10 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
     crate::settings::attach(host);
     crate::startup::sync_from_config();
     crate::startup::ensure_game_waiter();
+    if crate::config::with_config(|c| c.stream_enabled) {
+        let port = crate::stream::set_enabled(true);
+        crate::config::update_config(|c| c.stream_port = port);
+    }
     apply_window_icons(host, icon_big, icon_small);
     crate::tray::add(host, icon_small);
     let start_minimized = std::env::args().any(|a| a == "--minimized" || a == "--wait-for-game");
@@ -757,6 +763,18 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
             ));
         } else {
             live_mark = None;
+        }
+        {
+            let stream_cfg = crate::config::with_config(|c| c.for_stream());
+            let mut stream_snap = last_snap;
+            if let Some(s) = stream_snap.as_mut() {
+                stream_cfg.apply_stream_live_to_snapshot(s);
+            }
+            // Browser Source must not follow game-overlay z-order (alt-tab blanks OBS).
+            let stream_hud = stream_snap
+                .as_ref()
+                .filter(|s| s.has_session_data() || hitch_hold || live);
+            crate::stream::publish_frame(&fonts, stream_hud, &stream_cfg, age);
         }
         dib.blit_premul_bgra(pixmap.data());
         dib.present(hwnd, w, h, x, y);

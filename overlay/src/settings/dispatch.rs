@@ -38,6 +38,10 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             set_app_section(AppSection::Startup);
             return;
         }
+        Hit::AppStream => {
+            set_app_section(AppSection::Stream);
+            return;
+        }
         Hit::AppLabs => {
             set_app_section(AppSection::Labs);
             return;
@@ -48,6 +52,15 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         }
         Hit::TabProfile => {
             set_tab(Tab::Profile);
+            return;
+        }
+        Hit::ProfileNavOverview => {
+            set_profile_section(ProfileSection::Overview);
+            return;
+        }
+        Hit::ProfileNavMotos => {
+            set_profile_section(ProfileSection::Motos);
+            open_live_analyze(true);
             return;
         }
         Hit::TabReview => {
@@ -71,12 +84,6 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             }
             return;
         }
-        Hit::ReviewFilterPractice => {
-            if let Some(ui) = UI.lock().unwrap().as_mut() {
-                ui.review_filter = crate::review::ListFilter::Practice;
-            }
-            return;
-        }
         Hit::ReviewFilterSaved => {
             if let Some(ui) = UI.lock().unwrap().as_mut() {
                 ui.review_filter = crate::review::ListFilter::Saved;
@@ -85,6 +92,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         }
         Hit::ReviewOpen(id) => {
             if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.motos_list_scroll = ui.scroll;
                 ui.analyze_id = Some(id as i64);
                 ui.analyze_compare = -1;
                 ui.analyze_you_lap = -1;
@@ -113,7 +121,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             if let Some(ui) = UI.lock().unwrap().as_mut() {
                 if ui.analyze_id == Some(id as i64) {
                     ui.analyze_id = None;
-                    ui.scroll = 0.0;
+                    ui.scroll = ui.motos_list_scroll;
                 }
                 if was_live {
                     ui.review_stay_on_list = true;
@@ -124,7 +132,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::ReviewBack => {
             if let Some(ui) = UI.lock().unwrap().as_mut() {
                 ui.analyze_id = None;
-                ui.scroll = 0.0;
+                ui.scroll = ui.motos_list_scroll;
                 ui.review_stay_on_list = true;
             }
             return;
@@ -137,11 +145,6 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             });
             if !now_on {
                 crate::review::tick(&mxbo_hud::shm::Snapshot::default(), false);
-                if let Some(ui) = UI.lock().unwrap().as_mut() {
-                    if ui.tab == Tab::Profile {
-                        ui.tab = Tab::Review;
-                    }
-                }
             }
             return;
         }
@@ -420,6 +423,10 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             toggle_drop(Drop::SettingsKey);
             return;
         }
+        Hit::ThemeOpen => {
+            toggle_drop(Drop::Theme);
+            return;
+        }
         Hit::StanceBindOpen => {
             let was = UI.lock().unwrap().as_ref().is_some_and(|u| u.bind_listen);
             close_drop();
@@ -568,6 +575,36 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             }
             return;
         }
+        Hit::StreamEnabled => {
+            close_drop();
+            let on = crate::config::with_config(|c| !c.stream_enabled);
+            let port = crate::stream::set_enabled(on);
+            crate::config::update_config(|c| {
+                c.stream_enabled = on;
+                c.stream_port = port;
+                if !on {
+                    c.edit_surface = EditSurface::Game;
+                }
+            });
+            return;
+        }
+        Hit::StreamCopyUrl => {
+            close_drop();
+            let url = crate::stream::url();
+            let _ = crate::feedback::copy_text(&url);
+            return;
+        }
+        Hit::StreamCopyEditUrl => {
+            close_drop();
+            let url = crate::stream::edit_url();
+            let _ = crate::feedback::copy_text(&url);
+            return;
+        }
+        Hit::StreamCopyGameToStream => {
+            close_drop();
+            crate::config::update_config(|c| c.copy_game_edit_to_stream());
+            return;
+        }
         Hit::AutoUpdateOnLaunch => {
             close_drop();
             let on = crate::config::with_config(|c| !c.auto_update_on_launch);
@@ -712,6 +749,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::StanceShowSit => c.stance_show_sit = !c.stance_show_sit,
         Hit::TickerTitle => c.ticker_title = !c.ticker_title,
         Hit::TickerAutoscroll => c.ticker_autoscroll = !c.ticker_autoscroll,
+        Hit::TickerStatus => c.ticker_status = !c.ticker_status,
         Hit::StStripe => c.st_stripe = !c.st_stripe,
         Hit::RelStripe => c.rel_stripe = !c.rel_stripe,
         Hit::StPlaque => c.st_plaque = !c.st_plaque,
@@ -727,7 +765,6 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::StStatus => c.st_status = !c.st_status,
         Hit::StBike => c.st_bike = !c.st_bike,
         Hit::StPenalty => c.st_penalty = !c.st_penalty,
-        Hit::StCrashed => c.st_crashed = !c.st_crashed,
         Hit::StInterval => c.st_interval = !c.st_interval,
         Hit::RelNum => c.rel_num = !c.rel_num,
         Hit::RelName => c.rel_name = !c.rel_name,
@@ -738,7 +775,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::RelBike => c.rel_bike = !c.rel_bike,
         Hit::RelPenalty => c.rel_penalty = !c.rel_penalty,
         Hit::RelInterval => c.rel_interval = !c.rel_interval,
-        Hit::RelCrashed => c.rel_crashed = !c.rel_crashed,
+        Hit::RelStatus => c.rel_status = !c.rel_status,
         Hit::RelBest => c.rel_best = !c.rel_best,
         Hit::RelLast => c.rel_last = !c.rel_last,
         Hit::MapOthers => c.map_others = !c.map_others,
@@ -785,6 +822,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::RelPlaqueTextWhite => c.rel_plaque_text = TableText::White,
         Hit::RelPlaqueTextBlack => c.rel_plaque_text = TableText::Black,
         Hit::SettingsKeyPick(key) => c.settings_key = key,
+        Hit::ThemePick(theme) => c.settings_theme = theme,
         Hit::StanceModePick(mode) => c.stance_mode = mode,
         Hit::StanceStylePick(style) => c.stance_style = style,
         Hit::LeanStylePick(style) => c.lean_style = style,
@@ -821,10 +859,13 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::AppMenus
         | Hit::AppInstall
         | Hit::AppStartup
+        | Hit::AppStream
         | Hit::AppLabs
         | Hit::AppUpdates
         | Hit::TabReview
         | Hit::TabProfile
+        | Hit::ProfileNavOverview
+        | Hit::ProfileNavMotos
         | Hit::TabFeedback
         | Hit::ProfileAllTime
         | Hit::ProfileTwoWeeks
@@ -876,6 +917,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::StPlaqueTextOpen
         | Hit::RelPlaqueTextOpen
         | Hit::SettingsKeyOpen
+        | Hit::ThemeOpen
         | Hit::StanceBindOpen
         | Hit::StanceModeOpen
         | Hit::StanceStyleOpen
@@ -904,6 +946,10 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::MinimizeOnClose
         | Hit::CloseWithGame
         | Hit::OpenWithGame
+        | Hit::StreamEnabled
+        | Hit::StreamCopyUrl
+        | Hit::StreamCopyEditUrl
+        | Hit::StreamCopyGameToStream
         | Hit::AutoUpdateOnLaunch
         | Hit::QuitApp
         | Hit::Uninstall
@@ -944,7 +990,6 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::TrackPbClear
         | Hit::ReviewFilterAll
         | Hit::ReviewFilterRace
-        | Hit::ReviewFilterPractice
         | Hit::ReviewFilterSaved
         | Hit::ReviewOpen(_)
         | Hit::ReviewKeep(_)
@@ -959,6 +1004,12 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::AnalyzeMap
         | Hit::AnalyzeFollow => {}
     });
+    if matches!(id, Hit::ThemePick(_)) {
+        if let Some(host) = UI.lock().unwrap().as_ref().map(|u| u.host) {
+            refresh_palette();
+            sync_titlebar(host);
+        }
+    }
     if id == Hit::FeatureSector && !with_config(|c| c.experimental_unlocked()) {
         let on_labs = UI.lock().unwrap().as_ref().is_some_and(|u| u.tab.is_labs());
         if on_labs {
@@ -1007,6 +1058,7 @@ pub(crate) fn open_live_analyze(force: bool) {
         ui.analyze_pan_x = 0.0;
         ui.analyze_pan_z = 0.0;
         ui.analyze_follow = false;
+        ui.motos_list_scroll = ui.scroll;
         ui.scroll = 0.0;
     }
     reset_analyze_scrub();

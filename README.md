@@ -42,7 +42,9 @@ The HUD matches the game window: windowed stays on that window; borderless cover
 
 ## Streaming
 
-OBS **Game Capture** and Discord **Share this window** (MX Bikes) do not include the HUD — it is a separate window on top of the game. Use **Display Capture**, or add a second OBS **Window Capture** source for **Holeshot HUD** and stack it over the game.
+OBS **Game Capture** of MX Bikes does not include the layered HUD. Prefer **Settings → Stream → Browser Source**: paste `http://127.0.0.1:<port>/` into OBS, and open `/edit` in a browser to toggle and place stream widgets. F8 edits the in-game HUD only. Details: [wiki/streaming.md](wiki/streaming.md).
+
+Display Capture or Window Capture of **Holeshot HUD** still works if you need the old path.
 
 ## Build from source
 
@@ -83,8 +85,8 @@ Dev builds optimize crates like tiny-skia (`opt-level = 3`) so the HUD stays smo
 Push a tag to publish a downloadable release:
 
 ```bat
-git tag v0.16.0
-git push origin v0.16.0
+git tag v0.18.0
+git push origin v0.18.0
 ```
 
 ## Data wiki
