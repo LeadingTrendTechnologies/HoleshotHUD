@@ -15,7 +15,7 @@ Sorts `riders[].track_pos` wrapped around you (`wrap` so +0.5 / −0.5 is the fa
 
 **Nearby riders** (`relative_count`) is count *each side*, not total rows. Visible set is up to `2 * count + 1` (ahead + you + behind). Ctrl+resize height changes that count (1–8).
 
-Classification is joined by race number for position, laps, bike, best/last, penalty, interval, status. The **Position** column is the live place (`RaceField` rows), so a pass shows there even though the row order is track order. See [live race order](../live-order.md).
+Classification is joined by race number for position, laps, bike, best/last, penalty, interval, status. The **Position** column is the live place (`RaceField` rows), so a pass shows there even though the row order is track order. A trailing green/red `*` marks when that live place differs from on-track place because of penalties. See [live race order](../live-order.md).
 
 **Status** column (`rel_status`, default off) uses the same icons as Standings Status (finish, crash, DNS/OUT/DSQ, pit). Finished riders show only the flag. No column header title. Out / crashed riders keep bright **Position**, **Number**, and **Name**; other cells can still dim.
 

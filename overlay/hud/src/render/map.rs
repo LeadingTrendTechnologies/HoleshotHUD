@@ -134,7 +134,8 @@ pub(crate) fn draw_map(
             if you.is_some() && rider.race_num == subject {
                 continue;
             }
-            let (hx, hy) = to_px(rider.x, rider.z);
+            let pose = rider_map_pose(s, rider);
+            let (hx, hy) = to_px(pose.x, pose.z);
             let fill = rider_dot_col(s, rider.race_num);
             draw_rider_dot(
                 px,
@@ -147,8 +148,8 @@ pub(crate) fn draw_map(
                 cfg.map_numbers,
                 false,
             );
-            let (fwx, fwz) = yaw_forward(rider.yaw);
-            let (sdx, sdy) = screen_dir(&to_px, rider.x, rider.z, fwx, fwz);
+            let (fwx, fwz) = yaw_forward(pose.yaw);
+            let (sdx, sdy) = screen_dir(&to_px, pose.x, pose.z, fwx, fwz);
             draw_dot_chevron(px, hx, hy, other_r, sdx, sdy, fill, false);
             draw_rider_overhead(
                 px,

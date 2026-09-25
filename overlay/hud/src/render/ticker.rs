@@ -411,15 +411,21 @@ pub(crate) fn draw_ticker_card(
     if let Some(rrt) = rr(x + 4.0, pos_y, pos_s, pos_s) {
         fill_rect(px, rrt, Color::from_rgba8(244, 244, 247, 255));
     }
-    let pos = format!("{}", row.position.max(0));
-    text_bold(
+    let pos = format_place_digits(row.position.max(0), false);
+    let star = place_star_col(penalty_place_delta(row.race_num));
+    let pos_sz = (pos_s * 0.62).clamp(9.0, 13.0);
+    let pos_cx = x + 4.0 + pos_s * 0.5;
+    let pos_ty = pos_y + pos_s * 0.18;
+    let pos_w = place_width(fonts, &pos, pos_sz, star);
+    paint_place_at(
         px,
         fonts,
         &pos,
-        (pos_s * 0.62).clamp(9.0, 13.0),
-        x + 4.0 + pos_s * 0.5,
-        pos_y + pos_s * 0.18,
+        pos_sz,
+        pos_cx - pos_w * 0.5,
+        pos_ty,
         Color::from_rgba8(12, 12, 14, 255),
+        star,
         true,
     );
     let accent_c = bike_color(&cstr(&row.bike), &cstr(&row.category));

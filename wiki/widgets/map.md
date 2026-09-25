@@ -11,9 +11,9 @@ Full-track outline in world XZ with rider dots. Settings subtitle: “Where you 
 
 ## Data
 
-`poly[]` + `poly_count`, rider XZ + yaw, local XZ + velocity (for interpolation), `sf_meters`, `RaceStore` for position labels and lapping colors.
+`poly[]` + `poly_count`, rider **`track_pos`** (preferred) + XZ + yaw, local XZ + velocity (for interpolation), `sf_meters`, `RaceStore` for position labels and lapping colors.
 
-Orange marker is `subject_pose`: predicted `local + vel * age` while riding. Overlay clears leftover telemetry while `SpectateVehicles` is live so spectate uses the focused rider’s XZ. When that callback stops, telemetry is yours again and the marker snaps back to you even if focus is still stale.
+Dots and chevrons place from the centerline via `rider_map_pose` (`norm_lap_pos` → `poly_at_frac`), falling back to world XZ when the poly is missing. That keeps icons moving with live order even when game world coords lag. Orange marker is `subject_pose`: predicted `local + vel * age` while riding; spectate uses the same track_pos placement for the focused rider. Overlay clears leftover telemetry while `SpectateVehicles` is live so spectate follows the camera. When that callback stops, telemetry is yours again and the marker snaps back to you even if focus is still stale.
 
 ## Behavior
 
@@ -29,6 +29,7 @@ Toggles: other riders, start/finish, sector lines, track arrows, leader crown, n
 ## Do not regress
 
 - Do not flash the track blank when segments are sparse; the cache and polyline close path are what stopped that (0.1.0).
+- Place other-rider (and spectate) dots from live `track_pos` on the poly first — do not trust world XZ alone, or icons freeze while standings/dash keep moving. Exception: at the gate / prestart, keep world XZ so stalls do not stack on one centerline point.
 - Lapping color is **not** “anyone a lap up is blue”. They must also be inside `catch_span_m` (either side — holds through a pass while nearby).
 - Do not trust `num_laps` over `gap_laps` for **blue**. A rider two down can have a completed-lap count that looks a lap *up*; that used to paint the leader red the second time they went by. `other_laps_ahead` uses `gap_laps` only when they are ahead of you.
 - Red only when you gained a lap on them (pairwise). Leader lapping someone behind you is not red.
@@ -36,12 +37,14 @@ Toggles: other riders, start/finish, sector lines, track arrows, leader crown, n
 - Dot **Position** labels, leader crown and the nearest ahead / behind rings use live `RaceStore` rank during a race (`standing_pos` / `leader_num` prefer `live_position` / `live_leader`). See [live race order](../live-order.md).
 - No blue/red lapping dots in warmup; `lap_rel` is `Same` until the race starts. `session_kind` 5 wins even when extras leak.
 - Map uses snapshot rect `s.map` (copied from config), not only `cfg.map` at draw time.
-- In spectate/replay, do not leave the orange marker on leftover local telemetry; overlay drops `has_telemetry` while `SpectateVehicles` is live so `subject_pose` uses the focused rider’s XZ.
+- In spectate/replay, do not leave the orange marker on leftover local telemetry; overlay drops `has_telemetry` while `SpectateVehicles` is live so `subject_pose` uses the focused rider’s `track_pos` (XZ fallback).
 - Leaving spectate / going back on the bike must put the orange marker on you. Live telemetry wins over a stale `focus_race_num`.
 - Sector lines are thin best-lap-violet dashes at the **start** of S1 / S2 / S3, not orange. They span only the track stroke — do not stick out into the grass. Orange stays the S/F bar and the you-dot. S1 sits on the line; S2 / S3 wait for learned splits. Do not invent equal-third gates when splits are unknown.
 
 ## Change log
 
+- 2026-09-25 — Gate / prestart dots stay on world XZ so starting stalls do not pile onto one centerline point; race still uses `track_pos`.
+- 2026-09-25 — Other-rider and spectate dots follow live `track_pos` on the centerline (`rider_map_pose`); world XZ is fallback only so icons move with standings/dash.
 - 2026-09-24 — Red is pairwise only: leader lapping someone behind you no longer paints them red.
 - 2026-09-24 — Same-race S/F straddles no longer paint blue/red (`other_laps_ahead` continuous progress when `gap_laps` match).
 - 2026-09-22 — Blue/red dots hold through a pass while still within catch span (either side).

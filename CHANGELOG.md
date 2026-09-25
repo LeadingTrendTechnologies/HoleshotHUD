@@ -1,6 +1,27 @@
 # Changelog
 
-## Unreleased
+## 0.18.0
+
+The Controller gets a Light/Dark Theme for both pads, including a new light PlayStation pad, and every pad draws smooth outlines and press fills.
+
+### Controller
+
+- DualShock outlines are smooth at widget size: the dark pad art no longer has transparent pinholes along its lines, its body edge is anti-aliased, and the pad is area-averaged down instead of resampled, so thin outlines stop breaking into dashes. The stick's primary ring is a solid circle.
+- DualShock press fills (triggers, bumpers, d-pad, face buttons) have smooth edges, and pressed Cross/Circle/Triangle/Square symbols stay crisp cream on the fill. The L1/L2/R1/R2 labels are removed from the pad.
+- Xbox press fills (LT/RT, LB/RB, d-pad, ABXY, View/Menu, guide) have smooth edges, and ABXY keep their colored letter on the fill.
+- New **Theme** setting (Light / Dark) for both pads, default Light. Xbox Dark is a DualShock-style schematic: charcoal body, thin grey outlines, and outlined ABXY that turn cream when pressed; its bumpers light the same band as the light pad.
+- New light PlayStation pad: cream body with black outlines, black d-pad, face and touchpad panels, slate d-pad keys and shoulders, and cream symbols. PlayStation users see it after updating; pick Dark under Theme to keep the charcoal pad.
+
+### Overlay
+
+- Live race order no longer sticks behind riders who went down: on the start, or any time a rider scored ahead of you is more than 250 m back, your place updates right away instead of waiting for the next gate. Riders missing from the rider list keep their scored slot without blocking passes around them.
+- Time penalties move the live order during the race (the game only applies them to the results). Every rider is ranked by where they are on track minus their own penalty, so a 10 s penalty and a 5 s penalty both count no matter which place the game still has them in.
+- When live place and on-track place disagree because of those penalties, Dash / Standings / Relative / H-Standings (and board Position fields) show a trailing `*`: green when you are ahead of your on-track place, red when you are behind.
+- Yellow flag holds ~1.75 s after a nearby crash clears so blue/red cannot flash during the same incident. Blue and red ignore crashed riders.
+- Live place no longer jumps to P1 when the progress tracker rides more than a lap without a `num_laps` bump (missed line publish); armed lap metres stay within one lap.
+- Map and minimap rider dots follow live `track_pos` on the centerline (world XZ is fallback only), so icons move with standings and dash when game world coords lag.
+- Map and minimap keep starting-gate dots on world XZ so stalls do not pile onto one centerline point; once the race is live, dots still follow `track_pos`.
+- Live place no longer drops a true leader to mid-pack when lap travel wraps before `num_laps` bumps: small overshoot only clamps; larger runaway pins to the game place (no S/F fallback to ~0 m).
 
 ## 0.17.0
 

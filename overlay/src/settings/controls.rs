@@ -313,7 +313,6 @@ pub(crate) fn dropdown_row(
     y + h + ROW_GAP
 }
 
-
 pub(crate) fn color_row(
     px: &mut Pixmap,
     fonts: &Fonts,

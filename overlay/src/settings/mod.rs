@@ -41,7 +41,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use crate::config::{
     format_primary_color, hsv_to_rgb, rgb_to_hsv, update_config, with_config, BoardField,
-    DashField, DotLabel, FontFamily, GamepadStyle, HudConfig, LeanStyle, RelField,
+    DashField, DotLabel, FontFamily, GamepadStyle, GamepadTheme, HudConfig, LeanStyle, RelField,
     SessionPreset, SettingsKey, SettingsTheme, SnapAlign, StField, StanceBind, StanceMode,
     StanceStyle, TableText, UnitKind, Units, WidgetId, COL_W_MAX, COL_W_MIN, DEFAULT_PRIMARY,
     PRIMARY_SWATCHES, RADAR_RANGE_MAX, RADAR_RANGE_MIN, SYS_PRESETS, SYS_PROC_MAX,
@@ -774,6 +774,8 @@ pub(crate) enum Hit {
     LeanStylePick(LeanStyle),
     GamepadStyleOpen,
     GamepadStylePick(GamepadStyle),
+    GamepadThemeOpen,
+    GamepadThemePick(GamepadTheme),
     StanceReset,
     DashFootOpen(u8),
     DashFootPick(u8, DashField),
@@ -863,6 +865,7 @@ pub(crate) enum Drop {
     StanceStyle,
     LeanStyle,
     GamepadStyle,
+    GamepadTheme,
     SysAdd,
     StText,
     RelText,
@@ -2349,6 +2352,7 @@ fn is_drop_pick(hit: Hit) -> bool {
             | Hit::StanceStylePick(_)
             | Hit::LeanStylePick(_)
             | Hit::GamepadStylePick(_)
+            | Hit::GamepadThemePick(_)
             | Hit::SysAddPick(_)
             | Hit::DashFootPick(_, _)
             | Hit::TickerFootPick(_, _)
@@ -2542,6 +2546,7 @@ fn hit_label(hit: Hit) -> String {
         Hit::StanceModeOpen => "Sit mode".into(),
         Hit::StanceStyleOpen | Hit::LeanStyleOpen => "Look".into(),
         Hit::GamepadStyleOpen => "Pad".into(),
+        Hit::GamepadThemeOpen => "Theme".into(),
         Hit::SysAddOpen => "Add app".into(),
         Hit::SysAppBrowse => "Browse .exe".into(),
         Hit::SysAppShow(_) => "Show on Systems".into(),

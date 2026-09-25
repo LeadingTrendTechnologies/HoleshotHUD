@@ -140,10 +140,10 @@ pub(crate) fn draw_relative(
                         } else {
                             0
                         };
-                        row.paint(px, fonts, accent_c, None, |kind| match kind {
+                        row.paint(px, fonts, accent_c, Some(rider.race_num), |kind| match kind {
                             RelField::Pos => (
                                 if pos > 0 {
-                                    format!("{pos}")
+                                    format_place_digits(pos, false)
                                 } else {
                                     String::new()
                                 },

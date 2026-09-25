@@ -454,6 +454,10 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             toggle_drop(Drop::GamepadStyle);
             return;
         }
+        Hit::GamepadThemeOpen => {
+            toggle_drop(Drop::GamepadTheme);
+            return;
+        }
         Hit::SysAddOpen => {
             toggle_drop(Drop::SysAdd);
             return;
@@ -789,6 +793,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::StanceStylePick(style) => c.stance_style = style,
         Hit::LeanStylePick(style) => c.lean_style = style,
         Hit::GamepadStylePick(style) => c.gamepad_style = style,
+        Hit::GamepadThemePick(theme) => c.gamepad_theme = theme,
         Hit::DashFootPick(slot, field) => match slot {
             0 => c.dash_left = field,
             1 => c.dash_mid = field,
@@ -883,6 +888,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::StanceStyleOpen
         | Hit::LeanStyleOpen
         | Hit::GamepadStyleOpen
+        | Hit::GamepadThemeOpen
         | Hit::SysAddOpen
         | Hit::DashFootOpen(_)
         | Hit::TickerFootOpen(_)

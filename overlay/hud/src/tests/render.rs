@@ -589,7 +589,10 @@ fn board_gap_ahead_behind_use_live_place_neighbors() {
     assert_eq!(board_item(&s, &cfg, BoardField::GapAhead).unwrap(), ('\u{f062}', "10.000".into()));
     assert_eq!(board_item(&s, &cfg, BoardField::GapBehind).unwrap().0, '\u{f063}');
     assert_eq!(board_item(&s, &cfg, BoardField::GapBehind).unwrap().1, "---");
-    assert_eq!(dash_foot_item(&s, &cfg, DashField::Interval).unwrap(), ('\u{f062}', "10.000".into()));
+    assert_eq!(
+        dash_foot_item(&s, &cfg, DashField::Interval).unwrap(),
+        ('\u{f062}', "10.000".into(), None)
+    );
     assert_eq!(dash_foot_item(&s, &cfg, DashField::GapBehind).unwrap().0, '\u{f063}');
     assert_eq!(dash_foot_item(&s, &cfg, DashField::Gap).unwrap().1, "10.000");
     assert_eq!(dash_foot_item(&s, &cfg, DashField::GapBehind).unwrap().1, "---");
@@ -4501,8 +4504,8 @@ fn a_lapped_rider_alongside_does_not_take_the_place() {
     assert_eq!(live_position(12), 2);
 }
 
-/// `track_pos` is measured from the centerline origin, not the line, so only riders close
-/// together can be compared.
+/// `track_pos` is measured from the centerline origin, not the line. Without a known
+/// start/finish, riders this far apart are not a pass.
 #[test]
 fn half_a_lap_apart_is_not_a_pass() {
     let _g = session_lock();
@@ -4511,6 +4514,398 @@ fn half_a_lap_apart_is_not_a_pass() {
     pass_the_leader(&mut s, 400.0);
     let field = RaceStore::tick(&s).field;
     assert_eq!(field.rows[0].standing.race_num, 1);
+}
+
+/// Once the line is known, a lead anywhere on the lap is the place.
+#[test]
+fn a_known_line_counts_a_lead_anywhere_on_the_lap() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.sf_meters = s.track_length;
+    pass_the_leader(&mut s, 400.0);
+    let field = RaceStore::tick(&s).field;
+    assert_eq!(field.rows[0].standing.race_num, 12);
+}
+
+/// Ride every listed rider from where they are to `target` (a lap fraction, may run past
+/// 1.0) in small steps, one tick per step, so the distance tracker sees real riding.
+fn ride_field_to(s: &mut Snapshot, targets: &[(i32, f32)]) {
+    let count = s.rider_count as usize;
+    let starts: Vec<f32> = targets
+        .iter()
+        .map(|(num, _)| {
+            s.riders[..count]
+                .iter()
+                .find(|r| r.race_num == *num)
+                .map(|r| r.track_pos)
+                .unwrap_or(0.0)
+        })
+        .collect();
+    let steps = 100;
+    for step in 1..=steps {
+        let along = step as f32 / steps as f32;
+        for ((num, target), start) in targets.iter().zip(&starts) {
+            let pos = (start + (target - start) * along).rem_euclid(1.0);
+            if let Some(r) = s.riders[..count].iter_mut().find(|r| r.race_num == *num) {
+                r.track_pos = pos;
+            }
+            if *num == s.focus_race_num {
+                s.local_track_pos = pos;
+            }
+        }
+        let _ = RaceStore::tick(s);
+    }
+}
+
+/// A field of `nums`, scored in that order on lap 0, all sitting on the gate at 0.10.
+fn gate_field(nums: &[i32]) -> Snapshot {
+    let mut s = live_snap();
+    s.standing_count = nums.len() as i32;
+    s.rider_count = nums.len() as i32;
+    for (i, &num) in nums.iter().enumerate() {
+        s.standings[i] = standing(num, i as i32 + 1, 0);
+        s.riders[i] = rider(num, i as f32, 0.0, 0.10);
+    }
+    s.local_track_pos = 0.10;
+    IN_GATE.store(1, Ordering::Relaxed);
+    let _ = RaceStore::tick(&s);
+    IN_GATE.store(0, Ordering::Relaxed);
+    s
+}
+
+/// Straight off a start: three riders scored ahead of you went down in the first turn and
+/// are now 500 m back. The game still has the gate order, and they are too far away for
+/// `track_pos` alone, but you are P5 on track.
+#[test]
+fn riders_down_on_the_start_do_not_hold_you_back() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = gate_field(&[1, 2, 3, 4, 5, 6, 7, 12]);
+    let mut targets: Vec<(i32, f32)> = [1, 2, 3, 4].iter().map(|&n| (n, 0.70)).collect();
+    targets.extend([5, 6, 7].iter().map(|&n| (n, 0.12)));
+    targets.push((12, 0.65));
+    ride_field_to(&mut s, &targets);
+    assert_eq!(live_position(12), 5);
+    assert_eq!(live_position(5), 6);
+    assert_eq!(live_position(4), 4, "the clean riders ahead keep their places");
+}
+
+/// A rider missing from `riders[]` keeps their scored slot, but the pass above them still
+/// shows.
+#[test]
+fn a_rider_off_the_radar_does_not_block_a_pass() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.standing_count = 3;
+    s.standings[1] = standing(5, 2, 5);
+    s.standings[2] = standing(12, 3, 5);
+    pass_the_leader(&mut s, 6.0);
+    let field = RaceStore::tick(&s).field;
+    assert_eq!(live_position(12), 1);
+    assert_eq!(live_position(5), 2, "no track position, stays where scored");
+    assert_eq!(field.rows[2].standing.race_num, 1);
+}
+
+/// Joined mid-race, we cannot tell where a far-apart pair's laps started. Once both have
+/// crossed the line in front of us, we can.
+#[test]
+fn a_far_pass_shows_once_both_riders_have_crossed_the_line() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.riders[0].track_pos = 0.97;
+    s.riders[1].track_pos = 0.96;
+    s.local_track_pos = 0.96;
+    let _ = RaceStore::tick(&s);
+    ride_field_to(&mut s, &[(1, 1.02), (12, 1.01)]);
+    s.standings[0].num_laps = 6;
+    s.standings[1].num_laps = 6;
+    // Targets are on this lap (0..1): after the wrap, ride_field_to already rem_euclid'd
+    // positions, so 1.12/1.71 would integrate an extra full lap and trip the runaway cap.
+    ride_field_to(&mut s, &[(1, 0.12), (12, 0.71)]);
+    assert_eq!(live_position(12), 1, "600 m up the lap on the leader");
+}
+
+/// If `num_laps` lags while the tracker keeps integrating, lap metres used to grow past a
+/// full lap and invent P1 until the line republished. Past one lap without a bump must not.
+#[test]
+fn runaway_lap_metres_without_a_lap_bump_do_not_invent_p1() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = gate_field(&[1, 2, 3, 4, 5, 6, 12]);
+    s.sf_meters = s.track_length;
+    for standing in &mut s.standings[..7] {
+        standing.num_laps = 5;
+    }
+    ride_field_to(
+        &mut s,
+        &[
+            (1, 0.70),
+            (2, 0.65),
+            (3, 0.60),
+            (4, 0.55),
+            (5, 0.50),
+            (6, 0.45),
+            (12, 0.40),
+        ],
+    );
+    assert_eq!(live_position(12), 7);
+    let start = s
+        .riders
+        .iter()
+        .find(|r| r.race_num == 12)
+        .map(|r| r.track_pos)
+        .unwrap_or(0.40);
+    ride_field_to(&mut s, &[(12, start + 1.6)]);
+    assert_ne!(
+        live_position(12),
+        1,
+        "extra lap of metres without a num_laps bump must not invent P1"
+    );
+    assert!(
+        live_position(12) >= 4,
+        "still behind riders who are truly ahead on track"
+    );
+    s.standings
+        .iter_mut()
+        .find(|st| st.race_num == 12)
+        .unwrap()
+        .num_laps = 6;
+    let _ = RaceStore::tick(&s);
+    let place = live_position(12);
+    assert!(
+        (1..=7).contains(&place),
+        "after a real lap bump place stays in the field, got {place}"
+    );
+}
+
+/// Leader crosses the wrap / rides past one lap of travel while `num_laps` lags. Must not
+/// fall to mid-pack via S/F metres near 0; stay P1 (armed clamp or corrupt pin to game).
+#[test]
+fn leader_holds_p1_when_lap_metres_wrap_before_num_laps() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = gate_field(&[12, 1, 2, 3, 4, 5, 6, 7]);
+    s.sf_meters = s.track_length;
+    for standing in &mut s.standings[..8] {
+        standing.num_laps = 5;
+    }
+    ride_field_to(
+        &mut s,
+        &[
+            (12, 0.70),
+            (1, 0.55),
+            (2, 0.50),
+            (3, 0.45),
+            (4, 0.40),
+            (5, 0.35),
+            (6, 0.30),
+            (7, 0.25),
+        ],
+    );
+    assert_eq!(live_position(12), 1);
+    let start = s
+        .riders
+        .iter()
+        .find(|r| r.race_num == 12)
+        .map(|r| r.track_pos)
+        .unwrap_or(0.70);
+    ride_field_to(&mut s, &[(12, start + 1.2)]);
+    assert_eq!(
+        live_position(12),
+        1,
+        "wrap / overshoot without a num_laps bump must not drop the leader"
+    );
+}
+
+/// Session best is 92 s round 1000 m, so 5 s of penalty is about 54 m of track.
+#[test]
+fn within_the_leaders_penalty_you_are_ahead() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.standings[0].penalty_ms = 5_000;
+    pass_the_leader(&mut s, -40.0);
+    let _ = RaceStore::tick(&s);
+    assert_eq!(live_position(12), 1);
+}
+
+#[test]
+fn beyond_the_leaders_penalty_they_keep_the_place() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.standings[0].penalty_ms = 5_000;
+    pass_the_leader(&mut s, -80.0);
+    let _ = RaceStore::tick(&s);
+    assert_eq!(live_position(12), 2);
+}
+
+/// Getting by on track with a penalty is not the place until the penalty is cleared.
+#[test]
+fn a_penalised_pass_has_to_clear_the_penalty() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.standings[1].penalty_ms = 5_000;
+    pass_the_leader(&mut s, 6.0);
+    let _ = RaceStore::tick(&s);
+    assert_eq!(live_position(12), 2);
+    pass_the_leader(&mut s, 60.0);
+    let _ = RaceStore::tick(&s);
+    assert_eq!(live_position(12), 1);
+}
+
+/// P1 and P2 are clear. P3 has 10 s and is ~7 s up the road, P4 has 5 s and is ~1 s up
+/// the road. Both penalties are yours to take, so you are P3.
+#[test]
+fn every_penalty_counts_against_where_they_are() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.sf_meters = s.track_length;
+    s.standing_count = 5;
+    s.rider_count = 5;
+    s.standings[0] = standing(1, 1, 5);
+    s.standings[0].best_lap_ms = 92_000;
+    s.standings[1] = standing(2, 2, 5);
+    s.standings[1].best_lap_ms = 92_000;
+    s.standings[2] = standing(3, 3, 5);
+    s.standings[2].best_lap_ms = 92_000;
+    s.standings[2].penalty_ms = 10_000;
+    s.standings[3] = standing(4, 4, 5);
+    s.standings[3].best_lap_ms = 92_000;
+    s.standings[3].penalty_ms = 5_000;
+    s.standings[4] = standing(12, 5, 5);
+    s.standings[4].best_lap_ms = 93_500;
+    // ~10.87 m/s. 7 s ≈ 76 m, 1 s ≈ 11 m. The two clean riders are a clear lap ahead
+    // on track position within the same lap count: 200 m and 180 m up the road.
+    s.riders[0] = rider(1, 0.0, 0.0, 0.70);
+    s.riders[1] = rider(2, 0.0, 0.0, 0.68);
+    s.riders[2] = rider(3, 0.0, 0.0, 0.576);
+    s.riders[3] = rider(4, 0.0, 0.0, 0.511);
+    s.riders[4] = rider(12, 0.0, 0.0, 0.500);
+    s.local_track_pos = 0.500;
+    let _ = RaceStore::tick(&s);
+    assert_eq!(live_position(12), 3);
+    assert_eq!(live_position(3), 4);
+    assert_eq!(live_position(4), 5);
+    assert_eq!(live_position(1), 1);
+}
+
+/// 30 s is most of a lap at this pace. Sitting 50 m up the road does not keep P1.
+#[test]
+fn a_large_penalty_drops_through_the_pack() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.sf_meters = s.track_length;
+    s.standing_count = 4;
+    s.rider_count = 4;
+    s.standings[0] = standing(1, 1, 5);
+    s.standings[0].best_lap_ms = 92_000;
+    s.standings[0].penalty_ms = 30_000;
+    s.standings[1] = standing(2, 2, 5);
+    s.standings[1].best_lap_ms = 92_000;
+    s.standings[2] = standing(3, 3, 5);
+    s.standings[2].best_lap_ms = 92_000;
+    s.standings[3] = standing(12, 4, 5);
+    s.standings[3].best_lap_ms = 93_500;
+    s.riders[0] = rider(1, 0.0, 0.0, 0.55);
+    s.riders[1] = rider(2, 0.0, 0.0, 0.52);
+    s.riders[2] = rider(3, 0.0, 0.0, 0.51);
+    s.riders[3] = rider(12, 0.0, 0.0, 0.50);
+    s.local_track_pos = 0.50;
+    let _ = RaceStore::tick(&s);
+    assert_eq!(live_position(1), 4);
+    assert_eq!(live_position(12), 3);
+}
+
+#[test]
+fn penalty_place_delta_marks_ahead_and_behind() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.sf_meters = s.track_length;
+    s.standing_count = 4;
+    s.rider_count = 4;
+    s.standings[0] = standing(1, 1, 5);
+    s.standings[0].best_lap_ms = 92_000;
+    s.standings[0].penalty_ms = 30_000;
+    s.standings[1] = standing(2, 2, 5);
+    s.standings[1].best_lap_ms = 92_000;
+    s.standings[2] = standing(3, 3, 5);
+    s.standings[2].best_lap_ms = 92_000;
+    s.standings[3] = standing(12, 4, 5);
+    s.standings[3].best_lap_ms = 93_500;
+    s.riders[0] = rider(1, 0.0, 0.0, 0.55);
+    s.riders[1] = rider(2, 0.0, 0.0, 0.52);
+    s.riders[2] = rider(3, 0.0, 0.0, 0.51);
+    s.riders[3] = rider(12, 0.0, 0.0, 0.50);
+    s.local_track_pos = 0.50;
+    let _ = RaceStore::tick(&s);
+    assert_eq!(track_position(1), 1);
+    assert_eq!(live_position(1), 4);
+    assert_eq!(penalty_place_delta(1), Some(-3), "penalised leader is behind on-track place");
+    assert_eq!(track_position(12), 4);
+    assert_eq!(live_position(12), 3);
+    assert_eq!(penalty_place_delta(12), Some(1), "displaced clean rider is ahead of on-track");
+}
+
+#[test]
+fn penalty_place_delta_is_none_without_a_shift() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    pass_the_leader(&mut s, 6.0);
+    let _ = RaceStore::tick(&s);
+    assert_eq!(live_position(12), 1);
+    assert_eq!(penalty_place_delta(12), None);
+    assert_eq!(penalty_place_delta(1), None);
+
+    s.standings[0].penalty_ms = 5_000;
+    s.standings[1].penalty_ms = 5_000;
+    let _ = RaceStore::tick(&s);
+    assert_eq!(live_position(12), 1);
+    assert_eq!(
+        penalty_place_delta(12),
+        None,
+        "equal penalties that do not change order"
+    );
+
+    s.on_track = 0;
+    let _ = RaceStore::tick(&s);
+    assert_eq!(penalty_place_delta(12), None, "live order inactive");
+}
+
+#[test]
+fn equal_penalties_cancel_out() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.standings[0].penalty_ms = 5_000;
+    s.standings[1].penalty_ms = 5_000;
+    pass_the_leader(&mut s, 6.0);
+    let _ = RaceStore::tick(&s);
+    assert_eq!(live_position(12), 1);
+    pass_the_leader(&mut s, -6.0);
+    let _ = RaceStore::tick(&s);
+    assert_eq!(live_position(12), 2);
+}
+
+/// A 300 m jump in one tick is a reset or a teleport, not riding.
+#[test]
+fn a_teleport_is_not_distance_covered() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = gate_field(&[1, 12]);
+    ride_field_to(&mut s, &[(1, 0.20), (12, 0.19)]);
+    s.riders[1].track_pos = 0.49;
+    s.local_track_pos = 0.49;
+    let _ = RaceStore::tick(&s);
+    assert_eq!(live_position(12), 2);
 }
 
 /// Map / minimap dot labels, the crown and the nearest ahead / behind rings all read
@@ -5021,8 +5416,9 @@ fn map_subject_pose_follows_spectated_rider_without_telemetry() {
     s.focus_race_num = 1;
     let pose = subject_pose(&s, 0.0).expect("spectate pose");
     assert!(!pose.from_local);
-    assert_eq!(pose.x, 20.0);
-    assert_eq!(pose.z, 8.0);
+    let mapped = rider_map_pose(&s, &s.riders[0]);
+    assert!((pose.x - mapped.x).abs() < 0.01);
+    assert!((pose.z - mapped.z).abs() < 0.01);
     assert_eq!(camera_subject(&s), 1);
 
     s.has_telemetry = 1;
@@ -5031,6 +5427,75 @@ fn map_subject_pose_follows_spectated_rider_without_telemetry() {
     assert!(pose.from_local);
     assert_eq!(pose.x, 10.0);
     assert_eq!(pose.z, 4.0);
+}
+
+#[test]
+fn rider_map_pose_follows_track_pos_when_world_xz_is_stale() {
+    let _lock = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    // Stale XZ that would freeze the dot if we trusted world coords alone.
+    s.riders[0].x = 999.0;
+    s.riders[0].z = 999.0;
+    s.riders[0].track_pos = 0.10;
+    let a = rider_map_pose(&s, &s.riders[0]);
+    s.riders[0].track_pos = 0.60;
+    let b = rider_map_pose(&s, &s.riders[0]);
+    let moved = (a.x - b.x).hypot(a.z - b.z);
+    assert!(
+        moved > 20.0,
+        "dot should walk the poly with track_pos (moved {moved})"
+    );
+    assert!(a.x.abs() < 200.0 && a.z.abs() < 200.0, "a on track");
+    assert!(b.x.abs() < 200.0 && b.z.abs() < 200.0, "b on track");
+}
+
+#[test]
+fn rider_map_pose_falls_back_to_world_xz_without_poly() {
+    let mut s = live_snap();
+    s.poly_count = 0;
+    s.riders[0].x = 33.0;
+    s.riders[0].z = -12.0;
+    s.riders[0].track_pos = 0.4;
+    let pose = rider_map_pose(&s, &s.riders[0]);
+    assert_eq!(pose.x, 33.0);
+    assert_eq!(pose.z, -12.0);
+}
+
+#[test]
+fn rider_map_pose_keeps_gate_stalls_on_world_xz() {
+    let _lock = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.local_speed = 0.0;
+    // Same lap fraction, distinct stalls — poly sampling would pile them together.
+    s.riders[0].track_pos = 0.0;
+    s.riders[1].track_pos = 0.0;
+    s.riders[0].x = -12.0;
+    s.riders[0].z = 4.0;
+    s.riders[1].x = 12.0;
+    s.riders[1].z = 4.0;
+
+    IN_GATE.store(1, Ordering::Relaxed);
+    let a = rider_map_pose(&s, &s.riders[0]);
+    let b = rider_map_pose(&s, &s.riders[1]);
+    assert_eq!(a.x, -12.0);
+    assert_eq!(a.z, 4.0);
+    assert_eq!(b.x, 12.0);
+    assert_eq!(b.z, 4.0);
+    assert!((a.x - b.x).abs() > 1.0, "stalls must stay apart");
+
+    IN_GATE.store(0, Ordering::Relaxed);
+    s.local_speed = 18.0;
+    s.riders[0].x = 999.0;
+    s.riders[0].z = 999.0;
+    s.riders[0].track_pos = 0.10;
+    let on_poly = rider_map_pose(&s, &s.riders[0]);
+    assert!(
+        on_poly.x.abs() < 200.0 && on_poly.z.abs() < 200.0,
+        "after green, track_pos walks the poly again"
+    );
+    assert!((on_poly.x - 999.0).abs() > 1.0);
 }
 
 #[test]
@@ -5341,9 +5806,15 @@ fn gamepad_goldens() {
     cfg[WidgetId::Gamepad].show = true;
     crate::gamepad::set(crate::gamepad::demo_sony());
     let s = golden_snap(&base, &cfg);
+    cfg.gamepad_theme = crate::config::GamepadTheme::Dark;
     draw_widget_golden("gamepad", &s, &cfg, cfg[WidgetId::Gamepad].rect);
+    cfg.gamepad_theme = crate::config::GamepadTheme::Light;
+    draw_widget_golden("gamepad-ds4-light", &s, &cfg, cfg[WidgetId::Gamepad].rect);
     crate::gamepad::set(crate::gamepad::demo_xbox());
     draw_widget_golden("gamepad-xbox", &s, &cfg, cfg[WidgetId::Gamepad].rect);
+    cfg.gamepad_theme = crate::config::GamepadTheme::Dark;
+    draw_widget_golden("gamepad-xbox-dark", &s, &cfg, cfg[WidgetId::Gamepad].rect);
+    cfg.gamepad_theme = crate::config::GamepadTheme::Light;
     crate::gamepad::set(crate::gamepad::PadState::DISCONNECTED);
     draw_widget_golden("gamepad-none", &s, &cfg, cfg[WidgetId::Gamepad].rect);
 }
@@ -5397,6 +5868,25 @@ fn xbox_press_covers_the_whole_control() {
     };
     let orange = |p: [u8; 4]| p[3] > 200 && p[0] > 200 && (120..190).contains(&p[1]) && p[2] < 90;
     let ink = |p: [u8; 4]| p[3] > 200 && p[0] < 45 && p[1] < 45 && p[2] < 45;
+    let idle_px = shot(idle);
+    let pressed_bounds = |px: &Pixmap, before: &Pixmap| {
+        let (d, b) = (px.data(), before.data());
+        let mut out: Option<[u32; 4]> = None;
+        for y in 0..px.height() {
+            for x in 0..px.width() {
+                let i = ((y * px.width() + x) * 4) as usize;
+                let now = [d[i], d[i + 1], d[i + 2], d[i + 3]];
+                let was = [b[i], b[i + 1], b[i + 2], b[i + 3]];
+                if orange(now) && now != was {
+                    out = Some(match out {
+                        None => [x, y, x, y],
+                        Some(p) => [p[0].min(x), p[1].min(y), p[2].max(x), p[3].max(y)],
+                    });
+                }
+            }
+        }
+        out
+    };
 
     // A press must not leave the disc's rim unlit: a radius taken from the target
     // instead of the art used to leave a ring of ink around the orange.
@@ -5417,7 +5907,8 @@ fn xbox_press_covers_the_whole_control() {
         ),
     ] {
         let px = shot(pad);
-        let lit = bounds(&px, &orange).unwrap_or_else(|| panic!("{label} lit nothing"));
+        // Only pixels the press turned orange: anti-aliased yellow (Y) edges also pass `orange`.
+        let lit = pressed_bounds(&px, &idle_px).unwrap_or_else(|| panic!("{label} lit nothing"));
         let mut left = 0;
         for y in lit[1] - 2..=lit[3] + 2 {
             for x in lit[0] - 2..=lit[2] + 2 {
@@ -5432,12 +5923,434 @@ fn xbox_press_covers_the_whole_control() {
     // A trigger held past the snap fills its tab to the very top.
     let top = bounds(&shot(idle), &ink).expect("idle pad draws ink")[1];
     let held = crate::gamepad::PadState { rt: 1.0, ..idle };
-    let lit = bounds(&shot(held), &orange).expect("RT lit nothing");
+    let lit = pressed_bounds(&shot(held), &idle_px).expect("RT lit nothing");
     assert!(
         lit[1] <= top + 1,
         "RT: orange starts at {} but the tab starts at {top}",
         lit[1]
     );
+}
+
+#[test]
+fn xbox_press_edges_are_antialiased() {
+    let _g = session_lock();
+    reset_session();
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg.experimental = true;
+    cfg[WidgetId::Gamepad].show = true;
+    let s = golden_snap(&live_snap(), &cfg);
+    let idle = crate::gamepad::PadState {
+        kind: crate::gamepad::PadKind::Xbox,
+        ..crate::gamepad::PadState::DISCONNECTED
+    };
+    let shot = |pad| {
+        crate::gamepad::set(pad);
+        let mut px = Pixmap::new(1280, 720).expect("pixmap");
+        draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
+        crate::gamepad::set(crate::gamepad::PadState::DISCONNECTED);
+        px
+    };
+    let orange = |p: [u8; 4]| p[3] > 200 && p[0] > 200 && (120..190).contains(&p[1]) && p[2] < 90;
+    let green = |p: [u8; 4]| {
+        p[3] > 200 && p[1] > 150 && p[1] > p[0].saturating_add(40) && p[1] > p[2].saturating_add(40)
+    };
+    let before = shot(idle);
+    // (pixels the press turned fully orange, partially lit edge pixels, green letter pixels)
+    let scan = |px: &Pixmap| {
+        let (d, b) = (px.data(), before.data());
+        let (mut full, mut soft, mut letter) = (0, 0, 0);
+        for i in (0..d.len()).step_by(4) {
+            let now = [d[i], d[i + 1], d[i + 2], d[i + 3]];
+            let was = [b[i], b[i + 1], b[i + 2], b[i + 3]];
+            if now == was {
+                continue;
+            }
+            if orange(now) {
+                full += 1;
+            } else if green(now) {
+                letter += 1;
+            } else {
+                soft += 1;
+            }
+        }
+        (full, soft, letter)
+    };
+
+    let (full, soft, _) = scan(&shot(crate::gamepad::PadState { rt: 1.0, ..idle }));
+    assert!(full > 20, "RT: only {full} px lit");
+    assert!(soft >= 6, "RT: only {soft} blended edge px — the fill edge is aliased");
+
+    let (full, soft, _) = scan(&shot(crate::gamepad::PadState {
+        buttons: crate::gamepad::SOUTH,
+        ..idle
+    }));
+    assert!(full > 20, "A: only {full} px lit");
+    assert!(soft >= 6, "A: only {soft} blended edge px — the disc edge is aliased");
+    let mut letter = 0;
+    let px = shot(crate::gamepad::PadState {
+        buttons: crate::gamepad::SOUTH,
+        ..idle
+    });
+    for p in px.data().chunks_exact(4) {
+        letter += green([p[0], p[1], p[2], p[3]]) as u32;
+    }
+    assert!(letter >= 3, "A: {letter} green px — the letter should stay on the fill");
+}
+
+#[test]
+fn ds4_press_edges_are_antialiased() {
+    let _g = session_lock();
+    reset_session();
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg.experimental = true;
+    cfg[WidgetId::Gamepad].show = true;
+    cfg.gamepad_theme = crate::config::GamepadTheme::Dark;
+    let s = golden_snap(&live_snap(), &cfg);
+    let idle = crate::gamepad::PadState {
+        kind: crate::gamepad::PadKind::Sony,
+        ..crate::gamepad::PadState::DISCONNECTED
+    };
+    let shot = |pad| {
+        crate::gamepad::set(pad);
+        let mut px = Pixmap::new(1280, 720).expect("pixmap");
+        draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
+        crate::gamepad::set(crate::gamepad::PadState::DISCONNECTED);
+        px
+    };
+    let orange = |p: [u8; 4]| p[3] > 200 && p[0] > 200 && (120..190).contains(&p[1]) && p[2] < 90;
+    let blended =
+        |p: [u8; 4]| p[3] > 200 && (60..200).contains(&p[0]) && p[0] > p[1].saturating_add(20);
+    let cream = |p: [u8; 4]| p[3] > 200 && p[0].min(p[1]).min(p[2]) > 170;
+    let scan = |px: &Pixmap| {
+        let d = px.data();
+        let at = |x: u32, y: u32| {
+            let i = ((y * px.width() + x) * 4) as usize;
+            [d[i], d[i + 1], d[i + 2], d[i + 3]]
+        };
+        let mut lit: Option<[u32; 4]> = None;
+        for y in 0..px.height() {
+            for x in 0..px.width() {
+                if orange(at(x, y)) {
+                    lit = Some(match lit {
+                        None => [x, y, x, y],
+                        Some(b) => [b[0].min(x), b[1].min(y), b[2].max(x), b[3].max(y)],
+                    });
+                }
+            }
+        }
+        let b = lit.expect("press lit nothing");
+        let (mut soft, mut light) = (0, 0);
+        for y in b[1]..=b[3] {
+            for x in b[0]..=b[2] {
+                let p = at(x, y);
+                soft += blended(p) as u32;
+                light += cream(p) as u32;
+            }
+        }
+        (soft, light)
+    };
+
+    let (soft, light) = scan(&shot(crate::gamepad::PadState { rt: 1.0, ..idle }));
+    assert!(soft >= 6, "R2: only {soft} blended edge px — the fill edge is aliased");
+    assert_eq!(light, 0, "R2: {light} cream px inside the fill — the label should be gone");
+
+    let (soft, light) = scan(&shot(crate::gamepad::PadState {
+        buttons: crate::gamepad::SOUTH,
+        ..idle
+    }));
+    assert!(soft >= 6, "Cross: only {soft} blended edge px — the disc edge is aliased");
+    assert!(light >= 3, "Cross: {light} cream px — the × should stay on the fill");
+}
+
+#[test]
+fn xbox_dark_press_fills_stay_inside_their_outlines() {
+    let _g = session_lock();
+    reset_session();
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg.experimental = true;
+    cfg[WidgetId::Gamepad].show = true;
+    cfg.gamepad_theme = crate::config::GamepadTheme::Dark;
+    let s = golden_snap(&live_snap(), &cfg);
+    let idle = crate::gamepad::PadState {
+        kind: crate::gamepad::PadKind::Xbox,
+        ..crate::gamepad::PadState::DISCONNECTED
+    };
+    let shot = |pad| {
+        crate::gamepad::set(pad);
+        let mut px = Pixmap::new(1280, 720).expect("pixmap");
+        draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
+        crate::gamepad::set(crate::gamepad::PadState::DISCONNECTED);
+        px
+    };
+    let orange = |p: [u8; 4]| p[3] > 200 && p[0] > 200 && (120..190).contains(&p[1]) && p[2] < 90;
+    // Outlined letters are under a pixel wide at widget size, so their cream only half-covers.
+    let cream = |p: [u8; 4]| p[3] > 200 && p[0].min(p[1]).min(p[2]) > 120;
+    let before = shot(idle);
+    let pixel = |px: &Pixmap, i: usize| {
+        let d = px.data();
+        [d[i], d[i + 1], d[i + 2], d[i + 3]]
+    };
+    let mut pad_box: Option<[u32; 4]> = None;
+    for y in 0..before.height() {
+        for x in 0..before.width() {
+            if pixel(&before, ((y * before.width() + x) * 4) as usize)[3] > 200 {
+                pad_box = Some(match pad_box {
+                    None => [x, y, x, y],
+                    Some(b) => [b[0].min(x), b[1].min(y), b[2].max(x), b[3].max(y)],
+                });
+            }
+        }
+    }
+    let pad_box = pad_box.expect("idle dark pad draws");
+    let pad_w = (pad_box[2] - pad_box[0]) as f32;
+    // (bounds of pixels the press turned orange, fully orange px, blended px, cream px in bounds)
+    let scan = |px: &Pixmap| {
+        let mut lit: Option<[u32; 4]> = None;
+        let (mut full, mut soft) = (0, 0);
+        for y in 0..px.height() {
+            for x in 0..px.width() {
+                let i = ((y * px.width() + x) * 4) as usize;
+                let (now, was) = (pixel(px, i), pixel(&before, i));
+                if now == was {
+                    continue;
+                }
+                if orange(now) {
+                    full += 1;
+                    lit = Some(match lit {
+                        None => [x, y, x, y],
+                        Some(b) => [b[0].min(x), b[1].min(y), b[2].max(x), b[3].max(y)],
+                    });
+                } else {
+                    soft += 1;
+                }
+            }
+        }
+        let lit = lit.expect("press lit nothing");
+        let mut light = 0;
+        for y in lit[1]..=lit[3] {
+            for x in lit[0]..=lit[2] {
+                light += cream(pixel(px, ((y * px.width() + x) * 4) as usize)) as u32;
+            }
+        }
+        (lit, full, soft, light)
+    };
+
+    let (_, full, soft, _) = scan(&shot(crate::gamepad::PadState { rt: 1.0, ..idle }));
+    assert!(full > 20, "RT: only {full} px lit");
+    assert!(soft >= 6, "RT: only {soft} blended edge px — the fill edge is aliased");
+
+    let (_, full, soft, light) = scan(&shot(crate::gamepad::PadState {
+        buttons: crate::gamepad::SOUTH,
+        ..idle
+    }));
+    assert!(full > 20, "A: only {full} px lit");
+    assert!(soft >= 6, "A: only {soft} blended edge px — the disc edge is aliased");
+    assert!(light >= 3, "A: {light} cream px — the letter should stay on the fill");
+
+    // LB lights the same band as on the light skin.
+    let lb = crate::gamepad::PadState {
+        buttons: crate::gamepad::LB,
+        ..idle
+    };
+    let (dark_lb, ..) = scan(&shot(lb));
+    let mut light_cfg = cfg.clone();
+    light_cfg.gamepad_theme = crate::config::GamepadTheme::Light;
+    let light_shot = |pad| {
+        crate::gamepad::set(pad);
+        let mut px = Pixmap::new(1280, 720).expect("pixmap");
+        draw(&mut px, &fonts(), Some(&s), &light_cfg, 1280, 720, 0.0, false, false, false);
+        crate::gamepad::set(crate::gamepad::PadState::DISCONNECTED);
+        px
+    };
+    let light_idle = light_shot(idle);
+    let light_lb = light_shot(lb);
+    let mut light_lit: Option<[u32; 4]> = None;
+    for y in 0..light_lb.height() {
+        for x in 0..light_lb.width() {
+            let i = ((y * light_lb.width() + x) * 4) as usize;
+            let now = pixel(&light_lb, i);
+            if orange(now) && now != pixel(&light_idle, i) {
+                light_lit = Some(match light_lit {
+                    None => [x, y, x, y],
+                    Some(b) => [b[0].min(x), b[1].min(y), b[2].max(x), b[3].max(y)],
+                });
+            }
+        }
+    }
+    let light_lb = light_lit.expect("light LB lit nothing");
+    for side in 0..4 {
+        assert!(
+            dark_lb[side].abs_diff(light_lb[side]) <= 3,
+            "LB: dark lit {dark_lb:?}, light lit {light_lb:?}"
+        );
+    }
+
+    // The body is ink too: View lights inside its ring, not its whole layout rect.
+    let view = shot(crate::gamepad::PadState {
+        buttons: crate::gamepad::BACK,
+        ..idle
+    });
+    let (lit, ..) = scan(&view);
+    let view_w = (lit[2] - lit[0]) as f32 / pad_w;
+    assert!(view_w < 0.052, "View: lit {view_w:.3} of the pad wide — spilled past its ring");
+    for (x, y) in [(lit[0], lit[1]), (lit[2], lit[1]), (lit[0], lit[3]), (lit[2], lit[3])] {
+        let corner = pixel(&view, ((y * view.width() + x) * 4) as usize);
+        assert!(!orange(corner), "View: lit corner at ({x}, {y}) — a square fill, not the dot");
+    }
+
+    let (lit, ..) = scan(&shot(crate::gamepad::PadState {
+        buttons: crate::gamepad::UP,
+        ..idle
+    }));
+    let arm_w = (lit[2] - lit[0]) as f32 / pad_w;
+    assert!(arm_w < 0.052, "Up: lit {arm_w:.3} of the pad wide — spilled past the cross arm");
+}
+
+#[test]
+fn gamepad_theme_switches_playstation() {
+    let _g = session_lock();
+    reset_session();
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg.experimental = true;
+    cfg[WidgetId::Gamepad].show = true;
+    let s = golden_snap(&live_snap(), &cfg);
+    crate::gamepad::set(crate::gamepad::demo_sony());
+    let mut shot = |theme| {
+        cfg.gamepad_theme = theme;
+        let mut px = Pixmap::new(1280, 720).expect("pixmap");
+        draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
+        px
+    };
+    let light = shot(crate::config::GamepadTheme::Light);
+    let dark = shot(crate::config::GamepadTheme::Dark);
+    crate::gamepad::set(crate::gamepad::PadState::DISCONNECTED);
+    assert!(light.data() != dark.data(), "Theme did not change the PlayStation pad");
+}
+
+#[test]
+fn ds4_light_press_fills_stay_inside_their_outlines() {
+    let _g = session_lock();
+    reset_session();
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg.experimental = true;
+    cfg[WidgetId::Gamepad].show = true;
+    cfg.gamepad_theme = crate::config::GamepadTheme::Light;
+    let s = golden_snap(&live_snap(), &cfg);
+    let idle = crate::gamepad::PadState {
+        kind: crate::gamepad::PadKind::Sony,
+        ..crate::gamepad::PadState::DISCONNECTED
+    };
+    let shot = |pad| {
+        crate::gamepad::set(pad);
+        let mut px = Pixmap::new(1280, 720).expect("pixmap");
+        draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
+        crate::gamepad::set(crate::gamepad::PadState::DISCONNECTED);
+        px
+    };
+    let orange = |p: [u8; 4]| p[3] > 200 && p[0] > 200 && (120..190).contains(&p[1]) && p[2] < 90;
+    let cream = |p: [u8; 4]| p[3] > 200 && p[0].min(p[1]).min(p[2]) > 120;
+    let pixel = |px: &Pixmap, x: u32, y: u32| {
+        let i = ((y * px.width() + x) * 4) as usize;
+        let d = px.data();
+        [d[i], d[i + 1], d[i + 2], d[i + 3]]
+    };
+    let before = shot(idle);
+    let mut pad_box: Option<[u32; 4]> = None;
+    for y in 0..before.height() {
+        for x in 0..before.width() {
+            if pixel(&before, x, y)[3] > 200 {
+                pad_box = Some(match pad_box {
+                    None => [x, y, x, y],
+                    Some(b) => [b[0].min(x), b[1].min(y), b[2].max(x), b[3].max(y)],
+                });
+            }
+        }
+    }
+    let pad_box = pad_box.expect("idle light pad draws");
+    let pad_w = (pad_box[2] - pad_box[0]) as f32;
+    // (bounds of pixels the press turned orange, fully orange px, blended px, cream px in bounds)
+    let scan = |px: &Pixmap| {
+        let mut lit: Option<[u32; 4]> = None;
+        let (mut full, mut soft) = (0, 0);
+        for y in 0..px.height() {
+            for x in 0..px.width() {
+                let (now, was) = (pixel(px, x, y), pixel(&before, x, y));
+                if now == was {
+                    continue;
+                }
+                if orange(now) {
+                    full += 1;
+                    lit = Some(match lit {
+                        None => [x, y, x, y],
+                        Some(b) => [b[0].min(x), b[1].min(y), b[2].max(x), b[3].max(y)],
+                    });
+                } else {
+                    soft += 1;
+                }
+            }
+        }
+        let lit = lit.expect("press lit nothing");
+        let mut light = 0;
+        for y in lit[1]..=lit[3] {
+            for x in lit[0]..=lit[2] {
+                light += cream(pixel(px, x, y)) as u32;
+            }
+        }
+        (lit, full, soft, light)
+    };
+    let r2 = crate::gamepad::PadState { rt: 1.0, ..idle };
+    let (lit, full, soft, _) = scan(&shot(r2));
+    assert!(full > 20, "R2: only {full} px lit");
+    assert!(soft >= 6, "R2: only {soft} blended edge px — the fill edge is aliased");
+    // Same drawing as the dark pad, so R2 lights the same trigger.
+    let mut dark_cfg = cfg.clone();
+    dark_cfg.gamepad_theme = crate::config::GamepadTheme::Dark;
+    let dark_shot = |pad| {
+        crate::gamepad::set(pad);
+        let mut px = Pixmap::new(1280, 720).expect("pixmap");
+        draw(&mut px, &fonts(), Some(&s), &dark_cfg, 1280, 720, 0.0, false, false, false);
+        crate::gamepad::set(crate::gamepad::PadState::DISCONNECTED);
+        px
+    };
+    let (dark_idle, dark_r2) = (dark_shot(idle), dark_shot(r2));
+    let mut dark_lit: Option<[u32; 4]> = None;
+    for y in 0..dark_r2.height() {
+        for x in 0..dark_r2.width() {
+            let now = pixel(&dark_r2, x, y);
+            if orange(now) && now != pixel(&dark_idle, x, y) {
+                dark_lit = Some(match dark_lit {
+                    None => [x, y, x, y],
+                    Some(b) => [b[0].min(x), b[1].min(y), b[2].max(x), b[3].max(y)],
+                });
+            }
+        }
+    }
+    let dark_lit = dark_lit.expect("dark R2 lit nothing");
+    for side in 0..4 {
+        assert!(
+            lit[side].abs_diff(dark_lit[side]) <= 3,
+            "R2: light lit {lit:?}, dark lit {dark_lit:?} — spilled past the trigger"
+        );
+    }
+
+    let (_, full, _, light) = scan(&shot(crate::gamepad::PadState {
+        buttons: crate::gamepad::SOUTH,
+        ..idle
+    }));
+    assert!(full > 20, "Cross: only {full} px lit");
+    assert!(light >= 3, "Cross: {light} cream px — the symbol should stay on the fill");
+
+    let (lit, ..) = scan(&shot(crate::gamepad::PadState {
+        buttons: crate::gamepad::UP,
+        ..idle
+    }));
+    let arm_w = (lit[2] - lit[0]) as f32 / pad_w;
+    assert!(arm_w < 0.06, "Up: lit {arm_w:.3} of the pad wide — spilled onto the d-pad panel");
 }
 
 #[test]
@@ -5624,14 +6537,69 @@ fn caution_yellow_on_nearby_crash() {
     crash_ahead(&mut s);
     assert_eq!(wanted_flag(&s, true, false, false), DashFlag::Yellow);
     assert_eq!(wanted_flag(&s, false, true, false), DashFlag::None);
+    // Clear sticky so behind / on-top / far cases are pure geometry.
+    YELLOW_HOLD_AT.store(-1, Ordering::Relaxed);
     crash_behind(&mut s);
     assert_eq!(caution_flag(&s, true, true, false), DashFlag::None, "crash behind you is not a yellow");
     crash_ahead(&mut s);
     s.riders[0].track_pos = 0.399;
     assert_eq!(caution_flag(&s, true, true, false), DashFlag::None, "crash on top of you is not a yellow");
+    YELLOW_HOLD_AT.store(-1, Ordering::Relaxed);
     crash_ahead(&mut s);
     s.riders[0].track_pos = 0.55;
     assert_eq!(caution_flag(&s, true, true, false), DashFlag::None, "crash far ahead is not a yellow");
+}
+
+#[test]
+fn caution_yellow_sticky_across_crash_clear() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = mid_race_snap();
+    crash_ahead(&mut s);
+    // Same rider is also someone you are coming to lap — red would win without sticky yellow.
+    s.standings[1].num_laps = 3;
+    s.standings[0].num_laps = 2;
+    assert_eq!(lap_rel(&s, 1), LapRel::LappedByMe);
+    assert_eq!(caution_flag(&s, true, true, true), DashFlag::Yellow);
+    s.riders[0].crashed = 0;
+    assert_eq!(
+        caution_flag(&s, true, true, true),
+        DashFlag::Yellow,
+        "sticky yellow holds across a remount so red cannot flash"
+    );
+    YELLOW_HOLD_AT.store(now_ms() - YELLOW_HOLD_MS - 1, Ordering::Relaxed);
+    assert_eq!(
+        caution_flag(&s, true, true, true),
+        DashFlag::Red,
+        "after the hold expires, red can take over"
+    );
+}
+
+#[test]
+fn caution_blue_and_red_skip_crashed() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = mid_race_snap();
+    lapping_from_behind(&mut s);
+    s.riders[0].crashed = 1;
+    assert_eq!(
+        caution_flag(&s, false, true, true),
+        DashFlag::None,
+        "crashed lapper does not wave blue"
+    );
+    YELLOW_HOLD_AT.store(-1, Ordering::Relaxed);
+    reset_session();
+    s = mid_race_snap();
+    lapping_ahead(&mut s);
+    s.riders[0].crashed = 1;
+    assert_eq!(
+        caution_flag(&s, false, true, true),
+        DashFlag::None,
+        "crashed backmarker does not wave red"
+    );
+    // Without the crash bit, red still waves.
+    s.riders[0].crashed = 0;
+    assert_eq!(caution_flag(&s, false, false, true), DashFlag::Red);
 }
 
 #[test]

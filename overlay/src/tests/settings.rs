@@ -540,6 +540,42 @@ fn on_track_preset_strip_names_the_edit_and_live_slots() {
 }
 
 #[test]
+fn gamepad_theme_row_opens_for_every_pad() {
+    let _g = crate::review::serial();
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let saved = {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        let saved = (g.experimental, g[WidgetId::Gamepad].show, g.gamepad_style);
+        g.experimental = true;
+        g[WidgetId::Gamepad].show = true;
+        saved
+    };
+    let theme_hits = |style: GamepadStyle| {
+        crate::config::CONFIG.lock().unwrap().gamepad_style = style;
+        let mut ui = dummy_ui(false);
+        ui.tab = Tab::Gamepad;
+        ui.banner_dismissed = true;
+        *UI.lock().unwrap() = Some(ui);
+        let mut px = Pixmap::new(1000, 720).expect("pixmap");
+        draw(&mut px, &fonts, 1000.0, 720.0);
+        let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
+        *UI.lock().unwrap() = None;
+        hits.iter().filter(|h| h.id == Hit::GamepadThemeOpen).count()
+    };
+    let playstation = theme_hits(GamepadStyle::PlayStation);
+    let xbox = theme_hits(GamepadStyle::Xbox);
+    let auto = theme_hits(GamepadStyle::Auto);
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        (g.experimental, g[WidgetId::Gamepad].show, g.gamepad_style) = saved;
+    }
+    assert!(playstation > 0, "Theme should open for PlayStation");
+    assert!(xbox > 0, "Theme should open for Xbox");
+    assert!(auto > 0, "Theme should open for Auto");
+}
+
+#[test]
 fn scrolled_widget_pane_keeps_preset_strip_on_top() {
     refresh_palette();
     crate::config::sync_session_preset(None);

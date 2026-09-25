@@ -57,6 +57,9 @@ Default columns on: Position, Number, Name, Gap to leader, Fastest, Last lap.
 
 ## Change log
 
+- 2026-09-24 — Live order ranks the whole field by track progress minus each rider's own penalty, so several penalties stack in one tick. See `wiki/live-order.md`.
+- 2026-09-25 — Trailing green/red `*` on Position when live place ≠ on-track place due to penalties (see [live race order](../live-order.md)).
+- 2026-09-24 — Live order passes riders who crashed far back (start pile-ups) and steps over riders with no track position, instead of waiting for the next gate re-score. See `wiki/live-order.md`.
 - 2026-09-22 — Status finish flag wins over crash/pit for done riders. Your-row wash alpha 52 at default **Row highlight** (spider-scaled).
 - 2026-09-22 — Your-row highlight wash matches Profile spider fill (full chroma, alpha 40 at default **Row highlight**).
 - 2026-09-22 — Settings column names: **Gap** → **Gap to leader**, **Interval** → **Gap to rider ahead**. Same columns and ini keys.

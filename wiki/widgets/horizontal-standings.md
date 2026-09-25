@@ -16,7 +16,7 @@ Settings subtitle: “Your name is highlighted in the field”.
 - Height is clamped about 42–64 px. Settings layout handles are **east/west only** (`ew_only`).
 - Optional title: `WARMUP` / `LAP RACE` / `TIMED` / `EXTRA` / `SESSION` plus track name. Warmup is 10:00 (or 12/15/20 / 30+ min practice) with no extras; not a leftover 8-minute race.
 - Side slots (`ticker_left` / `ticker_right`) are `BoardField` (default Lap, Air). **Fuel**, **Fuel %**, **Setup**, **Gap ahead**, and **Gap behind** are options. Ahead/behind are live-order place neighbors, not the card delta vs you.
-- Cards show position, name, gap vs you (`ticker_delta` = signed gap difference), last/best. Session-best lap is purple.
+- Cards show position, name, gap vs you (`ticker_delta` = signed gap difference), last/best. Session-best lap is purple. Position gets a trailing green/red `*` when live place ≠ on-track place due to penalties (see [live race order](../live-order.md)).
 - Optional **Status** (`ticker_status`, default off) appends a finish / crash / DNS / OUT / DSQ / pit icon at the **end** of each card. Finished riders show only the flag. When on, gap stays gap (status is not written over it). When off, DNS/OUT/DSQ/PIT still replace the gap text for out riders (legacy).
 - In replay / spectate, clicking a card follows that rider (same camera path as standings names).
 - **Riders shown** (`ticker_count`, 3–15) is a target; `hstand_layout` shrinks to what fits at a minimum card width.
@@ -38,6 +38,7 @@ Settings subtitle: “Your name is highlighted in the field”.
 
 ## Change log
 
+- 2026-09-25 — Trailing green/red `*` on card position when live place ≠ on-track place due to penalties.
 - 2026-09-22 — Status finish flag wins over crash/pit for done riders (same `standing_mark` as Standings / Relative).
 - 2026-09-22 — **Status** toggle (`ticker_status`) appends crash / finish / DNS / OUT / DSQ / pit icons at the end of each card; gap stays when the toggle is on.
 - 2026-09-09 — Side-slot **Gap ahead** / **Gap behind** use along-track time on the same lap and `1L` / `-1L` when live laps differ. Times have no leading `+`; ahead is an up arrow, behind a down arrow.
