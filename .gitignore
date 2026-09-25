@@ -26,3 +26,4 @@ wiki/tests/*
 node_modules/
 __pycache__/
 *.pyc
+.cursor/
