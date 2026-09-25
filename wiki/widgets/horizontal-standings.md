@@ -15,13 +15,14 @@ Settings subtitle: “Your name is highlighted in the field”.
 
 - Height is clamped about 42–64 px. Settings layout handles are **east/west only** (`ew_only`).
 - Optional title: `WARMUP` / `LAP RACE` / `TIMED` / `EXTRA` / `SESSION` plus track name. Warmup is 10:00 (or 12/15/20 / 30+ min practice) with no extras; not a leftover 8-minute race.
-- Side slots (`ticker_left` / `ticker_right`) are `BoardField` (default Lap, Air). **Fuel**, **Fuel %**, **Setup**, **Gap ahead**, and **Gap behind** are options. Ahead/behind are live-order place neighbors, not the card delta vs you.
+- Side slots (`ticker_left` / `ticker_right`) are `BoardField` (default Lap, Air). **Fuel**, **Fuel %**, **Setup**, **Gap ahead**, **Gap behind**, **Delta**, **Last** / **Current**, **Gap to leader**, **Engine**, **Penalty**, and **Server** are options. Ahead/behind are live-order place neighbors, not the card delta vs you.
 - Cards show position, name, gap vs you (`ticker_delta` = signed gap difference), last/best. Session-best lap is purple. Position gets a trailing green/red `*` when live place ≠ on-track place due to penalties (see [live race order](../live-order.md)).
+- Your card is highlighted. **Row highlight** opacity is adjustable in settings (`ticker_hl`, default 50 — same scale as Standings / Relative).
 - Optional **Status** (`ticker_status`, default off) appends a finish / crash / DNS / OUT / DSQ / pit icon at the **end** of each card. Finished riders show only the flag. When on, gap stays gap (status is not written over it). When off, DNS/OUT/DSQ/PIT still replace the gap text for out riders (legacy).
 - In replay / spectate, clicking a card follows that rider (same camera path as standings names).
 - **Riders shown** (`ticker_count`, 3–15) is a target; `hstand_layout` shrinks to what fits at a minimum card width.
 - Default: keep you in view (scroll start from your index). **Autoscroll** loops the whole field when there are more cards than fit.
-- A pass eases cards into the new slots (`HS_SLIDE`, 0.30s). New riders appear in place; they do not fly in from slot 0.
+- A pass eases cards into the new slots (`HS_SLIDE`, 0.30s) when **Slide on pass** (`ticker_slide`, default on) is enabled. Off: cards jump to the new slots. New riders appear in place; they do not fly in from slot 0.
 - Cards are drawn into a clipped layer so they do not paint over the side meta.
 
 ## Do not regress
@@ -35,9 +36,12 @@ Settings subtitle: “Your name is highlighted in the field”.
 - Setup side-slot is the loaded bike setup filename stem. `--` when `RunInit` has not sent it.
 - With **Status** on, keep gap/delta on the card and put the mark at the trailing edge — do not replace gap with status text.
 - Finished riders show only the Status finish flag — not crash / pit / DNS / OUT / DSQ on top of it.
+- **Slide on pass** off must snap cards to new slots (no `HS_SLIDE` ease). Autoscroll and keep-you-in-view scroll stay independent.
 
 ## Change log
 
+- 2026-09-25 — Side-slot **BoardField** options: Delta, Last, Current, Gap to leader, Engine, Penalty, Server (shared with Standings / Relative chrome).
+- 2026-09-25 — **Row highlight** opacity (`ticker_hl`, default 50) and **Slide on pass** toggle (`ticker_slide`, default on).
 - 2026-09-25 — Trailing green/red `*` on card position when live place ≠ on-track place due to penalties.
 - 2026-09-22 — Status finish flag wins over crash/pit for done riders (same `standing_mark` as Standings / Relative).
 - 2026-09-22 — **Status** toggle (`ticker_status`) appends crash / finish / DNS / OUT / DSQ / pit icons at the end of each card; gap stays when the toggle is on.

@@ -97,6 +97,36 @@ pub fn clear_profile() {}
 
 pub fn clear_motos() {}
 
+pub fn storage_bytes() -> u64 {
+    0
+}
+
+pub fn fmt_storage_bytes(bytes: u64) -> String {
+    let mb = bytes as f32 / (1024.0 * 1024.0);
+    if mb < 0.05 {
+        "0 MB".into()
+    } else if mb < 9.95 {
+        format!("{mb:.1} MB")
+    } else if mb < 1024.0 {
+        format!("{:.0} MB", mb.round())
+    } else {
+        let gb = mb / 1024.0;
+        if gb < 9.95 {
+            format!("{gb:.1} GB")
+        } else {
+            format!("{:.0} GB", gb.round())
+        }
+    }
+}
+
+pub fn track_bank_rows() -> Vec<crate::TrackBankRow> {
+    Vec::new()
+}
+
+pub fn track_bank_detail(_track: &str) -> Option<crate::TrackBankDetail> {
+    None
+}
+
 pub fn load(id: i64) -> Option<Arc<SessionDetail>> {
     WEB_DEMO
         .get()

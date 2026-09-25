@@ -5,7 +5,8 @@ pub use chrome::{paint_mode_bar, take_pending_drops, Drop, Hit, HitBox, PendingD
 pub use mxbo_hud::render::Fonts;
 pub use mxbo_review::SessionDetail;
 pub use paint::{
-    default_analyze_scrub, draw_pending_drop_menus, follow_pan_for, paint_analyze_open, pane_review,
+    default_analyze_scrub, draw_pending_drop_menus, follow_pan_for, paint_analyze_open,
+    paint_track_bank_map, pane_review,
 };
 
 #[derive(Clone, Copy, Debug)]

@@ -25,6 +25,12 @@ pub(crate) fn ticker_meta_label(field: BoardField, val: &str) -> &'static str {
         BoardField::Setup => "SETUP",
         BoardField::GapAhead => "AHEAD",
         BoardField::GapBehind => "BEHIND",
+        BoardField::Gap => "GAP",
+        BoardField::Delta => "DELTA",
+        BoardField::Last | BoardField::Current => "LAP",
+        BoardField::Engine => "TEMP",
+        BoardField::Penalty => "PEN",
+        BoardField::Server => "SERVER",
         BoardField::None => "",
     }
 }
@@ -189,7 +195,11 @@ pub(crate) fn draw_ticker(
         let stride = card_w + gap;
         let now = anim_now();
         let ids = row_ids(board.iter().take(n).map(|card| card.race_num));
-        let slots = HS_SLIDE.with(|a| a.borrow_mut().indices(&ids, now));
+        let slots = if cfg.ticker_slide {
+            HS_SLIDE.with(|a| a.borrow_mut().indices(&ids, now))
+        } else {
+            (0..n).map(|i| i as f32).collect()
+        };
         let scroll = if cfg.ticker_autoscroll && n > vis {
             (now * HS_AUTO_SPEED).rem_euclid(n as f32)
         } else {
@@ -404,7 +414,7 @@ pub(crate) fn draw_ticker_card(
     let is_focus = row.race_num == focus.race_num;
     let out = standing_status(row).is_some() && standing_status(row) != Some("PIT");
     if is_focus {
-        fill_round(px, x, y, w, h, 3.0, you_row_bg(100));
+        fill_round(px, x, y, w, h, 3.0, you_row_bg(cfg.ticker_hl));
     }
     let pos_s = (h * 0.38).clamp(14.0, 20.0);
     let pos_y = y + (h - pos_s) * 0.5;

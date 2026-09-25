@@ -118,6 +118,7 @@ Timestamped race-event feed.
 - 2026-09-10 — Dropped unapproved ideas (ahead plate, interval bar, hunt, remount, finish projection, bike health, and the parked list).
 - 2026-09-10 — Added Holeshot / Start, Battle card, Spectate nameplate, Line (needs dumps), Radar lappers. Streaming moved to [streaming.md](../streaming.md). Event Log no longer owns holeshot.
 - 2026-09-09 — Telemetry shipped (traces + bars + gear/speed). Suspension graphs stay here.
+- 2026-09-25 — Controller left Labs. See [gamepad.md](gamepad.md).
 - 2026-09-04 — Controller (was Gamepad) is Labs-only. See [gamepad.md](gamepad.md).
 - 2026-09-02 — Gamepad shipped. Moved to [gamepad.md](gamepad.md).
 - 2026-09-01 — Lean shipped. Moved to [lean.md](lean.md).

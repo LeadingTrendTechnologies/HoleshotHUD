@@ -571,27 +571,30 @@ pub(crate) fn pane_map(
                 hover,
                 hits,
             );
-            dropdown_row(
-                px,
-                fonts,
-                x,
-                y,
-                w,
-                "Dot number",
-                cfg.map_dot.label(),
-                open_drop == Some(Drop::MapDot),
-                Hit::MapDotOpen,
-                &[
-                    (Hit::MapDotNum, "Number", cfg.map_dot == DotLabel::Number),
-                    (
-                        Hit::MapDotPos,
-                        "Position",
-                        cfg.map_dot == DotLabel::Position,
-                    ),
-                ],
-                hover,
-                hits,
-            )
+            if cfg.map_numbers {
+                y = dropdown_row(
+                    px,
+                    fonts,
+                    x,
+                    y,
+                    w,
+                    "Dot number",
+                    cfg.map_dot.label(),
+                    open_drop == Some(Drop::MapDot),
+                    Hit::MapDotOpen,
+                    &[
+                        (Hit::MapDotNum, "Number", cfg.map_dot == DotLabel::Number),
+                        (
+                            Hit::MapDotPos,
+                            "Position",
+                            cfg.map_dot == DotLabel::Position,
+                        ),
+                    ],
+                    hover,
+                    hits,
+                );
+            }
+            y
         },
     )
 }
@@ -708,27 +711,29 @@ pub(crate) fn pane_minimap(
                 hover,
                 hits,
             );
-            y = dropdown_row(
-                px,
-                fonts,
-                x,
-                y,
-                w,
-                "Dot number",
-                cfg.mini_dot.label(),
-                open_drop == Some(Drop::MiniDot),
-                Hit::MiniDotOpen,
-                &[
-                    (Hit::MiniDotNum, "Number", cfg.mini_dot == DotLabel::Number),
-                    (
-                        Hit::MiniDotPos,
-                        "Position",
-                        cfg.mini_dot == DotLabel::Position,
-                    ),
-                ],
-                hover,
-                hits,
-            );
+            if cfg.mini_numbers {
+                y = dropdown_row(
+                    px,
+                    fonts,
+                    x,
+                    y,
+                    w,
+                    "Dot number",
+                    cfg.mini_dot.label(),
+                    open_drop == Some(Drop::MiniDot),
+                    Hit::MiniDotOpen,
+                    &[
+                        (Hit::MiniDotNum, "Number", cfg.mini_dot == DotLabel::Number),
+                        (
+                            Hit::MiniDotPos,
+                            "Position",
+                            cfg.mini_dot == DotLabel::Position,
+                        ),
+                    ],
+                    hover,
+                    hits,
+                );
+            }
             slider_row(
                 px,
                 fonts,
@@ -978,6 +983,21 @@ pub(crate) fn pane_ticker(
                 return y;
             }
             let mut y = pane_style(px, fonts, spec, cfg, hover, hits, x, y, w);
+            y = slider_row(
+                px,
+                fonts,
+                x,
+                y,
+                w,
+                "Row highlight",
+                cfg.ticker_hl,
+                0,
+                100,
+                "%",
+                Hit::TickerHl,
+                hover,
+                hits,
+            );
             y = toggle_row(
                 px,
                 fonts,
@@ -999,6 +1019,18 @@ pub(crate) fn pane_ticker(
                 "Autoscroll",
                 cfg.ticker_autoscroll,
                 Hit::TickerAutoscroll,
+                hover,
+                hits,
+            );
+            y = toggle_row(
+                px,
+                fonts,
+                x,
+                y,
+                w,
+                "Slide on pass",
+                cfg.ticker_slide,
+                Hit::TickerSlide,
                 hover,
                 hits,
             );
@@ -1216,19 +1248,21 @@ pub(crate) fn pane_sector(
                 hover,
                 hits,
             );
-            y = stepper_row(
-                px,
-                fonts,
-                x,
-                y,
-                w,
-                "Laps back",
-                &cfg.sector_hist_count().to_string(),
-                Hit::SectorHistDec,
-                Hit::SectorHistInc,
-                hover,
-                hits,
-            );
+            if cfg.sector_hist {
+                y = stepper_row(
+                    px,
+                    fonts,
+                    x,
+                    y,
+                    w,
+                    "Laps back",
+                    &cfg.sector_hist_count().to_string(),
+                    Hit::SectorHistDec,
+                    Hit::SectorHistInc,
+                    hover,
+                    hits,
+                );
+            }
             action_btn(
                 px,
                 fonts,

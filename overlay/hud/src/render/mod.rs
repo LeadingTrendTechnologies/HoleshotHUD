@@ -15,9 +15,9 @@ use crate::shm::{cstr, Rider, Snapshot, MAX_STANDINGS};
 pub(crate) use crate::race_store::{
     class_position, extra_laps, extras_started, finish_earned, focus_num_laps, focus_standing,
     format_countdown, format_gap, format_lap, format_session_clock, gap_ahead_text,
-    gap_behind_text, i_finished, interval_text, interval_text_from_row, is_lap_race, is_warmup,
-    lapped, laps_done, laps_left, leader_finished, leader_num_laps, live_leader, live_position,
-    local_overtime_done, local_overtime_taken, moving, norm_lap_pos as norm_track_pos,
+    gap_behind_text, gap_leader_text, i_finished, interval_text, interval_text_from_row, is_lap_race,
+    is_warmup, lapped, laps_done, laps_left, leader_finished, leader_num_laps, live_leader,
+    live_position, local_overtime_done, local_overtime_taken, moving, norm_lap_pos as norm_track_pos,
     note_laps_to_run, overtime_active, penalty_class_place_delta, penalty_place_delta, prestart,
     race_lap, race_laps_left_text, race_over_for_me, race_progress_text, reset_session_clock_track,
     rider_current_lap, session_banner, session_best_ms, session_len_ms, session_remain_ms,
@@ -1635,6 +1635,7 @@ impl BoardCol for StField {
             Self::Bike => "BIKE",
             Self::Penalty => "PEN",
             Self::Crashed => "CR",
+            Self::Category => "CLASS",
         }
     }
 
@@ -1674,6 +1675,8 @@ impl BoardCol for RelField {
             Self::Status => "",
             Self::Best => "Fastest",
             Self::Last => "Last",
+            Self::Category => "CLASS",
+            Self::Speed => "SPD",
         }
     }
 
@@ -2575,6 +2578,40 @@ fn board_item(s: &Snapshot, cfg: &HudConfig, field: BoardField) -> Option<(char,
             BoardField::GapBehind => st
                 .map(|r| gap_behind_text(s, &race.field, r))
                 .unwrap_or_else(|| "---".into()),
+            BoardField::Delta => {
+                let best = dash_best_ms(s);
+                let src = if s.current_lap_ms > 0 {
+                    s.current_lap_ms
+                } else {
+                    s.last_lap_ms
+                };
+                if best <= 0 || src <= 0 {
+                    "--".into()
+                } else {
+                    format_delta_ms(src - best)
+                }
+            }
+            BoardField::Last => {
+                let ms = st
+                    .map(|r| r.last_lap_ms)
+                    .filter(|ms| *ms > 0)
+                    .unwrap_or(s.last_lap_ms);
+                format_clock(ms)
+            }
+            BoardField::Current => format_clock(s.current_lap_ms),
+            BoardField::Gap => st
+                .map(|r| gap_leader_text(s, &race.field, r))
+                .unwrap_or_else(|| "---".into()),
+            BoardField::Engine => cfg.units.format_temp(s.engine_temp),
+            BoardField::Penalty => format_penalty(st.map(|r| r.penalty_ms).unwrap_or(0)),
+            BoardField::Server => {
+                let name = cstr(&s.server_name);
+                if name.is_empty() {
+                    "--".into()
+                } else {
+                    name
+                }
+            }
         };
         Some((field.icon(), text))
     })

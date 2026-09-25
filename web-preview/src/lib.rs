@@ -383,7 +383,6 @@ fn center_widget(cfg: &mut HudConfig, name: &str) {
     } else if name == "lean" {
         size_demo_lean(cfg);
     } else if name == "gamepad" {
-        cfg.experimental = true;
         size_demo_gamepad(cfg);
     } else if name == "telemetry" {
         size_demo_telemetry(cfg);
@@ -439,7 +438,6 @@ fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg[WidgetId::Lean].show = name == "lean";
     cfg[WidgetId::Gamepad].show = name == "gamepad";
     cfg[WidgetId::Telemetry].show = name == "telemetry";
-    cfg.experimental = name == "gamepad";
 }
 
 fn widget_id(name: &str) -> Option<WidgetId> {
@@ -611,6 +609,7 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "flag_text" => cfg.flag_text,
         "ticker_title" => cfg.ticker_title,
         "ticker_autoscroll" => cfg.ticker_autoscroll,
+        "ticker_slide" => cfg.ticker_slide,
         _ => return None,
     })
 }
@@ -705,6 +704,7 @@ fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
         "flag_text" => cfg.flag_text = on,
         "ticker_title" => cfg.ticker_title = on,
         "ticker_autoscroll" => cfg.ticker_autoscroll = on,
+        "ticker_slide" => cfg.ticker_slide = on,
         _ => {}
     }
 }
@@ -717,6 +717,7 @@ fn int_val(cfg: &HudConfig, key: &str) -> Option<i32> {
         "st_hl" => cfg.st_hl,
         "rel_bg" => cfg[WidgetId::Relative].bg,
         "rel_hl" => cfg.rel_hl,
+        "ticker_hl" => cfg.ticker_hl,
         "map_bg" => cfg[WidgetId::Map].bg,
         "mini_bg" => cfg[WidgetId::Minimap].bg,
         "mini_zoom" => cfg.mini_zoom,
@@ -761,6 +762,7 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "st_hl" => cfg.st_hl = value.clamp(0, 100),
         "rel_bg" => cfg[WidgetId::Relative].bg = value.clamp(0, 100),
         "rel_hl" => cfg.rel_hl = value.clamp(0, 100),
+        "ticker_hl" => cfg.ticker_hl = value.clamp(0, 100),
         "map_bg" => cfg[WidgetId::Map].bg = value.clamp(0, 100),
         "mini_bg" => cfg[WidgetId::Minimap].bg = value.clamp(0, 100),
         "mini_zoom" => cfg.mini_zoom = value.clamp(0, 100),

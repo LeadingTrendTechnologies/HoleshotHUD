@@ -2,7 +2,7 @@
 
 Live local controller on the overlay. DualShock / DualSense HID draws PlayStation glyphs; Steam Xbox mapping and native XInput draw Xbox. Settings subtitle: “Live pad — sticks, triggers, bumpers, and buttons”. Settings tab name is **Controller**. `WidgetId` stays `Gamepad`.
 
-Behind **Experimental widgets** (Settings → Labs). Then turn it on with **Show on overlay**. Lives under Labs, not Cockpit.
+This widget is a regular Cockpit widget. Turn it on with **Show on overlay**. Lives under Cockpit with Dash and Systems.
 
 This is **not** plugin telemetry. Other riders’ inputs are not available.
 
@@ -28,8 +28,8 @@ Starts **hidden**.
 
 ## Do not regress
 
-- Keep the widget off until Labs → **Experimental widgets** and **Show on overlay** are on. `show_gamepad` alone must not draw.
-- Fresh install: `show_gamepad = false`, `experimental = false`.
+- Keep the widget off until **Show on overlay** is on. Experimental features does not gate it. `show_gamepad` alone draws.
+- Fresh install: `show_gamepad = false`, `experimental = false` (Tracks still Labs).
 - XInput / Steam Xbox mapping draws the filled Xbox One pad (A/B/X/Y letters, plus d-pad, LB/RB, LT/RT). Sony HID draws DualShock glyphs (△○×□, SHARE/OPTIONS, PS logo). The DualShock shoulders (L1/R1, L2/R2) are unlabeled. Do not put Xbox labels on the DualShock body.
 - DualShock keeps its proportions in the widget box. A wide short widget letterboxes the pad; it does not pancake the silhouette. Same aspect-fit for Xbox.
 - Art: `gamepad-ds4-dark.png` / `gamepad-ds4-light.png` (1536×1024), `gamepad-xbox-dark.png` / `gamepad-xbox-light.png` (1344×1024). Do not stretch Xbox aspect. Primary color tints the drawing's interiors and well rings; it does not draw HUD capsules over the pad.
@@ -55,6 +55,7 @@ Starts **hidden**.
 
 ## Change log
 
+- 2026-09-25 — Left Labs. Regular Cockpit widget. `show_gamepad` is enough. Experimental features still gates Profile → Tracks.
 - 2026-09-24 — Light PlayStation pad. Theme now switches both pads (default Light for everyone): the light DualShock is a cream body with black outlines and panels, slate d-pad keys and shoulders, and no L1/L2/R1/R2 labels. The "PlayStation: dark only" lock is gone. Xbox dark bumpers lose their dividers so they match the light pad.
 - 2026-09-24 — Theme is back for Xbox. Controller → **Theme** picks Light (the filled pad, default) or Dark, a new DualShock-style Xbox schematic: charcoal body, thin grey outlines, outlined ABXY, a ring around the d-pad, and a divider so LB/RB light only the bumper. The Dark art is regenerated from the Light art so every control stays put. PlayStation stays dark; the row shows "PlayStation: dark only" and is locked while Pad is PlayStation.
 
@@ -69,7 +70,7 @@ Starts **hidden**.
 - 2026-09-16 — A press now covers its whole control (the layout is measured off the rendered art), a trigger held past 80% reads as full, and the crown-to-body outline is traced and low-passed along its length instead of pixel-filtered, so the shoulder seam no longer waves.
 - 2026-09-16 — Xbox art is traced 1:1 from the reference render (`gamepad-xbox-target.png`) instead of the old stretched blueprint: real Xbox One outline at its own 1344×1024 aspect, ABXY on night-ink discs, light guide disc with a dark X, unlabeled View/Menu dots, field-slate stick caps. Stick cap radius comes from the layout now, so each pad's art drives it.
 - 2026-09-16 — Xbox is a filled Xbox One two-tone (cream body, night-ink controls, colored ABXY, plus d-pad). DualShock drawing and UVs stay as they were.
-- 2026-09-04 — Rider-facing name is Controller. Behind Settings → Labs → Experimental widgets. Ini keys stay `show_gamepad` / `gamepad_*`.
+- 2026-09-04 — Rider-facing name is Controller. Behind Settings → Labs → Experimental features. Ini keys stay `show_gamepad` / `gamepad_*`.
 - 2026-09-03 — Xbox is its own Series silhouette (LS up-left, d-pad down-left, ABXY, LT/RT). DualShock drawing and UVs stay as they were.
 - 2026-09-03 — Trigger orange follows the rounded bottom lip per column, not a flat row. Full pull still fills the wing.
 - 2026-09-02 — Pressed labels are dark ink on orange. Bumpers fill the rounded shoulder. Face and D-pad fills reach the outline.

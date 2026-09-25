@@ -53,6 +53,8 @@ pub struct CommittedLap {
     pub crashed: bool,
     pub cut: bool,
     pub warmup: bool,
+    /// Standing-start first race lap after gate (not a flying lap).
+    pub from_gate: bool,
     pub crashes: Vec<CrashMark>,
 }
 
@@ -457,6 +459,7 @@ pub fn tick(s: &Snapshot) {
                         crashed: work.crashed,
                         cut,
                         warmup,
+                        from_gate: first_race,
                         crashes: std::mem::take(&mut work.crashes),
                     };
                     if !lap.crashed

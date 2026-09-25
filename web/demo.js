@@ -190,11 +190,13 @@ function styleControls(prefix, opacityLabel = "Background") {
       ["black", "Black"],
     ]);
     html += toggleRow(`${prefix}_stripe`, "Alternating rows");
-    html += fieldRow(`${prefix}_plaque_text`, "Plaque text", [
-      ["white", "White"],
-      ["black", "Black"],
-    ]);
     html += toggleRow(`${prefix}_plaque`, "Show plaques");
+    if (preview.get_bool(`${prefix}_plaque`)) {
+      html += fieldRow(`${prefix}_plaque_text`, "Plaque text", [
+        ["white", "White"],
+        ["black", "Black"],
+      ]);
+    }
   }
   html += toggleRow(`${prefix}_bold`, "Bold text");
   return html;
@@ -240,12 +242,16 @@ function renderSettings() {
     html += styleControls("map");
     html += `<div class="section">On the map</div>`;
     html += MAP_TOGGLES.map(([k, l]) => toggleRow(k, l)).join("");
-    html += fieldRow("map_dot", "Dot number", [["num", "Number"], ["pos", "Position"]]);
+    if (preview.get_bool("map_numbers")) {
+      html += fieldRow("map_dot", "Dot number", [["num", "Number"], ["pos", "Position"]]);
+    }
   } else if (w === "minimap") {
     html += styleControls("mini");
     html += `<div class="section">On the minimap</div>`;
     html += MINI_TOGGLES.map(([k, l]) => toggleRow(k, l)).join("");
-    html += fieldRow("mini_dot", "Dot number", [["num", "Number"], ["pos", "Position"]]);
+    if (preview.get_bool("mini_numbers")) {
+      html += fieldRow("mini_dot", "Dot number", [["num", "Number"], ["pos", "Position"]]);
+    }
     html += sliderRow("mini_zoom", "Zoom", 0, 100, "%");
   } else if (w === "radar") {
     html += styleControls("radar", "Panel opacity");
@@ -270,8 +276,10 @@ function renderSettings() {
     }
   } else if (w === "ticker") {
     html += styleControls("ticker", "Panel opacity");
+    html += sliderRow("ticker_hl", "Row highlight", 0, 100, "%");
     html += toggleRow("ticker_title", "Track name");
     html += toggleRow("ticker_autoscroll", "Autoscroll");
+    html += toggleRow("ticker_slide", "Slide on pass");
     html += `<div class="section">Side info</div>`;
     html += fieldRow("ticker_left", "Left", BOARD);
     html += fieldRow("ticker_right", "Right", BOARD);
@@ -282,7 +290,9 @@ function renderSettings() {
     html += toggleRow("sector_live", "Live sector");
     html += toggleRow("sector_session", "Compare to session best");
     html += toggleRow("sector_hist", "Lap log");
-    html += stepperRow("sector_hist_laps", "Laps back", 1, 5);
+    if (preview.get_bool("sector_hist")) {
+      html += stepperRow("sector_hist_laps", "Laps back", 1, 5);
+    }
     html += styleControls("sector", "Panel opacity");
   } else if (w === "delta") {
     html += toggleRow("delta_session", "Compare to session best");
@@ -380,7 +390,16 @@ settings.addEventListener("change", (e) => {
       label.textContent = `${t.value}${t.dataset.suffix || ""}`;
     }
   }
-  if (t.dataset.bool === "dash_simple" || t.dataset.bool === "telemetry_traces" || t.dataset.bool === "telemetry_bars") {
+  if (
+    t.dataset.bool === "dash_simple" ||
+    t.dataset.bool === "telemetry_traces" ||
+    t.dataset.bool === "telemetry_bars" ||
+    t.dataset.bool === "st_plaque" ||
+    t.dataset.bool === "rel_plaque" ||
+    t.dataset.bool === "map_numbers" ||
+    t.dataset.bool === "mini_numbers" ||
+    t.dataset.bool === "sector_hist"
+  ) {
     renderSettings();
   }
 });

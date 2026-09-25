@@ -1,7 +1,7 @@
 //! THESIS: Settings is a first-run on-switch, then a working board — not a Windows Settings clone.
 //! OWN-WORLD: Charcoal stack, Holeshot Orange plaque, Exo 2 ExtraBold Italic, 6–10px rounds, no card shadows.
 //! STORY: Rider hits F8, sees Show on overlay, turns widgets on, then edits columns and snap.
-//! FIRST VIEWPORT: Top mode bar (Widgets / Profile / Settings / Feedback); Profile sub-nav Overview / Motos; widget rail grouped Boards / Track / Cockpit / Labs; rail hides on Feedback; orange name plaque; Show on overlay on the right; Header/Footer are three slots.
+//! FIRST VIEWPORT: Top mode bar (Widgets / Profile / Settings / Feedback); Profile sub-nav Overview / Motos / Tracks; widget rail grouped Boards / Track / Cockpit; rail hides on Feedback; orange name plaque; Show on overlay on the right; Header/Footer are three slots.
 //! FORM: Combined Show Plaque + Header Strip columns; seed settings-comp.
 //! FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance.
 
@@ -55,6 +55,7 @@ mod feedback;
 mod profile;
 mod reply;
 mod review;
+mod tracks;
 mod whats_new;
 mod widgets;
 mod controls;
@@ -471,10 +472,6 @@ impl Tab {
     fn is_widget(self) -> bool {
         !matches!(self, Tab::App | Tab::Review | Tab::Profile | Tab::Feedback)
     }
-
-    fn is_labs(self) -> bool {
-        matches!(self, Tab::Gamepad)
-    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -491,6 +488,7 @@ pub(crate) enum AppSection {
 pub(crate) enum ProfileSection {
     Overview,
     Motos,
+    Tracks,
 }
 
 impl ProfileSection {
@@ -498,6 +496,7 @@ impl ProfileSection {
         match self {
             Self::Overview => "Overview",
             Self::Motos => "Motos",
+            Self::Tracks => "Tracks",
         }
     }
 
@@ -505,6 +504,7 @@ impl ProfileSection {
         match self {
             Self::Overview => Hit::ProfileNavOverview,
             Self::Motos => Hit::ProfileNavMotos,
+            Self::Tracks => Hit::ProfileNavTracks,
         }
     }
 }
@@ -558,6 +558,10 @@ pub(crate) enum Hit {
     TabFeedback,
     ProfileNavOverview,
     ProfileNavMotos,
+    ProfileNavTracks,
+    TrackOpen(u16),
+    TrackBack,
+    TrackMap,
     AppLook,
     AppMenus,
     AppInstall,
@@ -654,6 +658,7 @@ pub(crate) enum Hit {
     TickerTitle,
     TickerAutoscroll,
     TickerStatus,
+    TickerSlide,
     StPos,
     StNum,
     StName,
@@ -667,6 +672,7 @@ pub(crate) enum Hit {
     StPenalty,
     StCrashed,
     StInterval,
+    StCategory,
     RelNum,
     RelName,
     RelGap,
@@ -679,6 +685,8 @@ pub(crate) enum Hit {
     RelStatus,
     RelBest,
     RelLast,
+    RelCategory,
+    RelSpeed,
     MapOthers,
     MapSf,
     MapSectors,
@@ -729,6 +737,7 @@ pub(crate) enum Hit {
     RadarBg,
     DashBg,
     TickerBg,
+    TickerHl,
     SysBg,
     SectorBg,
     DeltaBg,
@@ -1117,6 +1126,12 @@ struct SettingsUi {
     analyze_follow: bool,
     map_drag: Option<(f32, f32, f32, f32)>,
     profile_all_time: bool,
+    /// Selected track name on Profile → Tracks detail.
+    tracks_selected: Option<String>,
+    tracks_zoom: f32,
+    tracks_pan_x: f32,
+    tracks_pan_z: f32,
+    tracks_map_drag: Option<(f32, f32, f32, f32)>,
     clear_confirm: Option<ClearKind>,
     st_col_slides: ColSlides,
     rel_col_slides: ColSlides,
@@ -1232,6 +1247,11 @@ pub fn attach(host: HWND) {
         analyze_follow: false,
         map_drag: None,
         profile_all_time: true,
+        tracks_selected: None,
+        tracks_zoom: 1.0,
+        tracks_pan_x: 0.0,
+        tracks_pan_z: 0.0,
+        tracks_map_drag: None,
         clear_confirm: None,
         st_col_slides: ColSlides::new(),
         rel_col_slides: ColSlides::new(),
@@ -1321,6 +1341,11 @@ pub(crate) fn clamp_settings_origin(
         return (80, 80);
     };
     snap_into_work(x, y, w, h, wa)
+}
+
+/// Analyze / Tracks map zoom: wheel scale stays in 1…12.
+pub(crate) fn clamp_map_zoom(z: f32) -> f32 {
+    z.clamp(1.0, 12.0)
 }
 
 fn title_bar_on_work(x: i32, y: i32, w: i32, wa: [i32; 4]) -> bool {
@@ -1451,6 +1476,11 @@ pub fn dump_whats_new(path: &std::path::Path) -> Result<crate::changelog::Notes,
         analyze_follow: false,
         map_drag: None,
         profile_all_time: true,
+        tracks_selected: None,
+        tracks_zoom: 1.0,
+        tracks_pan_x: 0.0,
+        tracks_pan_z: 0.0,
+        tracks_map_drag: None,
         clear_confirm: None,
         st_col_slides: ColSlides::new(),
         rel_col_slides: ColSlides::new(),
@@ -1572,6 +1602,11 @@ fn paint_review_tab(
         analyze_follow: false,
         map_drag: None,
         profile_all_time: true,
+        tracks_selected: None,
+        tracks_zoom: 1.0,
+        tracks_pan_x: 0.0,
+        tracks_pan_z: 0.0,
+        tracks_map_drag: None,
         clear_confirm: None,
         st_col_slides: ColSlides::new(),
         rel_col_slides: ColSlides::new(),
@@ -1815,7 +1850,10 @@ pub fn handle_message(msg: u32, wp: WPARAM, lp: LPARAM) -> bool {
                         && py < ui.nav_bottom;
                     if ui.hover == Some(Hit::AnalyzeMap) && ui.analyze_id.is_some() {
                         let z = ui.analyze_zoom * if delta > 0.0 { 1.12 } else { 0.89 };
-                        ui.analyze_zoom = z.clamp(1.0, 12.0);
+                        ui.analyze_zoom = clamp_map_zoom(z);
+                    } else if ui.hover == Some(Hit::TrackMap) && ui.tracks_selected.is_some() {
+                        let z = ui.tracks_zoom * if delta > 0.0 { 1.12 } else { 0.89 };
+                        ui.tracks_zoom = clamp_map_zoom(z);
                     } else if over_nav {
                         let max = (ui.nav_content_h - (ui.nav_bottom - ui.nav_top)).max(0.0);
                         ui.nav_scroll = (ui.nav_scroll - delta * 0.4).clamp(0.0, max);
@@ -1942,6 +1980,14 @@ fn press(p: (f32, f32)) {
                 let _ = SetCapture(host);
             }
         }
+        Some(Hit::TrackMap) => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.tracks_map_drag = Some((p.0, p.1, ui.tracks_pan_x, ui.tracks_pan_z));
+            }
+            unsafe {
+                let _ = SetCapture(host);
+            }
+        }
         Some(Hit::PrimarySv) | Some(Hit::GameUiPrimarySv) => {
             start_sv_drag(p, host);
         }
@@ -1998,6 +2044,7 @@ fn is_slider(hit: Hit) -> bool {
             | Hit::RadarBg
             | Hit::DashBg
             | Hit::TickerBg
+            | Hit::TickerHl
             | Hit::SysBg
             | Hit::SectorBg
             | Hit::DeltaBg
@@ -2144,6 +2191,7 @@ fn apply_slide(hit: Hit, mx: f32, x: f32, w: f32, min: i32, max: i32) {
         Hit::RadarBg => c[WidgetId::Radar].bg = v,
         Hit::DashBg => c[WidgetId::Dash].bg = v,
         Hit::TickerBg => c[WidgetId::Ticker].bg = v,
+        Hit::TickerHl => c.ticker_hl = v,
         Hit::SysBg => c[WidgetId::Sys].bg = v,
         Hit::SectorBg => c[WidgetId::Sector].bg = v,
         Hit::DeltaBg => c[WidgetId::Delta].bg = v,
@@ -2187,6 +2235,11 @@ fn update_drag(p: (f32, f32)) {
                 if let Some(h) = ui.hits.iter().rev().find(|h| h.id == Hit::AnalyzeScrub) {
                     ui.analyze_scrub = ((p.0 - h.x) / h.w.max(1.0)).clamp(0.0, 1.0);
                 }
+                return;
+            }
+            if let Some((sx, sy, px0, pz0)) = ui.tracks_map_drag {
+                ui.tracks_pan_x = px0 - (p.0 - sx) * 0.8 / ui.tracks_zoom.max(1.0);
+                ui.tracks_pan_z = pz0 + (p.1 - sy) * 0.8 / ui.tracks_zoom.max(1.0);
                 return;
             }
             if let Some((sx, sy, px0, pz0)) = ui.map_drag {
@@ -2254,6 +2307,7 @@ fn release(p: (f32, f32)) {
         ui.as_mut().is_some_and(|u| {
             u.analyze_scrubbing = false;
             u.map_drag = None;
+            u.tracks_map_drag = None;
             u.sv_drag.take().is_some()
         })
     };
@@ -2412,6 +2466,10 @@ fn hit_label(hit: Hit) -> String {
         Hit::TabFeedback => "Feedback".into(),
         Hit::ProfileNavOverview => "Overview".into(),
         Hit::ProfileNavMotos => "Motos".into(),
+        Hit::ProfileNavTracks => "Tracks".into(),
+        Hit::TrackOpen(_) => "Open track".into(),
+        Hit::TrackBack => "Back".into(),
+        Hit::TrackMap => "Track map".into(),
         Hit::ProfileAllTime => "All time".into(),
         Hit::ProfileTwoWeeks => "Last 14 days".into(),
         Hit::ProfileClear => "Clear Profile".into(),
@@ -2465,7 +2523,7 @@ fn hit_label(hit: Hit) -> String {
         }
         Hit::PresetCopyTo(p) => format!("Replace {} with this layout", p.label()),
         Hit::PresetCopyAll => "Replace all presets with this layout".into(),
-        Hit::FeatureSector => "Experimental widgets".into(),
+        Hit::FeatureSector => "Experimental features (Tracks)".into(),
         Hit::GameUi => "MX Bikes menus".into(),
         Hit::StShow
         | Hit::RelShow
@@ -2497,7 +2555,7 @@ fn hit_label(hit: Hit) -> String {
         | Hit::LeanBg
         | Hit::GamepadBg
         | Hit::TelemetryBg => "Panel opacity".into(),
-        Hit::StHl | Hit::RelHl => "Row highlight".into(),
+        Hit::StHl | Hit::RelHl | Hit::TickerHl => "Row highlight".into(),
         Hit::StStripe | Hit::RelStripe => "Alternating rows".into(),
         Hit::StPlaque | Hit::RelPlaque => "Show plaques".into(),
         Hit::StTextOpen | Hit::RelTextOpen => "Text color".into(),
@@ -2513,6 +2571,7 @@ fn hit_label(hit: Hit) -> String {
         Hit::StDec | Hit::StInc => "Rows".into(),
         Hit::RelDec | Hit::RelInc => "Nearby riders".into(),
         Hit::TickerDec | Hit::TickerInc => "Riders shown".into(),
+        Hit::TickerSlide => "Slide on pass".into(),
         Hit::Snap(_, align) => snap_align_label(align).into(),
         Hit::StW(_) | Hit::RelW(_) => "Column width".into(),
         Hit::FontOpen => "Font".into(),
@@ -2835,6 +2894,7 @@ fn nudge_slider(hit: Hit, delta: i32) {
         Hit::RadarBg => c[WidgetId::Radar].bg,
         Hit::DashBg => c[WidgetId::Dash].bg,
         Hit::TickerBg => c[WidgetId::Ticker].bg,
+        Hit::TickerHl => c.ticker_hl,
         Hit::SysBg => c[WidgetId::Sys].bg,
         Hit::SectorBg => c[WidgetId::Sector].bg,
         Hit::DeltaBg => c[WidgetId::Delta].bg,
@@ -2871,6 +2931,7 @@ fn nudge_slider(hit: Hit, delta: i32) {
         Hit::RadarBg => c[WidgetId::Radar].bg = v,
         Hit::DashBg => c[WidgetId::Dash].bg = v,
         Hit::TickerBg => c[WidgetId::Ticker].bg = v,
+        Hit::TickerHl => c.ticker_hl = v,
         Hit::SysBg => c[WidgetId::Sys].bg = v,
         Hit::SectorBg => c[WidgetId::Sector].bg = v,
         Hit::DeltaBg => c[WidgetId::Delta].bg = v,
@@ -3025,7 +3086,7 @@ fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
 fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig) {
     let pending = crate::feedback::pending_reply();
     let (
-        mut tab,
+        tab,
         hover,
         focus,
         open_drop,
@@ -3041,7 +3102,11 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
         ui_all_time,
         clear_confirm,
         app_section,
-        profile_section,
+        mut profile_section,
+        tracks_selected,
+        tracks_zoom,
+        tracks_pan_x,
+        tracks_pan_z,
     ) = {
         let mut ui = UI.lock().unwrap();
         if let Some(u) = ui.as_mut() {
@@ -3077,10 +3142,18 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
             ui.map(|u| u.app_section).unwrap_or(AppSection::Look),
             ui.map(|u| u.profile_section)
                 .unwrap_or(ProfileSection::Overview),
+            ui.and_then(|u| u.tracks_selected.clone()),
+            ui.map(|u| u.tracks_zoom).unwrap_or(1.0),
+            ui.map(|u| u.tracks_pan_x).unwrap_or(0.0),
+            ui.map(|u| u.tracks_pan_z).unwrap_or(0.0),
         )
     };
-    if tab.is_labs() && !cfg.experimental_unlocked() {
-        tab = Tab::App;
+    if profile_section == ProfileSection::Tracks && !cfg.experimental_unlocked() {
+        profile_section = ProfileSection::Overview;
+        if let Some(ui) = UI.lock().unwrap().as_mut() {
+            ui.profile_section = ProfileSection::Overview;
+            ui.tracks_selected = None;
+        }
     }
     let banner = crate::update::manual_banner(
         cfg.auto_update_on_launch,
@@ -3254,6 +3327,20 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
                     analyze_follow,
                 );
                 b
+            } else if profile_section == ProfileSection::Tracks {
+                tracks::pane_tracks(
+                    px,
+                    fonts,
+                    hover,
+                    &mut hits,
+                    x,
+                    py,
+                    cw,
+                    &tracks_selected,
+                    tracks_zoom,
+                    tracks_pan_x,
+                    tracks_pan_z,
+                )
             } else {
                 pane_profile(
                     px,
@@ -3336,6 +3423,7 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
             px,
             fonts,
             profile_section,
+            cfg.experimental_unlocked(),
             hover,
             &mut hits,
             28.0,
@@ -3669,8 +3757,14 @@ fn widget_groups(cfg: &HudConfig) -> Vec<(&'static str, Vec<(Tab, Hit, &'static 
             "Stance",
             cfg[WidgetId::Stance].show,
         ),
+        (
+            Tab::Gamepad,
+            Hit::TabGamepad,
+            "Controller",
+            cfg[WidgetId::Gamepad].show,
+        ),
     ];
-    let mut groups = vec![
+    vec![
         (
             "Boards",
             vec![
@@ -3713,19 +3807,7 @@ fn widget_groups(cfg: &HudConfig) -> Vec<(&'static str, Vec<(Tab, Hit, &'static 
             ],
         ),
         ("Cockpit", cockpit),
-    ];
-    if cfg.experimental_unlocked() {
-        groups.push((
-            "Labs",
-            vec![(
-                Tab::Gamepad,
-                Hit::TabGamepad,
-                "Controller",
-                cfg[WidgetId::Gamepad].show,
-            )],
-        ));
-    }
-    groups
+    ]
 }
 
 fn widget_rail_height(cfg: &HudConfig) -> f32 {
@@ -3808,20 +3890,30 @@ fn draw_profile_subnav(
     px: &mut Pixmap,
     fonts: &Fonts,
     section: ProfileSection,
+    show_tracks: bool,
     hover: Option<Hit>,
     hits: &mut Vec<HitBox>,
     x: f32,
     y: f32,
 ) {
     let mut cx = x;
-    for item in [ProfileSection::Overview, ProfileSection::Motos] {
+    let items: &[ProfileSection] = if show_tracks {
+        &[
+            ProfileSection::Overview,
+            ProfileSection::Motos,
+            ProfileSection::Tracks,
+        ]
+    } else {
+        &[ProfileSection::Overview, ProfileSection::Motos]
+    };
+    for item in items {
         cx += profile::profile_chip(
             px,
             fonts,
             cx,
             y,
             item.label(),
-            item == section,
+            *item == section,
             item.hit(),
             hover,
             hits,
@@ -5056,25 +5148,6 @@ fn table_style_controls(
         )
     });
     g.place(|cx, cy, cw| {
-        dropdown_row(
-            px,
-            fonts,
-            cx,
-            cy,
-            cw,
-            "Plaque text",
-            plaque_text.label(),
-            open_drop == Some(plaque_text_drop),
-            plaque_text_open,
-            &[
-                (plaque_text_white, "White", plaque_text == TableText::White),
-                (plaque_text_black, "Black", plaque_text == TableText::Black),
-            ],
-            hover,
-            hits,
-        )
-    });
-    g.place(|cx, cy, cw| {
         toggle_row(
             px,
             fonts,
@@ -5088,6 +5161,27 @@ fn table_style_controls(
             hits,
         )
     });
+    if show_plaque {
+        g.place(|cx, cy, cw| {
+            dropdown_row(
+                px,
+                fonts,
+                cx,
+                cy,
+                cw,
+                "Plaque text",
+                plaque_text.label(),
+                open_drop == Some(plaque_text_drop),
+                plaque_text_open,
+                &[
+                    (plaque_text_white, "White", plaque_text == TableText::White),
+                    (plaque_text_black, "Black", plaque_text == TableText::Black),
+                ],
+                hover,
+                hits,
+            )
+        });
+    }
     g.end()
 }
 
@@ -5514,6 +5608,7 @@ fn st_toggle(f: StField) -> Hit {
         StField::Penalty => Hit::StPenalty,
         StField::Crashed => Hit::StCrashed,
         StField::Interval => Hit::StInterval,
+        StField::Category => Hit::StCategory,
     }
 }
 
@@ -5531,6 +5626,8 @@ fn rel_toggle(f: RelField) -> Hit {
         RelField::Status => Hit::RelStatus,
         RelField::Best => Hit::RelBest,
         RelField::Last => Hit::RelLast,
+        RelField::Category => Hit::RelCategory,
+        RelField::Speed => Hit::RelSpeed,
     }
 }
 

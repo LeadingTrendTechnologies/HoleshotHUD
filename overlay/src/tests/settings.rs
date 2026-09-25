@@ -48,6 +48,11 @@ fn dummy_ui(open: bool) -> SettingsUi {
         analyze_follow: false,
         map_drag: None,
         profile_all_time: true,
+        tracks_selected: None,
+        tracks_zoom: 1.0,
+        tracks_pan_x: 0.0,
+        tracks_pan_z: 0.0,
+        tracks_map_drag: None,
         clear_confirm: None,
         st_col_slides: ColSlides::new(),
         rel_col_slides: ColSlides::new(),
@@ -546,8 +551,7 @@ fn gamepad_theme_row_opens_for_every_pad() {
     let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
     let saved = {
         let mut g = crate::config::CONFIG.lock().unwrap();
-        let saved = (g.experimental, g[WidgetId::Gamepad].show, g.gamepad_style);
-        g.experimental = true;
+        let saved = (g[WidgetId::Gamepad].show, g.gamepad_style);
         g[WidgetId::Gamepad].show = true;
         saved
     };
@@ -568,7 +572,7 @@ fn gamepad_theme_row_opens_for_every_pad() {
     let auto = theme_hits(GamepadStyle::Auto);
     {
         let mut g = crate::config::CONFIG.lock().unwrap();
-        (g.experimental, g[WidgetId::Gamepad].show, g.gamepad_style) = saved;
+        (g[WidgetId::Gamepad].show, g.gamepad_style) = saved;
     }
     assert!(playstation > 0, "Theme should open for PlayStation");
     assert!(xbox > 0, "Theme should open for Xbox");
@@ -711,7 +715,82 @@ fn profile_tab_visible_when_motos_off() {
     assert!(ids.contains(&Hit::TabProfile));
     assert!(ids.contains(&Hit::ProfileNavOverview));
     assert!(ids.contains(&Hit::ProfileNavMotos));
+    assert!(
+        !ids.contains(&Hit::ProfileNavTracks),
+        "Tracks is Labs-only until experimental is on"
+    );
     *UI.lock().unwrap() = None;
+}
+
+#[test]
+fn profile_nav_tracks_when_experimental() {
+    let _g = crate::review::serial();
+    crate::review::reset();
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        g.review = false;
+        g.experimental = true;
+    }
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Profile;
+    ui.profile_section = ProfileSection::Overview;
+    *UI.lock().unwrap() = Some(ui);
+    let mut px = Pixmap::new(1000, 720).expect("pixmap");
+    draw(&mut px, &fonts, 1000.0, 720.0);
+    let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
+    let ids = hit_ids(&hits);
+    assert!(ids.contains(&Hit::ProfileNavTracks));
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        g.experimental = false;
+    }
+    *UI.lock().unwrap() = None;
+}
+
+#[test]
+fn map_zoom_clamps_to_analyze_bounds() {
+    assert!((clamp_map_zoom(0.5) - 1.0).abs() < 1e-6);
+    assert!((clamp_map_zoom(1.0) - 1.0).abs() < 1e-6);
+    assert!((clamp_map_zoom(6.0) - 6.0).abs() < 1e-6);
+    assert!((clamp_map_zoom(12.0) - 12.0).abs() < 1e-6);
+    assert!((clamp_map_zoom(40.0) - 12.0).abs() < 1e-6);
+}
+
+#[test]
+fn tracks_detail_registers_track_map_hit() {
+    let _g = crate::review::serial();
+    let tmp = std::env::temp_dir().join("mxbo-tracks-map-hit");
+    let _ = fs::remove_dir_all(&tmp);
+    crate::review::init(tmp);
+    crate::review::seed_demo().expect("demo");
+    let rows = crate::review::track_bank_rows();
+    assert!(!rows.is_empty(), "demo should seed track bank");
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        g.experimental = true;
+    }
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Profile;
+    ui.profile_section = ProfileSection::Tracks;
+    ui.tracks_selected = Some(rows[0].track.clone());
+    ui.tracks_zoom = 2.0;
+    *UI.lock().unwrap() = Some(ui);
+    let mut px = Pixmap::new(1000, 920).expect("pixmap");
+    draw(&mut px, &fonts, 1000.0, 920.0);
+    let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
+    let ids = hit_ids(&hits);
+    assert!(ids.contains(&Hit::TrackMap));
+    assert!(ids.contains(&Hit::TrackBack));
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        g.experimental = false;
+    }
+    *UI.lock().unwrap() = None;
+    crate::review::reset();
 }
 
 #[test]

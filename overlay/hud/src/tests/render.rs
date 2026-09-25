@@ -5802,7 +5802,6 @@ fn gamepad_goldens() {
     let base = live_snap();
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
-    cfg.experimental = true;
     cfg[WidgetId::Gamepad].show = true;
     crate::gamepad::set(crate::gamepad::demo_sony());
     let s = golden_snap(&base, &cfg);
@@ -5825,7 +5824,6 @@ fn xbox_press_covers_the_whole_control() {
     reset_session();
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
-    cfg.experimental = true;
     cfg[WidgetId::Gamepad].show = true;
     let s = golden_snap(&live_snap(), &cfg);
     let idle = crate::gamepad::PadState {
@@ -5937,7 +5935,6 @@ fn xbox_press_edges_are_antialiased() {
     reset_session();
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
-    cfg.experimental = true;
     cfg[WidgetId::Gamepad].show = true;
     let s = golden_snap(&live_snap(), &cfg);
     let idle = crate::gamepad::PadState {
@@ -6004,7 +6001,6 @@ fn ds4_press_edges_are_antialiased() {
     reset_session();
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
-    cfg.experimental = true;
     cfg[WidgetId::Gamepad].show = true;
     cfg.gamepad_theme = crate::config::GamepadTheme::Dark;
     let s = golden_snap(&live_snap(), &cfg);
@@ -6070,7 +6066,6 @@ fn xbox_dark_press_fills_stay_inside_their_outlines() {
     reset_session();
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
-    cfg.experimental = true;
     cfg[WidgetId::Gamepad].show = true;
     cfg.gamepad_theme = crate::config::GamepadTheme::Dark;
     let s = golden_snap(&live_snap(), &cfg);
@@ -6215,7 +6210,6 @@ fn gamepad_theme_switches_playstation() {
     reset_session();
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
-    cfg.experimental = true;
     cfg[WidgetId::Gamepad].show = true;
     let s = golden_snap(&live_snap(), &cfg);
     crate::gamepad::set(crate::gamepad::demo_sony());
@@ -6237,7 +6231,6 @@ fn ds4_light_press_fills_stay_inside_their_outlines() {
     reset_session();
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
-    cfg.experimental = true;
     cfg[WidgetId::Gamepad].show = true;
     cfg.gamepad_theme = crate::config::GamepadTheme::Light;
     let s = golden_snap(&live_snap(), &cfg);

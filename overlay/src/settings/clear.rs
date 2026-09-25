@@ -39,6 +39,13 @@ pub(crate) fn draw_clear_confirm(
             if crate::review::live_id().is_some() {
                 s.push_str(" The moto you are in now is kept.");
             }
+            let stored = crate::review::storage_bytes();
+            if stored > 0 {
+                s.push_str(&format!(
+                    " About {} on disk.",
+                    crate::review::fmt_storage_bytes(stored)
+                ));
+            }
             ("Clear Motos", s)
         }
     };

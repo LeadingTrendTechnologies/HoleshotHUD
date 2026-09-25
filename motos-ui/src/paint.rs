@@ -119,11 +119,16 @@ pub fn pane_review(
     if !recording && !has_races {
         return pane_review_gate(px, fonts, hover, hits, x, y, w);
     }
-    let sub = if recording {
-        "Races on this PC. Save keeps one past two weeks"
+    let mut sub = if recording {
+        "Races on this PC. Save keeps one past two weeks".to_string()
     } else {
-        "Recording is off. New motos will not be saved."
+        "Recording is off. New motos will not be saved.".to_string()
     };
+    let stored = mxbo_review::storage_bytes();
+    if stored > 0 {
+        sub.push_str(" · ");
+        sub.push_str(&mxbo_review::fmt_storage_bytes(stored));
+    }
     let mut y = heading(
         px,
         fonts,
@@ -131,7 +136,7 @@ pub fn pane_review(
         y,
         w,
         "Motos",
-        sub,
+        &sub,
         None,
         hover,
         hits,
@@ -3273,6 +3278,132 @@ fn fmt_lap(ms: i32) -> String {
     }
 }
 
+/// Dirt map with best full lap (accent) and ideal composite (violet).
+/// Bridges hitch gaps shorter than Motos cut distance so Tracks lines stay continuous.
+pub fn paint_track_bank_map(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    poly: &[(f32, f32)],
+    best_line: &[(f32, f32, f32)],
+    ideal_line: &[(f32, f32, f32)],
+    zoom: f32,
+    pan_x: f32,
+    pan_z: f32,
+) {
+    fill_round(px, x, y, w, h, 6.0, night_ink());
+    if poly.len() < 2 {
+        return;
+    }
+    let mut min_x = poly[0].0;
+    let mut max_x = min_x;
+    let mut min_z = poly[0].1;
+    let mut max_z = min_z;
+    for p in poly {
+        min_x = min_x.min(p.0);
+        max_x = max_x.max(p.0);
+        min_z = min_z.min(p.1);
+        max_z = max_z.max(p.1);
+    }
+    let z = zoom.max(1.0);
+    let dx = (max_x - min_x).max(8.0) / z;
+    let dz = (max_z - min_z).max(8.0) / z;
+    let cx = (min_x + max_x) * 0.5 + pan_x;
+    let cz = (min_z + max_z) * 0.5 + pan_z;
+    let pad = 22.0;
+    let scale = ((w - pad * 2.0) / dx).min((h - pad * 2.0) / dz);
+    let (mw, mh) = (w.round().max(1.0) as u32, h.round().max(1.0) as u32);
+    let to_local = |wx: f32, wz: f32| -> (f32, f32) {
+        (w * 0.5 + (wx - cx) * scale, h * 0.5 - (wz - cz) * scale)
+    };
+    let track_px = analyze_track_px(scale, analyze_ribbon_m(poly));
+    let clip = well_mask(mw, mh);
+    let Some(mut layer) = Pixmap::new(mw, mh) else {
+        return;
+    };
+    layer.fill(Color::TRANSPARENT);
+    fill_track_ribbon(&mut layer, poly, &to_local, track_px, clip.as_ref());
+    let ideal_xz = bridge_line_xz(ideal_line);
+    if ideal_xz.len() >= 2 {
+        stroke_line_runs(
+            &mut layer,
+            &ideal_xz,
+            &to_local,
+            best_violet(),
+            2.8,
+            clip.as_ref(),
+        );
+    }
+    let best_xz = bridge_line_xz(best_line);
+    if best_xz.len() >= 2 {
+        stroke_line_runs(
+            &mut layer,
+            &best_xz,
+            &to_local,
+            accent(),
+            2.6,
+            clip.as_ref(),
+        );
+    }
+    let _ = px.draw_pixmap(
+        x.round() as i32,
+        y.round() as i32,
+        layer.as_ref(),
+        &PixmapPaint::default(),
+        Transform::identity(),
+        None,
+    );
+    if z > 1.0 {
+        text(
+            px,
+            fonts,
+            "Scroll to zoom · drag to pan",
+            11.0,
+            x + 10.0,
+            y + h - 18.0,
+            dim(),
+            false,
+        );
+    }
+}
+
+/// Drop hitch NaNs; keep one continuous run when the gap is under Motos cut distance.
+/// True teleports (>= cut) keep a NaN break so we do not stroke across the grass.
+fn bridge_line_xz(line: &[(f32, f32, f32)]) -> Vec<(f32, f32)> {
+    let cut = mxbo_hud::location_tape::LINE_CUT_M2;
+    let mut finite: Vec<(f32, f32)> = Vec::new();
+    for &(lx, ly, lz) in line {
+        if lx.is_finite() && ly.is_finite() && lz.is_finite() {
+            finite.push((lx, lz));
+        }
+    }
+    if finite.len() < 2 {
+        return finite;
+    }
+    let mut out = Vec::with_capacity(finite.len() + 8);
+    out.push(finite[0]);
+    for w in finite.windows(2) {
+        let a = w[0];
+        let b = w[1];
+        let dx = b.0 - a.0;
+        let dz = b.1 - a.1;
+        let d2 = dx * dx + dz * dz;
+        if d2 >= cut {
+            out.push((f32::NAN, f32::NAN));
+            out.push(b);
+        } else {
+            if d2 > 4.0 {
+                out.push((a.0 + dx * 0.5, a.1 + dz * 0.5));
+            }
+            out.push(b);
+        }
+    }
+    out
+}
+
 pub fn draw_pending_drop_menus(px: &mut Pixmap, fonts: &Fonts) {
     for menu in DROP_MENUS.with(|m| m.borrow().clone()) {
         let mut y = menu.my;
@@ -3364,6 +3495,7 @@ mod tests {
         spot_rpm, spot_rpm_delta, spot_speed, spot_speed_delta, spot_throttle, step_you_lap,
         tape_gear, tape_has_rpm, tape_has_throttle, tape_speed, tape_throttle, tape_throttle_ok,
         thin_world_pts, you_holeshot_split, your_all_laps, your_laps, IconKind, Units,
+        bridge_line_xz,
     };
     use mxbo_hud::location_tape::{ChannelBin, CrashMark, BINS};
     use mxbo_review::{LapView, RiderRow, SessionDetail, SessionRow};
@@ -4264,5 +4396,37 @@ mod tests {
         let them_s = sector_durations(&them, starts);
         assert!(them_s[0] > 0);
         assert!(you_s[0] - them_s[0] > 0, "you slower S1 vs faster them");
+    }
+
+    #[test]
+    fn bridge_line_xz_closes_short_hitch_gap() {
+        let line = vec![
+            (0.0, 0.0, 0.0),
+            (f32::NAN, 0.0, f32::NAN),
+            (10.0, 0.0, 0.0),
+            (20.0, 0.0, 0.0),
+        ];
+        let out = bridge_line_xz(&line);
+        assert!(
+            out.iter().all(|(x, z)| x.is_finite() && z.is_finite()),
+            "short hitch should not leave a stroke cut"
+        );
+        assert!(out.len() >= 3);
+        assert!((out[0].0 - 0.0).abs() < 0.01);
+        assert!((out.last().unwrap().0 - 20.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn bridge_line_xz_keeps_cut_on_teleport() {
+        let line = vec![
+            (0.0, 0.0, 0.0),
+            (f32::NAN, 0.0, f32::NAN),
+            (200.0, 0.0, 0.0),
+        ];
+        let out = bridge_line_xz(&line);
+        assert!(
+            out.iter().any(|(x, z)| !x.is_finite() || !z.is_finite()),
+            "teleport beyond LINE_CUT must keep a break"
+        );
     }
 }

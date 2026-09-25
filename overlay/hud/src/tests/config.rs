@@ -547,11 +547,12 @@ fn disabled_columns_drop_from_widget_layout() {
 }
 
 #[test]
-fn gamepad_needs_experimental() {
+fn gamepad_show_does_not_need_experimental() {
     let mut cfg = HudConfig::new();
-    cfg[WidgetId::Gamepad].show = true;
+    assert!(!cfg.experimental);
     assert!(!cfg.experimental_unlocked());
-    assert!(!cfg.gamepad_visible());
+    cfg[WidgetId::Gamepad].show = true;
+    assert!(cfg.gamepad_visible());
     cfg.experimental = true;
     assert!(cfg.gamepad_visible());
     cfg[WidgetId::Gamepad].show = false;
@@ -566,19 +567,24 @@ fn experimental_no_longer_gates_sectors() {
     cfg[WidgetId::Sector].show = true;
     cfg[WidgetId::Delta].show = true;
     cfg[WidgetId::Stance].show = true;
+    cfg[WidgetId::Gamepad].show = true;
     assert!(cfg.sector_visible());
     assert!(cfg.delta_visible());
     assert!(cfg.stance_visible());
+    assert!(cfg.gamepad_visible());
     cfg.experimental = true;
     assert!(cfg.sector_visible());
     assert!(cfg.delta_visible());
     assert!(cfg.stance_visible());
+    assert!(cfg.gamepad_visible());
     cfg[WidgetId::Sector].show = false;
     cfg[WidgetId::Delta].show = false;
     cfg[WidgetId::Stance].show = false;
+    cfg[WidgetId::Gamepad].show = false;
     assert!(!cfg.sector_visible());
     assert!(!cfg.delta_visible());
     assert!(!cfg.stance_visible());
+    assert!(!cfg.gamepad_visible());
 }
 
 #[test]

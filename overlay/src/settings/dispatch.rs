@@ -10,11 +10,6 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
                 .as_ref()
                 .map(|u| u.last_widget)
                 .unwrap_or(Tab::Standings);
-            let last = if last.is_labs() && !with_config(|c| c.experimental_unlocked()) {
-                Tab::Standings
-            } else {
-                last
-            };
             set_tab(last);
             return;
         }
@@ -57,6 +52,37 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::ProfileNavMotos => {
             set_profile_section(ProfileSection::Motos);
             open_live_analyze(true);
+            return;
+        }
+        Hit::ProfileNavTracks => {
+            if with_config(|c| c.experimental_unlocked()) {
+                set_profile_section(ProfileSection::Tracks);
+            }
+            return;
+        }
+        Hit::TrackOpen(idx) => {
+            let rows = crate::review::track_bank_rows();
+            if let Some(row) = rows.get(idx as usize) {
+                if let Some(ui) = UI.lock().unwrap().as_mut() {
+                    ui.tracks_selected = Some(row.track.clone());
+                    ui.scroll = 0.0;
+                    ui.tracks_zoom = 1.0;
+                    ui.tracks_pan_x = 0.0;
+                    ui.tracks_pan_z = 0.0;
+                    ui.tracks_map_drag = None;
+                }
+            }
+            return;
+        }
+        Hit::TrackBack => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.tracks_selected = None;
+                ui.scroll = 0.0;
+                ui.tracks_zoom = 1.0;
+                ui.tracks_pan_x = 0.0;
+                ui.tracks_pan_z = 0.0;
+                ui.tracks_map_drag = None;
+            }
             return;
         }
         Hit::TabFeedback => {
@@ -703,9 +729,6 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::GamepadShow => c[WidgetId::Gamepad].show ^= true,
         Hit::FeatureSector => {
             c.experimental = !c.experimental;
-            if !c.experimental {
-                c[WidgetId::Gamepad].show = false;
-            }
         }
         Hit::FlagYellow => c.flag_yellow = !c.flag_yellow,
         Hit::FlagBlue => c.flag_blue = !c.flag_blue,
@@ -715,6 +738,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::TickerTitle => c.ticker_title = !c.ticker_title,
         Hit::TickerAutoscroll => c.ticker_autoscroll = !c.ticker_autoscroll,
         Hit::TickerStatus => c.ticker_status = !c.ticker_status,
+        Hit::TickerSlide => c.ticker_slide = !c.ticker_slide,
         Hit::StStripe => c.st_stripe = !c.st_stripe,
         Hit::RelStripe => c.rel_stripe = !c.rel_stripe,
         Hit::StPlaque => c.st_plaque = !c.st_plaque,
@@ -732,6 +756,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::StPenalty => c.st_penalty = !c.st_penalty,
         Hit::StCrashed => c.st_crashed = !c.st_crashed,
         Hit::StInterval => c.st_interval = !c.st_interval,
+        Hit::StCategory => c.st_category = !c.st_category,
         Hit::RelNum => c.rel_num = !c.rel_num,
         Hit::RelName => c.rel_name = !c.rel_name,
         Hit::RelGap => c.rel_gap = !c.rel_gap,
@@ -744,6 +769,8 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::RelStatus => c.rel_status = !c.rel_status,
         Hit::RelBest => c.rel_best = !c.rel_best,
         Hit::RelLast => c.rel_last = !c.rel_last,
+        Hit::RelCategory => c.rel_category = !c.rel_category,
+        Hit::RelSpeed => c.rel_speed = !c.rel_speed,
         Hit::MapOthers => c.map_others = !c.map_others,
         Hit::MapSf => c.map_sf = !c.map_sf,
         Hit::MapSectors => c.map_sectors = !c.map_sectors,
@@ -831,6 +858,10 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::TabProfile
         | Hit::ProfileNavOverview
         | Hit::ProfileNavMotos
+        | Hit::ProfileNavTracks
+        | Hit::TrackOpen(_)
+        | Hit::TrackBack
+        | Hit::TrackMap
         | Hit::TabFeedback
         | Hit::ProfileAllTime
         | Hit::ProfileTwoWeeks
@@ -937,6 +968,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::RadarBg
         | Hit::DashBg
         | Hit::TickerBg
+        | Hit::TickerHl
         | Hit::SysBg
         | Hit::SectorBg
         | Hit::DeltaBg
@@ -973,9 +1005,11 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         }
     }
     if id == Hit::FeatureSector && !with_config(|c| c.experimental_unlocked()) {
-        let on_labs = UI.lock().unwrap().as_ref().is_some_and(|u| u.tab.is_labs());
-        if on_labs {
-            set_tab(Tab::App);
+        if let Some(ui) = UI.lock().unwrap().as_mut() {
+            if ui.profile_section == ProfileSection::Tracks {
+                ui.profile_section = ProfileSection::Overview;
+                ui.tracks_selected = None;
+            }
         }
     }
 }

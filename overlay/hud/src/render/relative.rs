@@ -212,6 +212,26 @@ pub(crate) fn draw_relative(
                                 true,
                             ),
                             RelField::Last => (format_lap(last_ms), dim, true),
+                            RelField::Category => (cat.to_string(), dim, false),
+                            RelField::Speed => (
+                                if rider.speed > 0.05 {
+                                    format!(
+                                        "{} {}",
+                                        cfg.units.format_speed(rider.speed),
+                                        cfg.units.speed_label()
+                                    )
+                                } else if is_self && s.local_speed > 0.05 {
+                                    format!(
+                                        "{} {}",
+                                        cfg.units.format_speed(s.local_speed),
+                                        cfg.units.speed_label()
+                                    )
+                                } else {
+                                    "--".into()
+                                },
+                                dim,
+                                true,
+                            ),
                         });
                     });
                 });

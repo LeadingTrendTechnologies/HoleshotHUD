@@ -58,7 +58,7 @@ Rust overlay structure and possible refactors (suggestions only): **[rust-patter
 - [Systems](widgets/systems.md): CPU / mem / FPS / ping / GPU, plus apps you pick
 - [Stance](widgets/stance.md): sit / stand from a local bind (not plugin telemetry)
 - [Lean](widgets/lean.md): bike roll, pitch, and steer on the bike; spectate follows camera lean. Figure or Minimal (numbers).
-- [Controller](widgets/gamepad.md): live local pad (sticks, analog triggers, bumpers, buttons). Labs. Not plugin telemetry.
+- [Controller](widgets/gamepad.md): live local pad (sticks, analog triggers, bumpers, buttons). Not plugin telemetry.
 - [Motos](review.md): F8 library of recent motos (opt-in recording) and an Analyze page (your line vs another rider)
 
 Local speed / yaw / crash / track pos are in SHM for the moving marker, not as their own widgets yet.
@@ -465,7 +465,7 @@ Existing overlay widgets: [widgets.md](widgets.md) (behavior + change logs). Fie
 | Shift light | `m_iRPM` vs `m_iShiftRPM` | Need SHM |
 | Throttle / brakes / clutch | telemetry inputs | Overlay (V14) |
 | [Lean](widgets/lean.md) | `m_fRoll` / `m_fPitch` / `m_fSteer` / `m_fSteerLock` + `m_fLean` | Overlay |
-| [Controller](widgets/gamepad.md) | local XInput / DualShock HID | Overlay (not plugin). Labs. |
+| [Controller](widgets/gamepad.md) | local XInput / DualShock HID | Overlay (not plugin). |
 | Fuel | `m_fFuel` / `m_fMaxFuel` | Overlay (dash / standings / relative / ticker) |
 | Setup | `m_szSetupFileName` | Overlay (dash / standings / relative / ticker) |
 | Temps | engine/water + alarm band | Need SHM |

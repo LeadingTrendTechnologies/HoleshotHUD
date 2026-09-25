@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.19.0
+
+Profile Tracks shows your best Motos lap vs a living ideal line; Controller leaves Labs; board fields expand.
+
+### Profile → Tracks
+
+- New Profile sub-nav **Tracks**: fastest Motos lap per track, plus a detail map of your best full lap vs a living **ideal** line.
+- Ideal line is a persistent bank (`track_bank` in Motos SQLite). Clean you-laps merge in faster stretches (hysteresis, edge blend, spatial smooth) and survive the 14-day Motos prune. Motos Clear also clears the bank.
+- Tracks is behind Settings → Labs → **Experimental features**.
+- Ideal bank skips gate-start L1 (standing start); only warmup and flying laps merge.
+- Ideal geometry: on-track snap to the dirt ribbon, draw breaks on large jumps, continuous strokes across short hitch gaps. Ideal is never slower than Best (PB segments fold in). Existing banks rebuild on open (`track_bank_seeded` v4).
+- Detail map: scroll to zoom, drag to pan (same as Motos Analyze).
+
+### Profile → Motos
+
+- List subtitle and Clear confirm show on-disk size of the Motos store (`reviews.sqlite` + WAL/SHM).
+
+### Controller
+
+- Turn it on with **Show on overlay**. It no longer needs Experimental features. Lives under Cockpit.
+
+### Labs
+
+- Toggle renamed to **Experimental features** (was Experimental widgets). Still unlocks Profile → Tracks.
+
+### Horizontal Standings
+
+- **Row highlight** opacity slider (`ticker_hl`, default 50 — same as Standings / Relative).
+- **Slide on pass** toggle (`ticker_slide`, default on). Off snaps cards to new slots instead of easing through `HS_SLIDE`.
+
+### Standings / Relative / boards
+
+- Header/footer **BoardField** options: **Delta**, **Last lap**, **Current lap**, **Gap to leader** (live-order P1), **Engine temp**, **Penalty**, **Server** (`--` offline).
+- Optional **Category** column on Standings and Relative (`st_category` / `rel_category`, default off).
+- Optional **Speed** column on Relative (`rel_speed`, default off) — rival speed, or your speed on your row.
+
 ## 0.18.0
 
 The Controller gets a Light/Dark Theme for both pads, including a new light PlayStation pad, and every pad draws smooth outlines and press fills.
@@ -350,7 +386,7 @@ Controller is a new Labs widget for live pad inputs. Delta Bar and Sectors snap 
 
 ### Controller
 
-- Turn on **Experimental widgets** in Settings → Labs, then **Show on overlay**. It starts hidden. This is your local pad, not plugin telemetry.
+- Turn on **Experimental features** in Settings → Labs, then **Show on overlay**. It starts hidden. This is your local pad, not plugin telemetry.
 - DualShock / DualSense HID draws the PlayStation pad. Steam Xbox mapping draws an Xbox Series pad (A/B/X/Y, offset sticks), not DualShock with Xbox labels.
 - Analog sticks leave their wells. Triggers (L2/R2 or LT/RT) fill from the curved bottom lip. Bumpers (L1/R1 or LB/RB) light orange while held.
 - Face buttons and D-pad fill out to that pad’s outline. Bumpers fill the rounded shoulder. Pressed labels stay the drawing’s cream strokes. No pad shows **No controller**.
@@ -423,7 +459,7 @@ Delta Bar and Sectors are regular widgets — time vs your best on this track, w
 
 ### Delta Bar
 
-- Turn it on with **Show on overlay**. It no longer needs Experimental widgets.
+- Turn it on with **Show on overlay**. It no longer needs Experimental features.
 - Replay leftover telemetry is not recorded. Sitting in the pits near the start/finish does not become the first tape.
 - A hitch that skips the line still saves a decent lap.
 - A cut or shortcut does not become your best. Skipping a stretch of track faster than a bike can ride it is ignored; a hitch that still covers the ground still counts.
@@ -437,7 +473,7 @@ Delta Bar and Sectors are regular widgets — time vs your best on this track, w
 
 ### Sectors
 
-- Turn it on with **Show on overlay**. Same tape as Delta Bar. It no longer needs Experimental widgets.
+- Turn it on with **Show on overlay**. Same tape as Delta Bar. It no longer needs Experimental features.
 - Live S3 keeps ticking when the centerline origin is not the start/finish line.
 - **Compare to session best** uses this visit's fastest splits instead of the saved tape.
 - LAST, -2, and further laps sit under the live strip when **Lap log** is on (default). **Laps back** is 1–5. A short box stays live-only. You-row gold is only on the fastest lap in that log.

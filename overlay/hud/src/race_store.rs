@@ -2536,6 +2536,22 @@ fn classified_neighbor<'a>(s: &'a Snapshot, position: i32) -> Option<&'a Standin
     s.standings[..n].iter().find(|st| st.position == position)
 }
 
+/// Gap to the live-order leader (P1). Time is a live running gap.
+pub(crate) fn gap_leader_text(s: &Snapshot, field: &RaceField, row: &Standing) -> String {
+    if let Some(leader) = field.rows.first() {
+        if leader.standing.race_num == row.race_num {
+            return "---".into();
+        }
+        return gap_to_num(s, field, row.race_num, leader.standing.race_num, false);
+    }
+    if row.position <= 1 {
+        return "---".into();
+    }
+    format_gap(row.gap_ms, row.gap_laps)
+        .trim_start_matches('+')
+        .to_string()
+}
+
 /// Gap to the rider one live-order place ahead (P−1). Time is a live running gap.
 pub(crate) fn gap_ahead_text(s: &Snapshot, field: &RaceField, row: &Standing) -> String {
     if let Some(i) = field

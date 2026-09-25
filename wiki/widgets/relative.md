@@ -21,7 +21,8 @@ Classification is joined by race number for position, laps, bike, best/last, pen
 
 ## Behavior
 
-- Same chrome as Standings (header bar, track name, column headers, optional footer). Header/footer slots include **Fuel**, **Setup**, **Gap ahead**, and **Gap behind**. Those gaps are race place (P−1 / P+1), not the riders in this table. Same lap ticks along the track toward that rider; a live lap or more is `1L` / `-1L`.
+- Same chrome as Standings (header bar, track name, column headers, optional footer). Header/footer slots include **Fuel**, **Setup**, **Gap ahead**, **Gap behind**, **Delta**, **Last** / **Current**, **Gap to leader**, **Engine**, **Penalty**, and **Server**. Those place gaps are race place (P−1 / P+1 / P1), not the riders in this table. Same lap ticks along the track toward that rider; a live lap or more is `1L` / `-1L`.
+- Optional **Category** (`rel_category`) and **Speed** (`rel_speed`) columns, default off. Speed uses rival `Rider.speed` (your row falls back to `local_speed`).
 - Your row is highlighted. Lapping colors on **other** rows: blue if they are a lap ahead and within catch span (either side), red if you are a lap ahead and within catch span (either side) — colors hold through a pass while still nearby (`lap_rel` / `lap_row_bg`). Off in warmup. **Row highlight** opacity (`rel_hl`) scales your row and the blue/red lapping tints. **Text color** is White or Black (`rel_text`); bike pills keep brand colors. **Alternating rows** (`rel_stripe`, default on) paints every other row near-black. Same opaque-panel lift as Standings. **Plaque text** is Black or White on the orange rider-count / track-name skews (`rel_plaque_text`, default Black). **Show plaques** (`rel_plaque`, default on) hides those skews and collapses their band.
 - **Gap column is not classification gap.** It is `|wrapped_frac * track_length / local_speed|` in seconds (you show `0.0`). Speed floor is 4 so a stopped rider does not explode the number.
 - Rows slide when the nearby set changes (`REL_SLIDE`).
@@ -33,6 +34,8 @@ Default columns on: Number, Name, Gap, Fastest, Last lap.
 
 - Do not sort Relative by standings position. It is on-track neighbors.
 - Header/footer **Gap ahead** / **Gap behind** are live-order place neighbors (P−1 / P+1). Same lap is seconds along the track toward that rider; a live lap or more is `1L` / `-1L`.
+- Header/footer **Gap to leader** is live-order gap to P1. **Server** is `--` when `server_name` is empty.
+- Optional **Category** / **Speed** columns stay off by default.
 - Keep the wrap (`d > 0.5` subtract 1, `d < -0.5` add 1) or the “nearest” set jumps across S/F.
 - Empty / no telemetry shows “Waiting for positions”.
 - No blue/red lapping row tints in warmup. `session_kind` 5 wins even when extras leak.
@@ -51,6 +54,7 @@ Default columns on: Number, Name, Gap, Fastest, Last lap.
 
 ## Change log
 
+- 2026-09-25 — Shared board chrome gains Delta / Last / Current / Gap to leader / Engine / Penalty / Server. Optional **Category** and **Speed** columns (`rel_category` / `rel_speed`, default off).
 - 2026-09-24 — Red is pairwise only: leader lapping someone behind you no longer tints them red.
 - 2026-09-24 — Same-race S/F straddles no longer tint blue/red (`other_laps_ahead` continuous progress when `gap_laps` match).
 - 2026-09-22 — Status finish flag wins over crash/pit for done riders. Your-row / lapping wash alpha 52 at default **Row highlight** (spider-scaled).

@@ -95,6 +95,7 @@ struct FieldKey {
 
 struct Store {
     conn: Option<Connection>,
+    path: Option<PathBuf>,
     live: Option<Live>,
     field_at: Option<Instant>,
     field_key: Option<FieldKey>,
@@ -106,6 +107,7 @@ impl Store {
     const fn empty() -> Self {
         Self {
             conn: None,
+            path: None,
             live: None,
             field_at: None,
             field_key: None,
@@ -448,6 +450,21 @@ pub fn init(dir: PathBuf) {
         [],
     );
     let _ = conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS track_bank (
+           track TEXT PRIMARY KEY,
+           best_ms INTEGER NOT NULL DEFAULT 0,
+           best_line BLOB,
+           best_bins BLOB,
+           ideal_ms INTEGER NOT NULL DEFAULT 0,
+           ideal_xyz BLOB,
+           ideal_seg_ms BLOB,
+           poly BLOB,
+           sf_meters REAL NOT NULL DEFAULT -1,
+           merged_laps INTEGER NOT NULL DEFAULT 0,
+           updated INTEGER NOT NULL DEFAULT 0
+         );",
+    );
+    let _ = conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS profile_races (
            session_id INTEGER PRIMARY KEY,
            started INTEGER NOT NULL,
@@ -471,10 +488,50 @@ pub fn init(dir: PathBuf) {
          );",
     );
     seed_ranked_servers(&conn);
+    seed_track_bank_if_needed(&conn);
     let mut st = live();
     st.conn = Some(conn);
+    st.path = Some(path);
     drop(st);
     prune();
+}
+
+/// On-disk bytes for `reviews.sqlite` plus WAL/SHM sidecars.
+pub fn storage_bytes() -> u64 {
+    let Some(path) = live().path.clone() else {
+        return 0;
+    };
+    let mut total = file_len(&path);
+    let mut wal = path.clone();
+    wal.set_extension("sqlite-wal");
+    total += file_len(&wal);
+    let mut shm = path;
+    shm.set_extension("sqlite-shm");
+    total += file_len(&shm);
+    total
+}
+
+/// Human size for Motos storage (MB / GB), same style as Systems mem.
+pub fn fmt_storage_bytes(bytes: u64) -> String {
+    let mb = bytes as f32 / (1024.0 * 1024.0);
+    if mb < 0.05 {
+        "0 MB".into()
+    } else if mb < 9.95 {
+        format!("{mb:.1} MB")
+    } else if mb < 1024.0 {
+        format!("{:.0} MB", mb.round())
+    } else {
+        let gb = mb / 1024.0;
+        if gb < 9.95 {
+            format!("{gb:.1} GB")
+        } else {
+            format!("{:.0} GB", gb.round())
+        }
+    }
+}
+
+fn file_len(path: &std::path::Path) -> u64 {
+    std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)
 }
 
 pub fn tick(s: &Snapshot, in_session: bool) {
@@ -567,6 +624,10 @@ pub fn tick(s: &Snapshot, in_session: bool) {
             }
             for lap in &commits {
                 let _ = upsert_lap(c, id, lap);
+                if lap.is_you && !lap.cut && !lap.crashed {
+                    let poly = poly_from_snap(s);
+                    merge_into_track_bank(c, &track, lap, &poly, s.sf_meters);
+                }
             }
             note_holeshot(c, id, s, you, false);
         }
@@ -970,8 +1031,57 @@ pub fn clear_motos() {
             let _ = c.execute("DELETE FROM laps", []);
             let _ = c.execute("DELETE FROM sessions", []);
         }
+        let _ = c.execute("DELETE FROM track_bank", []);
+        let _ = c.execute("DELETE FROM profile_meta WHERE k = 'track_bank_seeded'", []);
     }
     invalidate(&mut st);
+}
+
+pub fn track_bank_rows() -> Vec<crate::TrackBankRow> {
+    let st = live();
+    let Some(c) = st.conn.as_ref() else {
+        return Vec::new();
+    };
+    let Ok(mut stmt) = c.prepare(
+        "SELECT track, best_ms, ideal_ms, merged_laps, updated FROM track_bank
+         WHERE best_ms > 0 OR ideal_ms > 0
+         ORDER BY track COLLATE NOCASE",
+    ) else {
+        return Vec::new();
+    };
+    let Ok(it) = stmt.query_map([], |r| {
+        Ok(crate::TrackBankRow {
+            track: r.get(0)?,
+            best_ms: r.get(1)?,
+            ideal_ms: r.get(2)?,
+            merged_laps: r.get(3)?,
+            updated: r.get(4)?,
+        })
+    }) else {
+        return Vec::new();
+    };
+    it.filter_map(|r| r.ok()).collect()
+}
+
+pub fn track_bank_detail(track: &str) -> Option<crate::TrackBankDetail> {
+    let st = live();
+    let c = st.conn.as_ref()?;
+    let bank = load_ideal_bank(c, track)?;
+    if bank.best_ms <= 0 && !bank.has_ideal() {
+        return None;
+    }
+    let ideal_line = crate::track_bank::ideal_line_from_bank(&bank);
+    Some(crate::TrackBankDetail {
+        track: track.to_string(),
+        best_ms: bank.best_ms,
+        ideal_ms: bank.ideal_ms,
+        merged_laps: bank.merged_laps,
+        updated: bank.updated,
+        poly: bank.poly,
+        sf_meters: bank.sf_meters,
+        best_line: bank.best_line,
+        ideal_line,
+    })
 }
 
 pub fn prune() {
@@ -1109,6 +1219,7 @@ pub fn seed_demo() -> Option<i64> {
                 crashed: false,
                 cut: false,
                 warmup: true,
+                from_gate: false,
                 crashes: Vec::new(),
             };
             let _ = upsert_lap(c, id, &you_wu);
@@ -1124,6 +1235,7 @@ pub fn seed_demo() -> Option<i64> {
                 crashed: false,
                 cut: false,
                 warmup: false,
+                from_gate: true,
                 crashes: Vec::new(),
             };
             let other_lap = CommittedLap {
@@ -1138,6 +1250,7 @@ pub fn seed_demo() -> Option<i64> {
                 crashed: false,
                 cut: false,
                 warmup: false,
+                from_gate: true,
                 crashes: Vec::new(),
             };
             let _ = upsert_lap(c, id, &you_lap);
@@ -1168,7 +1281,7 @@ pub fn seed_demo() -> Option<i64> {
                 .find(|r| r.1 == *fastest)
                 .map(|r| r.0)
                 .unwrap_or("Cole");
-            for extra in [0, 800, 1_400, -400] {
+            for (li, extra) in [0, 800, 1_400, -400].into_iter().enumerate() {
                 let mut lap = CommittedLap {
                     race_num: *you,
                     name: you_name.into(),
@@ -1181,6 +1294,7 @@ pub fn seed_demo() -> Option<i64> {
                     crashed: false,
                     cut: false,
                     warmup: false,
+                    from_gate: li == 0,
                     crashes: Vec::new(),
                 };
                 if extra < 0 {
@@ -1203,6 +1317,7 @@ pub fn seed_demo() -> Option<i64> {
                     crashed: false,
                     cut: false,
                     warmup: false,
+                    from_gate: true,
                     crashes: Vec::new(),
                 },
             );
@@ -1226,6 +1341,8 @@ pub fn seed_demo() -> Option<i64> {
     for id in ids {
         upsert_profile_race(c, id);
     }
+    let _ = c.execute("DELETE FROM profile_meta WHERE k = 'track_bank_seeded'", []);
+    seed_track_bank_if_needed(c);
     bump(&mut st, first);
     first
 }
@@ -2139,6 +2256,251 @@ fn unpack_poly(raw: Option<&[u8]>) -> Vec<(f32, f32)> {
     v
 }
 
+fn pack_seg_ms(segs: &[i32; BINS]) -> Vec<u8> {
+    let mut o = Vec::with_capacity(BINS * 4);
+    for s in segs {
+        o.extend_from_slice(&s.to_le_bytes());
+    }
+    o
+}
+
+fn unpack_seg_ms(raw: Option<&[u8]>) -> [i32; BINS] {
+    let mut segs = [0; BINS];
+    let Some(raw) = raw else {
+        return segs;
+    };
+    for i in 0..BINS {
+        let o = i * 4;
+        if o + 4 > raw.len() {
+            break;
+        }
+        segs[i] = i32::from_le_bytes(raw[o..o + 4].try_into().unwrap());
+    }
+    segs
+}
+
+fn pack_ideal_xyz(xyz: &[(f32, f32, f32); BINS]) -> Vec<u8> {
+    let mut o = Vec::with_capacity(4 + BINS * 12);
+    o.extend_from_slice(&(BINS as u32).to_le_bytes());
+    for (x, y, z) in xyz {
+        o.extend_from_slice(&x.to_le_bytes());
+        o.extend_from_slice(&y.to_le_bytes());
+        o.extend_from_slice(&z.to_le_bytes());
+    }
+    o
+}
+
+fn unpack_ideal_xyz(raw: Option<&[u8]>) -> [(f32, f32, f32); BINS] {
+    let mut xyz = [(f32::NAN, f32::NAN, f32::NAN); BINS];
+    let Some(raw) = raw else {
+        return xyz;
+    };
+    if raw.len() < 4 {
+        return xyz;
+    }
+    let n = (u32::from_le_bytes(raw[0..4].try_into().unwrap()) as usize).min(BINS);
+    for i in 0..n {
+        let o = 4 + i * 12;
+        if o + 12 > raw.len() {
+            break;
+        }
+        xyz[i] = (
+            f32::from_le_bytes(raw[o..o + 4].try_into().unwrap()),
+            f32::from_le_bytes(raw[o + 4..o + 8].try_into().unwrap()),
+            f32::from_le_bytes(raw[o + 8..o + 12].try_into().unwrap()),
+        );
+    }
+    xyz
+}
+
+fn load_ideal_bank(c: &Connection, track: &str) -> Option<crate::track_bank::IdealBank> {
+    c.query_row(
+        "SELECT best_ms, best_line, best_bins, ideal_ms, ideal_xyz, ideal_seg_ms, poly, sf_meters,
+                merged_laps, updated
+         FROM track_bank WHERE track = ?1",
+        params![track],
+        |r| {
+            let mut bank = crate::track_bank::IdealBank::empty();
+            bank.best_ms = r.get(0)?;
+            bank.best_line = unpack_line(r.get::<_, Option<Vec<u8>>>(1)?.as_deref());
+            bank.best_bins = unpack_channels(r.get::<_, Option<Vec<u8>>>(2)?.as_deref());
+            bank.ideal_ms = r.get(3)?;
+            bank.ideal_xyz = unpack_ideal_xyz(r.get::<_, Option<Vec<u8>>>(4)?.as_deref());
+            bank.ideal_seg_ms = unpack_seg_ms(r.get::<_, Option<Vec<u8>>>(5)?.as_deref());
+            bank.poly = unpack_poly(r.get::<_, Option<Vec<u8>>>(6)?.as_deref());
+            bank.sf_meters = r.get(7)?;
+            bank.merged_laps = r.get(8)?;
+            bank.updated = r.get(9)?;
+            Ok(bank)
+        },
+    )
+    .ok()
+}
+
+fn save_ideal_bank(c: &Connection, track: &str, bank: &crate::track_bank::IdealBank) {
+    let _ = c.execute(
+        "INSERT INTO track_bank (
+            track, best_ms, best_line, best_bins, ideal_ms, ideal_xyz, ideal_seg_ms,
+            poly, sf_meters, merged_laps, updated
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+         ON CONFLICT(track) DO UPDATE SET
+            best_ms = excluded.best_ms,
+            best_line = excluded.best_line,
+            best_bins = excluded.best_bins,
+            ideal_ms = excluded.ideal_ms,
+            ideal_xyz = excluded.ideal_xyz,
+            ideal_seg_ms = excluded.ideal_seg_ms,
+            poly = excluded.poly,
+            sf_meters = excluded.sf_meters,
+            merged_laps = excluded.merged_laps,
+            updated = excluded.updated",
+        params![
+            track,
+            bank.best_ms,
+            pack_line(&bank.best_line),
+            pack_channels(&bank.best_bins),
+            bank.ideal_ms,
+            pack_ideal_xyz(&bank.ideal_xyz),
+            pack_seg_ms(&bank.ideal_seg_ms),
+            pack_poly_pts(&bank.poly),
+            bank.sf_meters,
+            bank.merged_laps,
+            bank.updated
+        ],
+    );
+}
+
+fn merge_into_track_bank(
+    c: &Connection,
+    track: &str,
+    lap: &CommittedLap,
+    poly: &[(f32, f32)],
+    sf_meters: f32,
+) {
+    if track.is_empty() || !lap.is_you || lap.cut || lap.crashed || lap.from_gate {
+        return;
+    }
+    let mut bank = load_ideal_bank(c, track).unwrap_or_else(crate::track_bank::IdealBank::empty);
+    if crate::track_bank::merge_lap(
+        &mut bank,
+        lap.lap_ms,
+        &lap.bins,
+        &lap.line,
+        poly,
+        sf_meters,
+        now_secs(),
+    ) {
+        save_ideal_bank(c, track, &bank);
+    }
+}
+
+const TRACK_BANK_SEED_VER: i64 = 4;
+
+fn seed_track_bank_if_needed(c: &Connection) {
+    let seeded: i64 = c
+        .query_row(
+            "SELECT v FROM profile_meta WHERE k = 'track_bank_seeded'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    if seeded >= TRACK_BANK_SEED_VER {
+        return;
+    }
+    let _ = c.execute("DELETE FROM track_bank", []);
+    rebuild_track_bank(c);
+    let _ = c.execute(
+        "INSERT INTO profile_meta (k, v) VALUES ('track_bank_seeded', ?1)
+         ON CONFLICT(k) DO UPDATE SET v = excluded.v",
+        params![TRACK_BANK_SEED_VER],
+    );
+}
+
+fn rebuild_track_bank(c: &Connection) {
+    let Ok(mut stmt) = c.prepare(
+        "SELECT s.id, s.track, s.your_race_num, s.poly, s.sf_meters,
+                l.lap_num, l.ms, l.channels, l.line, COALESCE(l.warmup, 0)
+         FROM laps l
+         JOIN sessions s ON s.id = l.session_id
+         WHERE l.race_num = s.your_race_num AND l.ms > 0
+         ORDER BY s.started ASC, l.lap_num ASC",
+    ) else {
+        return;
+    };
+    let Ok(it) = stmt.query_map([], |r| {
+        Ok((
+            r.get::<_, i64>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, i32>(2)?,
+            r.get::<_, Option<Vec<u8>>>(3)?,
+            r.get::<_, f32>(4)?,
+            r.get::<_, i32>(5)?,
+            r.get::<_, i32>(6)?,
+            r.get::<_, Option<Vec<u8>>>(7)?,
+            r.get::<_, Option<Vec<u8>>>(8)?,
+            r.get::<_, i32>(9)?,
+        ))
+    }) else {
+        return;
+    };
+    // First non-warmup lap_num per session (gate L1) — skip for ideal bank.
+    let mut gate_lap: std::collections::HashMap<i64, i32> = std::collections::HashMap::new();
+    let mut rows: Vec<(
+        i64,
+        String,
+        Option<Vec<u8>>,
+        f32,
+        i32,
+        i32,
+        Option<Vec<u8>>,
+        Option<Vec<u8>>,
+        bool,
+    )> = Vec::new();
+    for row in it.filter_map(|r| r.ok()) {
+        let (sid, track, _you, poly_blob, sf, lap_num, ms, ch, line_blob, warmup) = row;
+        let is_wu = warmup != 0;
+        if !is_wu {
+            gate_lap.entry(sid).or_insert(lap_num);
+        }
+        rows.push((sid, track, poly_blob, sf, lap_num, ms, ch, line_blob, is_wu));
+    }
+    drop(stmt);
+
+    let mut banks: std::collections::HashMap<String, crate::track_bank::IdealBank> =
+        std::collections::HashMap::new();
+    for (sid, track, poly_blob, sf, lap_num, ms, ch, line_blob, is_wu) in rows {
+        if !is_wu && gate_lap.get(&sid) == Some(&lap_num) {
+            continue;
+        }
+        let bins = unpack_channels(ch.as_deref());
+        let line = unpack_line(line_blob.as_deref());
+        if line.len() < 8 {
+            continue;
+        }
+        if location_tape::infer_cut(&line, &bins, ms) {
+            continue;
+        }
+        let poly = unpack_poly(poly_blob.as_deref());
+        let bank = banks
+            .entry(track.clone())
+            .or_insert_with(crate::track_bank::IdealBank::empty);
+        let _ = crate::track_bank::merge_lap(
+            bank,
+            ms,
+            &bins,
+            &line,
+            &poly,
+            sf,
+            now_secs(),
+        );
+    }
+    for (track, bank) in banks {
+        if bank.best_ms > 0 || bank.has_ideal() {
+            save_ideal_bank(c, &track, &bank);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2248,6 +2610,7 @@ mod tests {
                 crashed: false,
                 cut: false,
                 warmup: false,
+                from_gate: false,
                 crashes: Vec::new(),
             };
             upsert_lap(c, id, &lap).expect("lap");
@@ -2406,6 +2769,7 @@ mod tests {
             crashed,
             cut: false,
             warmup: false,
+            from_gate: false,
             crashes: Vec::new(),
         }
     }
@@ -3472,6 +3836,90 @@ mod tests {
         clear_motos();
         assert!(list(ListFilter::All).is_empty());
         assert_eq!(profile(crate::ProfileWindow::AllTime).all_time_count, n);
+        reset();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn seed_demo_fills_track_bank_clear_wipes() {
+        let _g = serial();
+        reset();
+        let dir = std::env::temp_dir().join(format!("mxbo-track-bank-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        init(dir.clone());
+        seed_demo().expect("demo");
+        let rows = track_bank_rows();
+        assert!(!rows.is_empty(), "expected track bank rows from demo");
+        let detail = track_bank_detail(&rows[0].track).expect("detail");
+        assert!(detail.best_ms > 0);
+        assert!(!detail.best_line.is_empty() || !detail.ideal_line.is_empty());
+        clear_motos();
+        assert!(track_bank_rows().is_empty());
+        reset();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn gate_l1_skipped_flying_merges() {
+        let _g = serial();
+        reset();
+        let dir = std::env::temp_dir().join(format!("mxbo-gate-l1-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        init(dir.clone());
+        let poly: Vec<(f32, f32)> = (0..64)
+            .map(|i| {
+                let a = i as f32 / 64.0 * std::f32::consts::TAU;
+                (a.cos() * 40.0, a.sin() * 28.0)
+            })
+            .collect();
+        let line: Vec<(f32, f32, f32)> = poly
+            .iter()
+            .map(|(x, z)| (*x + 2.0, 1.0, *z))
+            .collect();
+        let mut bins = [ChannelBin::default(); BINS];
+        let mut acc = 0;
+        for b in bins.iter_mut() {
+            acc += 50;
+            b.ms = acc;
+            b.speed = 40.0;
+        }
+        {
+            let st = live();
+            let c = st.conn.as_ref().expect("conn");
+            let id = insert_session(c, "GateTrack", 7, 2, 7).expect("insert");
+            let _ = c.execute(
+                "UPDATE sessions SET poly = ?1, sf_meters = 10 WHERE id = ?2",
+                params![pack_poly_pts(&poly), id],
+            );
+            let gate = CommittedLap {
+                race_num: 2,
+                name: "You".into(),
+                bike: "FC 450".into(),
+                lap_ms: 120_000,
+                sectors: [0, 0, 0],
+                bins,
+                line: line.clone(),
+                is_you: true,
+                crashed: false,
+                cut: false,
+                warmup: false,
+                from_gate: true,
+                crashes: Vec::new(),
+            };
+            upsert_lap(c, id, &gate).expect("gate");
+            merge_into_track_bank(c, "GateTrack", &gate, &poly, 10.0);
+            assert!(
+                load_ideal_bank(c, "GateTrack").is_none(),
+                "gate L1 must not seed bank"
+            );
+            let mut fly = gate.clone();
+            fly.from_gate = false;
+            fly.lap_ms = 110_000;
+            upsert_lap(c, id, &fly).expect("fly");
+            merge_into_track_bank(c, "GateTrack", &fly, &poly, 10.0);
+        }
+        let d = track_bank_detail("GateTrack").expect("flying lap banks");
+        assert_eq!(d.best_ms, 110_000);
         reset();
         let _ = std::fs::remove_dir_all(&dir);
     }
