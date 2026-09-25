@@ -162,14 +162,6 @@ pub(crate) fn draw_standings(
                                 StField::Penalty => {
                                     (format_penalty(standing.penalty_ms), dim, true)
                                 }
-                                StField::Crashed => {
-                                    if standing.crashed != 0 || rider_crashed(s, standing.race_num)
-                                    {
-                                        ("CRASH".into(), behind_col(), true)
-                                    } else {
-                                        (String::new(), dim, true)
-                                    }
-                                }
                             },
                         );
                     });

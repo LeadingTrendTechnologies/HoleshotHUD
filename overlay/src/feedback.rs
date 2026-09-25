@@ -831,6 +831,11 @@ fn set_clipboard(text: &str, file: Option<&Path>) -> Result<(), ()> {
     Ok(())
 }
 
+/// Copy plain text to the clipboard (Stream URL buttons, etc.).
+pub fn copy_text(text: &str) -> Result<(), ()> {
+    set_clipboard(text, None)
+}
+
 fn set_clipboard_file(path: &Path) -> Result<(), ()> {
     let abs = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     let mut s = abs.to_string_lossy().into_owned();
