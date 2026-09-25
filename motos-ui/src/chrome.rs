@@ -2,6 +2,7 @@
 
 use std::cell::RefCell;
 
+use mxbo_hud::config::settings_theme_light;
 use mxbo_hud::render::{self, Fonts};
 use tiny_skia::{
     Color, FillRule, LineCap, LineJoin, Paint, Path, PathBuilder, Pixmap, Rect, Stroke, Transform,
@@ -9,11 +10,14 @@ use tiny_skia::{
 
 pub(crate) use mxbo_hud::render::icon;
 
+fn light_chrome() -> bool {
+    settings_theme_light()
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Hit {
     ReviewFilterAll,
-    ReviewFilterRace,
-    ReviewFilterPractice,
+    ReviewFilterRanked,
     ReviewFilterSaved,
     ReviewOpen(u64),
     ReviewKeep(u64),
@@ -63,7 +67,11 @@ pub(crate) fn accent_a(a: u8) -> Color {
 }
 
 pub(crate) fn muted() -> Color {
-    Color::from_rgba8(160, 160, 168, 255)
+    if light_chrome() {
+        Color::from_rgba8(72, 74, 84, 255)
+    } else {
+        Color::from_rgba8(160, 160, 168, 255)
+    }
 }
 
 pub(crate) fn caution() -> Color {
@@ -71,11 +79,43 @@ pub(crate) fn caution() -> Color {
 }
 
 pub(crate) fn text_col() -> Color {
-    Color::from_rgba8(240, 240, 242, 255)
+    if light_chrome() {
+        Color::from_rgba8(16, 16, 18, 255)
+    } else {
+        Color::from_rgba8(240, 240, 242, 255)
+    }
 }
 
 pub(crate) fn side() -> Color {
-    Color::from_rgba8(28, 28, 32, 255)
+    if light_chrome() {
+        Color::from_rgba8(230, 231, 235, 255)
+    } else {
+        Color::from_rgba8(28, 28, 32, 255)
+    }
+}
+
+pub(crate) fn hover_wash() -> Color {
+    if light_chrome() {
+        Color::from_rgba8(0, 0, 0, 8)
+    } else {
+        Color::from_rgba8(255, 255, 255, 10)
+    }
+}
+
+pub(crate) fn track_off() -> Color {
+    if light_chrome() {
+        Color::from_rgba8(196, 198, 206, 255)
+    } else {
+        Color::from_rgba8(48, 48, 52, 255)
+    }
+}
+
+pub(crate) fn sheet_hair() -> Color {
+    if light_chrome() {
+        Color::from_rgba8(0, 0, 0, 14)
+    } else {
+        Color::from_rgba8(42, 42, 46, 255)
+    }
 }
 
 pub(crate) fn text(
@@ -162,11 +202,21 @@ pub(crate) fn ellipsize_heading(fonts: &Fonts, s: &str, size: f32, max_w: f32) -
     if measure(fonts, s, size) <= max_w {
         return s.to_string();
     }
-    let mut t = s.to_string();
-    while t.len() > 2 && measure(fonts, &format!("{t}…"), size) > max_w {
-        t.pop();
+    // U+2026 is often missing from the UI face; measure/paint skip missing glyphs.
+    let dots = if fonts.ui.has_glyph('…') { "…" } else { "..." };
+    let mut out = String::new();
+    for ch in s.chars() {
+        let next = format!("{out}{ch}{dots}");
+        if measure(fonts, &next, size) > max_w {
+            if out.is_empty() {
+                return dots.into();
+            }
+            out.push_str(dots);
+            return out;
+        }
+        out.push(ch);
     }
-    format!("{t}…")
+    out
 }
 
 pub(crate) fn fill_skew(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, skew: f32, c: Color) {
@@ -204,7 +254,7 @@ pub(crate) fn switch_lg(
 ) {
     let w = 52.0;
     let h = 28.0;
-    fill_round(px, x, y, w, h, 14.0, Color::from_rgba8(48, 48, 52, 255));
+    fill_round(px, x, y, w, h, 14.0, track_off());
     let knob_x = if on { x + w - 24.0 } else { x + 4.0 };
     fill_round(px, knob_x, y + 4.0, 20.0, 20.0, 10.0, accent());
     hits.push(HitBox {
@@ -283,7 +333,8 @@ pub(crate) fn heading(
             hits,
         );
     }
-    text(px, fonts, sub, 13.0, x, y + h + 8.0, muted(), false);
+    let sub = ellipsize_heading(fonts, sub, 13.0, w);
+    text(px, fonts, &sub, 13.0, x, y + h + 8.0, muted(), false);
     y + h + 8.0 + 46.0
 }
 
@@ -301,11 +352,7 @@ pub(crate) fn action_btn(
     primary: bool,
 ) -> f32 {
     let _ = hover;
-    let bg = if primary {
-        accent()
-    } else {
-        Color::from_rgba8(48, 48, 52, 255)
-    };
+    let bg = if primary { accent() } else { track_off() };
     fill_round(px, x, y, w, h, 6.0, bg);
     let tw = measure(fonts, label, 14.0);
     text(
@@ -329,15 +376,23 @@ pub(crate) fn action_btn(
 }
 
 pub(crate) fn knob() -> Color {
-    Color::from_rgba8(240, 240, 242, 255)
+    Color::from_rgba8(250, 250, 252, 255)
 }
 
 pub(crate) fn dim() -> Color {
-    Color::from_rgba8(120, 120, 128, 255)
+    if light_chrome() {
+        Color::from_rgba8(88, 90, 100, 255)
+    } else {
+        Color::from_rgba8(120, 120, 128, 255)
+    }
 }
 
 pub(crate) fn btn_border() -> Color {
-    Color::from_rgba8(255, 255, 255, 18)
+    if light_chrome() {
+        Color::from_rgba8(0, 0, 0, 22)
+    } else {
+        Color::from_rgba8(255, 255, 255, 18)
+    }
 }
 
 #[derive(Clone)]
@@ -499,7 +554,7 @@ pub fn paint_mode_bar(
                 tab_w,
                 36.0,
                 8.0,
-                Color::from_rgba8(255, 255, 255, 12),
+                hover_wash(),
             );
             fill_round(px, x, y + 8.0, 3.0, 20.0, 1.5, accent());
         } else if hover == Some(*hit) {
@@ -510,7 +565,7 @@ pub fn paint_mode_bar(
                 tab_w,
                 36.0,
                 8.0,
-                Color::from_rgba8(255, 255, 255, 8),
+                hover_wash(),
             );
         }
         let tw = measure(fonts, label, 14.0);
@@ -554,5 +609,16 @@ mod tests {
         assert_eq!(got.len(), 1);
         assert!(matches!(got[0].open_hit, Hit::AnalyzeLapOpen));
         assert!(take_pending_drops().is_empty());
+    }
+
+    #[test]
+    fn ellipsize_heading_trails_long_track() {
+        let fonts = Fonts::load().expect("fonts");
+        let long = "Southwick National Motocross Track Extra Long Name";
+        let max_w = 80.0;
+        let out = ellipsize_heading(&fonts, long, 14.0, max_w);
+        assert!(out.ends_with('…') || out.ends_with("..."));
+        assert!(measure(&fonts, &out, 14.0) <= max_w + 0.5);
+        assert!(out.len() < long.len());
     }
 }

@@ -5,6 +5,8 @@ pub(crate) struct GamepadLayout {
     ls: [f32; 2],
     rs: [f32; 2],
     well_r: f32,
+    /// Radius in art pixels of the dark skin's drawn well ring.
+    well_stroke_r: f32,
     /// Stick cap radius in art pixels.
     cap_r: f32,
     l2: [f32; 4],
@@ -19,7 +21,7 @@ pub(crate) struct GamepadLayout {
     face_r: f32,
     dpad: [[f32; 2]; 4],
     dpad_half: [f32; 2],
-    /// Per-direction arm UV rects `[u, v, w, h]` for `shade_art` (Xbox cross). `None` = DS4 flood fill.
+    /// Per-direction arm UV rects `[u, v, w, h]` (Xbox cross). `None` = DS4 flood fill.
     dpad_seg: Option<[[f32; 4]; 4]>,
     back: [f32; 4],
     start: [f32; 4],
@@ -33,6 +35,7 @@ pub(crate) fn ds4_gamepad_layout() -> GamepadLayout {
         ls: [0.3554, 0.6117],
         rs: [0.6425, 0.6117],
         well_r: 108.0,
+        well_stroke_r: 100.0,
         cap_r: 48.0,
         l2: [0.168, 0.036, 0.132, 0.145],
         r2: [0.698, 0.036, 0.132, 0.145],
@@ -65,30 +68,10 @@ pub(crate) fn ds4_gamepad_layout() -> GamepadLayout {
     }
 }
 
-/// DS4 filled (Light) skin — same control positions; cross d-pad uses segment presses.
-pub(crate) fn ds4_light_gamepad_layout() -> GamepadLayout {
-    let mut l = ds4_gamepad_layout();
-    let cx = 0.2272;
-    let cy = 0.4243;
-    let arm = 0.055;
-    let bar = 0.065 * 1024.0 / 1536.0;
-    let arm_v = 0.055 * 1536.0 / 1024.0;
-    l.dpad_seg = Some([
-        [cx - bar / 2.0, cy - arm_v, bar, arm_v],
-        [cx, cy - bar / 2.0, arm, bar],
-        [cx - bar / 2.0, cy, bar, arm_v],
-        [cx - arm, cy - bar / 2.0, arm, bar],
-    ]);
-    l
-}
-
-pub(crate) fn gamepad_layout(sony: bool, filled: bool) -> GamepadLayout {
+/// Both DualShock skins share one drawing, so one layout serves Light and Dark.
+pub(crate) fn gamepad_layout(sony: bool) -> GamepadLayout {
     if sony {
-        if filled {
-            ds4_light_gamepad_layout()
-        } else {
-            ds4_gamepad_layout()
-        }
+        ds4_gamepad_layout()
     } else {
         xbox_gamepad_layout()
     }
@@ -101,6 +84,7 @@ pub(crate) fn xbox_gamepad_layout() -> GamepadLayout {
         ls: [338.7 / 1344.0, 397.2 / 1024.0],
         rs: [843.7 / 1344.0, 598.8 / 1024.0],
         well_r: 104.0,
+        well_stroke_r: 103.0,
         cap_r: 69.4,
         l2: [275.8 / 1344.0, 7.0 / 1024.0, 161.7 / 1344.0, 113.8 / 1024.0],
         r2: [908.5 / 1344.0, 7.0 / 1024.0, 161.7 / 1344.0, 113.8 / 1024.0],
@@ -197,133 +181,26 @@ pub(crate) fn draw_gamepad(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: 
     }
 
     let sony = cfg.gamepad_style.sony_art(pad.kind);
-    let filled = crate::config::GamepadTheme::filled_for_platform(sony);
+    let filled = cfg.gamepad_theme.filled();
     let well = Color::from_rgba8(22, 22, 24, 255);
     let cream = Color::from_rgba8(248, 248, 252, 255);
     let Some(art) = gamepad_art(sony, filled) else {
         return;
     };
-    let Some((dx, dy, dw, dh)) = blit_gamepad_art(px, art, sony, filled, x, y, w, h) else {
+    let layout = gamepad_layout(sony);
+    // Every skin is pressed in art space before it is scaled, so fills get the same
+    // area-averaged edges as the idle outlines.
+    let Some((dx, dy, dw, dh)) =
+        blit_gamepad_art(px, art, sony, filled, x, y, w, h, Some((pad, &layout)))
+    else {
         return;
     };
 
-    let layout = gamepad_layout(sony, filled);
     let (lsx, lsy) = (dx + layout.ls[0] * dw, dy + layout.ls[1] * dh);
     let (rsx, rsy) = (dx + layout.rs[0] * dw, dy + layout.rs[1] * dh);
     let well_r = layout.well_r / art.height() as f32 * dh;
     plug_stick_well(px, lsx, lsy, well_r, well);
     plug_stick_well(px, rsx, rsy, well_r, well);
-
-    if pad.lt >= 0.03 {
-        shade_press_flood(
-            px,
-            art,
-            dx,
-            dy,
-            dw,
-            dh,
-            layout.l2_seed[0],
-            layout.l2_seed[1],
-            layout.l2,
-            pad.lt,
-            sony && !filled,
-        );
-    }
-    if pad.rt >= 0.03 {
-        shade_press_flood(
-            px,
-            art,
-            dx,
-            dy,
-            dw,
-            dh,
-            layout.r2_seed[0],
-            layout.r2_seed[1],
-            layout.r2,
-            pad.rt,
-            sony && !filled,
-        );
-    }
-    if pad.down(crate::gamepad::LB) {
-        shade_press_flood(
-            px,
-            art,
-            dx,
-            dy,
-            dw,
-            dh,
-            layout.l1_seed[0],
-            layout.l1_seed[1],
-            layout.l1,
-            1.0,
-            sony && !filled,
-        );
-    }
-    if pad.down(crate::gamepad::RB) {
-        shade_press_flood(
-            px,
-            art,
-            dx,
-            dy,
-            dw,
-            dh,
-            layout.r1_seed[0],
-            layout.r1_seed[1],
-            layout.r1,
-            1.0,
-            sony && !filled,
-        );
-    }
-    if let Some(touch) = layout.touch {
-        if pad.down(crate::gamepad::TOUCH) {
-            shade_art(
-                px,
-                art,
-                dx,
-                dy,
-                dw,
-                dh,
-                touch,
-                0.0,
-                ShadeMode::Interior,
-                accent(),
-                |_, _| true,
-            );
-        }
-    }
-    if pad.down(crate::gamepad::BACK) {
-        shade_art(
-            px,
-            art,
-            dx,
-            dy,
-            dw,
-            dh,
-            layout.back,
-            0.0,
-            ShadeMode::Interior,
-            accent(),
-            |_, _| true,
-        );
-    }
-    if pad.down(crate::gamepad::START) {
-        shade_art(
-            px,
-            art,
-            dx,
-            dy,
-            dw,
-            dh,
-            layout.start,
-            0.0,
-            ShadeMode::Interior,
-            accent(),
-            |_, _| true,
-        );
-    }
-
-    shade_dpad(px, art, dx, dy, dw, dh, pad, &layout);
-    shade_face(px, art, dx, dy, dw, dh, pad, &layout);
 
     draw_stick_live(
         px,
@@ -359,27 +236,6 @@ pub(crate) fn draw_gamepad(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: 
         &layout,
         filled,
     );
-
-    if pad.down(crate::gamepad::GUIDE) {
-        let mode = if filled {
-            ShadeMode::Stroke
-        } else {
-            ShadeMode::Interior
-        };
-        shade_disc(
-            px,
-            art,
-            dx,
-            dy,
-            dw,
-            dh,
-            layout.guide[0],
-            layout.guide[1],
-            layout.guide_r,
-            mode,
-            accent(),
-        );
-    }
 }
 
 pub(crate) fn gamepad_art(sony: bool, filled: bool) -> Option<&'static Pixmap> {
@@ -414,6 +270,7 @@ pub(crate) fn blit_gamepad_art(
     y: f32,
     w: f32,
     h: f32,
+    art_press: Option<(crate::gamepad::PadState, &GamepadLayout)>,
 ) -> Option<(f32, f32, f32, f32)> {
     let iw = src.width() as f32;
     let ih = src.height() as f32;
@@ -430,15 +287,14 @@ pub(crate) fn blit_gamepad_art(
     let dy = y + (h - dh) * 0.5;
     let tw = dw.round().max(1.0) as u32;
     let th = dh.round().max(1.0) as u32;
-    let Some(hi) = scaled_gamepad_art(src, sony, filled, tw, th) else {
+    let Some(mut hi) = scaled_gamepad_art(src, sony, filled, tw, th) else {
         return None;
     };
+    if let Some((pad, layout)) = art_press {
+        hi = pad_pressed_frame(src, hi, sony, filled, pad, layout, dh);
+    }
     let mut paint = PixmapPaint::default();
-    paint.quality = if sony {
-        FilterQuality::Bilinear
-    } else {
-        FilterQuality::Bicubic
-    };
+    paint.quality = FilterQuality::Bicubic;
     px.draw_pixmap(
         0,
         0,
@@ -466,48 +322,538 @@ pub(crate) fn scaled_gamepad_art(
                 return Some(px.clone());
             }
         }
-        let sw = tw.saturating_mul(4).max(4);
-        let sh = th.saturating_mul(4).max(4);
-        let mut hi = Pixmap::new(sw, sh)?;
-        let sx = sw as f32 / src.width() as f32;
-        let sy = sh as f32 / src.height() as f32;
-        let mut paint = PixmapPaint::default();
-        paint.quality = FilterQuality::Bilinear;
-        hi.draw_pixmap(
-            0,
-            0,
-            src.as_ref(),
-            &paint,
-            Transform::from_scale(sx, sy),
-            None,
-        );
-        let mut lo = Pixmap::new(tw, th)?;
-        let mut down = PixmapPaint::default();
-        down.quality = FilterQuality::Bicubic;
-        lo.draw_pixmap(
-            0,
-            0,
-            hi.as_ref(),
-            &down,
-            Transform::from_scale(tw as f32 / sw as f32, th as f32 / sh as f32),
-            None,
-        );
+        // Pressed skins re-downscale dirty regions with the area average, so their idle frame
+        // must use it too or the pressed regions would seam.
+        let lo = if tw <= src.width() && th <= src.height() {
+            area_downscale(src, tw, th)?
+        } else {
+            supersampled_resample(src, tw, th)?
+        };
         *slot.borrow_mut() = Some((sony, filled, tw, th, lo.clone()));
         Some(lo)
     })
 }
 
-#[derive(Clone, Copy)]
-pub(crate) enum ShadeMode {
-    /// Dark DualShock fill. Leaves the drawing's outlines and baked labels.
-    Interior,
-    /// Every opaque art pixel (cap cover).
-    All,
-    /// The drawing's light strokes (stick well ring).
-    Stroke,
+fn supersampled_resample(src: &Pixmap, tw: u32, th: u32) -> Option<Pixmap> {
+    let sw = tw.saturating_mul(4).max(4);
+    let sh = th.saturating_mul(4).max(4);
+    let mut hi = Pixmap::new(sw, sh)?;
+    let mut paint = PixmapPaint::default();
+    paint.quality = FilterQuality::Bilinear;
+    hi.draw_pixmap(
+        0,
+        0,
+        src.as_ref(),
+        &paint,
+        Transform::from_scale(sw as f32 / src.width() as f32, sh as f32 / src.height() as f32),
+        None,
+    );
+    let mut lo = Pixmap::new(tw, th)?;
+    let mut down = PixmapPaint::default();
+    down.quality = FilterQuality::Bicubic;
+    lo.draw_pixmap(
+        0,
+        0,
+        hi.as_ref(),
+        &down,
+        Transform::from_scale(tw as f32 / sw as f32, th as f32 / sh as f32),
+        None,
+    );
+    Some(lo)
 }
 
-/// Recolor DualShock art. `y_cut` 0 paints the whole box; analog uses `1 - squeeze`.
+/// Per-destination-pixel source coverage `(first, weights)` for a 1-D box downscale.
+fn box_taps(src_len: u32, dst_len: u32) -> Vec<(usize, Vec<f32>)> {
+    let scale = src_len as f32 / dst_len as f32;
+    (0..dst_len)
+        .map(|i| {
+            let lo = i as f32 * scale;
+            let hi = (lo + scale).min(src_len as f32);
+            let first = lo.floor() as usize;
+            let last = (hi.ceil() as usize).min(src_len as usize);
+            let weights = (first..last)
+                .map(|j| ((j + 1) as f32).min(hi) - (j as f32).max(lo))
+                .map(|coverage| coverage / scale)
+                .collect();
+            (first, weights)
+        })
+        .collect()
+}
+
+/// Area-average downscale on premultiplied pixels. Thin 1px strokes stay continuous
+/// instead of aliasing into dashes the way a single resample does.
+pub(crate) fn area_downscale(src: &Pixmap, tw: u32, th: u32) -> Option<Pixmap> {
+    let mut out = Pixmap::new(tw, th)?;
+    area_downscale_into(src, &mut out, [0, 0, tw, th]);
+    Some(out)
+}
+
+/// Recompute only `rect` (`[x0, y0, x1, y1)` in `dst` pixels) of an area-average downscale
+/// of `src` to `dst`'s size.
+pub(crate) fn area_downscale_into(src: &Pixmap, dst: &mut Pixmap, rect: [u32; 4]) {
+    let (tw, th) = (dst.width(), dst.height());
+    let [x0, y0, x1, y1] = [rect[0], rect[1], rect[2].min(tw), rect[3].min(th)];
+    if x0 >= x1 || y0 >= y1 || tw > src.width() || th > src.height() {
+        return;
+    }
+    let src_w = src.width() as usize;
+    let dst_w = tw as usize;
+    let cols = &box_taps(src.width(), tw)[x0 as usize..x1 as usize];
+    let rows = &box_taps(src.height(), th)[y0 as usize..y1 as usize];
+    let row_lo = rows[0].0;
+    let row_hi = rows.last().map_or(row_lo, |(first, weights)| first + weights.len());
+    let span_w = cols.len();
+    let pixels = src.pixels();
+    let mut horizontal = vec![[0.0f32; 4]; (row_hi - row_lo) * span_w];
+    for y in row_lo..row_hi {
+        let row = &pixels[y * src_w..(y + 1) * src_w];
+        for (x, (first, weights)) in cols.iter().enumerate() {
+            let mut sum = [0.0f32; 4];
+            for (k, weight) in weights.iter().enumerate() {
+                let p = row[first + k];
+                sum[0] += p.red() as f32 * weight;
+                sum[1] += p.green() as f32 * weight;
+                sum[2] += p.blue() as f32 * weight;
+                sum[3] += p.alpha() as f32 * weight;
+            }
+            horizontal[(y - row_lo) * span_w + x] = sum;
+        }
+    }
+    let dest = dst.pixels_mut();
+    for (ry, (first, weights)) in rows.iter().enumerate() {
+        let y = y0 as usize + ry;
+        for rx in 0..span_w {
+            let x = x0 as usize + rx;
+            let mut sum = [0.0f32; 4];
+            for (k, weight) in weights.iter().enumerate() {
+                let p = horizontal[(first + k - row_lo) * span_w + rx];
+                for channel in 0..4 {
+                    sum[channel] += p[channel] * weight;
+                }
+            }
+            let alpha = sum[3].round().clamp(0.0, 255.0) as u8;
+            let channel = |v: f32| (v.round().clamp(0.0, 255.0) as u8).min(alpha);
+            if let Some(p) = PremultipliedColorU8::from_rgba(
+                channel(sum[0]),
+                channel(sum[1]),
+                channel(sum[2]),
+                alpha,
+            ) {
+                dest[y * dst_w + x] = p;
+            }
+        }
+    }
+}
+
+/// How a skin's art mixes its ink with the lighter marks drawn over it.
+#[derive(Clone, Copy)]
+struct PressPalette {
+    ink: [f32; 3],
+    /// Coverage ramp: 0 at `lo` (pure ink), 1 at `hi` (a full stroke or paper).
+    lo: f32,
+    hi: f32,
+    /// Ramp on the max channel instead of luminance, so saturated letters count as marks.
+    max_channel: bool,
+}
+
+impl PressPalette {
+    fn coverage(&self, rgb: [f32; 3]) -> f32 {
+        let level = if self.max_channel {
+            rgb[0].max(rgb[1]).max(rgb[2])
+        } else {
+            rgb[0] * 0.30 + rgb[1] * 0.59 + rgb[2] * 0.11
+        };
+        ((level - self.lo) / (self.hi - self.lo)).clamp(0.0, 1.0)
+    }
+}
+
+const DS4_PALETTE: PressPalette = PressPalette {
+    ink: [29.0, 31.0, 34.0],
+    lo: 34.0,
+    hi: 118.0,
+    max_channel: false,
+};
+const XBOX_PALETTE: PressPalette = PressPalette {
+    ink: [10.0, 10.0, 10.0],
+    lo: 10.0,
+    hi: 200.0,
+    max_channel: true,
+};
+/// Drawn with the DualShock dark body and stroke colors.
+const XBOX_DARK_PALETTE: PressPalette = DS4_PALETTE;
+/// Light DualShock: slate controls and black panels under cream outlines and marks.
+const DS4_LIGHT_PALETTE: PressPalette = PressPalette {
+    ink: [58.0, 62.0, 72.0],
+    lo: 62.0,
+    hi: 200.0,
+    max_channel: false,
+};
+/// Light DualShock floods stop at its black panels, which sit below this luminance.
+const DS4_LIGHT_FLOOD_MIN_LUM: u8 = 30;
+const PRESS_CREAM: [f32; 3] = [248.0, 248.0, 252.0];
+const PRESS_BITS: u32 = crate::gamepad::LB
+    | crate::gamepad::RB
+    | crate::gamepad::BACK
+    | crate::gamepad::START
+    | crate::gamepad::TOUCH
+    | crate::gamepad::GUIDE
+    | crate::gamepad::UP
+    | crate::gamepad::RIGHT
+    | crate::gamepad::DOWN
+    | crate::gamepad::LEFT
+    | crate::gamepad::NORTH
+    | crate::gamepad::EAST
+    | crate::gamepad::SOUTH
+    | crate::gamepad::WEST;
+
+#[derive(Clone, Copy)]
+enum PressFill {
+    /// Ink turns accent; outlines, letters and paper keep their drawn color.
+    Keep,
+    /// Ink turns accent; glyph strokes read as cream on it (DualShock face symbols).
+    Cream,
+    /// Paper turns accent; the ink mark on it stays (Xbox guide: light disc, dark X).
+    Paper,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+struct PressKey {
+    sony: bool,
+    filled: bool,
+    buttons: u32,
+    lt: u8,
+    rt: u8,
+    accent: [u8; 3],
+    size: (u32, u32),
+}
+
+struct PressState {
+    /// Full-resolution art with this frame's presses applied.
+    pressed: Pixmap,
+    /// Art rects in `pressed` that differ from the original art.
+    dirty: Vec<[u32; 4]>,
+    key: PressKey,
+    frame: Pixmap,
+}
+
+fn analog_key(v: f32) -> u8 {
+    if v < 0.03 {
+        0
+    } else {
+        (v.clamp(0.0, 1.0) * 255.0).round().max(1.0) as u8
+    }
+}
+
+/// The pad with presses composited in art space, then area-averaged down over only the
+/// changed regions of the cached idle frame.
+pub(crate) fn pad_pressed_frame(
+    art: &Pixmap,
+    idle: Pixmap,
+    sony: bool,
+    filled: bool,
+    pad: crate::gamepad::PadState,
+    layout: &GamepadLayout,
+    dh: f32,
+) -> Pixmap {
+    thread_local! {
+        static STATE: RefCell<Option<PressState>> = const { RefCell::new(None) };
+    }
+    let key = PressKey {
+        sony,
+        filled,
+        buttons: pad.buttons & PRESS_BITS,
+        lt: analog_key(pad.lt),
+        rt: analog_key(pad.rt),
+        accent: accent_rgb(),
+        size: (idle.width(), idle.height()),
+    };
+    let idle_key = PressKey {
+        buttons: 0,
+        lt: 0,
+        rt: 0,
+        ..key
+    };
+    STATE.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        let stale = slot.as_ref().map_or(true, |state| {
+            state.key.sony != key.sony
+                || state.key.filled != key.filled
+                || state.key.size != key.size
+                || state.pressed.width() != art.width()
+        });
+        if stale {
+            if key == idle_key {
+                *slot = None;
+                return idle;
+            }
+            *slot = Some(PressState {
+                pressed: art.clone(),
+                dirty: Vec::new(),
+                key: idle_key,
+                frame: idle.clone(),
+            });
+        }
+        let Some(state) = slot.as_mut() else {
+            return idle;
+        };
+        if state.key == key {
+            return state.frame.clone();
+        }
+        let previous = std::mem::take(&mut state.dirty);
+        for &rect in &previous {
+            copy_art_rect(art, &mut state.pressed, rect);
+        }
+        state.dirty = apply_presses(art, &mut state.pressed, sony, filled, pad, layout, dh);
+        let (tw, th) = key.size;
+        let (sx, sy) = (tw as f32 / art.width() as f32, th as f32 / art.height() as f32);
+        for rect in previous.iter().chain(state.dirty.iter()) {
+            let dest = [
+                (rect[0] as f32 * sx).floor() as u32,
+                (rect[1] as f32 * sy).floor() as u32,
+                ((rect[2] as f32 * sx).ceil() as u32 + 1).min(tw),
+                ((rect[3] as f32 * sy).ceil() as u32 + 1).min(th),
+            ];
+            area_downscale_into(&state.pressed, &mut state.frame, dest);
+        }
+        state.key = key;
+        state.frame.clone()
+    })
+}
+
+fn copy_art_rect(art: &Pixmap, dst: &mut Pixmap, rect: [u32; 4]) {
+    let w = art.width() as usize;
+    let src = art.pixels();
+    let dest = dst.pixels_mut();
+    for y in rect[1] as usize..rect[3] as usize {
+        let row = y * w;
+        dest[row + rect[0] as usize..row + rect[2] as usize]
+            .copy_from_slice(&src[row + rect[0] as usize..row + rect[2] as usize]);
+    }
+}
+
+fn apply_presses(
+    art: &Pixmap,
+    pressed: &mut Pixmap,
+    sony: bool,
+    filled: bool,
+    pad: crate::gamepad::PadState,
+    layout: &GamepadLayout,
+    dh: f32,
+) -> Vec<[u32; 4]> {
+    let xbox_dark = !sony && !filled;
+    let palette = match (sony, filled) {
+        (true, true) => DS4_LIGHT_PALETTE,
+        (true, false) => DS4_PALETTE,
+        (false, true) => XBOX_PALETTE,
+        (false, false) => XBOX_DARK_PALETTE,
+    };
+    let flood_min_lum = if sony && filled {
+        DS4_LIGHT_FLOOD_MIN_LUM
+    } else {
+        0
+    };
+    let accent = accent_rgb().map(f32::from);
+    let fade = (art.height() as f32 / dh.max(1.0)).max(1.0);
+    let (iw, ih) = (art.width() as f32, art.height() as f32);
+    let art_rect = |uv: [f32; 4]| {
+        [
+            (uv[0] * iw).floor().max(0.0) as u32,
+            (uv[1] * ih).floor().max(0.0) as u32,
+            ((uv[0] + uv[2]) * iw).ceil().min(iw) as u32,
+            ((uv[1] + uv[3]) * ih).ceil().min(ih) as u32,
+        ]
+    };
+    let mut dirty = Vec::new();
+    let mut paint = |rect: [u32; 4], fill: PressFill, weight: &dyn Fn(u32, u32) -> f32| {
+        paint_art_region(art, pressed, rect, palette, accent, fill, weight);
+        dirty.push(rect);
+    };
+
+    let flood = |seed: [f32; 2], uv: [f32; 4], squeeze: f32| {
+        flood_mask(art, seed[0], seed[1], uv, squeeze, sony, flood_min_lum)
+    };
+    let mut floods = Vec::new();
+    if pad.lt >= 0.03 {
+        floods.extend(flood(layout.l2_seed, layout.l2, pad.lt));
+    }
+    if pad.rt >= 0.03 {
+        floods.extend(flood(layout.r2_seed, layout.r2, pad.rt));
+    }
+    if pad.down(crate::gamepad::LB) {
+        floods.extend(flood(layout.l1_seed, layout.l1, 1.0));
+    }
+    if pad.down(crate::gamepad::RB) {
+        floods.extend(flood(layout.r1_seed, layout.r1, 1.0));
+    }
+    let dpad_bits = [
+        crate::gamepad::UP,
+        crate::gamepad::RIGHT,
+        crate::gamepad::DOWN,
+        crate::gamepad::LEFT,
+    ];
+    let mut rects = Vec::new();
+    let mut dpad_rects = Vec::new();
+    let [hu, hv] = layout.dpad_half;
+    for (i, &bit) in dpad_bits.iter().enumerate() {
+        if pad.down(bit) {
+            match layout.dpad_seg {
+                Some(segs) => dpad_rects.push(segs[i]),
+                None => {
+                    let [u, v] = layout.dpad[i];
+                    floods.extend(flood([u, v], [u - hu, v - hv, hu * 2.0, hv * 2.0], 1.0));
+                }
+            }
+        }
+    }
+    // The dark Xbox body is ink too: arm rects stop at the cross outline, and View/Menu fill
+    // only inside their rings.
+    let dpad_cross = if xbox_dark && !dpad_rects.is_empty() {
+        let (center_u, center_v) = (layout.dpad[0][0], layout.dpad[1][1]);
+        flood(
+            [center_u, center_v],
+            [center_u - hu, center_v - hv, hu * 2.0, hv * 2.0],
+            1.0,
+        )
+    } else {
+        None
+    };
+    let mut buttons = Vec::new();
+    if pad.down(crate::gamepad::BACK) {
+        buttons.push(layout.back);
+    }
+    if pad.down(crate::gamepad::START) {
+        buttons.push(layout.start);
+    }
+    if xbox_dark {
+        for uv in buttons.drain(..) {
+            floods.extend(flood([uv[0] + uv[2] * 0.5, uv[1] + uv[3] * 0.5], uv, 1.0));
+        }
+    }
+    for mask in &floods {
+        paint([mask.ax0, mask.ay0, mask.ax1, mask.ay1], PressFill::Keep, &|x, y| {
+            if !mask.fill[(y - mask.ay0) as usize * mask.bw + (x - mask.ax0) as usize] {
+                return 0.0;
+            }
+            ((y as f32 + 0.5 - mask.cut) / fade).clamp(0.0, 1.0)
+        });
+    }
+
+    if let Some(touch) = layout.touch {
+        if pad.down(crate::gamepad::TOUCH) {
+            rects.push(touch);
+        }
+    }
+    rects.extend(buttons);
+    for uv in dpad_rects {
+        match &dpad_cross {
+            Some(cross) => paint(art_rect(uv), PressFill::Keep, &|x, y| {
+                if cross.contains(x, y) {
+                    1.0
+                } else {
+                    0.0
+                }
+            }),
+            None => paint(art_rect(uv), PressFill::Keep, &|_, _| 1.0),
+        }
+    }
+    for uv in rects {
+        paint(art_rect(uv), PressFill::Keep, &|_, _| 1.0);
+    }
+
+    let mut disc = |[u, v]: [f32; 2], r: f32, fill: PressFill| {
+        let (cx, cy) = (u * iw, v * ih);
+        let side = r * 2.0 + 4.0;
+        let rect = art_rect([(cx - r - 2.0) / iw, (cy - r - 2.0) / ih, side / iw, side / ih]);
+        paint(rect, fill, &|x, y| {
+            let ddx = x as f32 + 0.5 - cx;
+            let ddy = y as f32 + 0.5 - cy;
+            (r + 0.5 - (ddx * ddx + ddy * ddy).sqrt()).clamp(0.0, 1.0)
+        });
+    };
+    let face_bits = [
+        crate::gamepad::NORTH,
+        crate::gamepad::EAST,
+        crate::gamepad::SOUTH,
+        crate::gamepad::WEST,
+    ];
+    let face_fill = if sony || xbox_dark {
+        PressFill::Cream
+    } else {
+        PressFill::Keep
+    };
+    for (i, &bit) in face_bits.iter().enumerate() {
+        if pad.down(bit) {
+            disc(layout.face[i], layout.face_r, face_fill);
+        }
+    }
+    if pad.down(crate::gamepad::GUIDE) {
+        let guide_fill = if filled && !sony {
+            PressFill::Paper
+        } else {
+            PressFill::Keep
+        };
+        disc(layout.guide, layout.guide_r, guide_fill);
+    }
+    dirty
+}
+
+/// Lay accent into the art inside `rect`, weighted per pixel by `weight` (0 keeps the art).
+/// Ink/mark coverage comes from the full-resolution art, so edges and glyphs stay anti-aliased.
+fn paint_art_region(
+    art: &Pixmap,
+    pressed: &mut Pixmap,
+    rect: [u32; 4],
+    palette: PressPalette,
+    accent: [f32; 3],
+    fill: PressFill,
+    weight: &dyn Fn(u32, u32) -> f32,
+) {
+    let w = art.width();
+    let src = art.pixels();
+    let dest = pressed.pixels_mut();
+    for y in rect[1]..rect[3].min(art.height()) {
+        for x in rect[0]..rect[2].min(w) {
+            let t = weight(x, y);
+            if t <= 0.0 {
+                continue;
+            }
+            let i = (y * w + x) as usize;
+            let p = src[i];
+            let alpha = p.alpha();
+            if alpha < 8 {
+                continue;
+            }
+            let a = alpha as f32 / 255.0;
+            let rgb = [p.red() as f32 / a, p.green() as f32 / a, p.blue() as f32 / a];
+            let coverage = palette.coverage(rgb);
+            let out: [f32; 3] = std::array::from_fn(|c| {
+                let lit = match fill {
+                    PressFill::Paper => palette.ink[c] * (1.0 - coverage) + accent[c] * coverage,
+                    PressFill::Cream => accent[c] * (1.0 - coverage) + PRESS_CREAM[c] * coverage,
+                    PressFill::Keep => {
+                        let mark = if coverage > 0.0 {
+                            ((rgb[c] - palette.ink[c] * (1.0 - coverage)) / coverage)
+                                .clamp(0.0, 255.0)
+                        } else {
+                            0.0
+                        };
+                        accent[c] * (1.0 - coverage) + mark * coverage
+                    }
+                };
+                (rgb[c] * (1.0 - t) + lit * t) * a
+            });
+            let channel = |v: f32| (v.round().clamp(0.0, 255.0) as u8).min(alpha);
+            if let Some(q) =
+                PremultipliedColorU8::from_rgba(channel(out[0]), channel(out[1]), channel(out[2]), alpha)
+            {
+                dest[i] = q;
+            }
+        }
+    }
+}
+
+/// Cover every opaque art pixel in `uv` with `color` (stick cap cover).
+/// `y_cut` 0 paints the whole box; analog uses `1 - squeeze`.
 pub(crate) fn shade_art(
     px: &mut Pixmap,
     art: &Pixmap,
@@ -517,7 +863,6 @@ pub(crate) fn shade_art(
     dh: f32,
     uv: [f32; 4],
     y_cut: f32,
-    mode: ShadeMode,
     color: Color,
     pred: impl Fn(f32, f32) -> bool,
 ) {
@@ -561,18 +906,7 @@ pub(crate) fn shade_art(
             let Some(src) = art.pixel(ax as u32, ay as u32) else {
                 continue;
             };
-            let a = src.alpha();
-            if a < 24 {
-                continue;
-            }
-            let lum = ((src.red() as u16 * 30 + src.green() as u16 * 59 + src.blue() as u16 * 11)
-                / 100) as u8;
-            let hit = match mode {
-                ShadeMode::Interior => lum < 78,
-                ShadeMode::All => true,
-                ShadeMode::Stroke => lum >= 78,
-            };
-            if hit {
+            if src.alpha() >= 24 {
                 dest[(py * dw_px + px_) as usize] = paint;
             }
         }
@@ -630,7 +964,6 @@ pub(crate) fn shade_disc(
     cx: f32,
     cy: f32,
     r_px: f32,
-    mode: ShadeMode,
     color: Color,
 ) {
     let iw = art.width() as f32;
@@ -649,7 +982,6 @@ pub(crate) fn shade_disc(
         dh,
         [cx - ru, cy - rv, ru * 2.0, rv * 2.0],
         0.0,
-        mode,
         color,
         |u, v| {
             let ddx = (u - cx) * iw;
@@ -659,150 +991,41 @@ pub(crate) fn shade_disc(
     );
 }
 
-pub(crate) fn shade_face(
-    px: &mut Pixmap,
-    art: &Pixmap,
-    dx: f32,
-    dy: f32,
-    dw: f32,
-    dh: f32,
-    pad: crate::gamepad::PadState,
-    layout: &GamepadLayout,
-) {
-    let bits = [
-        crate::gamepad::NORTH,
-        crate::gamepad::EAST,
-        crate::gamepad::SOUTH,
-        crate::gamepad::WEST,
-    ];
-    for (i, &bit) in bits.iter().enumerate() {
-        if pad.down(bit) {
-            let [u, v] = layout.face[i];
-            shade_press_disc(px, art, dx, dy, dw, dh, u, v, layout.face_r);
-        }
+/// Art-space fill of one control: `fill` over `[ax0, ax1) x [ay0, ay1)` (row stride `bw`),
+/// and the art row `cut` the analog squeeze fills up to.
+pub(crate) struct FloodMask {
+    pub(crate) ax0: u32,
+    pub(crate) ay0: u32,
+    pub(crate) ax1: u32,
+    pub(crate) ay1: u32,
+    pub(crate) bw: usize,
+    pub(crate) fill: Vec<bool>,
+    pub(crate) cut: f32,
+}
+
+impl FloodMask {
+    fn contains(&self, x: u32, y: u32) -> bool {
+        x >= self.ax0
+            && y >= self.ay0
+            && x < self.ax1
+            && y < self.ay1
+            && self.fill[(y - self.ay0) as usize * self.bw + (x - self.ax0) as usize]
     }
 }
 
-pub(crate) fn shade_dpad(
-    px: &mut Pixmap,
+pub(crate) fn flood_mask(
     art: &Pixmap,
-    dx: f32,
-    dy: f32,
-    dw: f32,
-    dh: f32,
-    pad: crate::gamepad::PadState,
-    layout: &GamepadLayout,
-) {
-    let bits = [
-        crate::gamepad::UP,
-        crate::gamepad::RIGHT,
-        crate::gamepad::DOWN,
-        crate::gamepad::LEFT,
-    ];
-    if let Some(segs) = layout.dpad_seg {
-        for (i, &bit) in bits.iter().enumerate() {
-            if pad.down(bit) {
-                shade_art(
-                    px,
-                    art,
-                    dx,
-                    dy,
-                    dw,
-                    dh,
-                    segs[i],
-                    0.0,
-                    ShadeMode::Interior,
-                    accent(),
-                    |_, _| true,
-                );
-            }
-        }
-        return;
-    }
-    let [hu, hv] = layout.dpad_half;
-    for (i, &bit) in bits.iter().enumerate() {
-        if pad.down(bit) {
-            let [u, v] = layout.dpad[i];
-            let uv = [u - hu, v - hv, hu * 2.0, hv * 2.0];
-            shade_press_flood(px, art, dx, dy, dw, dh, u, v, uv, 1.0, true);
-        }
-    }
-}
-
-/// Accent fill out to a circular outline. Cream glyphs and the outline stay 1px — not thickened.
-pub(crate) fn shade_press_disc(
-    px: &mut Pixmap,
-    art: &Pixmap,
-    dx: f32,
-    dy: f32,
-    dw: f32,
-    dh: f32,
-    cu: f32,
-    cv: f32,
-    r_art: f32,
-) {
-    if dw < 1.0 || dh < 1.0 {
-        return;
-    }
-    let iw = art.width() as f32;
-    let ih = art.height() as f32;
-    if iw < 1.0 || ih < 1.0 {
-        return;
-    }
-    let ru = (r_art + 2.0) / iw;
-    let rv = (r_art + 2.0) / ih;
-    let x0 = ((dx + (cu - ru) * dw).floor() as i32).max(0) as u32;
-    let y0 = ((dy + (cv - rv) * dh).floor() as i32).max(0) as u32;
-    let x1 = ((dx + (cu + ru) * dw).ceil() as u32).min(px.width());
-    let y1 = ((dy + (cv + rv) * dh).ceil() as u32).min(px.height());
-    let dw_px = px.width();
-    let dest = px.pixels_mut();
-    for py in y0..y1 {
-        for px_ in x0..x1 {
-            let u = (px_ as f32 + 0.5 - dx) / dw;
-            let v = (py as f32 + 0.5 - dy) / dh;
-            let ddx = (u - cu) * iw;
-            let ddy = (v - cv) * ih;
-            let r = (ddx * ddx + ddy * ddy).sqrt();
-            if r > r_art {
-                continue;
-            }
-            let i = (py * dw_px + px_) as usize;
-            let (lum, da) = dest_lum_alpha(dest[i]);
-            if da < 8 {
-                continue;
-            }
-            // Leave the pad's glyphs and outlines. Accent only the dark interior.
-            if lum > 92 {
-                continue;
-            }
-            let [r, g, b] = accent_rgb();
-            if let Some(p) = paint_keep_alpha(r as f32, g as f32, b as f32, da) {
-                dest[i] = p;
-            }
-        }
-    }
-}
-
-/// Accent fill that follows a DualShock control in art space.
-/// `squeeze` 0…1 fills from the curved bottom of the control (triggers); 1 is a full press.
-pub(crate) fn shade_press_flood(
-    px: &mut Pixmap,
-    art: &Pixmap,
-    dx: f32,
-    dy: f32,
-    dw: f32,
-    dh: f32,
     seed_u: f32,
     seed_v: f32,
     uv: [f32; 4],
     squeeze: f32,
     ds4_lip: bool,
-) {
+    min_lum: u8,
+) -> Option<FloodMask> {
     let iw = art.width();
     let ih = art.height();
-    if iw == 0 || ih == 0 || dw < 1.0 || dh < 1.0 || uv[2] <= 0.0 || uv[3] <= 0.0 {
-        return;
+    if iw == 0 || ih == 0 || uv[2] <= 0.0 || uv[3] <= 0.0 {
+        return None;
     }
     let ax0 = ((uv[0] * iw as f32).floor() as i32).max(0) as u32;
     let ay0 = ((uv[1] * ih as f32).floor() as i32).max(0) as u32;
@@ -811,13 +1034,13 @@ pub(crate) fn shade_press_flood(
     let ax1 = ax1.min(iw);
     let ay1 = ay1.min(ih);
     if ax1 <= ax0 || ay1 <= ay0 {
-        return;
+        return None;
     }
     let bw = (ax1 - ax0) as usize;
     let bh = (ay1 - ay0) as usize;
     let mut sx = ((seed_u * iw as f32).floor() as i32).clamp(ax0 as i32, ax1 as i32 - 1) as u32;
     let mut sy = ((seed_v * ih as f32).floor() as i32).clamp(ay0 as i32, ay1 as i32 - 1) as u32;
-    let fillable = |x: u32, y: u32| -> bool { art_lum_at(art, x, y) < 78 };
+    let fillable = |x: u32, y: u32| -> bool { (min_lum..78).contains(&art_lum_at(art, x, y)) };
     if !fillable(sx, sy) {
         let mut found = None;
         'hunt: for d in 1..=16u32 {
@@ -845,7 +1068,7 @@ pub(crate) fn shade_press_flood(
                 sx = x;
                 sy = y;
             }
-            None => return,
+            None => return None,
         }
     }
     let idx = |x: u32, y: u32| ((y - ay0) as usize) * bw + (x - ax0) as usize;
@@ -942,7 +1165,7 @@ pub(crate) fn shade_press_flood(
         }
     }
     if ymin > ymax {
-        return;
+        return None;
     }
     // A held trigger should read as fully lit; the last fifth of the pull is not
     // worth a black sliver at the top of the tab.
@@ -953,51 +1176,15 @@ pub(crate) fn shade_press_flood(
     };
     let span = (ymax.saturating_sub(ymin)).max(1) as f32;
     let cut = ymin as f32 + (1.0 - squeeze) * span;
-    let fade = (ih as f32 / dh).max(1.0);
-    let x0 = ((dx + uv[0] * dw).floor() as i32).max(0) as u32;
-    let y0 = ((dy + uv[1] * dh).floor() as i32).max(0) as u32;
-    let x1 = ((dx + (uv[0] + uv[2]) * dw).ceil() as u32).min(px.width());
-    let y1 = ((dy + (uv[1] + uv[3]) * dh).ceil() as u32).min(px.height());
-    if x1 <= x0 || y1 <= y0 {
-        return;
-    }
-    let dw_px = px.width();
-    let dest = px.pixels_mut();
-    for py in y0..y1 {
-        for px_ in x0..x1 {
-            let u = (px_ as f32 + 0.5 - dx) / dw;
-            let v = (py as f32 + 0.5 - dy) / dh;
-            let ax = (u * iw as f32).floor() as i32;
-            let ay = (v * ih as f32).floor() as i32;
-            if ax < ax0 as i32 || ay < ay0 as i32 || ax as u32 >= ax1 || ay as u32 >= ay1 {
-                continue;
-            }
-            let (ax, ay) = (ax as u32, ay as u32);
-            let ai = idx(ax, ay);
-            let di = (py * dw_px + px_) as usize;
-            let (lum, da) = dest_lum_alpha(dest[di]);
-            if da < 8 {
-                continue;
-            }
-            // Keep the drawing's 1px cream labels and outlines — do not ink or thicken them.
-            if lum > 92 {
-                continue;
-            }
-            let rise = ((ay as f32 + 0.5 - cut) / fade).clamp(0.0, 1.0);
-            if fill[ai] && rise > 0.02 {
-                let t = rise;
-                let a = da as f32;
-                let inv = 1.0 - t;
-                let [ar, ag, ab] = accent_rgb();
-                let r = (ar as f32 * (a / 255.0) * t + dest[di].red() as f32 * inv).round() as u8;
-                let g = (ag as f32 * (a / 255.0) * t + dest[di].green() as f32 * inv).round() as u8;
-                let b = (ab as f32 * (a / 255.0) * t + dest[di].blue() as f32 * inv).round() as u8;
-                if let Some(p) = PremultipliedColorU8::from_rgba(r, g, b, da) {
-                    dest[di] = p;
-                }
-            }
-        }
-    }
+    Some(FloodMask {
+        ax0,
+        ay0,
+        ax1,
+        ay1,
+        bw,
+        fill,
+        cut,
+    })
 }
 
 pub(crate) fn draw_stick_live(
@@ -1021,7 +1208,6 @@ pub(crate) fn draw_stick_live(
     if mag < 0.08 && !click {
         return;
     }
-    let iw = art.width() as f32;
     let ih = art.height() as f32;
     let well_r = layout.well_r;
     let cu = (cx - dx) / dw;
@@ -1029,24 +1215,12 @@ pub(crate) fn draw_stick_live(
     let ring_r = well_r / ih * dh;
     fill_circle(px, cx, cy, ring_r, well);
     if !filled {
-        shade_art(
-            px,
-            art,
-            dx,
-            dy,
-            dw,
-            dh,
-            [cu - 0.08, cv - 0.12, 0.16, 0.24],
-            0.0,
-            ShadeMode::Stroke,
-            accent(),
-            |u, v| {
-                let ddx = (u - cu) * iw;
-                let ddy = (v - cv) * ih;
-                let d = (ddx * ddx + ddy * ddy).sqrt();
-                d >= (well_r - 20.0).max(1.0) && d <= well_r
-            },
-        );
+        // The dark drawing's well stroke is ~3 art px wide.
+        let mut pb = PathBuilder::new();
+        pb.push_circle(cx, cy, layout.well_stroke_r / ih * dh);
+        if let Some(path) = pb.finish() {
+            stroke_path(px, &path, accent(), (3.0 / ih * dh).max(1.5));
+        }
     } else {
         let mut pb = PathBuilder::new();
         pb.push_circle(cx, cy, ring_r);
@@ -1066,7 +1240,6 @@ pub(crate) fn draw_stick_live(
         cu,
         cv,
         layout.cap_r,
-        ShadeMode::All,
         well,
     );
     let (ox, oy) = if mag < 0.08 {

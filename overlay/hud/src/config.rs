@@ -815,8 +815,8 @@ impl GamepadStyle {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum GamepadTheme {
-    Light,
     #[default]
+    Light,
     Dark,
 }
 
@@ -837,18 +837,13 @@ impl GamepadTheme {
 
     pub fn parse(s: &str) -> Self {
         match s.trim().to_ascii_lowercase().as_str() {
-            "light" | "filled" => Self::Light,
-            _ => Self::Dark,
+            "dark" => Self::Dark,
+            _ => Self::Light,
         }
     }
 
     pub fn filled(self) -> bool {
         matches!(self, Self::Light)
-    }
-
-    /// PlayStation → dark schematic; Xbox → light filled (Theme setting disabled for now).
-    pub fn filled_for_platform(sony: bool) -> bool {
-        !sony
     }
 }
 
@@ -2067,7 +2062,7 @@ impl HudLayout {
             stance_show_sit: false,
             lean_style: LeanStyle::Figure,
             gamepad_style: GamepadStyle::Auto,
-            gamepad_theme: GamepadTheme::Dark,
+            gamepad_theme: GamepadTheme::Light,
             telemetry_traces: true,
             telemetry_trace_throttle: true,
             telemetry_trace_brake: true,
@@ -2271,6 +2266,8 @@ impl HudConfig {
         &mut self.stream_layouts[self.settings_preset.idx()]
     }
 
+
+
     pub fn for_overlay(&self) -> Self {
         let mut c = self.clone();
         c.settings_preset = c.active_preset;
@@ -2325,6 +2322,11 @@ impl HudConfig {
         c
     }
 
+
+
+
+
+
     /// Accent written into the MX Bikes menu pack.
     pub fn game_ui_accent(&self) -> [u8; 3] {
         if self.game_ui_match_primary {
@@ -2350,6 +2352,7 @@ impl HudConfig {
         }
     }
 
+
     pub fn copy_settings_to_all(&mut self) {
         match self.edit_surface {
             EditSurface::Game => {
@@ -2368,6 +2371,8 @@ impl HudConfig {
         let src = self.layouts[self.settings_preset.idx()].clone();
         self.stream_layouts[self.settings_preset.idx()] = src;
     }
+
+
 
     /// Follow the live session. When `hold_settings` is set and F8 is on another
     /// slot, keep editing that slot; otherwise Settings tracks the HUD.
@@ -3171,7 +3176,7 @@ fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last
         "stance_style" => cfg.stance_style = StanceStyle::parse(val),
         "lean_style" => cfg.lean_style = LeanStyle::parse(val),
         "gamepad_style" => cfg.gamepad_style = GamepadStyle::parse(val),
-        "gamepad_theme" => {}
+        "gamepad_theme" => cfg.gamepad_theme = GamepadTheme::parse(val),
         "sys_apps" => cfg.sys_apps = parse_sys_apps(val),
         "stance_show_sit" => cfg.stance_show_sit = b,
         "stance_icon" => {
@@ -3325,7 +3330,7 @@ fn layout_ini(l: &HudLayout) -> String {
          stance_bg={}\nstance_font={}\nstance_bold={}\n\
          flag_bg={}\nflag_yellow={}\nflag_blue={}\nflag_red={}\nflag_text={}\nflag_font={}\nflag_bold={}\n\
          lean_style={}\nlean_bg={}\nlean_font={}\nlean_bold={}\n\
-         gamepad_style={}\ngamepad_bg={}\ngamepad_font={}\ngamepad_bold={}\n\
+         gamepad_style={}\ngamepad_theme={}\ngamepad_bg={}\ngamepad_font={}\ngamepad_bold={}\n\
          telemetry_traces={}\ntelemetry_trace_throttle={}\ntelemetry_trace_brake={}\ntelemetry_trace_steer={}\n\
          telemetry_bars={}\ntelemetry_bar_clutch={}\ntelemetry_bar_brake={}\ntelemetry_bar_throttle={}\ntelemetry_bar_steer={}\n\
          telemetry_dial={}\n\
@@ -3381,6 +3386,7 @@ fn layout_ini(l: &HudLayout) -> String {
         flag.bg, b(l.flag_yellow), b(l.flag_blue), b(l.flag_red), b(l.flag_text), flag.font, b(flag.bold),
         l.lean_style.key(), lean.bg, lean.font, b(lean.bold),
         l.gamepad_style.key(),
+        l.gamepad_theme.key(),
         gamepad.bg,
         gamepad.font,
         b(gamepad.bold),

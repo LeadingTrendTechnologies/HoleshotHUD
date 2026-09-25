@@ -13,9 +13,11 @@ Drawn into a square pixmap (`MINI_PX`, reused) then blitted as a circle. Layout 
 
 ## Behavior
 
-With a camera-subject pose (live telemetry while riding, or the spectated rider’s XZ): **north-up along the track**, origin on them, only the nearby polyline (`append_visible_track`). Heading comes from `track_forward` (polyline tangent), falling back to radar axes while riding or the rider’s yaw while spectating.
+With a camera-subject pose (live telemetry while riding, or the spectated rider via `rider_map_pose` / `track_pos`): **north-up along the track**, origin on them, only the nearby polyline (`append_visible_track`). Heading comes from `track_forward` (polyline tangent), falling back to radar axes while riding or the rider’s yaw while spectating.
 
 Without a pose: whole-track fit, world-up, centered on the poly bounds.
+
+Other riders use the same `rider_map_pose` placement as Map (centerline from `track_pos`, XZ fallback).
 
 While riding you get an orange motion trail (velocity samples). Spectate has no local vel, so no trail. Others outside the circle are skipped. Default **Dot number** is bike **Number** (map defaults to **Position**). **Sector lines** match Map (dotted S1 / S2 / S3 at sector starts); a gate outside the zoomed circle is skipped.
 
@@ -24,7 +26,10 @@ Toggles match Map, plus **Zoom**. Default background 0.
 ## Do not regress
 
 - Sparse centerline used to blank the widget; keep drawing with whatever poly exists (0.1.0).
-- Same lapping color rules as Map. Do not invent a second palette. Off in warmup, same as Map. Two laps down stays blue when they close from behind.
+- Place other-rider (and spectate) dots from live `track_pos` on the poly first — same as Map; do not trust world XZ alone. Exception: at the gate / prestart, keep world XZ so stalls stay apart.
+- Same lapping color rules as Map. Do not invent a second palette. Off in warmup, same as Map. Two laps down stays blue when nearby within catch span.
+- Red only when you gained a lap on them (pairwise). Leader lapping someone behind you is not red.
+- Same-race S/F straddles must not paint blue/red (same continuous-progress rule as Map).
 - Position labels, leader crown and ahead / behind rings use live `RaceStore` rank during a race (same as Map). See [live race order](../live-order.md).
 - When live, keep north-up (along-track forward = up). Do not rotate the circle with bike roll/yaw as a radar.
 - Follow / north-up must use `subject_pose`, not `has_telemetry` alone, or spectate falls back to a whole-track fit with no orange you-dot.
@@ -33,6 +38,11 @@ Toggles match Map, plus **Zoom**. Default background 0.
 
 ## Change log
 
+- 2026-09-25 — Shares Map: gate / prestart dots stay on world XZ; race still uses `track_pos`.
+- 2026-09-25 — Shares Map: other-rider and spectate dots follow live `track_pos` on the centerline.
+- 2026-09-24 — Shares Map: red is pairwise only; leader lapping someone behind you is not red.
+- 2026-09-24 — Shares Map: same-race S/F straddles no longer paint blue/red.
+- 2026-09-22 — Shares Map: blue/red hold through a pass while still within catch span.
 - 2026-09-13 — Review lines stay off the live minimap; they only draw in Analyze.
 - 2026-09-12 — Location tape records for Review (not drawn live).
 - 2026-09-07 — Shares the Map fix: warmup (`session_kind` 5) keeps dots slate when extras leak.

@@ -129,8 +129,8 @@ fn composite_piboso_logo(dest: &mut Pixmap) {
     let ly = (dh - lh) * 0.5;
 
     // Soft plaque behind the mark so it reads on sunset / dust highlights.
-    let pad_x = lw * 0.12;
-    let pad_y = lh * 0.35;
+    let pad_x = lw * 0.05;
+    let pad_y = lh * 0.10;
     let mut paint = Paint::default();
     paint.set_color_rgba8(0, 0, 0, 235);
     paint.anti_alias = true;
@@ -139,7 +139,7 @@ fn composite_piboso_logo(dest: &mut Pixmap) {
     let ry = ly - pad_y;
     let rw = lw + pad_x * 2.0;
     let rh = lh + pad_y * 2.0;
-    let rad = rh * 0.35;
+    let rad = rh * 0.12;
     rounded_rect_path(&mut pb, rx, ry, rw, rh, rad);
     if let Some(path) = pb.finish() {
         dest.fill_path(

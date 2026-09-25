@@ -10,7 +10,7 @@ pub(crate) fn draw_clear_confirm(
     hover: Option<Hit>,
     hits: &mut Vec<HitBox>,
 ) {
-    let scrim = Color::from_rgba8(8, 8, 10, 204);
+    let scrim = scrim();
     if let Some(r) = Rect::from_xywh(0.0, 0.0, win_w, win_h) {
         fill_rect(px, r, scrim);
     }
@@ -49,11 +49,7 @@ pub(crate) fn draw_clear_confirm(
     let panel_h = (header_h + body_h + footer_h).min(win_h - 48.0).max(160.0);
     let panel_x = ((win_w - panel_w) * 0.5).max(16.0);
     let panel_y = ((win_h - panel_h) * 0.5).max(16.0);
-    let board = if high_contrast_on() {
-        panel()
-    } else {
-        Color::from_rgba8(20, 20, 22, 255)
-    };
+    let board = menu_fill();
     fill_round(px, panel_x, panel_y, panel_w, panel_h, 10.0, board);
     hits.push(HitBox {
         id: Hit::ClearPanel,

@@ -10,6 +10,39 @@ pub const AXIS_LABELS: [&str; AXIS_COUNT] = [
     "PACE", "SMOOTH", "CLEAN", "CLUTCH", "ATTACK", "AIR", "RESULTS", "OPENING",
 ];
 
+/// Game classification `Standing.state` values (HUD: DNS / OUT / DSQ).
+pub const STATE_DNS: i32 = 1;
+pub const STATE_OUT: i32 = 3; // Profile label: DNF
+pub const STATE_DSQ: i32 = 4;
+
+pub fn out_of_race_state(state: i32) -> bool {
+    matches!(state, STATE_DNS | STATE_OUT | STATE_DSQ)
+}
+
+/// Legacy / unknown (`0`) counts as classified so old rollups keep working.
+pub fn classified_state(state: i32) -> bool {
+    !out_of_race_state(state)
+}
+
+pub fn you_won_race(position: i32, rider_count: i32) -> bool {
+    position == 1 && rider_count > 1
+}
+
+/// Motos crown / Profile Wins: P1 with a field on an eligible race moto (not practice/warmup/solo).
+pub fn counts_as_profile_win(
+    practice: bool,
+    kind: i32,
+    rider_count: i32,
+    position: i32,
+    has_non_warmup_lap: bool,
+) -> bool {
+    you_won_race(position, rider_count)
+        && has_non_warmup_lap
+        && !practice
+        && kind != WARMUP_KIND
+        && rider_count >= 2
+}
+
 const PACE_FLOOR: f32 = 0.88;
 const CV_CAP: f32 = 0.06;
 const ATTACK_HOT: f32 = 0.85;
@@ -31,7 +64,24 @@ pub struct RiderProfile {
     pub race_count: i32,
     pub all_time_count: i32,
     pub holeshots: i32,
+    pub wins: i32,
     pub scores: [Option<f32>; AXIS_COUNT],
+    pub win_rate: Option<f32>,
+    pub podium_rate: Option<f32>,
+    pub avg_finish: Option<f32>,
+    pub median_finish: Option<f32>,
+    pub finish_pct: Option<f32>,
+    pub clean_rate: Option<f32>,
+    pub crash_rate: Option<f32>,
+    pub cut_rate: Option<f32>,
+    pub holeshot_rate: Option<f32>,
+    pub dns_count: i32,
+    pub dnf_count: i32,
+    pub dsq_count: i32,
+    pub dns_rate: Option<f32>,
+    pub dnf_rate: Option<f32>,
+    pub dsq_rate: Option<f32>,
+    pub avg_penalty_ms: Option<f32>,
 }
 
 impl RiderProfile {
@@ -41,7 +91,24 @@ impl RiderProfile {
             race_count: 0,
             all_time_count: 0,
             holeshots: 0,
+            wins: 0,
             scores: [None; AXIS_COUNT],
+            win_rate: None,
+            podium_rate: None,
+            avg_finish: None,
+            median_finish: None,
+            finish_pct: None,
+            clean_rate: None,
+            crash_rate: None,
+            cut_rate: None,
+            holeshot_rate: None,
+            dns_count: 0,
+            dnf_count: 0,
+            dsq_count: 0,
+            dns_rate: None,
+            dnf_rate: None,
+            dsq_rate: None,
+            avg_penalty_ms: None,
         }
     }
 }
@@ -68,6 +135,8 @@ pub struct CompactRace {
     pub air_n: i32,
     pub name: String,
     pub holeshot: Option<i32>,
+    pub state: i32,
+    pub penalty_ms: i32,
 }
 
 #[derive(Clone, Debug)]
@@ -94,6 +163,8 @@ pub struct RaceInput {
     pub laps: Vec<RaceLapInput>,
     pub name: String,
     pub holeshot: Option<i32>,
+    pub state: i32,
+    pub penalty_ms: i32,
 }
 
 pub fn eligible(practice: bool, kind: i32, rider_count: i32, laps: &[RaceLapInput]) -> bool {
@@ -154,7 +225,131 @@ pub fn compact_from_input(input: &RaceInput) -> Option<CompactRace> {
         air_n,
         name: input.name.clone(),
         holeshot: input.holeshot,
+        state: input.state,
+        penalty_ms: input.penalty_ms.max(0),
     })
+}
+
+/// Fill name / race_count / all_time_count / scores separately; this fills rates.
+pub fn apply_window_stats(profile: &mut RiderProfile, races: &[&CompactRace]) {
+    let n = races.len() as i32;
+    if n <= 0 {
+        profile.wins = 0;
+        profile.win_rate = None;
+        profile.podium_rate = None;
+        profile.avg_finish = None;
+        profile.median_finish = None;
+        profile.finish_pct = None;
+        profile.clean_rate = None;
+        profile.crash_rate = None;
+        profile.cut_rate = None;
+        profile.holeshot_rate = None;
+        profile.dns_count = 0;
+        profile.dnf_count = 0;
+        profile.dsq_count = 0;
+        profile.dns_rate = None;
+        profile.dnf_rate = None;
+        profile.dsq_rate = None;
+        profile.avg_penalty_ms = None;
+        return;
+    }
+
+    let wins = races
+        .iter()
+        .filter(|r| you_won_race(r.position, r.rider_count))
+        .count() as i32;
+    let podiums = races
+        .iter()
+        .filter(|r| {
+            classified_state(r.state) && r.position >= 1 && r.position <= 3 && r.rider_count > 1
+        })
+        .count() as i32;
+    profile.wins = wins;
+    profile.win_rate = Some(wins as f32 / n as f32);
+    profile.podium_rate = Some(podiums as f32 / n as f32);
+
+    let mut finishes: Vec<i32> = races
+        .iter()
+        .filter(|r| classified_state(r.state) && r.position > 0 && r.rider_count > 1)
+        .map(|r| r.position)
+        .collect();
+    if finishes.is_empty() {
+        profile.avg_finish = None;
+        profile.median_finish = None;
+        profile.finish_pct = None;
+    } else {
+        let sum: i32 = finishes.iter().sum();
+        profile.avg_finish = Some(sum as f32 / finishes.len() as f32);
+        finishes.sort_unstable();
+        let mid = finishes.len() / 2;
+        profile.median_finish = Some(if finishes.len() % 2 == 0 {
+            (finishes[mid - 1] + finishes[mid]) as f32 / 2.0
+        } else {
+            finishes[mid] as f32
+        });
+        let mut pct_sum = 0.0f32;
+        let mut pct_n = 0i32;
+        for r in races
+            .iter()
+            .filter(|r| classified_state(r.state) && r.position > 0 && r.rider_count > 1)
+        {
+            if let Some(p) = results_score(r.position, r.rider_count) {
+                pct_sum += p;
+                pct_n += 1;
+            }
+        }
+        profile.finish_pct = if pct_n > 0 {
+            Some(pct_sum / pct_n as f32)
+        } else {
+            None
+        };
+    }
+
+    let mut timed = 0i32;
+    let mut clean = 0i32;
+    let mut crashed = 0i32;
+    let mut cut = 0i32;
+    for race in races {
+        for lap in race.laps.iter().filter(|l| l.ms > 0) {
+            timed += 1;
+            if lap.crashed {
+                crashed += 1;
+            }
+            if lap.cut {
+                cut += 1;
+            }
+            if !lap.crashed && !lap.cut {
+                clean += 1;
+            }
+        }
+    }
+    if timed > 0 {
+        profile.clean_rate = Some(clean as f32 / timed as f32);
+        profile.crash_rate = Some(crashed as f32 / timed as f32);
+        profile.cut_rate = Some(cut as f32 / timed as f32);
+    } else {
+        profile.clean_rate = None;
+        profile.crash_rate = None;
+        profile.cut_rate = None;
+    }
+
+    let known_hs = races.iter().filter(|r| r.holeshot.is_some()).count() as i32;
+    let hs_wins = races.iter().filter(|r| r.holeshot == Some(1)).count() as i32;
+    profile.holeshot_rate = if known_hs > 0 {
+        Some(hs_wins as f32 / known_hs as f32)
+    } else {
+        None
+    };
+
+    profile.dns_count = races.iter().filter(|r| r.state == STATE_DNS).count() as i32;
+    profile.dnf_count = races.iter().filter(|r| r.state == STATE_OUT).count() as i32;
+    profile.dsq_count = races.iter().filter(|r| r.state == STATE_DSQ).count() as i32;
+    profile.dns_rate = Some(profile.dns_count as f32 / n as f32);
+    profile.dnf_rate = Some(profile.dnf_count as f32 / n as f32);
+    profile.dsq_rate = Some(profile.dsq_count as f32 / n as f32);
+
+    let pen_sum: i64 = races.iter().map(|r| r.penalty_ms.max(0) as i64).sum();
+    profile.avg_penalty_ms = Some(pen_sum as f32 / n as f32);
 }
 
 pub fn scores_from_compact(race: &CompactRace) -> [Option<f32>; AXIS_COUNT] {
@@ -389,6 +584,8 @@ mod tests {
             air_n: 0,
             name: String::new(),
             holeshot: None,
+            state: 0,
+            penalty_ms: 0,
         }
     }
 
@@ -432,6 +629,8 @@ mod tests {
             laps,
             name: String::new(),
             holeshot: None,
+            state: 0,
+            penalty_ms: 0,
         })
         .is_none());
     }
@@ -506,5 +705,76 @@ mod tests {
         assert!((m[0].unwrap() - 0.75).abs() < 0.001);
         assert_eq!(m[2], Some(1.0));
         assert!(m[1].is_none());
+    }
+
+    #[test]
+    fn window_stats_win_podium_finish_and_laps() {
+        let mut a = race(vec![
+            lap(100_000, false, false),
+            lap(101_000, true, false),
+            lap(102_000, false, true),
+        ]);
+        a.position = 1;
+        a.holeshot = Some(1);
+        a.penalty_ms = 2000;
+        let mut b = race(vec![lap(110_000, false, false), lap(111_000, false, false)]);
+        b.position = 5;
+        b.holeshot = Some(0);
+        b.penalty_ms = 0;
+        let mut c = race(vec![lap(120_000, false, false)]);
+        c.position = 2;
+        c.state = STATE_OUT;
+        c.holeshot = None;
+        c.penalty_ms = 1000;
+        let races = [&a, &b, &c];
+        let mut p = RiderProfile::empty();
+        apply_window_stats(&mut p, &races);
+        assert_eq!(p.wins, 1);
+        assert!((p.win_rate.unwrap() - 1.0 / 3.0).abs() < 0.001);
+        assert!((p.podium_rate.unwrap() - 1.0 / 3.0).abs() < 0.001); // DNF P2 excluded
+        // classified only: P1 and P5
+        assert!((p.avg_finish.unwrap() - 3.0).abs() < 0.001);
+        assert!((p.median_finish.unwrap() - 3.0).abs() < 0.001);
+        assert!(p.finish_pct.is_some());
+        // 6 timed laps: clean 4, crash 1, cut 1
+        assert!((p.clean_rate.unwrap() - 4.0 / 6.0).abs() < 0.001);
+        assert!((p.crash_rate.unwrap() - 1.0 / 6.0).abs() < 0.001);
+        assert!((p.cut_rate.unwrap() - 1.0 / 6.0).abs() < 0.001);
+        assert!((p.holeshot_rate.unwrap() - 0.5).abs() < 0.001);
+        assert_eq!(p.dnf_count, 1);
+        assert!((p.dnf_rate.unwrap() - 1.0 / 3.0).abs() < 0.001);
+        assert!((p.avg_penalty_ms.unwrap() - 1000.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn legacy_unknown_state_counts_as_classified() {
+        let mut r = race(vec![lap(100_000, false, false)]);
+        r.position = 4;
+        r.state = 0;
+        let mut p = RiderProfile::empty();
+        apply_window_stats(&mut p, &[&r]);
+        assert_eq!(p.avg_finish, Some(4.0));
+        assert_eq!(p.dns_count, 0);
+        assert_eq!(p.dnf_count, 0);
+    }
+
+    #[test]
+    fn wins_follow_you_won_race_not_state() {
+        let mut r = race(vec![lap(100_000, false, false)]);
+        r.position = 1;
+        r.state = STATE_OUT;
+        let mut p = RiderProfile::empty();
+        apply_window_stats(&mut p, &[&r]);
+        assert!(you_won_race(1, r.rider_count));
+        assert_eq!(p.wins, 1);
+    }
+
+    #[test]
+    fn holeshot_rate_none_when_all_unknown() {
+        let mut r = race(vec![lap(100_000, false, false)]);
+        r.holeshot = None;
+        let mut p = RiderProfile::empty();
+        apply_window_stats(&mut p, &[&r]);
+        assert!(p.holeshot_rate.is_none());
     }
 }

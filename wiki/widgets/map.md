@@ -11,15 +11,15 @@ Full-track outline in world XZ with rider dots. Settings subtitle: “Where you 
 
 ## Data
 
-`poly[]` + `poly_count`, rider XZ + yaw, local XZ + velocity (for interpolation), `sf_meters`, `RaceStore` for position labels and lapping colors.
+`poly[]` + `poly_count`, rider **`track_pos`** (preferred) + XZ + yaw, local XZ + velocity (for interpolation), `sf_meters`, `RaceStore` for position labels and lapping colors.
 
-Orange marker is `subject_pose`: predicted `local + vel * age` while riding. Overlay clears leftover telemetry while `SpectateVehicles` is live so spectate uses the focused rider’s XZ. When that callback stops, telemetry is yours again and the marker snaps back to you even if focus is still stale.
+Dots and chevrons place from the centerline via `rider_map_pose` (`norm_lap_pos` → `poly_at_frac`), falling back to world XZ when the poly is missing. That keeps icons moving with live order even when game world coords lag. Orange marker is `subject_pose`: predicted `local + vel * age` while riding; spectate uses the same track_pos placement for the focused rider. Overlay clears leftover telemetry while `SpectateVehicles` is live so spectate follows the camera. When that callback stops, telemetry is yours again and the marker snaps back to you even if focus is still stale.
 
 ## Behavior
 
 - Fits the whole polyline in the rect (10% pad). Y is unused; Z is the track plane.
 - Track fill + stroke is cached in `MAP_LAYER` until poly / size / S/F / arrows change. Rider dots and sector lines are redrawn every frame.
-- You: larger orange dot on the camera subject (you while riding, the spectated rider in replay). Others: slate, or blue/red only when lapping and closing (see [widgets.md](../widgets.md)). Two laps down is still blue if they are closing from behind.
+- You: larger orange dot on the camera subject (you while riding, the spectated rider in replay). Others: slate, or blue/red when lap-delta and within catch span either side (see [widgets.md](../widgets.md)). Two laps down is still blue if they are nearby.
 - Chevrons show heading. Optional: S/F, **sector lines**, track arrows, leader crown, nearest ahead/behind marks, numbers in dots (bike number or classification position).
 - **Sector lines** are thin violet dotted gates at where each sector **starts** (same tape as Sectors). **S1** is the start/finish line. **S2** / **S3** appear after those splits are known for this track. Do not mark the split that *ends* S1 as S1.
 - Missing poly (`< 2` points) shows “No track map”.
@@ -29,17 +29,25 @@ Toggles: other riders, start/finish, sector lines, track arrows, leader crown, n
 ## Do not regress
 
 - Do not flash the track blank when segments are sparse; the cache and polyline close path are what stopped that (0.1.0).
-- Lapping color is **not** “anyone a lap up is blue”. They must also be behind you and inside `catch_span_m`.
-- Do not trust `num_laps` over `gap_laps` for blue/red. A rider two down can have a completed-lap count that looks a lap *up*; that used to paint the leader red the second time they went by. `other_laps_ahead` prefers `gap_laps`.
+- Place other-rider (and spectate) dots from live `track_pos` on the poly first — do not trust world XZ alone, or icons freeze while standings/dash keep moving. Exception: at the gate / prestart, keep world XZ so stalls do not stack on one centerline point.
+- Lapping color is **not** “anyone a lap up is blue”. They must also be inside `catch_span_m` (either side — holds through a pass while nearby).
+- Do not trust `num_laps` over `gap_laps` for **blue**. A rider two down can have a completed-lap count that looks a lap *up*; that used to paint the leader red the second time they went by. `other_laps_ahead` uses `gap_laps` only when they are ahead of you.
+- Red only when you gained a lap on them (pairwise). Leader lapping someone behind you is not red.
+- Same-race S/F straddles must not paint blue/red. When `num_laps` differ, `other_laps_ahead` requires continuous `num_laps + track_pos` to round non-zero.
 - Dot **Position** labels, leader crown and the nearest ahead / behind rings use live `RaceStore` rank during a race (`standing_pos` / `leader_num` prefer `live_position` / `live_leader`). See [live race order](../live-order.md).
 - No blue/red lapping dots in warmup; `lap_rel` is `Same` until the race starts. `session_kind` 5 wins even when extras leak.
 - Map uses snapshot rect `s.map` (copied from config), not only `cfg.map` at draw time.
-- In spectate/replay, do not leave the orange marker on leftover local telemetry; overlay drops `has_telemetry` while `SpectateVehicles` is live so `subject_pose` uses the focused rider’s XZ.
+- In spectate/replay, do not leave the orange marker on leftover local telemetry; overlay drops `has_telemetry` while `SpectateVehicles` is live so `subject_pose` uses the focused rider’s `track_pos` (XZ fallback).
 - Leaving spectate / going back on the bike must put the orange marker on you. Live telemetry wins over a stale `focus_race_num`.
 - Sector lines are thin best-lap-violet dashes at the **start** of S1 / S2 / S3, not orange. They span only the track stroke — do not stick out into the grass. Orange stays the S/F bar and the you-dot. S1 sits on the line; S2 / S3 wait for learned splits. Do not invent equal-third gates when splits are unknown.
 
 ## Change log
 
+- 2026-09-25 — Gate / prestart dots stay on world XZ so starting stalls do not pile onto one centerline point; race still uses `track_pos`.
+- 2026-09-25 — Other-rider and spectate dots follow live `track_pos` on the centerline (`rider_map_pose`); world XZ is fallback only so icons move with standings/dash.
+- 2026-09-24 — Red is pairwise only: leader lapping someone behind you no longer paints them red.
+- 2026-09-24 — Same-race S/F straddles no longer paint blue/red (`other_laps_ahead` continuous progress when `gap_laps` match).
+- 2026-09-22 — Blue/red dots hold through a pass while still within catch span (either side).
 - 2026-09-13 — Review lines stay off the live map; they only draw in Analyze.
 - 2026-09-12 — Location tape records for Review (not drawn live).
 - 2026-09-07 — Warmup (`session_kind` 5) keeps dots slate even when leaked extras make the lap field look like a race.

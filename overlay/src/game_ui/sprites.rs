@@ -34,6 +34,13 @@ pub(crate) const SPRITES: &[&str] = &[
     "segr2.tga",
     "segm1.tga",
     "segm2.tga",
+    "vsegtrack.tga",
+    "sevt1.tga",
+    "sevt2.tga",
+    "sevm1.tga",
+    "sevm2.tga",
+    "sevb1.tga",
+    "sevb2.tga",
     "optionstabtrack.tga",
     "dialog600x200.tga",
     "dialog800x500.tga",
@@ -359,6 +366,15 @@ pub(crate) fn write_sprites(ui: &Path, accent: [u8; 3]) -> Result<(), String> {
         Some(wash),
         Some(pip),
     )?;
+    // Vertical side-tab group (Event Info / Results / Track Info).
+    // Idle clear like horizontal segs — vsegtrack is the continuous rail.
+    write_round(&ui.join("vsegtrack.tga"), 110, 220, charcoal, hair)?;
+    write_seg(&ui.join("sevt1.tga"), SegCap::Top, None, None)?;
+    write_seg(&ui.join("sevt2.tga"), SegCap::Top, Some(wash), Some(pip))?;
+    write_seg(&ui.join("sevm1.tga"), SegCap::Mid, None, None)?;
+    write_seg(&ui.join("sevm2.tga"), SegCap::Mid, Some(wash), Some(pip))?;
+    write_seg(&ui.join("sevb1.tga"), SegCap::Bottom, None, None)?;
+    write_seg(&ui.join("sevb2.tga"), SegCap::Bottom, Some(wash), Some(pip))?;
 
     for (name, w, h) in [
         ("dialog600x200.tga", 600, 200),
@@ -592,6 +608,8 @@ pub(crate) enum SegCap {
     Left,
     Right,
     Mid,
+    Top,
+    Bottom,
 }
 
 pub(crate) fn fill_seg(
@@ -666,6 +684,24 @@ pub(crate) fn seg_rect(pb: &mut PathBuilder, x: f32, y: f32, w: f32, h: f32, r: 
             pb.line_to(x + w, y);
             pb.line_to(x + w, y + h);
             pb.line_to(x, y + h);
+            pb.line_to(x, y);
+        }
+        SegCap::Top => {
+            pb.move_to(x + r, y);
+            pb.line_to(x + w - r, y);
+            pb.quad_to(x + w, y, x + w, y + r);
+            pb.line_to(x + w, y + h);
+            pb.line_to(x, y + h);
+            pb.line_to(x, y + r);
+            pb.quad_to(x, y, x + r, y);
+        }
+        SegCap::Bottom => {
+            pb.move_to(x, y);
+            pb.line_to(x + w, y);
+            pb.line_to(x + w, y + h - r);
+            pb.quad_to(x + w, y + h, x + w - r, y + h);
+            pb.line_to(x + r, y + h);
+            pb.quad_to(x, y + h, x, y + h - r);
             pb.line_to(x, y);
         }
     }
@@ -804,5 +840,94 @@ pub(crate) fn write_tga(path: &Path, px: &Pixmap) -> Result<(), String> {
         }
     }
     fs::write(path, out).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_ui() -> std::path::PathBuf {
+        let p = env::temp_dir().join(format!(
+            "mxbo-vseg-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = fs::remove_dir_all(&p);
+        fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    /// Alpha at top-down (x, y) in a bottom-up BGRA TGA.
+    fn tga_a(data: &[u8], w: usize, h: usize, x: usize, y: usize) -> u8 {
+        let file_y = h - 1 - y;
+        data[18 + (file_y * w + x) * 4 + 3]
+    }
+
+    #[test]
+    fn vertical_seg_caps_have_correct_corner_geometry() {
+        let ui = temp_ui();
+        let fill = Color::from_rgba8(40, 40, 44, 255);
+        let stroke = Color::from_rgba8(80, 80, 84, 255);
+        write_seg(&ui.join("sevt1.tga"), SegCap::Top, Some(fill), Some(stroke)).unwrap();
+        write_seg(&ui.join("sevm1.tga"), SegCap::Mid, Some(fill), Some(stroke)).unwrap();
+        write_seg(&ui.join("sevb1.tga"), SegCap::Bottom, Some(fill), Some(stroke)).unwrap();
+
+        let w = 110usize;
+        let h = 36usize;
+        let inset = 2usize;
+        let top = fs::read(ui.join("sevt1.tga")).unwrap();
+        let mid = fs::read(ui.join("sevm1.tga")).unwrap();
+        let bot = fs::read(ui.join("sevb1.tga")).unwrap();
+
+        // Mid: opaque near all four inset corners (square).
+        for (x, y) in [
+            (inset + 1, inset + 1),
+            (w - inset - 2, inset + 1),
+            (inset + 1, h - inset - 2),
+            (w - inset - 2, h - inset - 2),
+        ] {
+            assert!(
+                tga_a(&mid, w, h, x, y) > 200,
+                "mid should be opaque at ({x},{y})"
+            );
+        }
+
+        // Top: opaque under rounded top; opaque at flat bottom corners; clear at
+        // extreme pixmap top corners (outside the round).
+        assert!(tga_a(&top, w, h, w / 2, inset + 1) > 200, "top center under top edge");
+        assert!(
+            tga_a(&top, w, h, inset + 1, h - inset - 2) > 200,
+            "top flat bottom-left corner must be filled"
+        );
+        assert!(
+            tga_a(&top, w, h, w - inset - 2, h - inset - 2) > 200,
+            "top flat bottom-right corner must be filled"
+        );
+        assert_eq!(tga_a(&top, w, h, 0, 0), 0, "top pixmap TL clear");
+        assert_eq!(tga_a(&top, w, h, w - 1, 0), 0, "top pixmap TR clear");
+
+        // Bottom: opaque above rounded bottom; opaque at flat top corners.
+        assert!(
+            tga_a(&bot, w, h, w / 2, h - inset - 2) > 200,
+            "bottom center above bottom edge"
+        );
+        assert!(
+            tga_a(&bot, w, h, inset + 1, inset + 1) > 200,
+            "bottom flat top-left corner must be filled"
+        );
+        assert!(
+            tga_a(&bot, w, h, w - inset - 2, inset + 1) > 200,
+            "bottom flat top-right corner must be filled"
+        );
+        assert_eq!(tga_a(&bot, w, h, 0, h - 1), 0, "bottom pixmap BL clear");
+        assert_eq!(tga_a(&bot, w, h, w - 1, h - 1), 0, "bottom pixmap BR clear");
+
+        let _ = fs::remove_dir_all(&ui);
+    }
 }
 

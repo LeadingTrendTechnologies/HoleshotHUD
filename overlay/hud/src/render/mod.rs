@@ -9,7 +9,7 @@ use crate::config::{
     RelField, StField, StanceStyle, TableText, WidgetId, SYS_PROC_MAX,
 };
 pub use crate::race_store::{clock_sample, ClockSample};
-use crate::shm::{cstr, Snapshot, MAX_STANDINGS};
+use crate::shm::{cstr, Rider, Snapshot, MAX_STANDINGS};
 // Re-export clock / field helpers for `render_tests` (`use super::*`).
 #[allow(unused_imports)]
 pub(crate) use crate::race_store::{
@@ -18,11 +18,12 @@ pub(crate) use crate::race_store::{
     gap_behind_text, i_finished, interval_text, interval_text_from_row, is_lap_race, is_warmup,
     lapped, laps_done, laps_left, leader_finished, leader_num_laps, live_leader, live_position,
     local_overtime_done, local_overtime_taken, moving, norm_lap_pos as norm_track_pos,
-    note_laps_to_run, overtime_active, prestart, race_lap, race_laps_left_text, race_over_for_me,
-    race_progress_text, reset_session_clock_track, rider_current_lap, session_banner,
-    session_best_ms, session_len_ms, session_remain_ms, skip_last_lap_white, standing_num_laps,
-    standing_of, ticker_delta_from_row, timed_clock_live, timed_race_flag, RaceFlag, RaceStore,
-    CHECKERED_LATCH, CLOSING_ON_LINE, IN_GATE, LAPS_TO_RUN_AT, LAP_GREEN, LAP_MID_SEEN,
+    note_laps_to_run, overtime_active, penalty_class_place_delta, penalty_place_delta, prestart,
+    race_lap, race_laps_left_text, race_over_for_me, race_progress_text, reset_session_clock_track,
+    rider_current_lap, session_banner, session_best_ms, session_len_ms, session_remain_ms,
+    skip_last_lap_white, standing_num_laps, standing_of, ticker_delta_from_row, timed_clock_live,
+    timed_race_flag, track_position, RaceFlag, RaceStore, CHECKERED_LATCH, CLOSING_ON_LINE, IN_GATE,
+    LAPS_TO_RUN_AT, LAP_GREEN, LAP_MID_SEEN,
     LAST_CUR_LAP, LAST_SESSION_SIG, LAST_SF_METERS, LEADER_FIN_LOCAL_BASE, OVERTIME_LOCAL_BASE,
     POST_GATE, RUN_IN_FLAG, SESSION_EXPIRED, SF_FRAC_CAND, SF_FRAC_LEARNED, SF_LEARN_LAPS,
     WHITE_WAVE_AT, WHITE_WAVE_LAP,
@@ -119,6 +120,97 @@ fn ahead_col() -> Color {
 
 fn behind_col() -> Color {
     Color::from_rgba8(255, 64, 72, 255)
+}
+
+/// Green `*` when live place is ahead of on-track, red when behind.
+fn place_star_col(delta: Option<i32>) -> Option<Color> {
+    match delta {
+        Some(d) if d > 0 => Some(ahead_col()),
+        Some(d) if d < 0 => Some(behind_col()),
+        _ => None,
+    }
+}
+
+fn format_place_digits(pos: i32, with_p: bool) -> String {
+    if with_p {
+        if pos > 0 {
+            format!("P{pos}")
+        } else {
+            "P--".into()
+        }
+    } else if pos > 0 {
+        format!("{pos}")
+    } else {
+        String::new()
+    }
+}
+
+fn place_width(fonts: &Fonts, digits: &str, size: f32, star: Option<Color>) -> f32 {
+    measure(fonts, digits, size)
+        + if star.is_some() {
+            measure(fonts, "*", size)
+        } else {
+            0.0
+        }
+}
+
+fn paint_place_at(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    digits: &str,
+    size: f32,
+    x: f32,
+    y: f32,
+    digit_col: Color,
+    star: Option<Color>,
+    bold: bool,
+) {
+    if bold {
+        text_bold(px, fonts, digits, size, x, y, digit_col, false);
+    } else {
+        text(px, fonts, digits, size, x, y, digit_col, false);
+    }
+    if let Some(star_col) = star {
+        let sx = x + measure(fonts, digits, size);
+        if bold {
+            text_bold(px, fonts, "*", size, sx, y, star_col, false);
+        } else {
+            text(px, fonts, "*", size, sx, y, star_col, false);
+        }
+    }
+}
+
+fn col_place_text(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    digits: &str,
+    size: f32,
+    x: f32,
+    w: f32,
+    y: f32,
+    digit_col: Color,
+    star: Option<Color>,
+    right: bool,
+) {
+    if digits.is_empty() && star.is_none() {
+        return;
+    }
+    let star_s = if star.is_some() { "*" } else { "" };
+    let full = format!("{digits}{star_s}");
+    let shown = ellipsize(fonts, &full, size, w.max(8.0));
+    // If the column is too narrow for the star, drop it rather than paint a wrong color.
+    let (digits_draw, star_draw) = if shown.ends_with('*') && star.is_some() {
+        let mut d = shown;
+        d.pop();
+        (d, star)
+    } else if shown.contains('*') {
+        (shown.replace('*', ""), None)
+    } else {
+        (shown, None)
+    };
+    let tw = place_width(fonts, &digits_draw, size, star_draw);
+    let tx = if right { x + w - tw } else { x };
+    paint_place_at(px, fonts, &digits_draw, size, tx, y, digit_col, star_draw, false);
 }
 
 fn telemetry_steer_col() -> Color {
@@ -1353,16 +1445,37 @@ fn rider_norm_pos(s: &Snapshot, race_num: i32) -> Option<f32> {
 
 /// Integer laps `other` is ahead of `me`.
 ///
-/// `gap_laps` is laps behind the leader (0 for P1). Prefer it over raw
-/// `num_laps`: MX Bikes can keep a lapped rider on the race lap, so after you
-/// complete another crossing you look a lap *up* while still two down. That
-/// used to paint the leader red once they went by the second time.
-fn other_laps_ahead(other: &crate::shm::Standing, me: &crate::shm::Standing) -> i32 {
+/// `gap_laps` is laps behind the leader (0 for P1). Use it only when it says
+/// they are ahead of you (`by_gap >= 1`): MX Bikes can keep a lapped rider on
+/// the race lap, so after you complete another crossing you look a lap *up*
+/// while still two down — that used to paint the leader red the second time
+/// they went by. Do not use a negative gap alone for red: the leader can lap
+/// someone behind you who you have not lapped yet.
+///
+/// Otherwise use pairwise `num_laps`, confirmed with continuous progress
+/// (`num_laps + track_pos`) so an S/F straddle is not a lap.
+fn other_laps_ahead(
+    other: &crate::shm::Standing,
+    me: &crate::shm::Standing,
+    other_pos: f32,
+    me_pos: f32,
+) -> i32 {
     let by_gap = me.gap_laps - other.gap_laps;
-    if by_gap != 0 {
+    let by_laps = other.num_laps - me.num_laps;
+    let by_progress = if by_laps == 0 {
+        0
+    } else {
+        let delta = (other.num_laps as f32 + other_pos) - (me.num_laps as f32 + me_pos);
+        if delta.round() as i32 == 0 {
+            0
+        } else {
+            by_laps
+        }
+    };
+    if by_gap >= 1 {
         by_gap
     } else {
-        other.num_laps - me.num_laps
+        by_progress
     }
 }
 
@@ -1416,7 +1529,7 @@ fn lap_rel(s: &Snapshot, race_num: i32) -> LapRel {
         let Some(mp) = rider_norm_pos(s, focus) else {
             return LapRel::Same;
         };
-        let ahead = other_laps_ahead(other, me);
+        let ahead = other_laps_ahead(other, me, op, mp);
         let w = wrap_frac(op, mp);
         let dist_m = closing_m(s, w.abs());
         let span = catch_span_m(s);
@@ -1807,14 +1920,17 @@ fn subject_pose(s: &Snapshot, age: f32) -> Option<SubjectPose> {
         .iter()
         .take(n)
         .find(|r| r.race_num == subject)
-        .map(|r| SubjectPose {
-            x: r.x,
-            z: r.z,
-            yaw: r.yaw,
-            vel_x: 0.0,
-            vel_z: 0.0,
-            crashed: r.crashed != 0,
-            from_local: false,
+        .map(|r| {
+            let pose = rider_map_pose(s, r);
+            SubjectPose {
+                x: pose.x,
+                z: pose.z,
+                yaw: pose.yaw,
+                vel_x: 0.0,
+                vel_z: 0.0,
+                crashed: r.crashed != 0,
+                from_local: false,
+            }
         })
 }
 
@@ -1882,6 +1998,11 @@ const FLAG_LINE_MIN_M: f32 = 4.0;
 
 /// Crash ahead of you, close enough to need a yellow.
 const FLAG_YELLOW_SPAN_M: f32 = 50.0;
+/// Keep yellow up briefly after the crash bit or span edge flickers off, so blue/red
+/// cannot flash during the same incident.
+const YELLOW_HOLD_MS: i32 = 1_750;
+/// `anim_now` ms of the last live nearby crash. `-1` when no hold is running.
+static YELLOW_HOLD_AT: AtomicI32 = AtomicI32::new(-1);
 
 /// Lapper closing from behind — shorter than `catch_span_m` so blue is not a whole-stretch warning.
 const FLAG_BLUE_SPAN_M: f32 = 40.0;
@@ -1981,6 +2102,7 @@ fn reset_flag_state() -> DashFlag {
     CHECKERED_LATCH.store(0, Ordering::Relaxed);
     WHITE_WAVE_LAP.store(-1, Ordering::Relaxed);
     RUN_IN_FLAG.store(0, Ordering::Relaxed);
+    YELLOW_HOLD_AT.store(-1, Ordering::Relaxed);
     DashFlag::None
 }
 
@@ -2138,6 +2260,7 @@ pub fn set_flag_preview(code: i32) {
 #[allow(dead_code)]
 pub(crate) fn reset_flag_display() {
     FLAG_PREVIEW.store(-1, Ordering::Relaxed);
+    YELLOW_HOLD_AT.store(-1, Ordering::Relaxed);
     let mut st = FLAG_ANIM.lock().unwrap_or_else(|e| e.into_inner());
     *st = FlagAnim {
         kind: DashFlag::None,
@@ -2183,9 +2306,10 @@ fn merge_caution(race: DashFlag, caution: DashFlag) -> DashFlag {
 /// lap (`LapRel::LappedByMe`). Blue/red stay race-only.
 fn caution_flag(s: &Snapshot, yellow: bool, blue: bool, red: bool) -> DashFlag {
     if s.on_track == 0 || prestart(s) {
+        YELLOW_HOLD_AT.store(-1, Ordering::Relaxed);
         return DashFlag::None;
     }
-    if yellow && nearby_crash(s) {
+    if yellow && yellow_held(nearby_crash(s)) {
         return DashFlag::Yellow;
     }
     if is_warmup(s) {
@@ -2198,6 +2322,24 @@ fn caution_flag(s: &Snapshot, yellow: bool, blue: bool, red: bool) -> DashFlag {
     } else {
         DashFlag::None
     }
+}
+
+/// Sticky yellow: arm on a live nearby crash, hold for `YELLOW_HOLD_MS` after it
+/// drops so remount / span-edge jitter cannot hand the cloth to blue or red.
+fn yellow_held(live: bool) -> bool {
+    let now = now_ms();
+    if live {
+        YELLOW_HOLD_AT.store(now, Ordering::Relaxed);
+        return true;
+    }
+    let at = YELLOW_HOLD_AT.load(Ordering::Relaxed);
+    if at >= 0 && now - at <= YELLOW_HOLD_MS {
+        return true;
+    }
+    if at >= 0 {
+        YELLOW_HOLD_AT.store(-1, Ordering::Relaxed);
+    }
+    false
 }
 
 fn nearby_crash(s: &Snapshot) -> bool {
@@ -2234,7 +2376,7 @@ fn being_lapped(s: &Snapshot) -> bool {
         .iter()
         .take(s.rider_count.max(0) as usize)
         .any(|r| {
-            if r.race_num <= 0 || r.race_num == focus {
+            if r.race_num <= 0 || r.race_num == focus || r.crashed != 0 {
                 return false;
             }
             if lap_rel(s, r.race_num) != LapRel::LappingMe {
@@ -2262,7 +2404,7 @@ fn lapping_them(s: &Snapshot) -> bool {
         .iter()
         .take(s.rider_count.max(0) as usize)
         .any(|r| {
-            if r.race_num <= 0 || r.race_num == focus {
+            if r.race_num <= 0 || r.race_num == focus || r.crashed != 0 {
                 return false;
             }
             if lap_rel(s, r.race_num) != LapRel::LappedByMe {
@@ -2378,16 +2520,13 @@ fn board_item(s: &Snapshot, cfg: &HudConfig, field: BoardField) -> Option<(char,
             .or_else(|| focus_standing(s));
         let text = match field {
             BoardField::None => return None,
-            BoardField::Position => st
-                .map(|r| format!("P{}", r.position.max(0)))
-                .unwrap_or_else(|| "P--".into()),
+            BoardField::Position => {
+                let pos = st.map(|r| r.position.max(0)).unwrap_or(0);
+                format_place_digits(pos, true)
+            }
             BoardField::ClassPos => {
                 let pos = class_position(s);
-                if pos > 0 {
-                    format!("P{pos}")
-                } else {
-                    "P--".into()
-                }
+                format_place_digits(pos, true)
             }
             BoardField::Session | BoardField::RaceTime | BoardField::Lap => race_progress_text(s),
             BoardField::LapsLeft => race_laps_left_text(s),
@@ -2459,9 +2598,19 @@ fn draw_board_bar(
     let icon_s = (h * 0.48).clamp(9.0, 11.0);
     let fsz = (h * 0.46).clamp(10.0, 12.0);
     let ty = y + (h - fsz) * 0.42;
+    let focus_num = if s.focus_race_num > 0 {
+        s.focus_race_num
+    } else {
+        s.local_race_num
+    };
     for (i, field) in fields.iter().enumerate() {
         let Some((ch, label)) = board_item(s, cfg, *field) else {
             continue;
+        };
+        let star = match *field {
+            BoardField::Position => place_star_col(penalty_place_delta(focus_num)),
+            BoardField::ClassPos => place_star_col(penalty_class_place_delta(s, focus_num)),
+            _ => None,
         };
         let max_tw = (slot_w - 16.0).max(12.0);
         let label = ellipsize(fonts, &label, fsz, max_tw);
@@ -2470,12 +2619,22 @@ fn draw_board_bar(
         } else {
             0.0
         };
-        let used = iw + measure(fonts, &label, fsz);
+        let used = iw + place_width(fonts, &label, fsz, star);
         let sx = x + pad + slot_w * i as f32 + (slot_w - used) * 0.5;
         if ch != '\0' {
             icon(px, fonts, ch, icon_s, sx, ty + 0.5, text_col(), false);
         }
-        text(px, fonts, &label, fsz, sx + iw, ty, text_col(), false);
+        paint_place_at(
+            px,
+            fonts,
+            &label,
+            fsz,
+            sx + iw,
+            ty,
+            text_col(),
+            star,
+            false,
+        );
     }
 }
 
@@ -2863,6 +3022,20 @@ fn paint_table_row<C: BoardCol>(
                     mark,
                 );
             }
+        } else if kind.is_pos() {
+            let star = click.and_then(|num| place_star_col(penalty_place_delta(num)));
+            col_place_text(
+                px,
+                fonts,
+                &val,
+                12.0,
+                *cx + pad,
+                (*cw - pad).max(8.0),
+                row.cy + 4.0,
+                color,
+                star,
+                right,
+            );
         } else {
             col_text(
                 px,
@@ -2962,27 +3135,6 @@ fn stroke_circle(px: &mut Pixmap, cx: f32, cy: f32, r: f32, color: Color, width:
     if let Some(path) = pb.finish() {
         stroke_path(px, &path, color, width);
     }
-}
-
-fn dest_lum_alpha(d: PremultipliedColorU8) -> (u8, u8) {
-    let da = d.alpha();
-    if da < 8 {
-        return (0, da);
-    }
-    let ur = d.red() as u16 * 255 / da as u16;
-    let ug = d.green() as u16 * 255 / da as u16;
-    let ub = d.blue() as u16 * 255 / da as u16;
-    ((((ur * 30 + ug * 59 + ub * 11) / 100) as u8), da)
-}
-
-fn paint_keep_alpha(r: f32, g: f32, b: f32, da: u8) -> Option<PremultipliedColorU8> {
-    let a = da as f32;
-    PremultipliedColorU8::from_rgba(
-        (r * a / 255.0).round() as u8,
-        (g * a / 255.0).round() as u8,
-        (b * a / 255.0).round() as u8,
-        da,
-    )
 }
 
 fn art_lum_at(art: &Pixmap, x: u32, y: u32) -> u8 {
@@ -4218,6 +4370,41 @@ struct PolyHit {
     az: f32,
     bx: f32,
     bz: f32,
+}
+
+struct RiderMapPose {
+    x: f32,
+    z: f32,
+    yaw: f32,
+}
+
+/// World XZ for a map/minimap dot: prefer the centerline from live `track_pos`
+/// (same idea as C++ `MapHud::sampleTrackPos`), else fall back to rider XZ.
+/// At the gate / prestart, keep world XZ so stalls do not pile onto one poly point.
+fn rider_map_pose(s: &Snapshot, rider: &Rider) -> RiderMapPose {
+    let n = s.poly_count.max(0) as usize;
+    if rider.track_pos >= 0.0 && !prestart(s) {
+        let frac = norm_track_pos(s, rider.track_pos);
+        if let Some(hit) = poly_at_frac(s, n, frac) {
+            let dx = hit.bx - hit.ax;
+            let dz = hit.bz - hit.az;
+            let yaw = if dx * dx + dz * dz > 1.0e-8 {
+                dx.atan2(dz)
+            } else {
+                rider.yaw
+            };
+            return RiderMapPose {
+                x: hit.wx,
+                z: hit.wz,
+                yaw,
+            };
+        }
+    }
+    RiderMapPose {
+        x: rider.x,
+        z: rider.z,
+        yaw: rider.yaw,
+    }
 }
 
 fn poly_length(s: &Snapshot, n: usize) -> (f32, Vec<f32>) {

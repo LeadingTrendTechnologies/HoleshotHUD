@@ -91,7 +91,11 @@ pub(crate) fn draw_standings(
                             Some(standing.race_num),
                             |kind| match kind {
                                 StField::Pos => {
-                                    (format!("{}", standing.position.max(0)), name_c, true)
+                                    (
+                                        format_place_digits(standing.position.max(0), false),
+                                        name_c,
+                                        true,
+                                    )
                                 }
                                 StField::Num => (format!("{}", standing.race_num), dim, true),
                                 StField::Name => (cstr(&standing.name).to_string(), name_c, false),

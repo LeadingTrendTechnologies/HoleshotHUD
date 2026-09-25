@@ -98,6 +98,8 @@ void fillSnapshot(MxboShmSnapshot& local,
     local.steerLock = state.steerLock();
     copyBounded(local.trackName, MXBO_TRACK_NAME, state.trackName().c_str());
     copyBounded(local.setupName, MXBO_TRACK_NAME, state.setupName().c_str());
+    copyBounded(local.serverName, MXBO_TRACK_NAME, state.serverName().c_str());
+    copyBounded(local.eventGuid, MXBO_GUID, state.eventGuid().c_str());
     local.trackLength = state.trackLength();
     local.sfMeters = state.startFinishMeters();
 

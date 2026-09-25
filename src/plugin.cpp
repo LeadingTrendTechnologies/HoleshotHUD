@@ -1,5 +1,6 @@
 #include "vendor/piboso/mxb_api.h"
 #include "config.h"
+#include "crash_log.h"
 #include "state.h"
 #include "hud/draw_list.h"
 #include "hud/map_hud.h"
@@ -119,49 +120,10 @@ namespace
     }
 
     FILETIME g_iniWriteTime{};
-    char g_lastCallback[32]{};
 
     void breadcrumb(const char* name)
     {
-        if (!name)
-        {
-            return;
-        }
-        std::strncpy(g_lastCallback, name, sizeof(g_lastCallback) - 1);
-        g_lastCallback[sizeof(g_lastCallback) - 1] = '\0';
-    }
-
-    void writeLastCallback()
-    {
-        if (g_lastCallback[0] == '\0')
-        {
-            return;
-        }
-        wchar_t local[MAX_PATH]{};
-        const DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", local, MAX_PATH);
-        if (n == 0 || n >= MAX_PATH)
-        {
-            return;
-        }
-        std::wstring dir = local;
-        dir += L"\\Holeshot HUD";
-        CreateDirectoryW(dir.c_str(), nullptr);
-        const std::wstring path = dir + L"\\last-callback.txt";
-        const HANDLE file = CreateFileW(
-            path.c_str(),
-            GENERIC_WRITE,
-            FILE_SHARE_READ,
-            nullptr,
-            CREATE_ALWAYS,
-            FILE_ATTRIBUTE_NORMAL,
-            nullptr);
-        if (file == INVALID_HANDLE_VALUE)
-        {
-            return;
-        }
-        DWORD written = 0;
-        WriteFile(file, g_lastCallback, static_cast<DWORD>(std::strlen(g_lastCallback)), &written, nullptr);
-        CloseHandle(file);
+        crash_log::breadcrumb(name);
     }
 
     void reloadConfigIfChanged()
@@ -211,7 +173,7 @@ namespace
         }
         catch (...)
         {
-            writeLastCallback();
+            crash_log::flushTrail();
         }
     }
 
@@ -274,6 +236,8 @@ __declspec(dllexport) int Startup(char* _szSavePath)
         g_layoutDirty = true;
         g_shm.open();
         ensureOverlayCompat();
+        crash_log::install(&g_state);
+        crash_log::flushTrail();
         return kTelemetryHz;
     }
     catch (...)
@@ -285,7 +249,7 @@ __declspec(dllexport) int Startup(char* _szSavePath)
 __declspec(dllexport) void Shutdown()
 {
     breadcrumb("Shutdown");
-    writeLastCallback();
+    crash_log::flushTrail();
     safeCall([] {
         if (!g_iniPath.empty())
         {
@@ -310,6 +274,7 @@ __declspec(dllexport) void EventInit(void* _pData, int _iDataSize)
         g_state.setEvent(data);
         g_layoutDirty = true;
     });
+    crash_log::flushTrail();
 }
 
 __declspec(dllexport) void EventDeinit()
@@ -320,6 +285,7 @@ __declspec(dllexport) void EventDeinit()
         g_layoutDirty = true;
         publishHud();
     });
+    crash_log::flushTrail();
 }
 
 __declspec(dllexport) void RunInit(void* _pData, int _iDataSize)
@@ -386,6 +352,7 @@ __declspec(dllexport) void RunTelemetry(void* _pData, int _iDataSize, float _fTi
     onCopied<SPluginsBikeData_t>(_pData, _iDataSize, [&](const SPluginsBikeData_t& data) {
         g_state.setTelemetry(data, _fTime, _fPos);
     });
+    crash_log::noteTelemetry();
 }
 
 __declspec(dllexport) int DrawInit(int* _piNumSprites, char** _pszSpriteName, int* _piNumFonts, char** _pszFontName)
@@ -500,6 +467,7 @@ __declspec(dllexport) void RaceEvent(void* _pData, int _iDataSize)
     onCopied<SPluginsRaceEvent_t>(_pData, _iDataSize, [](const SPluginsRaceEvent_t& data) {
         g_state.setRaceEvent(data);
     });
+    crash_log::flushTrail();
 }
 
 __declspec(dllexport) void RaceDeinit()

@@ -7,11 +7,11 @@ extern "C" {
 #endif
 
 #define MXBO_SHM_MAGIC 0x4F42584Du /* 'MXBO' */
-#define MXBO_SHM_VERSION 17
+#define MXBO_SHM_VERSION 18
 /* Layout lock: src/shm/abi.txt — tools/shm-abi.cpp and Rust Snapshot/CmdView. */
 /* Versioned name so a leftover smaller mapping cannot be remapped and overrun. */
-#define MXBO_SHM_NAME L"Local\\MXBOHudV17"
-#define MXBO_SHM_NAME_A "Local\\MXBOHudV17"
+#define MXBO_SHM_NAME L"Local\\MXBOHudV18"
+#define MXBO_SHM_NAME_A "Local\\MXBOHudV18"
 #define MXBO_CMD_MAGIC 0x4342584Du /* 'MXBC' */
 #define MXBO_CMD_NAME L"Local\\MXBOHudCmdV1"
 #define MXBO_CMD_NAME_A "Local\\MXBOHudCmdV1"
@@ -21,6 +21,7 @@ extern "C" {
 #define MXBO_MAX_SECTORS 3
 #define MXBO_NAME 32
 #define MXBO_TRACK_NAME 64
+#define MXBO_GUID 100
 
 typedef struct MxboShmPoint
 {
@@ -158,6 +159,8 @@ typedef struct MxboShmSnapshot
     int32_t holeshotTime;
     /* Monotonic Draw publishes only (not RaceVehicleData / lifecycle). Systems FPS. */
     uint32_t drawCount;
+    char serverName[MXBO_TRACK_NAME];
+    char eventGuid[MXBO_GUID];
 } MxboShmSnapshot;
 
 /* Overlay → plugin. Separate mapping so the snapshot seqlock is not mixed with writes. */

@@ -50,6 +50,8 @@ void PluginState::clearEvent()
 {
     m_localName.clear();
     m_trackName.clear();
+    m_serverName.clear();
+    m_eventGuid.clear();
     m_setupName.clear();
     m_trackLength = 0.0f;
     m_hasTelemetry = false;
@@ -128,6 +130,22 @@ void PluginState::setEvent(const SPluginsBikeEvent_t& ev)
     if (ev.m_szTrackName[0])
     {
         m_trackName = copyCString(ev.m_szTrackName, sizeof(ev.m_szTrackName));
+    }
+    if (ev.m_szServerName[0])
+    {
+        m_serverName = copyCString(ev.m_szServerName, sizeof(ev.m_szServerName));
+    }
+    else
+    {
+        m_serverName.clear();
+    }
+    if (ev.m_szGUID[0])
+    {
+        m_eventGuid = copyCString(ev.m_szGUID, sizeof(ev.m_szGUID));
+    }
+    else
+    {
+        m_eventGuid.clear();
     }
     if (ev.m_fTrackLength > 0.0f)
     {

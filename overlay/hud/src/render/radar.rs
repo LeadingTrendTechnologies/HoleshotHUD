@@ -338,6 +338,14 @@ pub(crate) fn draw_radar(
         let heat = radar_blip_heat(dist, RADAR_RING_OUTER_M);
         let rad = radar_blip_radius(heat, size);
         draw_radar_blip(px, bx, by, rad, heat);
+        let lap_ring = match lap_rel(s, race_num) {
+            LapRel::LappingMe => Some(lapping_col()),
+            LapRel::LappedByMe => Some(lapped_col()),
+            LapRel::Same => None,
+        };
+        if let Some(col) = lap_ring {
+            stroke_circle(px, bx, by, rad + 2.0, col, 2.0);
+        }
         draw_state_mark(
             px,
             fonts,

@@ -179,7 +179,8 @@ pub(crate) fn draw_minimap(
             if you.is_some() && rider.race_num == subject {
                 continue;
             }
-            let (hx, hy) = to_px(rider.x, rider.z);
+            let pose = rider_map_pose(s, rider);
+            let (hx, hy) = to_px(pose.x, pose.z);
             if (hx - mc) * (hx - mc) + (hy - mc) * (hy - mc) > sdim * sdim * 0.27 {
                 continue;
             }
@@ -195,8 +196,8 @@ pub(crate) fn draw_minimap(
                 cfg.mini_numbers,
                 false,
             );
-            let (fwx, fwz) = yaw_forward(rider.yaw);
-            let (sdx, sdy) = screen_dir(&to_px, rider.x, rider.z, fwx, fwz);
+            let (fwx, fwz) = yaw_forward(pose.yaw);
+            let (sdx, sdy) = screen_dir(&to_px, pose.x, pose.z, fwx, fwz);
             draw_dot_chevron(mini, hx, hy, other_r, sdx, sdy, fill, false);
             draw_rider_overhead(
                 mini,

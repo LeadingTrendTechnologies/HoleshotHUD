@@ -46,11 +46,12 @@ pub(crate) struct DashLay {
     pub(crate) speed: String,
     pub(crate) speed_label: &'static str,
     pub(crate) ptxt: String,
+    pub(crate) pstar: Option<Color>,
     pub(crate) lap_txt: String,
     pub(crate) lapped: bool,
     pub(crate) lead: bool,
     pub(crate) tag_sz: f32,
-    pub(crate) foot: Vec<(char, String)>,
+    pub(crate) foot: Vec<(char, String, Option<Color>)>,
 }
 
 /// Shown beside the lap/clock text when you are a lap or more down.
@@ -89,10 +90,13 @@ pub(crate) fn dash_layout(
     };
     let pos = Some(standing_pos(s, focus_num)).filter(|p| *p > 0);
     let lead = pos == Some(1);
-    let ptxt = pos.map(|p| format!("P{p}")).unwrap_or_else(|| "P--".into());
+    let ptxt = pos
+        .map(|p| format_place_digits(p, true))
+        .unwrap_or_else(|| "P--".into());
+    let pstar = place_star_col(penalty_place_delta(focus_num));
     let lap_txt = race_progress_text(s);
     let lapped = lapped(s);
-    let foot: Vec<(char, String)> = [cfg.dash_left, cfg.dash_mid, cfg.dash_right]
+    let foot: Vec<(char, String, Option<Color>)> = [cfg.dash_left, cfg.dash_mid, cfg.dash_right]
         .into_iter()
         .filter_map(|field| dash_foot_item(s, cfg, field))
         .collect();
@@ -148,7 +152,7 @@ pub(crate) fn dash_layout(
     let digit = max_digit_w(fonts, val);
     let mid_w = (measure(fonts, "RPM", label) + 8.0 * k + digit * 5.0)
         .max(measure(fonts, speed_label, label) + 8.0 * k + digit * 3.0);
-    let right_w = measure(fonts, &ptxt, pos_n).max(lap_row_w);
+    let right_w = place_width(fonts, &ptxt, pos_n, pstar).max(lap_row_w);
     let base_gap = 18.0 * k;
     let extra = (w - pad * 2.0 - gear_w - mid_w - right_w).max(0.0);
     let col_gap = (extra / 2.0).max(base_gap * 0.4);
@@ -194,6 +198,7 @@ pub(crate) fn dash_layout(
         speed,
         speed_label,
         ptxt,
+        pstar,
         lap_txt,
         lapped,
         lead,
@@ -288,6 +293,7 @@ pub(crate) fn dash_layout_simple(
         speed,
         speed_label,
         ptxt: String::new(),
+        pstar: None,
         lap_txt: String::new(),
         lapped: false,
         lead: false,
@@ -432,7 +438,7 @@ pub(crate) fn dash_foot_item(
     s: &Snapshot,
     cfg: &HudConfig,
     field: DashField,
-) -> Option<(char, String)> {
+) -> Option<(char, String, Option<Color>)> {
     if field == DashField::None {
         return None;
     }
@@ -443,6 +449,13 @@ pub(crate) fn dash_foot_item(
             .and_then(|i| race.field.rows.get(i))
             .map(|r| &r.standing)
             .or_else(|| focus_standing(s));
+        let focus_num = st.map(|r| r.race_num).unwrap_or_else(|| {
+            if s.focus_race_num > 0 {
+                s.focus_race_num
+            } else {
+                s.local_race_num
+            }
+        });
         let text = match field {
             DashField::None => return None,
             DashField::Speed => format!(
@@ -459,7 +472,7 @@ pub(crate) fn dash_foot_item(
                 }
             }
             DashField::Position => st
-                .map(|r| format!("P{}", r.position.max(0)))
+                .map(|r| format_place_digits(r.position.max(0), true))
                 .unwrap_or_else(|| "P--".into()),
             DashField::Number => {
                 let n = if s.focus_race_num > 0 {
@@ -530,7 +543,12 @@ pub(crate) fn dash_foot_item(
                 }
             }
         };
-        Some((field.icon(), text))
+        let star = if field == DashField::Position {
+            place_star_col(penalty_place_delta(focus_num))
+        } else {
+            None
+        };
+        Some((field.icon(), text, star))
     })
 }
 
@@ -703,7 +721,7 @@ pub(crate) fn draw_simple_dash(
 
 pub(crate) fn draw_dash_lead_crown(px: &mut Pixmap, fonts: &Fonts, d: &DashLay, pos_y: f32) {
     let size = (d.pos_n * 0.38).clamp(11.0, 17.0);
-    let cx = d.right_x + measure(fonts, &d.ptxt, d.pos_n) * 0.5;
+    let cx = d.right_x + place_width(fonts, &d.ptxt, d.pos_n, d.pstar) * 0.5;
     let cy = pos_y - size * 0.88;
     icon(
         px,
@@ -880,7 +898,19 @@ pub(crate) fn draw_dash(
         Color::from_rgba8(20, 12, 6, 160),
         false,
     );
-    text_bold(
+    if d.pstar.is_some() {
+        text_bold(
+            px,
+            fonts,
+            "*",
+            d.pos_n,
+            d.right_x + 1.0 + measure(fonts, &d.ptxt, d.pos_n),
+            pos_y + 1.0,
+            Color::from_rgba8(20, 12, 6, 160),
+            false,
+        );
+    }
+    paint_place_at(
         px,
         fonts,
         &d.ptxt,
@@ -888,7 +918,8 @@ pub(crate) fn draw_dash(
         d.right_x,
         pos_y,
         dash_pos_col(),
-        false,
+        d.pstar,
+        true,
     );
     let lap_y = d.main_y + d.main_h * 0.68;
     text(
@@ -916,19 +947,19 @@ pub(crate) fn draw_dash(
         let foot_used: f32 = d
             .foot
             .iter()
-            .map(|(ch, label)| {
+            .map(|(ch, label, star)| {
                 fonts.icons.metrics(*ch, d.icon_s).advance_width
                     + 5.0
-                    + measure(fonts, label, d.fsz)
+                    + place_width(fonts, label, d.fsz, *star)
             })
             .sum();
         let foot_gap = ((foot_inner - foot_used) / (d.foot.len() as f32 + 1.0)).max(8.0);
         let mut fx = d.x + d.pad + foot_gap;
-        for (ch, label) in &d.foot {
+        for (ch, label, star) in &d.foot {
             icon(px, fonts, *ch, d.icon_s, fx, fy, white, false);
             fx += fonts.icons.metrics(*ch, d.icon_s).advance_width + 5.0;
-            text(px, fonts, label, d.fsz, fx, fy + 1.0, white, false);
-            fx += measure(fonts, label, d.fsz) + foot_gap;
+            paint_place_at(px, fonts, label, d.fsz, fx, fy + 1.0, white, *star, false);
+            fx += place_width(fonts, label, d.fsz, *star) + foot_gap;
         }
     }
 

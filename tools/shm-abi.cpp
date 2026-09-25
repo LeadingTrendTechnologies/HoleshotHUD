@@ -19,6 +19,7 @@ int main()
     std::printf("MAX_SECTORS=%d\n", MXBO_MAX_SECTORS);
     std::printf("NAME=%d\n", MXBO_NAME);
     std::printf("TRACK_NAME=%d\n", MXBO_TRACK_NAME);
+    std::printf("GUID=%d\n", MXBO_GUID);
 
     std::printf("MxboShmPoint.size %zu\n", sizeof(MxboShmPoint));
     FIELD(MxboShmPoint, x);
@@ -134,6 +135,8 @@ int main()
     FIELD(MxboShmSnapshot, holeshotRaceNum);
     FIELD(MxboShmSnapshot, holeshotTime);
     FIELD(MxboShmSnapshot, drawCount);
+    FIELD(MxboShmSnapshot, serverName);
+    FIELD(MxboShmSnapshot, eventGuid);
 
     std::printf("MxboShmCmd.size %zu\n", sizeof(MxboShmCmd));
     FIELD(MxboShmCmd, magic);

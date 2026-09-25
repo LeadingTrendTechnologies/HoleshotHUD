@@ -11,7 +11,7 @@ pub(crate) fn draw_reply(
     scroll: f32,
     hits: &mut Vec<HitBox>,
 ) -> f32 {
-    let scrim = Color::from_rgba8(8, 8, 10, 204);
+    let scrim = scrim();
     if let Some(r) = Rect::from_xywh(0.0, 0.0, win_w, win_h) {
         fill_rect(px, r, scrim);
     }
@@ -63,11 +63,7 @@ pub(crate) fn draw_reply(
     let panel_h = want.min(win_h - 48.0).max(header_h + footer_h + 24.0);
     let panel_x = ((win_w - panel_w) * 0.5).max(16.0);
     let panel_y = ((win_h - panel_h) * 0.5).max(16.0);
-    let board = if high_contrast_on() {
-        panel()
-    } else {
-        Color::from_rgba8(20, 20, 22, 255)
-    };
+    let board = menu_fill();
     fill_round(px, panel_x, panel_y, panel_w, panel_h, 10.0, board);
     hits.push(HitBox {
         id: Hit::ReplyPanel,
@@ -169,7 +165,7 @@ pub(crate) fn draw_reply(
             3.0,
             view_h,
             1.5,
-            Color::from_rgba8(255, 255, 255, 18),
+            menu_edge(),
         );
         fill_round(
             px,
@@ -178,7 +174,7 @@ pub(crate) fn draw_reply(
             3.0,
             thumb_h,
             1.5,
-            Color::from_rgba8(255, 255, 255, 48),
+            menu_edge_strong(),
         );
     }
 
@@ -193,7 +189,7 @@ pub(crate) fn draw_reply(
         h: box_h,
     });
     let box_fill = if compose.focused {
-        Color::from_rgba8(20, 20, 24, 255)
+        menu_fill()
     } else {
         btn_bg()
     };

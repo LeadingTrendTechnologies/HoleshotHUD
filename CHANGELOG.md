@@ -4,33 +4,68 @@
 
 ### Overlay
 
+- **Settings → Stream → Browser Source** starts a localhost page (`http://127.0.0.1:8765`, next port if busy). Copy the URL into OBS as a Browser Source at your canvas size. Transparent.
+- Browser Source paints the live **stream** layout for the current session (`for_stream()`). Fresh install: every stream Show starts off.
+- INI sections `[PracticeStream]` / `[WarmupStream]` / `[RaceStream]` / `[SpectateStream]`.
 - Stream layout editor at `http://127.0.0.1:<port>/edit`: Show on stream, drag/resize, basic prefs. OBS keeps paint-only `/`.
 - F8 Widgets is game-only (Game | Stream surface removed). Settings → Stream copies OBS `/` and Edit `/edit` URLs; **Copy game → stream** seeds the open chip.
 
 ## 0.18.0
 
-Stream-only layouts for OBS Browser Source (Phase 2).
+The Controller gets a Light/Dark Theme for both pads, including a new light PlayStation pad, and every pad draws smooth outlines and press fills.
+
+### Controller
+
+- DualShock outlines are smooth at widget size: the dark pad art no longer has transparent pinholes along its lines, its body edge is anti-aliased, and the pad is area-averaged down instead of resampled, so thin outlines stop breaking into dashes. The stick's primary ring is a solid circle.
+- DualShock press fills (triggers, bumpers, d-pad, face buttons) have smooth edges, and pressed Cross/Circle/Triangle/Square symbols stay crisp cream on the fill. The L1/L2/R1/R2 labels are removed from the pad.
+- Xbox press fills (LT/RT, LB/RB, d-pad, ABXY, View/Menu, guide) have smooth edges, and ABXY keep their colored letter on the fill.
+- New **Theme** setting (Light / Dark) for both pads, default Light. Xbox Dark is a DualShock-style schematic: charcoal body, thin grey outlines, and outlined ABXY that turn cream when pressed; its bumpers light the same band as the light pad.
+- New light PlayStation pad: cream body with black outlines, black d-pad, face and touchpad panels, slate d-pad keys and shoulders, and cream symbols. PlayStation users see it after updating; pick Dark under Theme to keep the charcoal pad.
 
 ### Overlay
 
-- F8 Widgets **Game | Stream** surface next to the preset chips. **Show on stream** and Ctrl-drag edit that chip’s stream board only; the in-game HUD stays on Game.
-- **Copy to** on Stream can copy stream→stream or **Game → this stream**.
-- Browser Source paints the live **stream** layout for the current session (`for_stream()`). Fresh install: every stream Show starts off.
-- INI sections `[PracticeStream]` / `[WarmupStream]` / `[RaceStream]` / `[SpectateStream]`.
+- Live race order no longer sticks behind riders who went down: on the start, or any time a rider scored ahead of you is more than 250 m back, your place updates right away instead of waiting for the next gate. Riders missing from the rider list keep their scored slot without blocking passes around them.
+- Time penalties move the live order during the race (the game only applies them to the results). Every rider is ranked by where they are on track minus their own penalty, so a 10 s penalty and a 5 s penalty both count no matter which place the game still has them in.
+- When live place and on-track place disagree because of those penalties, Dash / Standings / Relative / H-Standings (and board Position fields) show a trailing `*`: green when you are ahead of your on-track place, red when you are behind.
+- Yellow flag holds ~1.75 s after a nearby crash clears so blue/red cannot flash during the same incident. Blue and red ignore crashed riders.
+- Live place no longer jumps to P1 when the progress tracker rides more than a lap without a `num_laps` bump (missed line publish); armed lap metres stay within one lap.
+- Map and minimap rider dots follow live `track_pos` on the centerline (world XZ is fallback only), so icons move with standings and dash when game world coords lag.
+- Map and minimap keep starting-gate dots on world XZ so stalls do not pile onto one centerline point; once the race is live, dots still follow `track_pos`.
+- Live place no longer drops a true leader to mid-pack when lap travel wraps before `num_laps` bumps: small overshoot only clamps; larger runaway pins to the game place (no S/F fallback to ~0 m).
 
 ## 0.17.0
 
-OBS Browser Source for the live HUD layout (Phase 1 streaming).
+Profile Motos nests under Overview with a Ranked filter; steadier lapping colors and timed Dash clocks.
 
 ### Overlay
 
-- **Settings → Stream → Browser Source** starts a localhost page (`http://127.0.0.1:8765`, next port if busy). Copy the URL into OBS as a Browser Source at your canvas size. Transparent; follows the live in-game layout. Stream-only layouts are not in this release.
+- Red lapping color is pairwise only: the leader lapping someone behind you no longer paints them red until you lap them (`gap_laps` only forces blue when they are ahead of you).
+- Same-race start/finish straddles no longer flash blue/red on map, minimap, relative, or radar (`other_laps_ahead` uses continuous lap progress when `gap_laps` match).
+
+### Relative
+
+- Optional **Status** column (`rel_status`, default off) with the same crash / finish / DNS / OUT / DSQ / pit icons as Standings. Finished riders show only the finish flag.
+- Blue/red lapping row tints hold through a pass while still within catch span (either side).
+
+### Dash
+
+- Timed +2: `~Lapped` latches mid-track when the finished leader passes you on `1/2` (no longer waits for your line). Same last extra still needs a two-lap lead.
+- Timed race: after the first gate board (~50 s) ends, show race length instead of another short countdown (ignore later 45 s / 30 s boards).
+- Armed timed countdown holds the last remain when `session_time_ms` republishes near session length (does not snap back to full length).
+- `~Lapped` pass latch ignores centerline projection spikes and discontinuous leader teleports (over/under tabletop).
+- Latched checkered clears when `laps_left > 0` again so a glitched finish does not leave Extra looking done while place still moves.
 
 ### Profile
 
+- Motos list chips are **All** / **Ranked** / **Saved** (Race chip removed; Ranked filters lobby-allowlist visits).
+- Hover **Record** on Overview explains Motos recording (saves race visits; practice and spectate skipped).
 - Profile **Overview** | **Motos** is a horizontal sub-nav under the top bar (no left rail).
-- Motos no longer records practice / Testing Setup. List chips are **All** / **Race** / **Saved**; old practice rows are removed. Profile still ignores practice.
-- Motos stores the online server name with each race visit (for later ranked vs race; not shown in the list yet).
+- Motos no longer records practice / Testing Setup; old practice rows are removed. Profile still ignores practice.
+- Motos stores the online server name with each race visit (trophy + Ranked chip when lobby id is in `ranked_servers`).
+
+### Plugin
+
+- Shared memory is `Local\MXBOHudV18`. `serverName` and `eventGuid` are published for Motos Ranked. Restart MX Bikes after the plugin update.
 
 ## 0.16.0
 

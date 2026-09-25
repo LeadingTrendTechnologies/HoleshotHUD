@@ -2,7 +2,7 @@
 
 Agent context for every HUD widget. Plugin field inventory lives in [Home.md](Home.md). These pages track **what each widget does, why it looks the way it does, and what changed**.
 
-Wishlist (not shipped): [future.md](widgets/future.md). Streaming (OBS Browser Source, not shipped): [streaming.md](streaming.md). Post-race library: [review.md](review.md).
+Wishlist (not shipped): [future.md](widgets/future.md). Streaming (OBS Browser Source + stream layouts): [streaming.md](streaming.md). Post-race library: [review.md](review.md).
 
 When you change a widget, append a dated entry to that widget’s **Change log**. Do not only update `CHANGELOG.md`.
 
@@ -41,7 +41,7 @@ When you change a widget, append a dated entry to that widget’s **Change log**
 
 ## Shared rider colors (map, minimap, relative rows)
 
-Default other-rider color is dark slate. **Blue** only if they are a lap ahead **and** closing from behind. **Red** only if you are a lap ahead **and** closing on them. Two (or more) laps down is still blue when they close from behind — `other_laps_ahead` prefers `gap_laps` over `num_laps` so a lapped rider whose completed-lap count sits on the race lap does not invert the leader to red. You use the Settings primary color (default orange). Off in warmup (`is_warmup`, including `session_kind` 5 when extras leak) — practice lap counts are not race lapping. See `lap_rel` / `rider_dot_col` in `render/mod.rs`.
+Default other-rider color is dark slate. **Blue** if they are a lap ahead **and** within catch span (either side — stays blue after they pass while still nearby). **Red** if **you** are a lap ahead of them **and** within catch span (either side — stays red after you pass while still nearby). Blue uses leader-relative `gap_laps` when that says they are ahead of you (`by_gap >= 1`) so a multi-lap-down invert of `num_laps` does not paint the leader red. Red is pairwise only (`num_laps` + continuous progress) — the leader lapping someone behind you must not turn them red until you lap them. When `num_laps` differ, continuous progress (`num_laps + track_pos`) must also round to a non-zero lap so two same-race riders straddling S/F do not flash blue/red until the second rider crosses. You use the Settings primary color (default orange). Off in warmup (`is_warmup`, including `session_kind` 5 when extras leak) — practice lap counts are not race lapping. See `lap_rel` / `rider_dot_col` in `render/mod.rs`. Blue/red **flags** stay closing-only (behind / ahead within shorter spans).
 
 ## How to log a change
 
@@ -53,4 +53,7 @@ Add a bullet under **Change log** on the widget page:
 
 ## Change log
 
+- 2026-09-24 — Red is pairwise only: leader lapping someone behind you no longer paints them red; `gap_laps` only forces blue when they are ahead of you.
+- 2026-09-24 — Shared rider colors: same-race S/F straddles no longer flash blue/red; `other_laps_ahead` rounds continuous `num_laps + track_pos` when `gap_laps` match.
+- 2026-09-22 — Shared rider colors: blue/red hold through a pass while still within catch span (either side). Flags stay closing-only.
 - 2026-09-22 — Open practice / Testing Setup (length unset, no extras) selects the Practice preset. A live clock alone no longer falls through to Race. 40+ min practice wins over leaked extras.

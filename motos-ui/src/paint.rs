@@ -132,7 +132,7 @@ pub fn pane_review(
         w,
         "Motos",
         sub,
-        Some((recording, Hit::ReviewToggle, "Record")),
+        None,
         hover,
         hits,
     );
@@ -140,12 +140,7 @@ pub fn pane_review(
     let mut cx = x;
     for (label, on, hit) in [
         ("All", filter == ListFilter::All, Hit::ReviewFilterAll),
-        ("Race", filter == ListFilter::Race, Hit::ReviewFilterRace),
-        (
-            "Practice",
-            filter == ListFilter::Practice,
-            Hit::ReviewFilterPractice,
-        ),
+        ("Ranked", filter == ListFilter::Ranked, Hit::ReviewFilterRanked),
         ("Saved", filter == ListFilter::Saved, Hit::ReviewFilterSaved),
     ] {
         let cw = filter_chip(px, fonts, cx, chip_y, label, on, hit, hover, hits);
@@ -301,6 +296,7 @@ fn pane_analyze(
             hits,
         );
     };
+    let head_y = y;
     let mut y = heading(
         px,
         fonts,
@@ -313,6 +309,11 @@ fn pane_analyze(
         hover,
         hits,
     );
+    if detail.row.ranked {
+        let track = ellipsize_heading(fonts, &detail.row.track, 13.0, w);
+        let tw = measure(fonts, &track, 13.0);
+        draw_ranked_mark(px, fonts, x + tw + 6.0, head_y + 48.0 + 8.0 + 1.0, 13.0);
+    }
     let back = icon_hit(
         px,
         x,
@@ -485,17 +486,18 @@ fn pane_analyze(
     y + 16.0
 }
 
-const SHEET_WHEN: f32 = 84.0;
-const SHEET_RIDERS: f32 = 44.0;
-const SHEET_YOU: f32 = 104.0;
-const SHEET_FAST: f32 = 148.0;
+const SHEET_WHEN: f32 = 56.0;
+const SHEET_POS: f32 = 56.0;
+const SHEET_YOU: f32 = 72.0;
+const SHEET_FAST: f32 = 160.0;
 const SHEET_ACT: f32 = 76.0;
 const SHEET_PAD: f32 = 8.0;
+const SHEET_GAP: f32 = 12.0;
 const SHEET_ROW: f32 = 42.0;
 const SHEET_ICON: f32 = 32.0;
 
 fn sheet_hair() -> Color {
-    Color::from_rgba8(42, 42, 46, 255)
+    crate::chrome::sheet_hair()
 }
 
 fn draw_review_sheet(
@@ -525,7 +527,7 @@ fn draw_review_sheet(
     let cols = sheet_columns(x, w);
     text(px, fonts, "WHEN", 10.0, cols.when, y, dim(), false);
     text(px, fonts, "TRACK", 10.0, cols.track, y, dim(), false);
-    text(px, fonts, "RIDERS", 10.0, cols.riders, y, dim(), false);
+    text(px, fonts, "POS", 10.0, cols.pos, y, dim(), false);
     text(px, fonts, "YOU", 10.0, cols.you, y, dim(), false);
     text(px, fonts, "FASTEST", 10.0, cols.fast, y, dim(), false);
     let mut y = y + 18.0;
@@ -554,7 +556,7 @@ fn draw_review_sheet(
                 w,
                 SHEET_ROW,
                 6.0,
-                Color::from_rgba8(255, 255, 255, 10),
+                hover_wash(),
             );
         }
         let ty = y + 13.0;
@@ -568,18 +570,15 @@ fn draw_review_sheet(
             dim(),
             false,
         );
-        let track = ellipsize_heading(fonts, &row.track, 14.0, cols.track_w - 4.0);
+        let ranked_w = if row.ranked { 13.0 + 8.0 } else { 0.0 };
+        let track = ellipsize_heading(fonts, &row.track, 14.0, (cols.track_w - 4.0 - ranked_w).max(20.0));
         text(px, fonts, &track, 14.0, cols.track, ty, text_col(), false);
-        text(
-            px,
-            fonts,
-            &row.rider_count.to_string(),
-            13.0,
-            cols.riders,
-            ty,
-            muted(),
-            false,
-        );
+        if row.ranked {
+            let tw = measure(fonts, &track, 14.0);
+            draw_ranked_mark(px, fonts, cols.track + tw + 6.0, ty + 1.0, 13.0);
+        }
+        let pos = fmt_sheet_pos(row.your_position, row.rider_count);
+        text(px, fonts, &pos, 13.0, cols.pos, ty, muted(), false);
         text(
             px,
             fonts,
@@ -646,7 +645,7 @@ struct SheetCols {
     when: f32,
     track: f32,
     track_w: f32,
-    riders: f32,
+    pos: f32,
     you: f32,
     fast: f32,
     act: f32,
@@ -654,22 +653,33 @@ struct SheetCols {
 
 fn sheet_columns(x: f32, w: f32) -> SheetCols {
     let inner = (w - SHEET_PAD * 2.0).max(1.0);
-    let fixed = SHEET_WHEN + SHEET_RIDERS + SHEET_YOU + SHEET_FAST + SHEET_ACT;
-    let track_w = (inner - fixed).clamp(96.0, 220.0);
+    let fixed = SHEET_WHEN + SHEET_POS + SHEET_YOU + SHEET_FAST + SHEET_ACT;
+    let gaps = SHEET_GAP * 4.0;
+    let track_w = (inner - fixed - gaps).max(40.0);
     let when = x + SHEET_PAD;
-    let track = when + SHEET_WHEN;
-    let riders = track + track_w;
-    let you = riders + SHEET_RIDERS;
-    let fast = you + SHEET_YOU;
+    let track = when + SHEET_WHEN + SHEET_GAP;
+    let pos = track + track_w + SHEET_GAP;
+    let you = pos + SHEET_POS + SHEET_GAP;
+    let fast = you + SHEET_YOU + SHEET_GAP;
     let act = x + w - SHEET_PAD - SHEET_ACT;
     SheetCols {
         when,
         track,
         track_w,
-        riders,
+        pos,
         you,
         fast,
         act,
+    }
+}
+
+fn fmt_sheet_pos(position: i32, rider_count: i32) -> String {
+    if position > 0 && rider_count > 0 {
+        format!("{position}/{rider_count}")
+    } else if rider_count > 0 {
+        format!("—/{rider_count}")
+    } else {
+        "—".into()
     }
 }
 
@@ -748,7 +758,7 @@ fn icon_hit(
             SHEET_ICON,
             SHEET_ICON,
             8.0,
-            Color::from_rgba8(255, 255, 255, 14),
+            hover_wash(),
         );
     }
     let cx = x + SHEET_ICON * 0.5;
@@ -819,6 +829,10 @@ fn draw_win_crown(px: &mut Pixmap, fonts: &Fonts, x: f32, y: f32, size: f32) {
     icon(px, fonts, '\u{f521}', size, x, y, crown_gold(), false);
 }
 
+fn draw_ranked_mark(px: &mut Pixmap, fonts: &Fonts, x: f32, y: f32, size: f32) {
+    icon(px, fonts, '\u{f091}', size, x, y, dim(), false);
+}
+
 fn draw_bookmark_icon(px: &mut Pixmap, cx: f32, cy: f32, filled: bool, c: Color) {
     let mut pb = PathBuilder::new();
     pb.move_to(cx - 4.6, cy - 7.0);
@@ -871,7 +885,7 @@ fn filter_chip(
                 bw,
                 28.0,
                 8.0,
-                Color::from_rgba8(255, 255, 255, 10),
+                hover_wash(),
             );
         }
         text(px, fonts, label, 13.0, x + 14.0, y + 6.0, text_col(), false);
@@ -903,7 +917,7 @@ fn draw_scrubber(
         w,
         4.0,
         2.0,
-        Color::from_rgba8(42, 42, 46, 255),
+        track_off(),
     );
     let t = scrub.clamp(0.0, 1.0);
     fill_round(px, x, y + 8.0, (w * t).max(4.0), 4.0, 2.0, accent());
@@ -3344,7 +3358,7 @@ mod tests {
         bake_analyze_track, best_lap, bin_index, chart_range, chart_window, cluster_crash_marks,
         collapse_contact_names, compare_choices, compare_lap, compare_rider_label,
         connection_caption_for, crash_caption_for, cut_caption_for, default_analyze_scrub, fmt_lap,
-        follow_pan, holeshot_end, icon_tip_label, implied_gear, implied_throttle, in_well,
+        fmt_sheet_pos, follow_pan, holeshot_end, icon_tip_label, implied_gear, implied_throttle, in_well,
         inferred_speed, lap_chip_label, lap_group_n, pan_cm, pick_compare, pick_you_lap, point_at,
         pos_at_ms, sector_durations, sector_frac_known, smooth_poly_pts, spot_gear, spot_height,
         spot_rpm, spot_rpm_delta, spot_speed, spot_speed_delta, spot_throttle, step_you_lap,
@@ -3382,7 +3396,10 @@ mod tests {
                 id: 1,
                 started: 0,
                 track: "Hangtown".into(),
+                server_name: String::new(),
+                ranked: false,
                 rider_count: 2,
+                your_position: 2,
                 your_best_ms: 110_000,
                 fastest_name: "Cole".into(),
                 fastest_ms: 108_000,
@@ -3396,6 +3413,13 @@ mod tests {
             riders: Vec::new(),
             laps,
         }
+    }
+
+    #[test]
+    fn fmt_sheet_pos_place_over_field() {
+        assert_eq!(fmt_sheet_pos(3, 18), "3/18");
+        assert_eq!(fmt_sheet_pos(0, 18), "—/18");
+        assert_eq!(fmt_sheet_pos(0, 0), "—");
     }
 
     #[test]
@@ -3908,6 +3932,8 @@ mod tests {
             position: 1,
             best_ms: 111_420,
             last_ms: 111_420,
+            state: 0,
+            penalty_ms: 0,
             has_line: true,
         };
         assert_eq!(compare_rider_label(&r), "Cole | 450 | 1:51.42");
@@ -3929,6 +3955,8 @@ mod tests {
             position: 1,
             best_ms: 111_420,
             last_ms: 111_420,
+            state: 0,
+            penalty_ms: 0,
             has_line: true,
         };
         let webb = RiderRow {
@@ -3938,6 +3966,8 @@ mod tests {
             position: 2,
             best_ms: 112_040,
             last_ms: 112_460,
+            state: 0,
+            penalty_ms: 0,
             has_line: true,
         };
         let you = RiderRow {
@@ -3947,6 +3977,8 @@ mod tests {
             position: 3,
             best_ms: 113_080,
             last_ms: 113_080,
+            state: 0,
+            penalty_ms: 0,
             has_line: true,
         };
         let reed = RiderRow {
@@ -3956,6 +3988,8 @@ mod tests {
             position: 4,
             best_ms: 114_210,
             last_ms: 114_630,
+            state: 0,
+            penalty_ms: 0,
             has_line: false,
         };
         let dnf = RiderRow {
@@ -3965,6 +3999,8 @@ mod tests {
             position: 5,
             best_ms: 0,
             last_ms: 0,
+            state: 3,
+            penalty_ms: 0,
             has_line: false,
         };
         let mut cole_lap = lap(0, 111_420, false);

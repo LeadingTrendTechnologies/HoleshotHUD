@@ -41,8 +41,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use crate::config::{
     format_primary_color, hsv_to_rgb, rgb_to_hsv, update_config, with_config, BoardField,
-    DashField, DotLabel, EditSurface, FontFamily, GamepadStyle, HudConfig, LeanStyle, RelField,
-    SessionPreset, SettingsKey, SettingsTheme, SnapAlign, StField, StanceBind, StanceMode,
+    DashField, DotLabel, EditSurface, FontFamily, GamepadStyle, GamepadTheme, HudConfig, LeanStyle,
+    RelField, SessionPreset, SettingsKey, SettingsTheme, SnapAlign, StField, StanceBind, StanceMode,
     StanceStyle, TableText, UnitKind, Units, WidgetId, COL_W_MAX, COL_W_MIN, DEFAULT_PRIMARY,
     PRIMARY_SWATCHES, RADAR_RANGE_MAX, RADAR_RANGE_MIN, SYS_PRESETS, SYS_PROC_MAX,
 };
@@ -558,7 +558,6 @@ fn app_section_groups() -> [(&'static str, &'static [AppSection]); 2] {
 pub(crate) enum Hit {
     TabWidgets,
     TabApp,
-    TabReview,
     TabProfile,
     TabFeedback,
     ProfileNavOverview,
@@ -571,7 +570,7 @@ pub(crate) enum Hit {
     AppLabs,
     AppUpdates,
     ReviewFilterAll,
-    ReviewFilterRace,
+    ReviewFilterRanked,
     ReviewFilterSaved,
     ReviewOpen(u64),
     ReviewKeep(u64),
@@ -779,6 +778,8 @@ pub(crate) enum Hit {
     LeanStylePick(LeanStyle),
     GamepadStyleOpen,
     GamepadStylePick(GamepadStyle),
+    GamepadThemeOpen,
+    GamepadThemePick(GamepadTheme),
     StanceReset,
     DashFootOpen(u8),
     DashFootPick(u8, DashField),
@@ -872,6 +873,7 @@ pub(crate) enum Drop {
     StanceStyle,
     LeanStyle,
     GamepadStyle,
+    GamepadTheme,
     SysAdd,
     StText,
     RelText,
@@ -2359,6 +2361,7 @@ fn is_drop_pick(hit: Hit) -> bool {
             | Hit::StanceStylePick(_)
             | Hit::LeanStylePick(_)
             | Hit::GamepadStylePick(_)
+            | Hit::GamepadThemePick(_)
             | Hit::SysAddPick(_)
             | Hit::DashFootPick(_, _)
             | Hit::TickerFootPick(_, _)
@@ -2415,7 +2418,6 @@ fn hit_label(hit: Hit) -> String {
         Hit::AppStream => "Stream".into(),
         Hit::AppLabs => "Labs".into(),
         Hit::AppUpdates => "Updates".into(),
-        Hit::TabReview => "Motos".into(),
         Hit::TabProfile => "Profile".into(),
         Hit::TabFeedback => "Feedback".into(),
         Hit::ProfileNavOverview => "Overview".into(),
@@ -2428,19 +2430,13 @@ fn hit_label(hit: Hit) -> String {
         Hit::ClearConfirm => "Clear".into(),
         Hit::ProfileAxis(i) => profile_axis_tip(i).into(),
         Hit::ReviewFilterAll => "All motos".into(),
-        Hit::ReviewFilterRace => "Race sessions".into(),
+        Hit::ReviewFilterRanked => "Ranked motos".into(),
         Hit::ReviewFilterSaved => "Saved motos".into(),
         Hit::ReviewOpen(_) => "Open race".into(),
         Hit::ReviewKeep(_) => "Save race".into(),
         Hit::ReviewDelete(_) => "Delete race".into(),
         Hit::ReviewBack => "Back".into(),
-        Hit::ReviewToggle => {
-            if with_config(|c| c.review) {
-                "Stop recording".into()
-            } else {
-                "Record races".into()
-            }
-        }
+        Hit::ReviewToggle => profile_record_tip(with_config(|c| c.review)).into(),
         Hit::AnalyzeCompare(0) => "No compare".into(),
         Hit::AnalyzeCompare(_) => "Compare rider".into(),
         Hit::AnalyzeCompareOpen => "Choose rider".into(),
@@ -2560,6 +2556,7 @@ fn hit_label(hit: Hit) -> String {
         Hit::StanceModeOpen => "Sit mode".into(),
         Hit::StanceStyleOpen | Hit::LeanStyleOpen => "Look".into(),
         Hit::GamepadStyleOpen => "Pad".into(),
+        Hit::GamepadThemeOpen => "Theme".into(),
         Hit::SysAddOpen => "Add app".into(),
         Hit::SysAppBrowse => "Browse .exe".into(),
         Hit::SysAppShow(_) => "Show on Systems".into(),

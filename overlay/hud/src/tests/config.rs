@@ -106,6 +106,7 @@ fn default_hud_hides_every_widget() {
     assert_eq!(cfg.stance_style, StanceStyle::Text);
     assert_eq!(cfg.lean_style, LeanStyle::Figure);
     assert_eq!(cfg.gamepad_style, GamepadStyle::Auto);
+    assert_eq!(cfg.gamepad_theme, GamepadTheme::Light);
     assert!(!cfg.stance_show_sit);
     assert!(!cfg.experimental);
     assert!(!cfg.review);
@@ -1188,4 +1189,28 @@ fn apply_stream_live_to_snapshot_ignores_game_show() {
     cfg.apply_stream_live_to_snapshot(&mut snap);
     assert_eq!(snap.show_map, 1);
     assert!((snap.map.x - 0.11).abs() < 0.0001);
+}
+
+#[test]
+fn gamepad_theme_round_trips_and_light_fills() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-pad-theme-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let mut cfg = HudConfig::new();
+    cfg.first_install_version = "0.1.0".into();
+    cfg.gamepad_theme = GamepadTheme::Dark;
+    cfg.save();
+    let loaded = HudConfig::load_file();
+    let text = std::fs::read_to_string(&path).unwrap();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(text.contains("gamepad_theme=dark"));
+    assert_eq!(loaded.gamepad_theme, GamepadTheme::Dark);
+
+    assert_eq!(GamepadTheme::parse("DARK"), GamepadTheme::Dark);
+    assert_eq!(GamepadTheme::parse("bogus"), GamepadTheme::Light);
+    assert!(GamepadTheme::Light.filled());
+    assert!(!GamepadTheme::Dark.filled());
 }

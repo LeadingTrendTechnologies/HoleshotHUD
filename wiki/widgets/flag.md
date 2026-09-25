@@ -8,7 +8,7 @@ Settings subtitle: “White and checkered — same timing as Dash”. Toggles: *
 
 - Draw: `draw_flag` in `overlay/hud/src/render.rs`
 - Timing: `dash_race_flag` + `flag_anim_step`, ticked once per frame in `draw()` (`tick_display_flag`) when Dash or Flags is on, so they cannot double-step the anim
-- Caution: `caution_flag` — yellow is a crash **ahead** within `FLAG_YELLOW_SPAN_M` (50 m); blue is `LapRel::LappingMe` **and** behind within `FLAG_BLUE_SPAN_M` (40 m); red is `LapRel::LappedByMe` **and** ahead within `FLAG_RED_SPAN_M` (40 m). Merged in `wanted_flag` only when Flags is on **and** the matching toggle. Priority: checkered > white > yellow > blue > red. Preview codes: 0 none, 1 white, 2 checkered, 3 yellow, 4 blue, 5 red
+- Caution: `caution_flag` — yellow is a crash **ahead** within `FLAG_YELLOW_SPAN_M` (50 m), held ~1.75 s (`YELLOW_HOLD_MS`) after the live sample drops so blue/red cannot flash on remount / span jitter; blue is `LapRel::LappingMe` **and** behind within `FLAG_BLUE_SPAN_M` (40 m); red is `LapRel::LappedByMe` **and** ahead within `FLAG_RED_SPAN_M` (40 m). Blue/red skip crashed riders. Merged in `wanted_flag` only when Flags is on **and** the matching toggle. Priority: checkered > white > yellow > blue > red. Preview codes: 0 none, 1 white, 2 checkered, 3 yellow, 4 blue, 5 red
 - Preview: `set_flag_preview` (website demo cycles checkered / white / hidden; with each toggle on, that color too)
 - Settings: `pane_flag` in `overlay/src/settings.rs`
 
@@ -16,12 +16,16 @@ Fresh install: `show_flag = false`, `flag_yellow = false`, `flag_blue = false`, 
 
 ## Do not regress
 
+- Do not let a one-frame crash clear hand the cloth to blue or red. Yellow holds `YELLOW_HOLD_MS` after the last live nearby crash.
+- Do not wave blue or red for a crashed rider. A downed backmarker is yellow (or nothing), not red.
 - Do not draw a plaque when the flag is down. Empty slot, except the Ctrl layout box.
 - Do not invent a second flag machine. White wave, checkered latch, run-in hold, and `finish_earned` live in `dash_race_flag`.
 - Do not tick `flag_anim_step` from both Dash and Flags. One step per frame.
 - Do not hide Dash wrap when Flags is on. They are independent.
 - Do not paint Flags-widget yellow/blue/red onto the Dash wrap. `dash_wrap_flag` only keeps them when `dash_yellow` / `dash_blue` / `dash_red` are on.
 - Do not treat `lapped()` (whole-race gap) as a blue or red flag. Blue is situational `LapRel::LappingMe` only. Red is situational `LapRel::LappedByMe` only.
+- Red only when you gained a lap on them (pairwise). Leader lapping someone behind you must not wave red.
+- Same-race S/F straddles must not wave blue or red. `lap_rel` uses continuous progress when `num_laps` differ.
 - Do not suppress yellow in practice or warmup. A crash ahead still waves yellow in every live session; only blue/red stay race-only.
 - Do not wave blue or red in warmup (`session_kind` 5). Practice lap counts are not a race, even when extras leak.
 - Do not paint Holeshot orange on the cloth. Checkers and white stripes match the Dash banners. Yellow is `#CCB046`, blue is `#5276AC`, red is `#BA5252`.
@@ -30,6 +34,9 @@ Fresh install: `show_flag = false`, `flag_yellow = false`, `flag_blue = false`, 
 
 ## Change log
 
+- 2026-09-25 — Yellow holds ~1.75 s after the crash bit or span edge drops so blue/red cannot flash during the same incident. Blue/red ignore crashed riders (a downed backmarker no longer arms red the instant yellow clears).
+- 2026-09-24 — Red is pairwise only: leader lapping someone behind you no longer waves red.
+- 2026-09-24 — Same-race S/F straddles no longer wave blue/red (`lap_rel` continuous progress when `gap_laps` match).
 - 2026-09-22 — Yellow waves in practice and warmup when someone crashes ahead; blue/red stay race-only (`caution_flag` no longer blank-returns on `is_warmup` before yellow).
 - 2026-09-08 — Same white/checkered timing as Dash: checkered is your finish, not the leader's.
 - 2026-09-07 — Same white/checkered timing as Dash: no white flash when you are lapped and the next line is checkered (or a first-lap crash that is not a last lap).

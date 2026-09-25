@@ -140,18 +140,18 @@ pub(crate) fn draw_relative(
                         } else {
                             0
                         };
-                        row.paint(px, fonts, accent_c, None, |kind| match kind {
+                        row.paint(px, fonts, accent_c, Some(rider.race_num), |kind| match kind {
                             RelField::Pos => (
                                 if pos > 0 {
-                                    format!("{pos}")
+                                    format_place_digits(pos, false)
                                 } else {
                                     String::new()
                                 },
-                                name_c,
+                                row.ink,
                                 true,
                             ),
-                            RelField::Num => (format!("{}", rider.race_num), dim, true),
-                            RelField::Name => (cstr(&rider.name).to_string(), name_c, false),
+                            RelField::Num => (format!("{}", rider.race_num), row.ink_dim, true),
+                            RelField::Name => (cstr(&rider.name).to_string(), row.ink, false),
                             RelField::Bike => (bike_name.to_string(), name_c, false),
                             RelField::Gap => (
                                 if is_self {
@@ -197,13 +197,11 @@ pub(crate) fn draw_relative(
                                 dim,
                                 true,
                             ),
-                            RelField::Crashed => {
-                                if rider.crashed != 0 || st.is_some_and(|r| r.crashed != 0) {
-                                    ("CRASH".into(), behind_col(), true)
-                                } else {
-                                    (String::new(), dim, true)
-                                }
-                            }
+                            RelField::Status => (
+                                mark_key(standing_mark(s, rider.race_num, rider.crashed != 0)),
+                                dim,
+                                true,
+                            ),
                             RelField::Best => (
                                 format_lap(best),
                                 if best_ms > 0 && best == best_ms && !out {
