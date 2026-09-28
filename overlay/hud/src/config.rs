@@ -1099,7 +1099,7 @@ impl WidgetId {
             Self::Radar | Self::Ticker | Self::Stance | Self::Lean => 86,
             Self::Gamepad | Self::Map | Self::Minimap | Self::Delta => 0,
             Self::Dash | Self::Sys | Self::Sector | Self::Telemetry => 82,
-            Self::Pitboard => 86,
+            Self::Pitboard => 100,
             Self::Flag => 100,
         }
     }
@@ -2063,6 +2063,10 @@ pub struct HudLayout {
     pub pit_vars: Vec<PitPlace>,
     /// Always, or flash 5s at each sector end / lap start.
     pub pit_when: PitWhen,
+    /// Factory plate Main. Starts as the accent. Ignored for a browsed PNG.
+    pub pit_yellow: [u8; 3],
+    /// Factory plate Secondary. The word follows this. Starts black.
+    pub pit_blue: [u8; 3],
     /// Process rows on Systems. Built-ins stay; extras can be added and removed.
     pub sys_apps: Vec<SysApp>,
     pub st_order: Vec<StField>,
@@ -2220,6 +2224,8 @@ impl HudLayout {
             pit_text: factory_pack().0,
             pit_vars: factory_places(),
             pit_when: PitWhen::Always,
+            pit_yellow: DEFAULT_PRIMARY,
+            pit_blue: [0, 0, 0],
             sys_apps: default_sys_apps(),
             st_order: StField::ALL.to_vec(),
             rel_order: RelField::ALL.to_vec(),
@@ -2459,19 +2465,57 @@ impl HudConfig {
         for layout in &mut cfg.layouts {
             layout.migrate_rects();
             crate::pitboard::normalize_places(&mut layout.pit_vars);
+            if crate::pitboard::previous_factory_slots(
+                &layout.pit_art,
+                layout.pit_text,
+                &layout.pit_vars,
+            ) {
+                let (text, _, places) = crate::pitboard::factory_pack();
+                layout.pit_text = text;
+                layout.pit_vars = places;
+                if layout[WidgetId::Pitboard].bg == 86 {
+                    layout[WidgetId::Pitboard].bg = 100;
+                }
+            }
+            if crate::pitboard::stale_light_factory(&layout.pit_vars) {
+                let (text, _, places) = crate::pitboard::factory_pack();
+                layout.pit_text = text;
+                layout.pit_vars = places;
+            }
+            crate::pitboard::lift_low_factory(&mut layout.pit_vars);
+            migrate_saved_plate(layout, cfg.primary);
         }
         if let Some(p) = meta_path {
             cfg.loaded_mtime = fs::metadata(p).and_then(|m| m.modified()).ok();
         }
         cfg
     }
+}
 
+fn migrate_saved_plate(layout: &mut HudLayout, accent: [u8; 3]) {
+    if layout.pit_yellow == crate::pitboard::PLATE_YELLOW
+        && layout.pit_blue == crate::pitboard::PLATE_NAVY
+    {
+        layout.pit_yellow = accent;
+        layout.pit_blue = [0, 0, 0];
+    }
+}
+
+impl HudConfig {
     /// Apply an INI body (App + layout sections) without touching disk.
     pub fn apply_ini_str(&mut self, text: &str) {
         let scan = apply_ini_text(self, text);
         apply_scanned_layouts(self, scan);
+        let accent = self.primary;
         for layout in &mut self.layouts {
             layout.migrate_rects();
+            if crate::pitboard::stale_light_factory(&layout.pit_vars) {
+                let (text, _, places) = crate::pitboard::factory_pack();
+                layout.pit_text = text;
+                layout.pit_vars = places;
+            }
+            crate::pitboard::lift_low_factory(&mut layout.pit_vars);
+            migrate_saved_plate(layout, accent);
         }
     }
 
@@ -3208,6 +3252,16 @@ fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last
         "pit_text" => cfg.pit_text = TableText::parse(val),
         "pit_vars" => cfg.pit_vars = parse_places(val),
         "pit_when" => cfg.pit_when = PitWhen::parse(val),
+        "pit_yellow" => {
+            if let Some(rgb) = parse_primary_color(val) {
+                cfg.pit_yellow = rgb;
+            }
+        }
+        "pit_blue" => {
+            if let Some(rgb) = parse_primary_color(val) {
+                cfg.pit_blue = rgb;
+            }
+        }
         _ => {}
     }
 }
@@ -3326,6 +3380,7 @@ fn layout_ini(l: &HudLayout) -> String {
          telemetry_dial={}\n\
          telemetry_bg={}\ntelemetry_font={}\ntelemetry_bold={}\n\
          pit_sponsor={}\npit_art={}\npit_text={}\npit_vars={}\npit_when={}\n\
+         pit_yellow={}\npit_blue={}\n\
          pit_bg={}\npit_font={}\npit_bold={}",
         st.rect.x, st.rect.y, st.rect.w, st.rect.h,
         rel.rect.x, rel.rect.y, rel.rect.w, rel.rect.h,
@@ -3394,6 +3449,8 @@ fn layout_ini(l: &HudLayout) -> String {
         l.pit_text.key(),
         encode_places(&l.pit_vars),
         l.pit_when.key(),
+        format_primary_color(l.pit_yellow),
+        format_primary_color(l.pit_blue),
         pit.bg, pit.font, b(pit.bold),
     )
 }

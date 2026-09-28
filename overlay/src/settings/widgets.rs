@@ -1743,8 +1743,40 @@ pub(crate) fn pane_pitboard(
         y += 40.0;
         action_btn(px, fonts, x, y, 160.0, 32.0, "Open folder", Hit::PitOpenFolder, hover, hits, false);
         y += 40.0;
-        y = toggle_row(px, fonts, x, y, w, "Black text", cfg.pit_text == TableText::Black, Hit::PitTextBlack, hover, hits);
-        y = toggle_row(px, fonts, x, y, w, "White text", cfg.pit_text == TableText::White, Hit::PitTextWhite, hover, hits);
+        if cfg.pit_art.is_empty() || cfg.pit_art == FACTORY_ART {
+            y = note_lines(
+                px,
+                fonts,
+                x,
+                y,
+                w,
+                "Main and Secondary recolor this plate. A browsed PNG keeps its own colors.",
+            );
+            y = color_row(
+                px,
+                fonts,
+                x,
+                y,
+                w,
+                cfg.pit_yellow,
+                open_drop == Some(Drop::PitYellow),
+                ColorPickKind::PitYellow,
+                hover,
+                hits,
+            );
+            y = color_row(
+                px,
+                fonts,
+                x,
+                y,
+                w,
+                cfg.pit_blue,
+                open_drop == Some(Drop::PitBlue),
+                ColorPickKind::PitBlue,
+                hover,
+                hits,
+            );
+        }
         y = section(px, fonts, x, y, "When");
         y = note_lines(
             px,
@@ -1754,9 +1786,25 @@ pub(crate) fn pane_pitboard(
             w,
             "Always shows live values. Sector and lap flash a 5-second snapshot of the sector or lap that just finished.",
         );
-        y = toggle_row(px, fonts, x, y, w, "Always", cfg.pit_when == PitWhen::Always, Hit::PitWhenAlways, hover, hits);
-        y = toggle_row(px, fonts, x, y, w, "End of each sector", cfg.pit_when == PitWhen::Sector, Hit::PitWhenSector, hover, hits);
-        y = toggle_row(px, fonts, x, y, w, "End of each lap", cfg.pit_when == PitWhen::Lap, Hit::PitWhenLap, hover, hits);
+        let when_options = [
+            (Hit::PitWhenAlways, PitWhen::Always.label(), cfg.pit_when == PitWhen::Always),
+            (Hit::PitWhenSector, PitWhen::Sector.label(), cfg.pit_when == PitWhen::Sector),
+            (Hit::PitWhenLap, PitWhen::Lap.label(), cfg.pit_when == PitWhen::Lap),
+        ];
+        y = dropdown_row(
+            px,
+            fonts,
+            x,
+            y,
+            w,
+            "When",
+            cfg.pit_when.label(),
+            open_drop == Some(Drop::PitWhen),
+            Hit::PitWhenOpen,
+            &when_options,
+            hover,
+            hits,
+        );
         y = section(px, fonts, x, y, "Slots");
         y = note_lines(px, fonts, x, y, w, "One row per slot. The name comes from board.json. Every menu matches Standings header and footer.");
         let slots = if cfg.pit_vars.len() >= LEGACY_CATALOG {

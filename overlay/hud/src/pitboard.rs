@@ -10,8 +10,78 @@ pub const LEGACY_CATALOG: usize = 29;
 use crate::shm::Snapshot;
 
 pub const FACTORY_ART: &str = "holeshot.png";
+/// Baked plate for Browse. Same art as the factory, colors not live.
+pub const SAMPLE_ART: &str = "sample.png";
+/// Plate yellow `#F5BE07`.
+pub const PLATE_YELLOW: [u8; 3] = [0xF5, 0xBE, 0x07];
+/// Plate navy `#0C2A5A`. The word uses this ink. The banner badge is the app logo.
+pub const PLATE_NAVY: [u8; 3] = [0x0C, 0x2A, 0x5A];
 const FACTORY_PNG: &[u8] = include_bytes!("../assets/holeshot.png");
+const SAMPLE_PNG: &[u8] = include_bytes!("../assets/sample.png");
 const FACTORY_JSON: &str = include_str!("../assets/board.json");
+
+/// Factory plate (empty name or `holeshot.png`). A browsed PNG is not recolored.
+pub fn factory_plate(name: &str) -> bool {
+    let name = name.trim();
+    name.is_empty() || name == FACTORY_ART
+}
+
+/// Shift plate yellow and navy. White and clear pixels stay. Defaults are a no-op.
+pub fn recolor_plate_pixel(rgba: [u8; 4], yellow: [u8; 3], navy: [u8; 3]) -> [u8; 4] {
+    if rgba[3] == 0 {
+        return rgba;
+    }
+    let rgb = [rgba[0], rgba[1], rgba[2]];
+    let yellow_d = ink_distance(rgb, PLATE_YELLOW, 30.0, 0.22);
+    let navy_d = ink_distance(rgb, PLATE_NAVY, 34.0, 0.15);
+    let out = match (yellow_d, navy_d) {
+        (Some(dy), Some(dn)) if dy <= dn => shift_ink(rgb, PLATE_YELLOW, yellow),
+        (Some(_), Some(_)) => shift_ink(rgb, PLATE_NAVY, navy),
+        (Some(_), None) => shift_ink(rgb, PLATE_YELLOW, yellow),
+        (None, Some(_)) => shift_ink(rgb, PLATE_NAVY, navy),
+        (None, None) => rgb,
+    };
+    [out[0], out[1], out[2], rgba[3]]
+}
+
+fn ink_distance(rgb: [u8; 3], key: [u8; 3], window: f32, min_sat: f32) -> Option<f32> {
+    let (hue, sat, _) = crate::config::rgb_to_hsv(rgb);
+    if sat < min_sat {
+        return None;
+    }
+    let (key_hue, _, _) = crate::config::rgb_to_hsv(key);
+    let delta = hue_delta(hue, key_hue);
+    if delta <= window {
+        Some(delta)
+    } else {
+        None
+    }
+}
+
+fn hue_delta(a: f32, b: f32) -> f32 {
+    let d = (a - b).abs() % 360.0;
+    d.min(360.0 - d)
+}
+
+fn shift_ink(rgb: [u8; 3], from: [u8; 3], to: [u8; 3]) -> [u8; 3] {
+    if from == to {
+        return rgb;
+    }
+    let (_, sat, val) = crate::config::rgb_to_hsv(rgb);
+    let (_, from_sat, from_val) = crate::config::rgb_to_hsv(from);
+    let (to_hue, to_sat, to_val) = crate::config::rgb_to_hsv(to);
+    let sat = if from_sat < 0.001 {
+        to_sat
+    } else {
+        (sat * to_sat / from_sat).clamp(0.0, 1.0)
+    };
+    let val = if from_val < 0.001 {
+        to_val
+    } else {
+        (val * to_val / from_val).clamp(0.0, 1.0)
+    };
+    crate::config::hsv_to_rgb(to_hue, sat, val)
+}
 
 const HOLD: Duration = Duration::from_secs(5);
 const CLOCK_ON: i32 = 200;
@@ -486,6 +556,7 @@ pub struct PitPlace {
     pub size: f32,
     pub show: bool,
     pub label: String,
+    pub color: Option<[u8; 3]>,
 }
 
 impl PitPlace {
@@ -498,6 +569,7 @@ impl PitPlace {
             size: size.clamp(10.0, 56.0),
             show: true,
             label: String::new(),
+            color: None,
         }
     }
 
@@ -526,22 +598,31 @@ pub fn factory_places() -> Vec<PitPlace> {
 
 fn hardcoded_places() -> Vec<PitPlace> {
     [
-        (PitVar::Name, 0.50, 0.28, 16.0, "Name"),
-        (PitVar::Pos, 0.22, 0.46, 16.0, "Position"),
-        (PitVar::Laps, 0.78, 0.46, 16.0, "Laps"),
-        (PitVar::Last, 0.50, 0.68, 40.0, "Last"),
-        (PitVar::Delta, 0.50, 0.86, 18.0, "Delta"),
+        (PitVar::Name, 0.50, 0.18, 12.0, "Slot 1", false),
+        (PitVar::Pos, 0.38, 0.30, 14.0, "Slot 2", true),
+        (PitVar::Laps, 0.62, 0.30, 14.0, "Slot 3", true),
+        (PitVar::Last, 0.50, 0.42, 28.0, "Slot 4", true),
+        (PitVar::Delta, 0.50, 0.56, 15.0, "Slot 5", true),
     ]
     .into_iter()
-    .map(|(var, x, y, size, name)| {
+    .map(|(var, x, y, size, name, show)| {
         let mut p = PitPlace::slot(var, x, y, size);
         p.label = name.into();
+        p.show = show;
         p
     })
     .collect()
 }
 
-/// F8 row titles from the current pack JSON (`name` on each slot).
+/// Ink for a slot. A `board.json` color wins. No color is black.
+pub fn place_ink(color: Option<[u8; 3]>) -> [u8; 3] {
+    color.unwrap_or([16, 16, 18])
+}
+
+/// `color` on one slot of the current pack. Missing means black.
+pub fn pack_slot_color(art: &str, slot: usize) -> Option<[u8; 3]> {
+    pack_named_places(art).get(slot).and_then(|place| place.color)
+}
 pub fn pack_slot_names(art: &str) -> Vec<String> {
     pack_named_places(art)
         .iter()
@@ -721,13 +802,187 @@ pub fn pitboards_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("pitboards"))
 }
 
+/// Glass hero-stack that shipped before the light coaching plate.
+fn previous_glass_slot(var: PitVar) -> Option<(f32, f32, f32)> {
+    match var {
+        PitVar::Name => Some((0.50, 0.28, 16.0)),
+        PitVar::Pos => Some((0.22, 0.46, 16.0)),
+        PitVar::Laps => Some((0.78, 0.46, 16.0)),
+        PitVar::Last => Some((0.50, 0.68, 40.0)),
+        PitVar::Delta => Some((0.50, 0.86, 18.0)),
+        _ => None,
+    }
+}
+
+/// White text on the old five-slot glass plate. A moved slot or another PNG stays put.
+pub fn previous_factory_slots(art: &str, text: TableText, places: &[PitPlace]) -> bool {
+    let art = art.trim();
+    if !art.is_empty() && art != FACTORY_ART {
+        return false;
+    }
+    if text != TableText::White || places.len() != 5 {
+        return false;
+    }
+    places.iter().all(|place| {
+        let Some((x, y, size)) = previous_glass_slot(place.default) else {
+            return false;
+        };
+        (place.x - x).abs() < 0.02 && (place.y - y).abs() < 0.02 && (place.size - size).abs() < 0.6
+    })
+}
+
+/// A factory five that predates Slot 1–5. A moved slot or a different stat stays put.
+pub fn stale_light_factory(places: &[PitPlace]) -> bool {
+    const PACKS: [[(PitVar, f32, f32, f32); 5]; 2] = [
+        [
+            (PitVar::Name, 0.50, 0.26, 13.0),
+            (PitVar::Pos, 0.36, 0.36, 13.0),
+            (PitVar::Laps, 0.64, 0.36, 13.0),
+            (PitVar::Last, 0.50, 0.50, 26.0),
+            (PitVar::Delta, 0.50, 0.64, 14.0),
+        ],
+        [
+            (PitVar::Name, 0.50, 0.28, 12.0),
+            (PitVar::Pos, 0.38, 0.40, 14.0),
+            (PitVar::Laps, 0.62, 0.40, 14.0),
+            (PitVar::Last, 0.50, 0.52, 28.0),
+            (PitVar::Delta, 0.50, 0.66, 15.0),
+        ],
+    ];
+    if places.len() != 5 {
+        return false;
+    }
+    PACKS.iter().any(|pack| {
+        places.iter().zip(pack).all(|(place, (var, x, y, size))| {
+            place.default == *var
+                && place.show
+                && place.var == *var
+                && (place.x - x).abs() < 0.02
+                && (place.y - y).abs() < 0.02
+                && (place.size - size).abs() < 0.6
+        })
+    })
+}
+
+/// Factory plate whose five row titles are still a pre-Slot set, and whose slots
+/// have not been moved. A renamed slot or a moved slot stays as saved.
+pub fn stale_factory_row_names(art: &str, places: &[PitPlace]) -> bool {
+    const TITLES: [[&str; 5]; 2] = [
+        ["Name", "Position", "Laps", "Last", "Delta"],
+        ["Top", "Position", "Lap", "Lap time", "Lap delta"],
+    ];
+    const PACKS: [[(PitVar, f32, f32, f32); 5]; 2] = [
+        [
+            (PitVar::Name, 0.50, 0.26, 13.0),
+            (PitVar::Pos, 0.36, 0.36, 13.0),
+            (PitVar::Laps, 0.64, 0.36, 13.0),
+            (PitVar::Last, 0.50, 0.50, 26.0),
+            (PitVar::Delta, 0.50, 0.64, 14.0),
+        ],
+        [
+            (PitVar::Name, 0.50, 0.28, 12.0),
+            (PitVar::Pos, 0.38, 0.40, 14.0),
+            (PitVar::Laps, 0.62, 0.40, 14.0),
+            (PitVar::Last, 0.50, 0.52, 28.0),
+            (PitVar::Delta, 0.50, 0.66, 15.0),
+        ],
+    ];
+    if !factory_plate(art) || places.len() != 5 {
+        return false;
+    }
+    let titles = TITLES.iter().any(|titles| {
+        places
+            .iter()
+            .zip(titles)
+            .all(|(place, title)| place.label == *title)
+    });
+    let unmoved = PACKS.iter().any(|pack| {
+        places.iter().zip(pack).all(|(place, (var, x, y, size))| {
+            place.default == *var
+                && (place.x - x).abs() < 0.02
+                && (place.y - y).abs() < 0.02
+                && (place.size - size).abs() < 0.6
+        })
+    });
+    titles && unmoved
+}
+
+fn rename_factory_rows(places: &mut [PitPlace]) {
+    for (index, place) in places.iter_mut().enumerate() {
+        place.label = format!("Slot {}", index + 1);
+    }
+}
+
+/// A factory five still sitting on the stripe band. Raises `y` by 0.10.
+/// The chosen stat, `x`, and size stay. A moved slot stays.
+pub fn lift_low_factory(places: &mut [PitPlace]) -> bool {
+    const PACKS: [[(PitVar, f32, f32, f32); 5]; 2] = [
+        [
+            (PitVar::Name, 0.50, 0.26, 13.0),
+            (PitVar::Pos, 0.36, 0.36, 13.0),
+            (PitVar::Laps, 0.64, 0.36, 13.0),
+            (PitVar::Last, 0.50, 0.50, 26.0),
+            (PitVar::Delta, 0.50, 0.64, 14.0),
+        ],
+        [
+            (PitVar::Name, 0.50, 0.28, 12.0),
+            (PitVar::Pos, 0.38, 0.40, 14.0),
+            (PitVar::Laps, 0.62, 0.40, 14.0),
+            (PitVar::Last, 0.50, 0.52, 28.0),
+            (PitVar::Delta, 0.50, 0.66, 15.0),
+        ],
+    ];
+    if places.len() != 5 {
+        return false;
+    }
+    let Some(pack) = PACKS.iter().find(|pack| {
+        places.iter().zip(pack.iter()).all(|(place, (var, x, y, size))| {
+            place.default == *var
+                && (place.x - x).abs() < 0.02
+                && (place.y - y).abs() < 0.02
+                && (place.size - size).abs() < 0.6
+        })
+    }) else {
+        return false;
+    };
+    for (place, (_, _, y, _)) in places.iter_mut().zip(pack.iter()) {
+        place.y = (y - 0.10).clamp(0.04, 0.96);
+    }
+    true
+}
+
 pub fn ensure_factory_pack() {
     let dir = pitboards_dir();
     let _ = fs::create_dir_all(&dir);
     let _ = fs::write(dir.join(FACTORY_ART), FACTORY_PNG);
+    let sample = dir.join(SAMPLE_ART);
+    if !sample.exists() {
+        let _ = fs::write(sample, SAMPLE_PNG);
+    }
     let json = dir.join("board.json");
-    if !json.exists() {
-        let _ = fs::write(json, FACTORY_JSON);
+    match fs::read_to_string(&json) {
+        Ok(body) => {
+            let Some((art, text, _, mut places)) = read_pack_json(&body) else {
+                return;
+            };
+            if previous_factory_slots(&art, text, &places) {
+                let _ = fs::write(json, FACTORY_JSON);
+            } else if factory_plate(&art) {
+                let renamed = if stale_factory_row_names(&art, &places) {
+                    rename_factory_rows(&mut places);
+                    true
+                } else {
+                    false
+                };
+                let lifted = lift_low_factory(&mut places);
+                if renamed || lifted {
+                    let _ = fs::write(json, pack_json(&art, &places, text));
+                }
+            }
+        }
+        Err(_) => {
+            let _ = fs::write(json, FACTORY_JSON);
+        }
     }
 }
 
@@ -740,6 +995,9 @@ pub fn art_bytes(name: &str) -> Option<Vec<u8>> {
     }
     if name.is_empty() || name == FACTORY_ART {
         return Some(FACTORY_PNG.to_vec());
+    }
+    if name == SAMPLE_ART {
+        return Some(SAMPLE_PNG.to_vec());
     }
     None
 }
@@ -802,6 +1060,9 @@ pub fn pack_json(art: &str, places: &[PitPlace], text: TableText) -> String {
             slots.push_str(",\n");
         }
         slots.push_str("    { ");
+        if !p.label.is_empty() {
+            slots.push_str(&format!("\"name\": {}, ", json_str(&p.label)));
+        }
         slots.push_str(&format!(
             "\"default\": {}, \"x\": {:.2}, \"y\": {:.2}, \"size\": {:.0}",
             json_str(p.default.key()),
@@ -812,9 +1073,6 @@ pub fn pack_json(art: &str, places: &[PitPlace], text: TableText) -> String {
         if !p.show || p.var != p.default {
             let current = if p.show { p.var.key() } else { "none" };
             slots.push_str(&format!(", \"current\": {}", json_str(current)));
-        }
-        if !p.label.is_empty() {
-            slots.push_str(&format!(", \"name\": {}", json_str(&p.label)));
         }
         slots.push_str(" }");
     }
@@ -865,6 +1123,9 @@ fn parse_slots_array(s: &str) -> Option<Vec<PitPlace>> {
         let mut place = PitPlace::slot(default, x, y, size);
         if let Some(name) = json_field(&obj, "name").or_else(|| json_field(&obj, "label")) {
             place.label = name;
+        }
+        if let Some(color) = json_field(&obj, "color") {
+            place.color = crate::config::parse_primary_color(&color);
         }
         if let Some(cur) = json_field(&obj, "current") {
             match PitVar::parse(&cur) {
@@ -1011,21 +1272,39 @@ mod tests {
     fn factory_has_heroes() {
         let places = factory_places();
         assert_eq!(places.len(), 5);
-        assert!(places.iter().all(|p| p.show));
+        let name = places.iter().find(|p| p.default == PitVar::Name).unwrap();
+        assert!(!name.show);
+        assert!(places.iter().filter(|p| p.default != PitVar::Name).all(|p| p.show));
         assert!(!places.iter().any(|p| p.default == PitVar::Num));
         assert!(!places.iter().any(|p| p.default == PitVar::Speed));
         let last = places.iter().find(|p| p.default == PitVar::Last).unwrap();
-        let name = places.iter().find(|p| p.default == PitVar::Name).unwrap();
         assert!(last.size > name.size);
         assert!(places.iter().any(|p| p.default == PitVar::Delta && p.show));
-        assert_eq!(name.row_label(), "Name");
+        assert_eq!(name.row_label(), "Slot 1");
+        assert_eq!(
+            places
+                .iter()
+                .find(|p| p.default == PitVar::Laps)
+                .unwrap()
+                .row_label(),
+            "Slot 3"
+        );
+        assert_eq!(last.row_label(), "Slot 4");
+        assert_eq!(
+            places
+                .iter()
+                .find(|p| p.default == PitVar::Delta)
+                .unwrap()
+                .row_label(),
+            "Slot 5"
+        );
         assert_eq!(
             places
                 .iter()
                 .find(|p| p.default == PitVar::Pos)
                 .unwrap()
                 .row_label(),
-            "Position"
+            "Slot 2"
         );
     }
 
@@ -1037,7 +1316,7 @@ mod tests {
         set_slot_var(&mut places, name, Some(PitVar::Best));
         assert_eq!(places[name].var, PitVar::Best);
         assert_eq!(places[name].default, PitVar::Name);
-        assert_eq!(places[name].row_label(), "Name");
+        assert_eq!(places[name].row_label(), "Slot 1");
         assert!((places[name].x - x).abs() < f32::EPSILON);
         assert!((places[name].y - y).abs() < f32::EPSILON);
         assert!((places[name].size - size).abs() < f32::EPSILON);
@@ -1060,9 +1339,11 @@ mod tests {
         assert_eq!(again.len(), 5);
         let last = again.iter().find(|p| p.default == PitVar::Last).unwrap();
         assert!(last.show && last.var == PitVar::Last);
-        assert!((last.y - 0.68).abs() < 0.002);
-        assert_eq!(last.row_label(), "Last");
-        assert!(json.contains("\"name\": \"Last\""));
+        assert!((last.y - 0.42).abs() < 0.002);
+        assert_eq!(last.row_label(), "Slot 4");
+        assert!(json.contains("\"name\": \"Slot 4\""));
+        let top = again.iter().find(|p| p.default == PitVar::Name).unwrap();
+        assert!(!top.show);
     }
 
     #[test]
@@ -1153,11 +1434,11 @@ mod tests {
         }
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets");
         fs::create_dir_all(&dir).unwrap();
-        fs::write(dir.join("holeshot.png"), crate::render::factory_plate_png()).unwrap();
         let places = factory_places();
+        let _ = crate::render::factory_plate_png();
         fs::write(
             dir.join("board.json"),
-            pack_json("holeshot.png", &places, TableText::White),
+            pack_json("holeshot.png", &places, factory_pack().0),
         )
         .unwrap();
     }
@@ -1172,7 +1453,7 @@ mod tests {
     #[test]
     fn factory_pack_is_png_and_json() {
         let (text, sponsor, places) = factory_pack();
-        assert_eq!(text, TableText::White);
+        assert_eq!(text, TableText::Black);
         assert!(sponsor.is_empty());
         assert!(places.iter().any(|p| p.var == PitVar::Last && p.show));
         assert!(!places.iter().any(|p| p.default == PitVar::Sponsor));
@@ -1180,11 +1461,202 @@ mod tests {
         assert!(FACTORY_JSON.contains("holeshot.png"));
         assert!(FACTORY_JSON.contains("\"slots\""));
         assert!(FACTORY_JSON.contains("\"name\""));
+        assert!(FACTORY_JSON.contains("\"text\": \"black\""));
         assert!(!FACTORY_JSON.contains("\"sponsor\""));
         assert_eq!(places.len(), 5);
         assert_eq!(pack_defaults(&places).len(), 5);
         assert!(art_bytes(FACTORY_ART).is_some());
         assert!(art_bytes("").is_some());
+    }
+
+    #[test]
+    fn previous_glass_pack_upgrades_to_the_light_plate() {
+        let old = [
+            (PitVar::Name, 0.50, 0.28, 16.0),
+            (PitVar::Pos, 0.22, 0.46, 16.0),
+            (PitVar::Laps, 0.78, 0.46, 16.0),
+            (PitVar::Last, 0.50, 0.68, 40.0),
+            (PitVar::Delta, 0.50, 0.86, 18.0),
+        ]
+        .map(|(var, x, y, size)| PitPlace::slot(var, x, y, size));
+        assert!(previous_factory_slots("holeshot.png", TableText::White, &old));
+        assert!(previous_factory_slots("", TableText::White, &old));
+        assert!(!previous_factory_slots("custom.png", TableText::White, &old));
+        let (text, _, now) = factory_pack();
+        assert_eq!(text, TableText::Black);
+        assert!(!previous_factory_slots(FACTORY_ART, text, &now));
+        let last = now.iter().find(|p| p.default == PitVar::Last).unwrap();
+        assert!((last.y - 0.42).abs() < 0.002);
+    }
+
+    #[test]
+    fn earlier_light_pack_is_stale() {
+        let places = [
+            (PitVar::Name, 0.50, 0.26, 13.0),
+            (PitVar::Pos, 0.36, 0.36, 13.0),
+            (PitVar::Laps, 0.64, 0.36, 13.0),
+            (PitVar::Last, 0.50, 0.50, 26.0),
+            (PitVar::Delta, 0.50, 0.64, 14.0),
+        ]
+        .map(|(var, x, y, size)| PitPlace::slot(var, x, y, size));
+        assert!(stale_light_factory(&places));
+        let mut moved = places;
+        moved[1].x = 0.10;
+        assert!(!stale_light_factory(&moved));
+    }
+
+    #[test]
+    fn named_light_pack_is_stale() {
+        let places = [
+            (PitVar::Name, 0.50, 0.28, 12.0),
+            (PitVar::Pos, 0.38, 0.40, 14.0),
+            (PitVar::Laps, 0.62, 0.40, 14.0),
+            (PitVar::Last, 0.50, 0.52, 28.0),
+            (PitVar::Delta, 0.50, 0.66, 15.0),
+        ]
+        .map(|(var, x, y, size)| PitPlace::slot(var, x, y, size));
+        assert!(stale_light_factory(&places));
+        let mut moved = places;
+        moved[3].y = 0.80;
+        assert!(!stale_light_factory(&moved));
+    }
+
+    #[test]
+    fn low_factory_five_lifts_and_keeps_fuel() {
+        let mut places = [
+            (PitVar::Name, 0.50, 0.28, 12.0),
+            (PitVar::Pos, 0.38, 0.40, 14.0),
+            (PitVar::Laps, 0.62, 0.40, 14.0),
+            (PitVar::Last, 0.50, 0.52, 28.0),
+            (PitVar::Delta, 0.50, 0.66, 15.0),
+        ]
+        .map(|(var, x, y, size)| PitPlace::slot(var, x, y, size));
+        places[3].var = PitVar::FuelPct;
+        assert!(lift_low_factory(&mut places));
+        let last = places.iter().find(|p| p.default == PitVar::Last).unwrap();
+        assert_eq!(last.var, PitVar::FuelPct);
+        assert!((last.y - 0.42).abs() < 0.002);
+        assert!((last.x - 0.50).abs() < 0.002);
+        let delta = places.iter().find(|p| p.default == PitVar::Delta).unwrap();
+        assert!((delta.y - 0.56).abs() < 0.002);
+        assert!(!lift_low_factory(&mut places));
+    }
+
+    #[test]
+    fn moved_slot_is_not_lifted() {
+        let mut places = [
+            (PitVar::Name, 0.50, 0.28, 12.0),
+            (PitVar::Pos, 0.38, 0.40, 14.0),
+            (PitVar::Laps, 0.62, 0.40, 14.0),
+            (PitVar::Last, 0.50, 0.52, 28.0),
+            (PitVar::Delta, 0.50, 0.66, 15.0),
+        ]
+        .map(|(var, x, y, size)| PitPlace::slot(var, x, y, size));
+        places[4].y = 0.80;
+        assert!(!lift_low_factory(&mut places));
+        assert!((places[4].y - 0.80).abs() < 0.002);
+        assert!((places[3].y - 0.52).abs() < 0.002);
+    }
+
+    #[test]
+    fn slot_color_or_black() {
+        let json = r##"{
+  "version": 2,
+  "background": "holeshot.png",
+  "text": "black",
+  "slots": [
+    { "name": "Slot 2", "default": "pos", "color": "#FF0000", "x": 0.38, "y": 0.30, "size": 14 },
+    { "name": "Slot 3", "default": "laps", "x": 0.62, "y": 0.30, "size": 14 }
+  ]
+}"##;
+        let (_, _, _, places) = read_pack_json(json).unwrap();
+        assert_eq!(place_ink(places[0].color), [255, 0, 0]);
+        assert_eq!(place_ink(places[1].color), [16, 16, 18]);
+    }
+
+    #[test]
+    fn old_factory_row_titles_rename_on_launch() {
+        let dir = std::env::temp_dir().join(format!("mxbo-pit-rename-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let ini = dir.join("Holeshot-HUD.ini");
+        std::env::set_var("MXBO_TEST_INI", &ini);
+        let boards = dir.join("Holeshot-HUD").join("pitboards");
+        fs::create_dir_all(&boards).unwrap();
+        let json = boards.join("board.json");
+
+        let mut places = [
+            (PitVar::Name, 0.50, 0.26, 13.0, "Name"),
+            (PitVar::Pos, 0.36, 0.36, 13.0, "Position"),
+            (PitVar::Laps, 0.64, 0.36, 13.0, "Laps"),
+            (PitVar::Last, 0.50, 0.50, 26.0, "Last"),
+            (PitVar::Delta, 0.50, 0.64, 14.0, "Delta"),
+        ]
+        .map(|(var, x, y, size, name)| {
+            let mut place = PitPlace::slot(var, x, y, size);
+            place.label = name.into();
+            place
+        });
+        places[3].var = PitVar::FuelPct;
+        fs::write(&json, pack_json(FACTORY_ART, &places, TableText::Black)).unwrap();
+        ensure_factory_pack();
+        let (art, text, _, renamed) = read_pack_json(&fs::read_to_string(&json).unwrap()).unwrap();
+
+        places[3].var = PitVar::Last;
+        fs::write(&json, pack_json("custom.png", &places, TableText::Black)).unwrap();
+        ensure_factory_pack();
+        let (_, _, _, custom) = read_pack_json(&fs::read_to_string(&json).unwrap()).unwrap();
+
+        places[3].y = 0.80;
+        fs::write(&json, pack_json(FACTORY_ART, &places, TableText::Black)).unwrap();
+        ensure_factory_pack();
+        let (_, _, _, moved) = read_pack_json(&fs::read_to_string(&json).unwrap()).unwrap();
+
+        std::env::remove_var("MXBO_TEST_INI");
+        let _ = fs::remove_dir_all(&dir);
+
+        assert_eq!(art, FACTORY_ART);
+        assert_eq!(text, TableText::Black);
+        assert_eq!(
+            renamed.iter().map(|p| p.row_label()).collect::<Vec<_>>(),
+            ["Slot 1", "Slot 2", "Slot 3", "Slot 4", "Slot 5"]
+        );
+        let last = renamed.iter().find(|p| p.default == PitVar::Last).unwrap();
+        assert_eq!(last.var, PitVar::FuelPct);
+        assert!((last.x - 0.50).abs() < 0.002);
+        assert!((last.y - 0.50).abs() < 0.002);
+        assert!((last.size - 26.0).abs() < 0.6);
+        assert_eq!(custom[0].row_label(), "Name");
+        assert_eq!(moved[0].row_label(), "Name");
+        assert!((moved[3].y - 0.80).abs() < 0.002);
+    }
+
+    #[test]
+    fn factory_plate_recolors_yellow_and_keeps_white() {
+        let red = [255, 0, 0];
+        let yellow = recolor_plate_pixel([245, 190, 7, 255], red, PLATE_NAVY);
+        assert_eq!(&yellow[0..3], &red);
+        assert_eq!(yellow[3], 255);
+        let white = recolor_plate_pixel([255, 255, 255, 255], red, [0, 80, 255]);
+        assert_eq!(white, [255, 255, 255, 255]);
+        let clear = recolor_plate_pixel([0, 0, 0, 0], red, [0, 80, 255]);
+        assert_eq!(clear, [0, 0, 0, 0]);
+        let navy = recolor_plate_pixel([PLATE_NAVY[0], PLATE_NAVY[1], PLATE_NAVY[2], 255], red, PLATE_NAVY);
+        assert_eq!(&navy[0..3], &PLATE_NAVY);
+        let same = recolor_plate_pixel([245, 190, 7, 255], PLATE_YELLOW, PLATE_NAVY);
+        assert_eq!(same, [245, 190, 7, 255]);
+        let accent = [255, 148, 48];
+        let main = recolor_plate_pixel([245, 190, 7, 255], accent, [0, 0, 0]);
+        assert_eq!(&main[0..3], &accent);
+        let ink = recolor_plate_pixel(
+            [PLATE_NAVY[0], PLATE_NAVY[1], PLATE_NAVY[2], 255],
+            accent,
+            [0, 0, 0],
+        );
+        assert_eq!(&ink[0..3], &[0, 0, 0]);
+        assert!(factory_plate("holeshot.png"));
+        assert!(factory_plate(""));
+        assert!(!factory_plate("sample.png"));
     }
 
     #[test]

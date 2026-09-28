@@ -1,7 +1,27 @@
 #![allow(unused_imports)]
+use std::cell::RefCell;
+
 use super::*;
 use crate::config::BoardField;
-use crate::pitboard::{art_bytes, PitVar};
+use crate::pitboard::{art_bytes, factory_plate, recolor_plate_pixel, PitVar, PLATE_NAVY, PLATE_YELLOW};
+
+struct FactoryPlateCache {
+    art: String,
+    source: Option<Pixmap>,
+    main: [u8; 3],
+    secondary: [u8; 3],
+    painted: Option<Pixmap>,
+}
+
+thread_local! {
+    static FACTORY_PLATE: RefCell<FactoryPlateCache> = RefCell::new(FactoryPlateCache {
+        art: String::new(),
+        source: None,
+        main: [0, 0, 0],
+        secondary: [0, 0, 0],
+        painted: None,
+    });
+}
 
 pub(crate) fn draw_pitboard(
     px: &mut Pixmap,
@@ -19,36 +39,39 @@ pub(crate) fn draw_pitboard(
     if w < 80.0 || h < 48.0 {
         return;
     }
-    let a = bg_a(cfg[WidgetId::Pitboard].bg);
-    let glass = a < 102;
-    let ink = match cfg.pit_text {
-        TableText::Black => Color::from_rgba8(16, 16, 18, 255),
-        TableText::White => text_col(),
-    };
-    let dim = match cfg.pit_text {
-        TableText::Black => Color::from_rgba8(48, 48, 52, 255),
-        TableText::White => text_dim(),
-    };
+    let a = bg_a(100);
+    let ink_black = Color::from_rgba8(16, 16, 18, 255);
     if !draw_art(px, cfg, x, y, w, h) {
         draw_glass_plate(px, x, y, w, h, a);
     }
     let k = style_k();
-    let halo = matches!(cfg.pit_text, TableText::White) && glass;
-    for place in cfg.pit_vars.iter().filter(|p| p.show) {
-        let Some((label, col)) = pit_value(s, cfg, place.var, ink, dim) else {
-            continue;
-        };
-        if label.is_empty() || pit_blank(&label) {
-            continue;
+    for (index, place) in cfg.pit_vars.iter().enumerate().filter(|(_, place)| place.show) {
+        let authored = crate::pitboard::pack_slot_color(&cfg.pit_art, index);
+        let rgb = crate::pitboard::place_ink(authored);
+        let ink = Color::from_rgba8(rgb[0], rgb[1], rgb[2], 255);
+        let (label, mut col) = shown_text(pit_value(s, cfg, place.var, ink_black, ink_black), ink_black);
+        if authored.is_some() {
+            col = ink;
         }
         let fs = (place.size * k).clamp(9.0, 56.0);
         let cx = x + place.x * w;
         let cy = y + place.y * h - fs * 0.55;
-        text_halo(px, fonts, &label, fs, cx, cy, col, true, halo);
+        text_halo(px, fonts, &label, fs, cx, cy, col, true, false);
     }
 }
 
 fn draw_art(px: &mut Pixmap, cfg: &HudConfig, x: f32, y: f32, w: f32, h: f32) -> bool {
+    if factory_plate(&cfg.pit_art) {
+        return FACTORY_PLATE.with(|slot| {
+            let mut cache = slot.borrow_mut();
+            if !cache.ensure(&cfg.pit_art, cfg.pit_yellow, cfg.pit_blue) {
+                return false;
+            }
+            let img = cache.painted.as_ref().unwrap();
+            blit_plate(px, cfg, img, x, y, w, h);
+            true
+        });
+    }
     let Some(bytes) = art_bytes(&cfg.pit_art) else {
         return false;
     };
@@ -58,10 +81,47 @@ fn draw_art(px: &mut Pixmap, cfg: &HudConfig, x: f32, y: f32, w: f32, h: f32) ->
     if img.width() == 0 || img.height() == 0 {
         return false;
     }
+    blit_plate(px, cfg, &img, x, y, w, h);
+    true
+}
+
+impl FactoryPlateCache {
+    fn ensure(&mut self, art: &str, main: [u8; 3], secondary: [u8; 3]) -> bool {
+        if self.source.is_none() || self.art != art {
+            let Some(bytes) = art_bytes(art) else {
+                return false;
+            };
+            let Ok(source) = Pixmap::decode_png(&bytes) else {
+                return false;
+            };
+            if source.width() == 0 || source.height() == 0 {
+                return false;
+            }
+            self.art = art.to_string();
+            self.source = Some(source);
+            self.painted = None;
+        }
+        if self.painted.is_some() && self.main == main && self.secondary == secondary {
+            return true;
+        }
+        let mut painted = self.source.clone().unwrap();
+        if main != PLATE_YELLOW || secondary != PLATE_NAVY {
+            recolor_plate(&mut painted, main, secondary);
+        }
+        smooth_plate_edges(&mut painted);
+        stamp_logo(&mut painted);
+        self.main = main;
+        self.secondary = secondary;
+        self.painted = Some(painted);
+        true
+    }
+}
+
+fn blit_plate(px: &mut Pixmap, _cfg: &HudConfig, img: &Pixmap, x: f32, y: f32, w: f32, h: f32) {
     let sx = w / img.width() as f32;
     let sy = h / img.height() as f32;
     let paint = PixmapPaint {
-        opacity: (cfg[WidgetId::Pitboard].bg.clamp(0, 100) as f32 / 100.0).max(0.15),
+        opacity: 1.0,
         quality: FilterQuality::Bilinear,
         ..PixmapPaint::default()
     };
@@ -73,7 +133,191 @@ fn draw_art(px: &mut Pixmap, cfg: &HudConfig, x: f32, y: f32, w: f32, h: f32) ->
         Transform::from_row(sx, 0.0, 0.0, sy, x, y),
         None,
     );
-    true
+}
+
+const LOGO_X: f32 = 408.0;
+const LOGO_Y: f32 = 18.0;
+const LOGO_SIZE: f32 = 100.0;
+
+/// Soften stair-stepped plate edges. The logo rectangle stays sharp.
+pub(crate) fn smooth_plate_edges(img: &mut Pixmap) {
+    let w = img.width() as i32;
+    let h = img.height() as i32;
+    if w == 0 || h == 0 {
+        return;
+    }
+    let src: Vec<PremultipliedColorU8> = img.pixels().to_vec();
+    let in_logo = |x: i32, y: i32| {
+        x >= LOGO_X as i32
+            && x < (LOGO_X + LOGO_SIZE) as i32
+            && y >= LOGO_Y as i32
+            && y < (LOGO_Y + LOGO_SIZE) as i32
+    };
+    let straight = |px: PremultipliedColorU8| -> Option<[u8; 3]> {
+        let alpha = px.alpha();
+        if alpha < 200 {
+            return None;
+        }
+        let alpha_u = alpha as u16;
+        Some([
+            ((px.red() as u16 * 255) / alpha_u).min(255) as u8,
+            ((px.green() as u16 * 255) / alpha_u).min(255) as u8,
+            ((px.blue() as u16 * 255) / alpha_u).min(255) as u8,
+        ])
+    };
+    let mut edge = vec![false; src.len()];
+    for y in 0..h {
+        for x in 0..w {
+            if in_logo(x, y) {
+                continue;
+            }
+            let Some(self_rgb) = straight(src[(y * w + x) as usize]) else {
+                continue;
+            };
+            let mut contrast = false;
+            for dy in -1..=1 {
+                for dx in -1..=1 {
+                    if dx == 0 && dy == 0 {
+                        continue;
+                    }
+                    let nx = x + dx;
+                    let ny = y + dy;
+                    if nx < 0 || ny < 0 || nx >= w || ny >= h || in_logo(nx, ny) {
+                        continue;
+                    }
+                    let Some(near) = straight(src[(ny * w + nx) as usize]) else {
+                        continue;
+                    };
+                    let delta = self_rgb
+                        .iter()
+                        .zip(near)
+                        .map(|(a, b)| a.abs_diff(b))
+                        .max()
+                        .unwrap_or(0);
+                    if delta >= 72 {
+                        contrast = true;
+                    }
+                }
+            }
+            if contrast {
+                edge[(y * w + x) as usize] = true;
+            }
+        }
+    }
+    let mut band = edge.clone();
+    for y in 0..h {
+        for x in 0..w {
+            if in_logo(x, y) || edge[(y * w + x) as usize] {
+                continue;
+            }
+            let mut near_edge = false;
+            for dy in -1..=1 {
+                for dx in -1..=1 {
+                    let nx = x + dx;
+                    let ny = y + dy;
+                    if nx < 0 || ny < 0 || nx >= w || ny >= h {
+                        continue;
+                    }
+                    if edge[(ny * w + nx) as usize] {
+                        near_edge = true;
+                    }
+                }
+            }
+            if near_edge {
+                band[(y * w + x) as usize] = true;
+            }
+        }
+    }
+    for y in 0..h {
+        for x in 0..w {
+            if in_logo(x, y) || !band[(y * w + x) as usize] {
+                continue;
+            }
+            let here = src[(y * w + x) as usize];
+            if straight(here).is_none() {
+                continue;
+            }
+            let mut sum = [0u32; 3];
+            let mut count = 0u32;
+            for dy in -1..=1 {
+                for dx in -1..=1 {
+                    let nx = x + dx;
+                    let ny = y + dy;
+                    if nx < 0 || ny < 0 || nx >= w || ny >= h || in_logo(nx, ny) {
+                        continue;
+                    }
+                    let Some(near) = straight(src[(ny * w + nx) as usize]) else {
+                        continue;
+                    };
+                    sum[0] += near[0] as u32;
+                    sum[1] += near[1] as u32;
+                    sum[2] += near[2] as u32;
+                    count += 1;
+                }
+            }
+            if count == 0 {
+                continue;
+            }
+            let mixed = [
+                (sum[0] / count) as u8,
+                (sum[1] / count) as u8,
+                (sum[2] / count) as u8,
+            ];
+            if let Some(painted) =
+                PremultipliedColorU8::from_rgba(mixed[0], mixed[1], mixed[2], here.alpha())
+            {
+                img.pixels_mut()[(y * w + x) as usize] = painted;
+            }
+        }
+    }
+}
+
+fn stamp_logo(plate: &mut Pixmap) {
+    let Some(logo) = Pixmap::decode_png(include_bytes!("../../../../web/logo.png")).ok() else {
+        return;
+    };
+    if logo.width() == 0 {
+        return;
+    }
+    let scale = LOGO_SIZE / logo.width() as f32;
+    let paint = PixmapPaint {
+        quality: FilterQuality::Bilinear,
+        ..PixmapPaint::default()
+    };
+    plate.draw_pixmap(
+        0,
+        0,
+        logo.as_ref(),
+        &paint,
+        Transform::from_row(scale, 0.0, 0.0, scale, LOGO_X, LOGO_Y),
+        None,
+    );
+}
+
+fn recolor_plate(img: &mut Pixmap, yellow: [u8; 3], navy: [u8; 3]) {
+    for px in img.pixels_mut() {
+        let alpha = px.alpha();
+        if alpha == 0 {
+            continue;
+        }
+        let alpha_u = alpha as u16;
+        let straight = |channel: u8| ((channel as u16 * 255) / alpha_u).min(255) as u8;
+        let rgb = recolor_plate_pixel(
+            [
+                straight(px.red()),
+                straight(px.green()),
+                straight(px.blue()),
+                alpha,
+            ],
+            yellow,
+            navy,
+        );
+        if let Some(painted) =
+            PremultipliedColorU8::from_rgba(rgb[0], rgb[1], rgb[2], rgb[3])
+        {
+            *px = painted;
+        }
+    }
 }
 
 fn draw_glass_plate(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, a: u8) {
@@ -237,6 +481,45 @@ fn pit_blank(t: &str) -> bool {
         t,
         "--" | "---" | "P--" | "L--" | "C--" | "--:--" | "--:--.---"
     )
+}
+
+fn shown_text(value: Option<(String, Color)>, ink: Color) -> (String, Color) {
+    match value {
+        Some((label, col)) if !label.is_empty() && !pit_blank(&label) => (label, col),
+        _ => ("---".to_string(), ink),
+    }
+}
+
+#[cfg(test)]
+mod smooth_tests {
+    use super::*;
+
+    #[test]
+    fn bake_sample_plate_edges() {
+        if std::env::var("BAKE_PLATE").is_err() {
+            return;
+        }
+        let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets");
+        let bytes = std::fs::read(dir.join("holeshot.png")).unwrap();
+        let mut img = Pixmap::decode_png(&bytes).unwrap();
+        recolor_plate(&mut img, [255, 148, 48], [0, 0, 0]);
+        smooth_plate_edges(&mut img);
+        stamp_logo(&mut img);
+        img.save_png(dir.join("sample.png")).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod shown_text_tests {
+    use super::*;
+
+    #[test]
+    fn missing_last_lap_is_dashes() {
+        let ink = Color::from_rgba8(16, 16, 18, 255);
+        assert_eq!(shown_text(None, ink).0, "---");
+        assert_eq!(shown_text(Some(("--:--.---".into(), ink)), ink).0, "---");
+        assert_eq!(shown_text(Some(("01:35.000".into(), ink)), ink).0, "01:35.000");
+    }
 }
 
 fn pit_value(

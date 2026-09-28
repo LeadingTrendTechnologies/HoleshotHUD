@@ -1,0 +1,1 @@
+- add the ability to export and import overlay settings for widgets

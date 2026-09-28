@@ -397,6 +397,36 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             }
             return;
         }
+        Hit::PitYellowOpen => {
+            toggle_drop(Drop::PitYellow);
+            return;
+        }
+        Hit::PitYellowPanel | Hit::PitYellowSv | Hit::PitYellowHue => return,
+        Hit::PitYellowReset => {
+            update_config(|c| c.pit_yellow = c.primary);
+            return;
+        }
+        Hit::PitYellowSwatch(i) => {
+            if let Some(&rgb) = PRIMARY_SWATCHES.get(i as usize) {
+                update_config(|c| c.pit_yellow = rgb);
+            }
+            return;
+        }
+        Hit::PitBlueOpen => {
+            toggle_drop(Drop::PitBlue);
+            return;
+        }
+        Hit::PitBluePanel | Hit::PitBlueSv | Hit::PitBlueHue => return,
+        Hit::PitBlueReset => {
+            update_config(|c| c.pit_blue = [0, 0, 0]);
+            return;
+        }
+        Hit::PitBlueSwatch(i) => {
+            if let Some(&rgb) = PRIMARY_SWATCHES.get(i as usize) {
+                update_config(|c| c.pit_blue = rgb);
+            }
+            return;
+        }
         Hit::GameUiSplashBrowse => {
             close_drop();
             let host = UI.lock().unwrap().as_ref().map(|u| u.host);
@@ -531,6 +561,10 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         }
         Hit::PitSlotOpen(slot) => {
             toggle_drop(Drop::PitSlot(slot));
+            return;
+        }
+        Hit::PitWhenOpen => {
+            toggle_drop(Drop::PitWhen);
             return;
         }
         Hit::InfoOpen(bar, slot) => {
@@ -794,9 +828,9 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             c.pit_text = text;
             c.pit_sponsor.clear();
             c.pit_vars = places;
+            c.pit_yellow = c.primary;
+            c.pit_blue = [0, 0, 0];
         }
-        Hit::PitTextWhite => c.pit_text = TableText::White,
-        Hit::PitTextBlack => c.pit_text = TableText::Black,
         Hit::PitWhenAlways => c.pit_when = PitWhen::Always,
         Hit::PitWhenSector => c.pit_when = PitWhen::Sector,
         Hit::PitWhenLap => c.pit_when = PitWhen::Lap,
@@ -1005,6 +1039,18 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::GameUiPrimaryHue
         | Hit::GameUiPrimarySwatch(_)
         | Hit::GameUiPrimaryReset
+        | Hit::PitYellowOpen
+        | Hit::PitYellowPanel
+        | Hit::PitYellowSv
+        | Hit::PitYellowHue
+        | Hit::PitYellowSwatch(_)
+        | Hit::PitYellowReset
+        | Hit::PitBlueOpen
+        | Hit::PitBluePanel
+        | Hit::PitBlueSv
+        | Hit::PitBlueHue
+        | Hit::PitBlueSwatch(_)
+        | Hit::PitBlueReset
         | Hit::GameUiSplashBrowse
         | Hit::GameUiSplashDefault
         | Hit::GameUiLoadingBrowse
@@ -1028,6 +1074,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::TickerFootOpen(_)
         | Hit::InfoOpen(_, _)
         | Hit::PitSlotOpen(_)
+        | Hit::PitWhenOpen
         | Hit::PresetCopyOpen
         | Hit::UpdateCheck
         | Hit::UpdateInstall

@@ -1179,3 +1179,37 @@ fn gamepad_theme_round_trips_and_light_fills() {
     assert!(GamepadTheme::Light.filled());
     assert!(!GamepadTheme::Dark.filled());
 }
+
+#[test]
+fn old_plate_colors_follow_the_accent() {
+    let fresh = HudConfig::new();
+    assert_eq!(fresh.pit_yellow, crate::config::DEFAULT_PRIMARY);
+    assert_eq!(fresh.pit_blue, [0, 0, 0]);
+
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-plate-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let mut cfg = HudConfig::new();
+    cfg.first_install_version = "0.1.0".into();
+    cfg.primary = [10, 20, 30];
+    cfg.pit_yellow = crate::pitboard::PLATE_YELLOW;
+    cfg.pit_blue = crate::pitboard::PLATE_NAVY;
+    cfg.save();
+    let loaded = HudConfig::load_file();
+    assert_eq!(loaded.pit_yellow, [10, 20, 30]);
+    assert_eq!(loaded.pit_blue, [0, 0, 0]);
+
+    let mut custom = HudConfig::new();
+    custom.first_install_version = "0.1.0".into();
+    custom.primary = [10, 20, 30];
+    custom.pit_yellow = [1, 2, 3];
+    custom.pit_blue = [4, 5, 6];
+    custom.save();
+    let kept = HudConfig::load_file();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(kept.pit_yellow, [1, 2, 3]);
+    assert_eq!(kept.pit_blue, [4, 5, 6]);
+}

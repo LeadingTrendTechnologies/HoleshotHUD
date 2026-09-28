@@ -654,11 +654,10 @@ pub(crate) enum Hit {
     PitBrowse,
     PitReset,
     PitOpenFolder,
-    PitTextWhite,
-    PitTextBlack,
     PitWhenAlways,
     PitWhenSector,
     PitWhenLap,
+    PitWhenOpen,
     PitSlotOpen(u8),
     PitSlotPick(u8, u8),
     PitSlotNone(u8),
@@ -859,6 +858,18 @@ pub(crate) enum Hit {
     GameUiPrimaryHue,
     GameUiPrimarySwatch(u8),
     GameUiPrimaryReset,
+    PitYellowOpen,
+    PitYellowPanel,
+    PitYellowSv,
+    PitYellowHue,
+    PitYellowSwatch(u8),
+    PitYellowReset,
+    PitBlueOpen,
+    PitBluePanel,
+    PitBlueSv,
+    PitBlueHue,
+    PitBlueSwatch(u8),
+    PitBlueReset,
     GameUiSplashBrowse,
     GameUiSplashDefault,
     GameUiLoadingBrowse,
@@ -912,17 +923,22 @@ pub(crate) enum Drop {
     TickerFoot(u8),
     Info(InfoBar, u8),
     PitSlot(u8),
+    PitWhen,
     PresetCopy,
     AnalyzeCompare,
     AnalyzeLap,
     PrimaryColor,
     GameUiPrimaryColor,
+    PitYellow,
+    PitBlue,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ColorPickKind {
     App,
     Menu,
+    PitYellow,
+    PitBlue,
 }
 
 impl ColorPickKind {
@@ -930,6 +946,8 @@ impl ColorPickKind {
         match self {
             Self::App => Hit::PrimaryOpen,
             Self::Menu => Hit::GameUiPrimaryOpen,
+            Self::PitYellow => Hit::PitYellowOpen,
+            Self::PitBlue => Hit::PitBlueOpen,
         }
     }
 
@@ -937,6 +955,8 @@ impl ColorPickKind {
         match self {
             Self::App => Hit::PrimaryPanel,
             Self::Menu => Hit::GameUiPrimaryPanel,
+            Self::PitYellow => Hit::PitYellowPanel,
+            Self::PitBlue => Hit::PitBluePanel,
         }
     }
 
@@ -944,6 +964,8 @@ impl ColorPickKind {
         match self {
             Self::App => Hit::PrimarySv,
             Self::Menu => Hit::GameUiPrimarySv,
+            Self::PitYellow => Hit::PitYellowSv,
+            Self::PitBlue => Hit::PitBlueSv,
         }
     }
 
@@ -951,6 +973,8 @@ impl ColorPickKind {
         match self {
             Self::App => Hit::PrimaryHue,
             Self::Menu => Hit::GameUiPrimaryHue,
+            Self::PitYellow => Hit::PitYellowHue,
+            Self::PitBlue => Hit::PitBlueHue,
         }
     }
 
@@ -958,6 +982,8 @@ impl ColorPickKind {
         match self {
             Self::App => Hit::PrimarySwatch(i),
             Self::Menu => Hit::GameUiPrimarySwatch(i),
+            Self::PitYellow => Hit::PitYellowSwatch(i),
+            Self::PitBlue => Hit::PitBlueSwatch(i),
         }
     }
 
@@ -965,6 +991,8 @@ impl ColorPickKind {
         match self {
             Self::App => Hit::PrimaryReset,
             Self::Menu => Hit::GameUiPrimaryReset,
+            Self::PitYellow => Hit::PitYellowReset,
+            Self::PitBlue => Hit::PitBlueReset,
         }
     }
 
@@ -972,6 +1000,8 @@ impl ColorPickKind {
         match self {
             Self::App => "Primary color",
             Self::Menu => "Menu color",
+            Self::PitYellow => "Main",
+            Self::PitBlue => "Secondary",
         }
     }
 }
@@ -986,6 +1016,52 @@ fn sync_menus_after_app_primary_change() {
 fn sync_menus_after_menu_accent_change() {
     if with_config(|c| c.game_ui) {
         crate::game_ui::sync_from_config();
+    }
+}
+
+fn color_kind_from_drop(drop: Option<Drop>) -> Option<ColorPickKind> {
+    match drop {
+        Some(Drop::PrimaryColor) => Some(ColorPickKind::App),
+        Some(Drop::GameUiPrimaryColor) => Some(ColorPickKind::Menu),
+        Some(Drop::PitYellow) => Some(ColorPickKind::PitYellow),
+        Some(Drop::PitBlue) => Some(ColorPickKind::PitBlue),
+        _ => None,
+    }
+}
+
+fn color_kind_from_hue(hit: Hit) -> Option<ColorPickKind> {
+    match hit {
+        Hit::PrimaryHue => Some(ColorPickKind::App),
+        Hit::GameUiPrimaryHue => Some(ColorPickKind::Menu),
+        Hit::PitYellowHue => Some(ColorPickKind::PitYellow),
+        Hit::PitBlueHue => Some(ColorPickKind::PitBlue),
+        _ => None,
+    }
+}
+
+fn read_kind_color(cfg: &HudConfig, kind: ColorPickKind) -> [u8; 3] {
+    match kind {
+        ColorPickKind::App => cfg.primary,
+        ColorPickKind::Menu => cfg.game_ui_primary,
+        ColorPickKind::PitYellow => cfg.pit_yellow,
+        ColorPickKind::PitBlue => cfg.pit_blue,
+    }
+}
+
+fn write_kind_color(cfg: &mut HudConfig, kind: ColorPickKind, rgb: [u8; 3]) {
+    match kind {
+        ColorPickKind::App => cfg.primary = rgb,
+        ColorPickKind::Menu => cfg.game_ui_primary = rgb,
+        ColorPickKind::PitYellow => cfg.pit_yellow = rgb,
+        ColorPickKind::PitBlue => cfg.pit_blue = rgb,
+    }
+}
+
+fn sync_after_kind(kind: ColorPickKind) {
+    match kind {
+        ColorPickKind::App => sync_menus_after_app_primary_change(),
+        ColorPickKind::Menu => sync_menus_after_menu_accent_change(),
+        ColorPickKind::PitYellow | ColorPickKind::PitBlue => {}
     }
 }
 
@@ -2017,7 +2093,8 @@ fn press(p: (f32, f32)) {
                 let _ = SetCapture(host);
             }
         }
-        Some(Hit::PrimarySv) | Some(Hit::GameUiPrimarySv) => {
+        Some(Hit::PrimarySv) | Some(Hit::GameUiPrimarySv) | Some(Hit::PitYellowSv)
+        | Some(Hit::PitBlueSv) => {
             start_sv_drag(p, host);
         }
         Some(Hit::StDrag(i)) => start_drag(DragKind::St, i, host),
@@ -2088,6 +2165,8 @@ fn is_slider(hit: Hit) -> bool {
             | Hit::Font(_)
             | Hit::PrimaryHue
             | Hit::GameUiPrimaryHue
+            | Hit::PitYellowHue
+            | Hit::PitBlueHue
     )
 }
 
@@ -2113,13 +2192,13 @@ fn slide_range(hit: Hit) -> (i32, i32) {
         }
         Hit::Font(_) => (70, 160),
         Hit::RadarRange => (RADAR_RANGE_MIN, RADAR_RANGE_MAX),
-        Hit::PrimaryHue | Hit::GameUiPrimaryHue => (0, 360),
+        Hit::PrimaryHue | Hit::GameUiPrimaryHue | Hit::PitYellowHue | Hit::PitBlueHue => (0, 360),
         _ => (0, 100),
     }
 }
 
 fn start_slide(hit: Hit, mx: f32, host: HWND) {
-    if !matches!(hit, Hit::PrimaryHue | Hit::GameUiPrimaryHue) {
+    if color_kind_from_hue(hit).is_none() {
         close_drop();
     }
     let box_ = {
@@ -2159,7 +2238,12 @@ fn start_sv_drag(p: (f32, f32), host: HWND) {
             u.hits
                 .iter()
                 .rev()
-                .find(|h| matches!(h.id, Hit::PrimarySv | Hit::GameUiPrimarySv))
+                .find(|h| {
+                    matches!(
+                        h.id,
+                        Hit::PrimarySv | Hit::GameUiPrimarySv | Hit::PitYellowSv | Hit::PitBlueSv
+                    )
+                })
                 .copied()
         })
     };
@@ -2186,19 +2270,11 @@ fn apply_sv(mx: f32, my: f32, x: f32, y: f32, w: f32, h: f32) {
     } else {
         (1.0 - (my - y) / h).clamp(0.0, 1.0)
     };
-    let menu = UI
-        .lock()
-        .unwrap()
-        .as_ref()
-        .is_some_and(|u| u.open_drop == Some(Drop::GameUiPrimaryColor));
+    let kind = color_kind_from_drop(UI.lock().unwrap().as_ref().and_then(|u| u.open_drop))
+        .unwrap_or(ColorPickKind::App);
     update_config(|c| {
-        if menu {
-            let (hue, _, _) = rgb_to_hsv(c.game_ui_primary);
-            c.game_ui_primary = hsv_to_rgb(hue, s, v);
-        } else {
-            let (hue, _, _) = rgb_to_hsv(c.primary);
-            c.primary = hsv_to_rgb(hue, s, v);
-        }
+        let (hue, _, _) = rgb_to_hsv(read_kind_color(c, kind));
+        write_kind_color(c, kind, hsv_to_rgb(hue, s, v));
     });
 }
 
@@ -2242,13 +2318,10 @@ fn apply_slide(hit: Hit, mx: f32, x: f32, w: f32, min: i32, max: i32) {
             }
         }
         Hit::Font(id) => c.set_font_pct(id, v),
-        Hit::PrimaryHue => {
-            let (_, s, val) = rgb_to_hsv(c.primary);
-            c.primary = hsv_to_rgb(v as f32, s, val);
-        }
-        Hit::GameUiPrimaryHue => {
-            let (_, s, val) = rgb_to_hsv(c.game_ui_primary);
-            c.game_ui_primary = hsv_to_rgb(v as f32, s, val);
+        hit if color_kind_from_hue(hit).is_some() => {
+            let kind = color_kind_from_hue(hit).unwrap();
+            let (_, s, val) = rgb_to_hsv(read_kind_color(c, kind));
+            write_kind_color(c, kind, hsv_to_rgb(v as f32, s, val));
         }
         _ => {}
     });
@@ -2347,26 +2420,18 @@ fn release(p: (f32, f32)) {
         ui.as_mut().and_then(|u| u.slide.take()).map(|s| s.hit)
     };
     if was_sv
-        || matches!(
-            slide_hit,
-            Some(Hit::PrimaryHue) | Some(Hit::GameUiPrimaryHue)
-        )
+        || matches!(slide_hit, Some(hit) if color_kind_from_hue(hit).is_some())
     {
         if was_sv {
-            let menu = UI
-                .lock()
-                .unwrap()
-                .as_ref()
-                .is_some_and(|u| u.open_drop == Some(Drop::GameUiPrimaryColor));
-            if menu {
-                sync_menus_after_menu_accent_change();
-            } else {
-                sync_menus_after_app_primary_change();
+            if let Some(kind) =
+                color_kind_from_drop(UI.lock().unwrap().as_ref().and_then(|u| u.open_drop))
+            {
+                sync_after_kind(kind);
             }
-        } else if slide_hit == Some(Hit::GameUiPrimaryHue) {
-            sync_menus_after_menu_accent_change();
-        } else {
-            sync_menus_after_app_primary_change();
+        } else if let Some(hit) = slide_hit {
+            if let Some(kind) = color_kind_from_hue(hit) {
+                sync_after_kind(kind);
+            }
         }
     }
     if slide_hit.is_some() {
@@ -2450,6 +2515,9 @@ fn is_drop_pick(hit: Hit) -> bool {
             | Hit::InfoPick(_, _, _)
             | Hit::PitSlotPick(_, _)
             | Hit::PitSlotNone(_)
+            | Hit::PitWhenAlways
+            | Hit::PitWhenSector
+            | Hit::PitWhenLap
             | Hit::PresetCopyTo(_)
             | Hit::PresetCopyAll
             | Hit::AnalyzeYouLap(_)
@@ -2473,6 +2541,10 @@ fn is_focusable(hit: Hit) -> bool {
             | Hit::PrimarySv
             | Hit::GameUiPrimaryPanel
             | Hit::GameUiPrimarySv
+            | Hit::PitYellowPanel
+            | Hit::PitYellowSv
+            | Hit::PitBluePanel
+            | Hit::PitBlueSv
     )
 }
 
@@ -2553,11 +2625,10 @@ fn hit_label(hit: Hit) -> String {
         Hit::PitBrowse => "Use your PNG. board.json beside it locks the slots.".into(),
         Hit::PitReset => "Restore the Holeshot slots".into(),
         Hit::PitOpenFolder => "Plates folder, plus a starter board.json".into(),
-        Hit::PitTextWhite => "White text".into(),
-        Hit::PitTextBlack => "Black text".into(),
         Hit::PitWhenAlways => "Show the board all the time with live values".into(),
         Hit::PitWhenSector => "5-second snapshot of the sector that just finished".into(),
         Hit::PitWhenLap => "5-second snapshot of the lap that just finished".into(),
+        Hit::PitWhenOpen => "When the board shows values".into(),
         Hit::PitSlotOpen(_) => "What this spot shows".into(),
         Hit::PitSlotPick(_, i) => PitVar::from_idx(i).map(|v| v.label().into()).unwrap_or_else(|| "Stat".into()),
         Hit::PitSlotNone(_) => "None".into(),
@@ -2641,6 +2712,16 @@ fn hit_label(hit: Hit) -> String {
         Hit::GameUiPrimaryHue => "Hue".into(),
         Hit::GameUiPrimarySwatch(_) => "Color swatch".into(),
         Hit::GameUiPrimaryReset => "Reset menu color".into(),
+        Hit::PitYellowOpen | Hit::PitYellowPanel => "Main".into(),
+        Hit::PitYellowSv => "Saturation and brightness".into(),
+        Hit::PitYellowHue => "Hue".into(),
+        Hit::PitYellowSwatch(_) => "Color swatch".into(),
+        Hit::PitYellowReset => "Reset main".into(),
+        Hit::PitBlueOpen | Hit::PitBluePanel => "Secondary".into(),
+        Hit::PitBlueSv => "Saturation and brightness".into(),
+        Hit::PitBlueHue => "Hue".into(),
+        Hit::PitBlueSwatch(_) => "Color swatch".into(),
+        Hit::PitBlueReset => "Reset secondary".into(),
         Hit::GameUiSplashBrowse => "Browse opening screen image".into(),
         Hit::GameUiSplashDefault => "Use default opening screen".into(),
         Hit::GameUiLoadingBrowse => "Browse loading screen image".into(),
@@ -2970,8 +3051,11 @@ fn nudge_slider(hit: Hit, delta: i32) {
             .map(|f| f.width(c))
             .unwrap_or(min),
         Hit::Font(id) => c.font_pct(id),
-        Hit::PrimaryHue => rgb_to_hsv(c.primary).0.round() as i32,
-        Hit::GameUiPrimaryHue => rgb_to_hsv(c.game_ui_primary).0.round() as i32,
+        hit if color_kind_from_hue(hit).is_some() => {
+            rgb_to_hsv(read_kind_color(c, color_kind_from_hue(hit).unwrap()))
+                .0
+                .round() as i32
+        }
         _ => min,
     });
     let v = (v + delta).clamp(min, max);
@@ -3008,20 +3092,15 @@ fn nudge_slider(hit: Hit, delta: i32) {
             }
         }
         Hit::Font(id) => c.set_font_pct(id, v),
-        Hit::PrimaryHue => {
-            let (_, s, val) = rgb_to_hsv(c.primary);
-            c.primary = hsv_to_rgb(v as f32, s, val);
-        }
-        Hit::GameUiPrimaryHue => {
-            let (_, s, val) = rgb_to_hsv(c.game_ui_primary);
-            c.game_ui_primary = hsv_to_rgb(v as f32, s, val);
+        hit if color_kind_from_hue(hit).is_some() => {
+            let kind = color_kind_from_hue(hit).unwrap();
+            let (_, s, val) = rgb_to_hsv(read_kind_color(c, kind));
+            write_kind_color(c, kind, hsv_to_rgb(v as f32, s, val));
         }
         _ => {}
     });
-    if hit == Hit::PrimaryHue {
-        sync_menus_after_app_primary_change();
-    } else if hit == Hit::GameUiPrimaryHue {
-        sync_menus_after_menu_accent_change();
+    if let Some(kind) = color_kind_from_hue(hit) {
+        sync_after_kind(kind);
     }
 }
 
@@ -3524,7 +3603,15 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
         paint_drop_menus(px, fonts, hover, &mut hits);
         match open_drop {
             Some(Drop::PrimaryColor) => {
-                paint_color_picker(px, fonts, hover, &mut hits, ColorPickKind::App, cfg.primary);
+                paint_color_picker(
+                    px,
+                    fonts,
+                    hover,
+                    &mut hits,
+                    ColorPickKind::App,
+                    cfg.primary,
+                    DEFAULT_PRIMARY,
+                );
             }
             Some(Drop::GameUiPrimaryColor) => {
                 paint_color_picker(
@@ -3534,6 +3621,29 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
                     &mut hits,
                     ColorPickKind::Menu,
                     cfg.game_ui_primary,
+                    DEFAULT_PRIMARY,
+                );
+            }
+            Some(Drop::PitYellow) => {
+                paint_color_picker(
+                    px,
+                    fonts,
+                    hover,
+                    &mut hits,
+                    ColorPickKind::PitYellow,
+                    cfg.pit_yellow,
+                    cfg.primary,
+                );
+            }
+            Some(Drop::PitBlue) => {
+                paint_color_picker(
+                    px,
+                    fonts,
+                    hover,
+                    &mut hits,
+                    ColorPickKind::PitBlue,
+                    cfg.pit_blue,
+                    [0, 0, 0],
                 );
             }
             _ => {}
@@ -5437,11 +5547,13 @@ fn style_controls(
             hits,
         )
     });
-    g.place(|cx, cy, cw| {
-        slider_row(
-            px, fonts, cx, cy, cw, bg_label, bg, 0, 100, "%", bg_hit, hover, hits,
-        )
-    });
+    if id != WidgetId::Pitboard {
+        g.place(|cx, cy, cw| {
+            slider_row(
+                px, fonts, cx, cy, cw, bg_label, bg, 0, 100, "%", bg_hit, hover, hits,
+            )
+        });
+    }
     g.place(|cx, cy, cw| {
         toggle_row(
             px,
@@ -6266,6 +6378,7 @@ fn paint_color_picker(
     hits: &mut Vec<HitBox>,
     kind: ColorPickKind,
     rgb: [u8; 3],
+    reset_to: [u8; 3],
 ) {
     let Some((bx, by, bw, bh)) = COLOR_PICKER_ANCHOR.with(|a| a.get()) else {
         return;
@@ -6277,7 +6390,7 @@ fn paint_color_picker(
     let sv_h = 132.0;
     let hue_h = 16.0;
     let foot_h = 22.0;
-    let show_reset = rgb != DEFAULT_PRIMARY;
+    let show_reset = rgb != reset_to;
     let content_h = pad + sw + 10.0 + sv_h + 10.0 + hue_h + 10.0 + foot_h + pad;
     let win_w = px.width() as f32;
     let win_h = px.height() as f32;

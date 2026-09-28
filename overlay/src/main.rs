@@ -347,6 +347,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
     set_host(host);
     crate::settings::attach(host);
     crate::startup::sync_from_config();
+    mxbo_hud::pitboard::ensure_factory_pack();
     crate::startup::ensure_game_waiter();
     apply_window_icons(host, icon_big, icon_small);
     crate::tray::add(host, icon_small);
