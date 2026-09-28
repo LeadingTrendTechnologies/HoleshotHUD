@@ -28,6 +28,7 @@ pub(crate) fn ticker_meta_label(field: BoardField, val: &str) -> &'static str {
         BoardField::Gap => "GAP",
         BoardField::Delta => "DELTA",
         BoardField::Last | BoardField::Current => "LAP",
+        BoardField::LapDiff => "DIFF",
         BoardField::Engine => "TEMP",
         BoardField::Penalty => "PEN",
         BoardField::Server => "SERVER",
@@ -224,18 +225,7 @@ pub(crate) fn draw_ticker(
                     x
                 };
                 draw_ticker_card(
-                    &mut layer,
-                    fonts,
-                    s,
-                    cfg,
-                    card,
-                    focus_row,
-                    best_ms,
-                    x,
-                    0.0,
-                    card_w,
-                    card_h,
-                    k,
+                    &mut layer, fonts, s, cfg, card, focus_row, best_ms, x, 0.0, card_w, card_h, k,
                 );
                 push_click_rider(card.race_num, cards_x + x, card_y, card_w, card_h);
             }
@@ -517,7 +507,14 @@ pub(crate) fn draw_ticker_card(
     text(px, fonts, &gap, gap_sz, text_x, y + h * 0.52, gap_c, false);
     if !matches!(mark, RiderMark::None) {
         let r = (h * 0.22).clamp(7.0, 10.0);
-        draw_state_mark(px, fonts, x + w - r * 2.0 - 6.0, y + (h - r * 2.0) * 0.5, r, mark);
+        draw_state_mark(
+            px,
+            fonts,
+            x + w - r * 2.0 - 6.0,
+            y + (h - r * 2.0) * 0.5,
+            r,
+            mark,
+        );
     }
     if best_ms > 0 && row.best_lap_ms == best_ms && !out {
         let tag = "FASTEST LAP";

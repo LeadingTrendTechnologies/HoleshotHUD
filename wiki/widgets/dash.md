@@ -27,7 +27,7 @@ Practice, gate, and race time share **one** slot (`session_banner`).
 - Timed race: countdown while `session_time_ms` is live (`07:32` only — no `+#` while the clock runs). When time expires, extras use `0/1` then `1/1` for +1, or `0/2` … `2/2` for +2. Crossing as a backmarker at time-zero does **not** start extras (`local_overtime_taken`). `0/1` is the uncounted lap after the clock; `1/1` is the extra. It must advance — do not stick on `1/1` for laps you still have to run. Getting a lap put on you, or the leader finishing, is `~Lapped` only — you still run the extra, and checkered waits until you complete it.
 - Clock stays `00:00` until you cross or the leader puts a lap on you (0.1.0).
 - Warmup `10:00` must not stick after a race: prefer the ticking clock (0.1.4).
-- Warmup/practice countdown hides when time hits zero (blank — not sticky `00:00` / `00:30`).
+- Warmup/practice countdown hides when time hits zero, or when the game jumps to / freezes a start board (`00:30`) without counting through zero (blank — not sticky `00:00` / `00:30`).
 
 Plugin session fields are messy (warmup length leaking into race). Lots of atomics (`IN_GATE`, `SESSION_EXPIRED`, `OVERTIME_*`, `LAP_GREEN`) exist because the API does not send a clean mode enum. `session_kind` / `session_state` are in SHM (version 9). Logged: warmup `kind=5`; race 2 `kind=7` for **both** 8:00 +1 and a 4-lap moto. `state=16` is running; `state=256` is the start gate. Race 1 not dumped yet (likely `kind=6`). **Warmup vs race** uses kind when it is present (`>= 6` is a race, so a 15:00 +1 with unpublished extras is not warmup). Lap vs timed is still `session_laps` + `session_length`. A kind change (warmup `5` → race `7`) drops clock latches so a finished 15:00 warmup cannot inherit as `0/1`. Plugin length is **`-1` until this session writes it**; a length change drops cached length/laps so leftover `8:00` cannot stick when the new session publishes `0`. Start boards and leaked warmup extras are still real API writes, not cache.
 
@@ -90,7 +90,7 @@ One path for lap motos and timed extras, driven by `laps_left`. Lap motos count 
 - Do not suppress yellow wrap in practice or warmup when `dash_yellow` is on — a crash ahead is caution in every live session.
 - Do not derive `LapsLeft` from the banner text. It comes from `laps_left` and counts the lap you are on, so the final lap reads `1`.
 - Do not trust a single observed lap crossing as the S/F position; two must agree (`SF_AGREE_FRAC`).
-- Do not leave a sticky `00:00` / `00:30` on the dash after warmup/practice expires; hide the clock until the next session.
+- Do not leave a sticky `00:00` / `00:30` on the dash after warmup/practice expires; hide the clock until the next session. That includes a mid-clock snap or held start board after `SAW`, and kind `5` with leaked extras (not a real gate).
 - Do not keep warmup `SAW` / `ARMED` when `session_laps` first go from 0 to extras after a practice-like length (`0` / 10–20 / 30+ min). That forces early `+1` with no live `MM:SS` countdown on 5:00+1 / 8:00+1. Do **not** apply that reset when extras appear on the **same** 10–60 min timed race you are already armed/expired on — that is late +1, not warmup ending, and wiping overtime bases sits on `0/1` with checkered while laps remain.
 - Do not treat a race session (`session_kind >= 6`) as warmup just because length is 10/15/20/30 and extras are unpublished.
 - Do not throw away a 30:00 timed length as leftover practice when extras are 1–3. 40+ min leftover practice still drops.
@@ -103,11 +103,14 @@ One path for lap motos and timed extras, driven by `laps_left`. Lap motos count 
 - Do not lock dash size to a content-only visual rect. Orange handles and hit testing use the widget rect; the plaque fills that rect. Hold Ctrl and drag to scale. Default is 11.1%×11.5%, bottom-centered.
 - Do not show yellow, blue, or red on the Dash wrap unless that Dash toggle is on. Flags-widget `flag_yellow` / `flag_blue` / `flag_red` do not wrap the dash.
 - Do not share the Dash caution toggles with the Flags widget. Each surface has its own set.
+- **Last lap diff** is the last completed lap minus the previous one, not Delta versus best. Green is faster, red is slower, `0.000` is the same time, `--` until two laps. A zeroed last-lap does not replace the stored time. A new session clears it.
 - Fuel footer is liters/US gallons (`Fuel`) or tank percent (`Fuel %`). Empty volume is `0.0 L` / `0.0 gal`; `--` / `--%` only when tank size is missing.
 - Setup footer is the `RunInit` filename stem (path and `.xml` / `.mxb` stripped). `--` when the name has not arrived (replay / spectate never call `RunInit`). Restart MX Bikes after the V13 plugin so `setupName` is in SHM.
 
 ## Change log
 
+- 2026-09-26 — Warmup/practice clock blanks when the session ends mid-countdown via a frozen start board (`00:30`), not only after counting to zero. Kind `5` with leaked extras no longer pins that board as a live gate.
+- 2026-09-25 — Footer **Last lap diff** (`DashField::LapDiff`). Last completed lap minus the previous one. Green is faster, red is slower. Not Delta versus best.
 - 2026-09-25 — Yellow wrap holds ~1.75 s after the crash bit or span edge drops so blue/red cannot flash during the same incident. Blue/red ignore crashed riders.
 - 2026-09-24 — Timed +2 on `1/2`: `~Lapped` (and waved-off `1/1`) latches when the finished leader goes past you with `lead >= 1`. Same-last-extra still needs `lead >= 2`.
 - 2026-09-24 — Armed timed countdown holds the last remain when `session_time_ms` republishes near session length (`07:58` must not snap back to `08:00`).

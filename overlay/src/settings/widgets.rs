@@ -156,11 +156,7 @@ pub(crate) fn open_widget_pane(
         w,
         spec.title,
         spec.subtitle,
-        Some((
-            cfg[spec.id].show,
-            spec.show,
-            "Show on overlay",
-        )),
+        Some((cfg[spec.id].show, spec.show, "Show on overlay")),
         hover,
         hits,
     );
@@ -493,6 +489,18 @@ pub(crate) fn pane_map(
                 x,
                 y,
                 w,
+                "Follow me",
+                cfg.map_follow,
+                Hit::MapFollow,
+                hover,
+                hits,
+            );
+            y = toggle_row(
+                px,
+                fonts,
+                x,
+                y,
+                w,
                 "Other riders",
                 cfg.map_others,
                 Hit::MapOthers,
@@ -758,6 +766,7 @@ pub(crate) fn pane_radar(
     fonts: &Fonts,
     cfg: &HudConfig,
     hover: Option<Hit>,
+    open_drop: Option<Drop>,
     hits: &mut Vec<HitBox>,
     x: f32,
     y: f32,
@@ -779,6 +788,31 @@ pub(crate) fn pane_radar(
                 return y;
             }
             let mut y = pane_style(px, fonts, spec, cfg, hover, hits, x, y, w);
+            y = dropdown_row(
+                px,
+                fonts,
+                x,
+                y,
+                w,
+                "Look",
+                cfg.radar_style.label(),
+                open_drop == Some(Drop::RadarStyle),
+                Hit::RadarStyleOpen,
+                &[
+                    (
+                        Hit::RadarStylePick(RadarStyle::Plaque),
+                        "Plaque",
+                        cfg.radar_style == RadarStyle::Plaque,
+                    ),
+                    (
+                        Hit::RadarStylePick(RadarStyle::Arrows),
+                        "Arrows",
+                        cfg.radar_style == RadarStyle::Arrows,
+                    ),
+                ],
+                hover,
+                hits,
+            );
             y = section(px, fonts, x, y, "On the radar");
             y = slider_row(
                 px,
@@ -819,18 +853,21 @@ pub(crate) fn pane_radar(
                 hover,
                 hits,
             );
-            toggle_row(
-                px,
-                fonts,
-                x,
-                y,
-                w,
-                "Range rings",
-                cfg.radar_rings,
-                Hit::RadarRings,
-                hover,
-                hits,
-            )
+            if cfg.radar_style == RadarStyle::Plaque {
+                y = toggle_row(
+                    px,
+                    fonts,
+                    x,
+                    y,
+                    w,
+                    "Range rings",
+                    cfg.radar_rings,
+                    Hit::RadarRings,
+                    hover,
+                    hits,
+                );
+            }
+            y
         },
     )
 }

@@ -149,15 +149,7 @@ pub(crate) fn pane_profile(
     paint_kpi_stack(px, fonts, right_x, y, flank_w, card_h, &right);
     if let Some(tip) = tip {
         paint_axis_tip(
-            px,
-            fonts,
-            tip.pane_x,
-            tip.pane_w,
-            tip.lx,
-            tip.ly,
-            tip.cy,
-            tip.i,
-            tip.score,
+            px, fonts, tip.pane_x, tip.pane_w, tip.lx, tip.ly, tip.cy, tip.i, tip.score,
         );
     }
     if hover == Some(Hit::ReviewToggle) {
@@ -295,15 +287,7 @@ fn profile_record_switch(
         w: right_w,
         h: 28.0,
     });
-    switch_lg(
-        px,
-        x + label_w + 12.0,
-        y,
-        recording,
-        hit,
-        hover,
-        hits,
-    );
+    switch_lg(px, x + label_w + 12.0, y, recording, hit, hover, hits);
     (x, y, right_w)
 }
 

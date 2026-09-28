@@ -95,8 +95,7 @@ mod tests {
         assert!(mnu.contains("sprite logo_ui.tga"));
         assert!(mnu.contains("name ID_LOGO"));
         assert!(
-            !mnu
-                .split("name IDD_SPLASH")
+            !mnu.split("name IDD_SPLASH")
                 .nth(1)
                 .unwrap()
                 .split("name idd_")
@@ -123,10 +122,28 @@ mod tests {
             "dest card rect must stay full-size"
         );
         assert!(mnu.contains("align center"));
-        let yes = mnu.split("name id_yes").nth(1).unwrap().split("name ID_TEXT").next().unwrap();
-        let no = mnu.split("name id_no").nth(1).unwrap().split("name id_yes").next().unwrap();
-        assert!(yes.contains("align center"), "Exit YES label must be centered");
-        assert!(no.contains("align center"), "Exit NO label must be centered");
+        let yes = mnu
+            .split("name id_yes")
+            .nth(1)
+            .unwrap()
+            .split("name ID_TEXT")
+            .next()
+            .unwrap();
+        let no = mnu
+            .split("name id_no")
+            .nth(1)
+            .unwrap()
+            .split("name id_yes")
+            .next()
+            .unwrap();
+        assert!(
+            yes.contains("align center"),
+            "Exit YES label must be centered"
+        );
+        assert!(
+            no.contains("align center"),
+            "Exit NO label must be centered"
+        );
         assert!(mnu.contains("48 148 255"));
         let eng = fs::read_to_string(ui.join("english.str")).unwrap();
         assert!(eng.contains("Testing\r\nPractice\r\n"));
@@ -153,9 +170,7 @@ mod tests {
         fs::write(bak.join("main.fnt"), b"fnt").unwrap();
         // Tiny stock splash must not pin TGA size — we floor at 1920×1080.
         let mut tiny = Vec::new();
-        tiny.extend_from_slice(&[
-            0u8, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 2, 0, 32, 8,
-        ]);
+        tiny.extend_from_slice(&[0u8, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 2, 0, 32, 8]);
         tiny.extend(vec![0u8; 4 * 2 * 4]);
         fs::write(bak.join("splash.tga"), &tiny).unwrap();
         fs::write(bak.join("bkgrnd.tga"), &tiny).unwrap();
@@ -165,7 +180,10 @@ mod tests {
         assert!(splash.len() > 18);
         assert!(loading.len() > 18);
         assert_ne!(splash, tiny, "default splash must replace stock bak bytes");
-        assert_ne!(loading, tiny, "default loading must replace stock bak bytes");
+        assert_ne!(
+            loading, tiny,
+            "default loading must replace stock bak bytes"
+        );
         let w = u16::from_le_bytes([splash[12], splash[13]]);
         let h = u16::from_le_bytes([splash[14], splash[15]]);
         assert_eq!((w, h), (1920, 1080));
@@ -215,7 +233,10 @@ mod tests {
         .unwrap();
         let from_jpg = fs::read(ui.join("splash.tga")).unwrap();
         assert_ne!(from_jpg, splash, "JPEG custom splash must replace default");
-        assert_ne!(from_jpg, custom, "JPEG splash should differ from PNG custom");
+        assert_ne!(
+            from_jpg, custom,
+            "JPEG splash should differ from PNG custom"
+        );
         // remove restores bak stock
         remove(&game).unwrap();
         assert_eq!(fs::read(ui.join("splash.tga")).unwrap(), tiny);
@@ -278,10 +299,7 @@ mod tests {
         let raw = "Testing\r\nSingle Player\r\nSingle_race\r\nMulti Player\r\n";
         let out = patch_str_pair(raw, "Testing", "Practice");
         let out = patch_str_pair(&out, "Single_race", "Online");
-        assert_eq!(
-            out,
-            "Testing\r\nPractice\r\nSingle_race\r\nOnline\r\n"
-        );
+        assert_eq!(out, "Testing\r\nPractice\r\nSingle_race\r\nOnline\r\n");
     }
 
     #[test]
@@ -303,9 +321,7 @@ mod tests {
 
     /// Uncompressed 32-bit BGRA TGA (bottom-up), one opaque pixel.
     fn tiny_tga(bgr: [u8; 3]) -> Vec<u8> {
-        let mut out = vec![
-            0u8, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 32, 8,
-        ];
+        let mut out = vec![0u8, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 32, 8];
         out.extend_from_slice(&[bgr[0], bgr[1], bgr[2], 255]);
         out
     }
@@ -401,12 +417,34 @@ mod tests {
         apply(&game, DEFAULT_PRIMARY).unwrap();
         // Complete stock seed so skip considers the pack current.
         fs::write(ui.join("main.fnt"), b"fnt").unwrap();
-        let before = fs::metadata(ui.join("main.mnu")).unwrap().modified().unwrap();
+        let before = fs::metadata(ui.join("main.mnu"))
+            .unwrap()
+            .modified()
+            .unwrap();
         std::thread::sleep(std::time::Duration::from_millis(20));
-        apply_pack_inner(&ui, DEFAULT_PRIMARY, Some(&game.join(BAK_DIR)), "", "", false).unwrap();
-        let after = fs::metadata(ui.join("main.mnu")).unwrap().modified().unwrap();
+        apply_pack_inner(
+            &ui,
+            DEFAULT_PRIMARY,
+            Some(&game.join(BAK_DIR)),
+            "",
+            "",
+            false,
+        )
+        .unwrap();
+        let after = fs::metadata(ui.join("main.mnu"))
+            .unwrap()
+            .modified()
+            .unwrap();
         assert_eq!(before, after, "matching accent must not rewrite");
-        apply_pack_inner(&ui, [59, 130, 246], Some(&game.join(BAK_DIR)), "", "", false).unwrap();
+        apply_pack_inner(
+            &ui,
+            [59, 130, 246],
+            Some(&game.join(BAK_DIR)),
+            "",
+            "",
+            false,
+        )
+        .unwrap();
         let mnu = fs::read_to_string(ui.join("main.mnu")).unwrap();
         assert!(mnu.contains("246 130 59"));
         let _ = fs::remove_dir_all(&game);
@@ -466,11 +504,23 @@ mod tests {
         assert!(join.contains(&format!(
             "rect {CARD_X0:.6} {CARD_Y0:.6} {CARD_X1:.6} {CARD_Y1:.6}"
         )));
-        assert!(join.contains(&format!("rect 0.030000 {CHROME_Y0:.6} 0.140000 {CHROME_Y1:.6}")));
-        assert!(join.contains(&format!("rect 0.160000 {CHROME_Y0:.6} 0.340000 {CHROME_Y1:.6}")));
-        let back = join.split("name id_back").nth(1).unwrap().split("name ID_SPECTATE").next().unwrap();
+        assert!(join.contains(&format!(
+            "rect 0.030000 {CHROME_Y0:.6} 0.140000 {CHROME_Y1:.6}"
+        )));
+        assert!(join.contains(&format!(
+            "rect 0.160000 {CHROME_Y0:.6} 0.340000 {CHROME_Y1:.6}"
+        )));
+        let back = join
+            .split("name id_back")
+            .nth(1)
+            .unwrap()
+            .split("name ID_SPECTATE")
+            .next()
+            .unwrap();
         assert!(
-            back.contains(&format!("rect 0.030000 {CHROME_Y0:.6} 0.140000 {CHROME_Y1:.6}")),
+            back.contains(&format!(
+                "rect 0.030000 {CHROME_Y0:.6} 0.140000 {CHROME_Y1:.6}"
+            )),
             "Back sits left of Local/World"
         );
         let tab_pos = (CHROME_Y1 - CHROME_Y0 - 0.020000) * 0.5;
@@ -514,7 +564,13 @@ mod tests {
         assert!(join.contains("sprite1 segr1.tga"));
         assert!(ui.join("segtrack.tga").is_file());
         assert!(ui.join("segl2.tga").is_file());
-        let host = join.split("name id_host").nth(1).unwrap().split("name id_password").next().unwrap();
+        let host = join
+            .split("name id_host")
+            .nth(1)
+            .unwrap()
+            .split("name id_password")
+            .next()
+            .unwrap();
         assert!(
             host.contains("button1.tga"),
             "Host above the list uses a button plaque"
@@ -617,9 +673,7 @@ mod tests {
         assert!(opt.contains("sprite1 segr1.tga"));
         assert!(opt.contains("sprite optionstabtrack.tga"));
         assert!(opt.contains("align center"));
-        assert!(opt.contains(&format!(
-            "rect {OPT_TAB_GROUP_X0:.6} {OPT_TAB_Y0:.6}"
-        )));
+        assert!(opt.contains(&format!("rect {OPT_TAB_GROUP_X0:.6} {OPT_TAB_Y0:.6}")));
         assert!(opt.contains(&format!(
             "rect 0.030000 {OPT_CHROME_Y0:.6} 0.140000 {OPT_CHROME_Y1:.6}"
         )));
@@ -632,7 +686,10 @@ mod tests {
         assert!(opt.contains("sprite1 done1.tga"));
         assert!(opt.contains("sprite1 back1.tga"));
         assert!(opt.contains("48 148 255"));
-        assert!(!opt.contains("40 60 240"), "stock PiBoSo blue must become Look accent");
+        assert!(
+            !opt.contains("40 60 240"),
+            "stock PiBoSo blue must become Look accent"
+        );
         assert!(opt.contains("name idd_graphic_options"));
         assert!(opt.contains("sprite optionsboard.tga"));
         assert!(!opt.contains("dialog1580x700t.tga"));
@@ -763,7 +820,12 @@ mod tests {
         assert_eq!(bar_px[3], 0, "setupbar.tga corners must stay clear");
         let bari = ((bar_h / 2) * bar_w + bar_w / 2) * 4;
         assert_eq!(
-            [bar_px[bari], bar_px[bari + 1], bar_px[bari + 2], bar_px[bari + 3]],
+            [
+                bar_px[bari],
+                bar_px[bari + 1],
+                bar_px[bari + 2],
+                bar_px[bari + 3]
+            ],
             [0, 0, 0, 160],
             "setupbar uses the same glass alpha as boards"
         );
@@ -795,10 +857,7 @@ mod tests {
         assert!(left.contains(&format!(
             "rect 0.160000 {SETUP_CHROME_Y0:.6} 0.300000 {SETUP_CHROME_Y1:.6}"
         )));
-        let track_info = left
-            .split("name ID_TRACK_INFO\n")
-            .nth(1)
-            .unwrap_or(left);
+        let track_info = left.split("name ID_TRACK_INFO\n").nth(1).unwrap_or(left);
         assert!(
             track_info.contains("align center"),
             "Track Info label must be centered"
@@ -817,7 +876,10 @@ mod tests {
             .next()
             .unwrap();
         assert!(start.contains("done1.tga"));
-        assert!(start.contains(&format!("color1 {}", argb(255, ink_on_rgb(DEFAULT_PRIMARY)))));
+        assert!(start.contains(&format!(
+            "color1 {}",
+            argb(255, ink_on_rgb(DEFAULT_PRIMARY))
+        )));
         let info = setup
             .split("name idd_track_info\n")
             .nth(1)
@@ -830,7 +892,10 @@ mod tests {
             "Track Info modal must use glass board"
         );
         assert!(!info.contains("dialog940x700.tga"));
-        assert!(info.contains("color 160 0 0 0"), "scrim should match glass alpha");
+        assert!(
+            info.contains("color 160 0 0 0"),
+            "scrim should match glass alpha"
+        );
         assert!(info.contains("name id_trackmap"));
         assert!(info.contains("name ID_TRACKMAP_MASK\n"));
         assert!(info.contains("sprite trackmapmask.tga"));
@@ -1381,7 +1446,18 @@ mod tests {
         assert!(!main.contains("r_button"));
         assert!(main.contains("sprite1 button1.tga"));
         assert!(main.contains("sprite1 done1.tga"));
-        assert!(main.contains("rect 0.800000 0.966667 0.970000 1.000000"));
+        // Settings | Chat | Save | Done on SETUP_CHROME Y (Chat via chatswitch).
+        assert!(main.contains(&format!(
+            "rect 0.406250 {SETUP_CHROME_Y0:.6} 0.531250 {SETUP_CHROME_Y1:.6}"
+        )));
+        assert!(main.contains(&format!(
+            "rect 0.690000 {SETUP_CHROME_Y0:.6} 0.790000 {SETUP_CHROME_Y1:.6}"
+        )));
+        assert!(main.contains(&format!(
+            "rect 0.800000 {SETUP_CHROME_Y0:.6} 0.970000 {SETUP_CHROME_Y1:.6}"
+        )));
+        assert!(!main.contains("0.656250 0.922222"));
+        assert!(!main.contains("0.406250 0.966667"));
         let save = main.split("name id_save\n").nth(1).unwrap();
         assert!(save.contains("align center"));
         let class = mnu
@@ -1505,8 +1581,16 @@ mod tests {
         assert!(exit.contains("sprite dialog600x200.tga"));
         assert!(!exit.contains("profiledeleteboard.tga"));
         assert!(exit.contains("sprite1 button1.tga"));
-        assert!(exit.split("name ID_YES\n").nth(1).unwrap().contains("align center"));
-        assert!(exit.split("name ID_NO\n").nth(1).unwrap().contains("align center"));
+        assert!(exit
+            .split("name ID_YES\n")
+            .nth(1)
+            .unwrap()
+            .contains("align center"));
+        assert!(exit
+            .split("name ID_NO\n")
+            .nth(1)
+            .unwrap()
+            .contains("align center"));
         let man = fs::read_to_string(ui.join(MANIFEST)).unwrap();
         assert!(man.contains("test.mnu"));
         let _ = fs::remove_dir_all(&game);
@@ -2168,4 +2252,3 @@ mod tests {
         assert!(opt.contains("sprite1 done1.tga"));
     }
 }
-

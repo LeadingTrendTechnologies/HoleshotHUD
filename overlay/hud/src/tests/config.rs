@@ -61,6 +61,18 @@ fn field_keys_round_trip() {
     assert_eq!(LeanStyle::parse("minimal"), LeanStyle::Minimal);
     assert_eq!(LeanStyle::parse("attitude"), LeanStyle::Minimal);
     assert_eq!(LeanStyle::parse(""), LeanStyle::Figure);
+    assert_eq!(
+        crate::config::RadarStyle::parse("plaque"),
+        crate::config::RadarStyle::Plaque
+    );
+    assert_eq!(
+        crate::config::RadarStyle::parse("arrows"),
+        crate::config::RadarStyle::Arrows
+    );
+    assert_eq!(
+        crate::config::RadarStyle::parse(""),
+        crate::config::RadarStyle::Plaque
+    );
 }
 
 #[test]
@@ -73,6 +85,7 @@ fn default_hud_hides_every_widget() {
     assert!(!cfg[WidgetId::Radar].show);
     assert!(cfg.radar_rings);
     assert_eq!(cfg.radar_range, 12);
+    assert_eq!(cfg.radar_style, crate::config::RadarStyle::Plaque);
     assert!(!cfg[WidgetId::Dash].show);
     assert!(!cfg[WidgetId::Ticker].show);
     assert!(!cfg[WidgetId::Sys].show);
@@ -285,7 +298,11 @@ fn primary_color_round_trips_ini() {
     let dir = std::env::temp_dir().join(format!("mxbo-ini-primary-{}", std::process::id()));
     let _ = std::fs::create_dir_all(&dir);
     let path = dir.join("Holeshot-HUD.ini");
-    std::fs::write(&path, "first_install_version=0.1.0\nst_last=1\nrel_last=1\n").unwrap();
+    std::fs::write(
+        &path,
+        "first_install_version=0.1.0\nst_last=1\nrel_last=1\n",
+    )
+    .unwrap();
     std::env::set_var("MXBO_TEST_INI", &path);
     let missing = HudConfig::load_file();
     assert_eq!(missing.primary, DEFAULT_PRIMARY);
@@ -1098,6 +1115,44 @@ fn atomic_save_round_trip_leaves_no_tmp() {
     assert!(loaded[WidgetId::Map].show);
     assert!(text.contains("show_map=1"));
     assert!(!tmp_left, "atomic save must not leave a .tmp sibling");
+}
+
+#[test]
+fn radar_style_round_trips_and_expands_default_plaque() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-radar-style-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let mut cfg = HudConfig::new();
+    cfg.first_install_version = "0.1.0".into();
+    cfg.radar_style = crate::config::RadarStyle::Arrows;
+    crate::config::maybe_expand_radar_for_arrows(&mut cfg);
+    assert_eq!(
+        cfg[WidgetId::Radar].rect,
+        crate::config::RADAR_ARROWS_RECT
+    );
+    cfg.save();
+    let loaded = HudConfig::load_file();
+    let text = std::fs::read_to_string(&path).unwrap();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(loaded.radar_style, crate::config::RadarStyle::Arrows);
+    assert!(text.contains("radar_style=arrows"));
+}
+
+#[test]
+fn radar_arrows_does_not_shrink_a_custom_rect() {
+    let mut cfg = HudConfig::new();
+    cfg[WidgetId::Radar].rect = crate::shm::Rect {
+        x: 0.1,
+        y: 0.1,
+        w: 0.5,
+        h: 0.5,
+    };
+    cfg.radar_style = crate::config::RadarStyle::Arrows;
+    crate::config::maybe_expand_radar_for_arrows(&mut cfg);
+    assert!((cfg[WidgetId::Radar].rect.w - 0.5).abs() < 0.0001);
 }
 
 #[test]

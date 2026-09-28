@@ -119,6 +119,10 @@ fn composite_piboso_logo(dest: &mut Pixmap) {
     if logo.width() == 0 || logo.height() == 0 {
         return;
     }
+    let Some((opaque_left, opaque_top, opaque_right, opaque_bottom)) = logo_opaque_bounds(&logo)
+    else {
+        return;
+    };
     let dw = dest.width() as f32;
     let dh = dest.height() as f32;
     let target_w = dw * 0.36;
@@ -128,17 +132,21 @@ fn composite_piboso_logo(dest: &mut Pixmap) {
     let lx = (dw - lw) * 0.5;
     let ly = (dh - lh) * 0.5;
 
-    // Soft plaque behind the mark so it reads on sunset / dust highlights.
-    let pad_x = lw * 0.05;
-    let pad_y = lh * 0.10;
+    // Soft plaque hugs the opaque mark so it reads on sunset / dust highlights.
+    let opaque_lx = lx + opaque_left as f32 * scale;
+    let opaque_ly = ly + opaque_top as f32 * scale;
+    let opaque_w = (opaque_right - opaque_left) as f32 * scale;
+    let opaque_h = (opaque_bottom - opaque_top) as f32 * scale;
+    let pad_x = opaque_w * 0.06;
+    let pad_y = opaque_h * 0.10;
     let mut paint = Paint::default();
-    paint.set_color_rgba8(0, 0, 0, 235);
+    paint.set_color_rgba8(0, 0, 0, 190);
     paint.anti_alias = true;
     let mut pb = PathBuilder::new();
-    let rx = lx - pad_x;
-    let ry = ly - pad_y;
-    let rw = lw + pad_x * 2.0;
-    let rh = lh + pad_y * 2.0;
+    let rx = opaque_lx - pad_x;
+    let ry = opaque_ly - pad_y;
+    let rw = opaque_w + pad_x * 2.0;
+    let rh = opaque_h + pad_y * 2.0;
     let rad = rh * 0.12;
     rounded_rect_path(&mut pb, rx, ry, rw, rh, rad);
     if let Some(path) = pb.finish() {
@@ -155,6 +163,34 @@ fn composite_piboso_logo(dest: &mut Pixmap) {
     let mut logo_paint = PixmapPaint::default();
     logo_paint.quality = FilterQuality::Bicubic;
     dest.draw_pixmap(0, 0, logo.as_ref(), &logo_paint, t, None);
+}
+
+/// Inclusive-exclusive opaque alpha bounds: `(left, top, right, bottom)`.
+fn logo_opaque_bounds(logo: &Pixmap) -> Option<(u32, u32, u32, u32)> {
+    let width = logo.width();
+    let height = logo.height();
+    let pixels = logo.pixels();
+    let mut left = width;
+    let mut top = height;
+    let mut right = 0_u32;
+    let mut bottom = 0_u32;
+    for y in 0..height {
+        for x in 0..width {
+            let index = (y * width + x) as usize;
+            if pixels[index].alpha() == 0 {
+                continue;
+            }
+            left = left.min(x);
+            top = top.min(y);
+            right = right.max(x + 1);
+            bottom = bottom.max(y + 1);
+        }
+    }
+    if right > left && bottom > top {
+        Some((left, top, right, bottom))
+    } else {
+        None
+    }
 }
 
 fn rounded_rect_path(pb: &mut PathBuilder, x: f32, y: f32, w: f32, h: f32, r: f32) {

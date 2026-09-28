@@ -876,6 +876,66 @@ impl LeanStyle {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum RadarStyle {
+    #[default]
+    Plaque,
+    Arrows,
+}
+
+impl RadarStyle {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Plaque => "Plaque",
+            Self::Arrows => "Arrows",
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Plaque => "plaque",
+            Self::Arrows => "arrows",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "arrows" | "arrow" | "edge" => Self::Arrows,
+            _ => Self::Plaque,
+        }
+    }
+}
+
+/// Near-fullscreen inset used when Arrows mode expands the default plaque rect.
+pub const RADAR_ARROWS_RECT: Rect = Rect {
+    x: 0.02,
+    y: 0.02,
+    w: 0.96,
+    h: 0.96,
+};
+
+pub fn radar_default_plaque_rect() -> Rect {
+    WidgetId::Radar.default_rect()
+}
+
+pub fn radar_rect_is_default_plaque(rect: Rect) -> bool {
+    let d = radar_default_plaque_rect();
+    (rect.x - d.x).abs() < 0.001
+        && (rect.y - d.y).abs() < 0.001
+        && (rect.w - d.w).abs() < 0.001
+        && (rect.h - d.h).abs() < 0.001
+}
+
+/// Expand the Radar rect once when switching to Arrows if it is still the default plaque.
+pub fn maybe_expand_radar_for_arrows(cfg: &mut HudConfig) {
+    if cfg.radar_style != RadarStyle::Arrows {
+        return;
+    }
+    if radar_rect_is_default_plaque(cfg[WidgetId::Radar].rect) {
+        cfg[WidgetId::Radar].rect = RADAR_ARROWS_RECT;
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum WidgetId {
     Standings,
@@ -1176,7 +1236,6 @@ pub enum SessionPreset {
     Spectate,
 }
 
-
 impl SessionPreset {
     pub const ALL: [Self; 4] = [Self::Practice, Self::Warmup, Self::Race, Self::Spectate];
     pub const COUNT: usize = 4;
@@ -1239,6 +1298,7 @@ pub enum StField {
     Current,
     Best,
     Last,
+    LapDiff,
     Status,
     Bike,
     Penalty,
@@ -1247,7 +1307,7 @@ pub enum StField {
 }
 
 impl StField {
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 15] = [
         Self::Pos,
         Self::Num,
         Self::Name,
@@ -1257,6 +1317,7 @@ impl StField {
         Self::Current,
         Self::Best,
         Self::Last,
+        Self::LapDiff,
         Self::Status,
         Self::Bike,
         Self::Penalty,
@@ -1275,6 +1336,7 @@ impl StField {
             Self::Current => "current",
             Self::Best => "best",
             Self::Last => "last",
+            Self::LapDiff => "lapdiff",
             Self::Status => "status",
             Self::Bike => "bike",
             Self::Penalty => "pen",
@@ -1294,6 +1356,7 @@ impl StField {
             Self::Current => "Current lap",
             Self::Best => "Fastest",
             Self::Last => "Last lap",
+            Self::LapDiff => "Last lap diff",
             Self::Status => "Status",
             Self::Bike => "Bike",
             Self::Penalty => "Penalty",
@@ -1313,6 +1376,7 @@ impl StField {
             "cur" | "current" => Self::Current,
             "best" => Self::Best,
             "last" => Self::Last,
+            "lapdiff" | "lap_diff" => Self::LapDiff,
             "status" => Self::Status,
             "bike" => Self::Bike,
             "pen" | "penalty" => Self::Penalty,
@@ -1333,6 +1397,7 @@ impl StField {
             Self::Current => c.st_current,
             Self::Best => c.st_best,
             Self::Last => c.st_last,
+            Self::LapDiff => c.st_lapdiff,
             Self::Status => c.st_status,
             Self::Bike => c.st_bike,
             Self::Penalty => c.st_penalty,
@@ -1352,6 +1417,7 @@ impl StField {
             Self::Current => c.st_w_current,
             Self::Best => c.st_w_best,
             Self::Last => c.st_w_last,
+            Self::LapDiff => c.st_w_lapdiff,
             Self::Status => c.st_w_status,
             Self::Bike => c.st_w_bike,
             Self::Penalty => c.st_w_penalty,
@@ -1383,6 +1449,7 @@ impl StField {
             Self::Current => c.st_w_current = next,
             Self::Best => c.st_w_best = next,
             Self::Last => c.st_w_last = next,
+            Self::LapDiff => c.st_w_lapdiff = next,
             Self::Status => c.st_w_status = next,
             Self::Bike => c.st_w_bike = next,
             Self::Penalty => c.st_w_penalty = next,
@@ -1435,12 +1502,13 @@ pub enum RelField {
     Status,
     Best,
     Last,
+    LapDiff,
     Category,
     Speed,
 }
 
 impl RelField {
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 15] = [
         Self::Num,
         Self::Name,
         Self::Gap,
@@ -1453,6 +1521,7 @@ impl RelField {
         Self::Status,
         Self::Best,
         Self::Last,
+        Self::LapDiff,
         Self::Category,
         Self::Speed,
     ];
@@ -1471,6 +1540,7 @@ impl RelField {
             Self::Status => "status",
             Self::Best => "best",
             Self::Last => "last",
+            Self::LapDiff => "lapdiff",
             Self::Category => "cat",
             Self::Speed => "speed",
         }
@@ -1490,6 +1560,7 @@ impl RelField {
             Self::Status => "Status",
             Self::Best => "Fastest",
             Self::Last => "Last lap",
+            Self::LapDiff => "Last lap diff",
             Self::Category => "Category",
             Self::Speed => "Speed",
         }
@@ -1509,6 +1580,7 @@ impl RelField {
             "status" => Self::Status,
             "best" => Self::Best,
             "last" => Self::Last,
+            "lapdiff" | "lap_diff" => Self::LapDiff,
             "cat" | "category" | "class" => Self::Category,
             "speed" => Self::Speed,
             _ => return None,
@@ -1529,6 +1601,7 @@ impl RelField {
             Self::Status => c.rel_status,
             Self::Best => c.rel_best,
             Self::Last => c.rel_last,
+            Self::LapDiff => c.rel_lapdiff,
             Self::Category => c.rel_category,
             Self::Speed => c.rel_speed,
         }
@@ -1548,6 +1621,7 @@ impl RelField {
             Self::Status => c.rel_w_status,
             Self::Best => c.rel_w_best,
             Self::Last => c.rel_w_last,
+            Self::LapDiff => c.rel_w_lapdiff,
             Self::Category => c.rel_w_category,
             Self::Speed => c.rel_w_speed,
         }
@@ -1579,6 +1653,7 @@ impl RelField {
             Self::Status => c.rel_w_status = next,
             Self::Best => c.rel_w_best = next,
             Self::Last => c.rel_w_last = next,
+            Self::LapDiff => c.rel_w_lapdiff = next,
             Self::Category => c.rel_w_category = next,
             Self::Speed => c.rel_w_speed = next,
         }
@@ -1868,6 +1943,7 @@ pub struct HudLayout {
     pub st_penalty: bool,
     pub st_crashed: bool,
     pub st_category: bool,
+    pub st_lapdiff: bool,
     pub rel_num: bool,
     pub rel_name: bool,
     pub rel_gap: bool,
@@ -1882,12 +1958,15 @@ pub struct HudLayout {
     pub rel_last: bool,
     pub rel_category: bool,
     pub rel_speed: bool,
+    pub rel_lapdiff: bool,
     pub map_others: bool,
     pub map_sf: bool,
     pub map_sectors: bool,
     pub map_name: bool,
     pub map_numbers: bool,
     pub map_arrows: bool,
+    /// Heading-up map: you stay centered, nose up, whole track still fits. Off by default.
+    pub map_follow: bool,
     pub map_crown: bool,
     pub map_place: bool,
     pub map_dot: DotLabel,
@@ -1902,6 +1981,8 @@ pub struct HudLayout {
     pub radar_sides: bool,
     pub radar_rear: bool,
     pub radar_rings: bool,
+    /// Plaque (range arcs + blips) or Arrows (edge indicators on the widget frame).
+    pub radar_style: RadarStyle,
     /// How far beside and behind, in meters, the radar shows other riders.
     /// Rings stay at 3 / 6 / 12 m; a longer range places dots outside the 12 m ring.
     pub radar_range: i32,
@@ -1977,6 +2058,7 @@ pub struct HudLayout {
     pub st_w_penalty: i32,
     pub st_w_crashed: i32,
     pub st_w_category: i32,
+    pub st_w_lapdiff: i32,
     pub rel_w_num: i32,
     pub rel_w_name: i32,
     pub rel_w_gap: i32,
@@ -1991,6 +2073,7 @@ pub struct HudLayout {
     pub rel_w_last: i32,
     pub rel_w_category: i32,
     pub rel_w_speed: i32,
+    pub rel_w_lapdiff: i32,
 }
 
 impl HudLayout {
@@ -2028,6 +2111,7 @@ impl HudLayout {
             st_penalty: false,
             st_crashed: false,
             st_category: false,
+            st_lapdiff: false,
             rel_num: true,
             rel_name: true,
             rel_gap: true,
@@ -2042,12 +2126,14 @@ impl HudLayout {
             rel_last: true,
             rel_category: false,
             rel_speed: false,
+            rel_lapdiff: false,
             map_others: true,
             map_sf: true,
             map_sectors: true,
             map_name: true,
             map_numbers: true,
             map_arrows: true,
+            map_follow: false,
             map_crown: true,
             map_place: true,
             map_dot: DotLabel::Position,
@@ -2062,6 +2148,7 @@ impl HudLayout {
             radar_sides: true,
             radar_rear: true,
             radar_rings: true,
+            radar_style: RadarStyle::Plaque,
             radar_range: RADAR_RANGE_DEFAULT,
             st_hl: 50,
             st_text: TableText::White,
@@ -2122,6 +2209,7 @@ impl HudLayout {
             st_w_penalty: 48,
             st_w_crashed: 44,
             st_w_category: 48,
+            st_w_lapdiff: 58,
             rel_w_num: 32,
             rel_w_name: 80,
             rel_w_gap: 58,
@@ -2136,6 +2224,7 @@ impl HudLayout {
             rel_w_last: 54,
             rel_w_category: 48,
             rel_w_speed: 56,
+            rel_w_lapdiff: 58,
         }
     }
 
@@ -2259,8 +2348,6 @@ impl HudConfig {
         &mut self.layouts[self.active_preset.idx()]
     }
 
-
-
     pub fn edit(&self) -> &HudLayout {
         &self.layouts[self.settings_preset.idx()]
     }
@@ -2269,18 +2356,11 @@ impl HudConfig {
         &mut self.layouts[self.settings_preset.idx()]
     }
 
-
-
     pub fn for_overlay(&self) -> Self {
         let mut c = self.clone();
         c.settings_preset = c.active_preset;
         c
     }
-
-
-
-
-
 
     /// Accent written into the MX Bikes menu pack.
     pub fn game_ui_accent(&self) -> [u8; 3] {
@@ -2299,13 +2379,10 @@ impl HudConfig {
         self.layouts[dst.idx()] = src;
     }
 
-
     pub fn copy_settings_to_all(&mut self) {
         let src = self.layouts[self.settings_preset.idx()].clone();
         self.layouts = [src.clone(), src.clone(), src.clone(), src];
     }
-
-
 
     /// Follow the live session. When `hold_settings` is set and F8 is on another
     /// slot, keep editing that slot; otherwise Settings tracks the HUD.
@@ -2511,8 +2588,6 @@ impl HudConfig {
     pub fn apply_to_snapshot(&self, s: &mut Snapshot) {
         Self::write_layout_to_snapshot(self.live(), s);
     }
-
-
 
     fn write_layout_to_snapshot(lay: &HudLayout, s: &mut Snapshot) {
         s.standings_rect = lay[WidgetId::Standings].rect;
@@ -2980,6 +3055,7 @@ fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last
         "st_penalty" => cfg.st_penalty = b,
         "st_crashed" => cfg.st_crashed = b,
         "st_category" => cfg.st_category = b,
+        "st_lapdiff" => cfg.st_lapdiff = b,
         "rel_num" => cfg.rel_num = b,
         "rel_name" => cfg.rel_name = b,
         "rel_gap" => cfg.rel_gap = b,
@@ -2994,12 +3070,14 @@ fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last
         "rel_last" => cfg.rel_last = b,
         "rel_category" => cfg.rel_category = b,
         "rel_speed" => cfg.rel_speed = b,
+        "rel_lapdiff" => cfg.rel_lapdiff = b,
         "map_others" => cfg.map_others = b,
         "map_sf" => cfg.map_sf = b,
         "map_sectors" => cfg.map_sectors = b,
         "map_name" => cfg.map_name = b,
         "map_numbers" => cfg.map_numbers = b,
         "map_arrows" => cfg.map_arrows = b,
+        "map_follow" => cfg.map_follow = b,
         "map_crown" => cfg.map_crown = b,
         "map_place" => cfg.map_place = b,
         "map_dot" => cfg.map_dot = DotLabel::parse(val),
@@ -3014,6 +3092,7 @@ fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last
         "radar_sides" => cfg.radar_sides = b,
         "radar_rear" => cfg.radar_rear = b,
         "radar_rings" => cfg.radar_rings = b,
+        "radar_style" => cfg.radar_style = RadarStyle::parse(val),
         "radar_range" => cfg.radar_range = clamp_radar_range(val),
         "st_hl" => cfg.st_hl = clamp_pct(val),
         "st_text" => cfg.st_text = TableText::parse(val),
@@ -3069,6 +3148,7 @@ fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last
         "st_w_penalty" => cfg.st_w_penalty = clamp_w(val),
         "st_w_crashed" => cfg.st_w_crashed = clamp_w(val),
         "st_w_category" => cfg.st_w_category = clamp_w(val),
+        "st_w_lapdiff" => cfg.st_w_lapdiff = clamp_w(val),
         "rel_w_num" => cfg.rel_w_num = clamp_w(val),
         "rel_w_name" => cfg.rel_w_name = clamp_name_w(val),
         "rel_w_gap" => cfg.rel_w_gap = clamp_w(val),
@@ -3083,6 +3163,7 @@ fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last
         "rel_w_last" => cfg.rel_w_last = clamp_w(val),
         "rel_w_category" => cfg.rel_w_category = clamp_w(val),
         "rel_w_speed" => cfg.rel_w_speed = clamp_w(val),
+        "rel_w_lapdiff" => cfg.rel_w_lapdiff = clamp_w(val),
         "telemetry_traces" => cfg.telemetry_traces = b,
         "telemetry_trace_throttle" => cfg.telemetry_trace_throttle = b,
         "telemetry_trace_brake" => cfg.telemetry_trace_brake = b,
@@ -3173,24 +3254,24 @@ fn layout_ini(l: &HudLayout) -> String {
          show_stance={}\nshow_flag={}\nshow_lean={}\nshow_gamepad={}\nshow_telemetry={}\n\
          standings_rows={}\nrelative_count={}\nticker_count={}\n\
          st_pos={}\nst_num={}\nst_name={}\nst_gap={}\nst_interval={}\nst_laps={}\nst_current={}\n\
-         st_best={}\nst_last={}\nst_status={}\nst_bike={}\nst_penalty={}\nst_crashed={}\nst_category={}\n\
+         st_best={}\nst_last={}\nst_status={}\nst_bike={}\nst_penalty={}\nst_crashed={}\nst_category={}\nst_lapdiff={}\n\
          st_order={}\n\
          st_w_pos={}\nst_w_num={}\nst_w_name={}\nst_w_gap={}\nst_w_interval={}\nst_w_laps={}\n\
-         st_w_current={}\nst_w_best={}\nst_w_last={}\nst_w_status={}\nst_w_bike={}\nst_w_penalty={}\nst_w_crashed={}\nst_w_category={}\n\
+         st_w_current={}\nst_w_best={}\nst_w_last={}\nst_w_status={}\nst_w_bike={}\nst_w_penalty={}\nst_w_crashed={}\nst_w_category={}\nst_w_lapdiff={}\n\
          st_bg={}\nst_hl={}\nst_text={}\nst_stripe={}\nst_plaque_text={}\nst_plaque={}\nst_font={}\nst_bold={}\n\
          st_head={}\nst_foot={}\n\
          rel_num={}\nrel_name={}\nrel_gap={}\nrel_laps={}\nrel_current={}\nrel_pos={}\nrel_bike={}\n\
-         rel_penalty={}\nrel_interval={}\nrel_status={}\nrel_best={}\nrel_last={}\nrel_category={}\nrel_speed={}\n\
+         rel_penalty={}\nrel_interval={}\nrel_status={}\nrel_best={}\nrel_last={}\nrel_category={}\nrel_speed={}\nrel_lapdiff={}\n\
          rel_order={}\n\
          rel_w_num={}\nrel_w_name={}\nrel_w_gap={}\nrel_w_laps={}\nrel_w_current={}\nrel_w_pos={}\n\
-         rel_w_bike={}\nrel_w_penalty={}\nrel_w_interval={}\nrel_w_status={}\nrel_w_best={}\nrel_w_last={}\nrel_w_category={}\nrel_w_speed={}\n\
+         rel_w_bike={}\nrel_w_penalty={}\nrel_w_interval={}\nrel_w_status={}\nrel_w_best={}\nrel_w_last={}\nrel_w_category={}\nrel_w_speed={}\nrel_w_lapdiff={}\n\
          rel_bg={}\nrel_hl={}\nrel_text={}\nrel_stripe={}\nrel_plaque_text={}\nrel_plaque={}\nrel_font={}\nrel_bold={}\n\
          rel_head={}\nrel_foot={}\n\
-         map_others={}\nmap_sf={}\nmap_sectors={}\nmap_name={}\nmap_numbers={}\nmap_arrows={}\n\
+         map_others={}\nmap_sf={}\nmap_sectors={}\nmap_name={}\nmap_numbers={}\nmap_arrows={}\nmap_follow={}\n\
          map_crown={}\nmap_place={}\nmap_dot={}\nmap_bg={}\nmap_font={}\nmap_bold={}\n\
          mini_others={}\nmini_sf={}\nmini_sectors={}\nmini_numbers={}\nmini_arrows={}\nmini_crown={}\n\
          mini_place={}\nmini_dot={}\nmini_bg={}\nmini_zoom={}\nmini_font={}\nmini_bold={}\n\
-         radar_sides={}\nradar_rear={}\nradar_rings={}\nradar_range={}\nradar_bg={}\nradar_font={}\nradar_bold={}\n\
+         radar_sides={}\nradar_rear={}\nradar_rings={}\nradar_style={}\nradar_range={}\nradar_bg={}\nradar_font={}\nradar_bold={}\n\
          dash_rev={}\ndash_yellow={}\ndash_blue={}\ndash_red={}\ndash_simple={}\ndash_shift_color={}\ndash_left={}\ndash_mid={}\ndash_right={}\n\
          dash_bg={}\ndash_font={}\ndash_bold={}\n\
          ticker_left={}\nticker_right={}\nticker_title={}\nticker_autoscroll={}\nticker_status={}\nticker_slide={}\n\
@@ -3228,25 +3309,26 @@ fn layout_ini(l: &HudLayout) -> String {
         b(stance.show), b(flag.show), b(lean.show), b(gamepad.show), b(telemetry.show),
         l.standings_rows, l.relative_count, l.ticker_count,
         b(l.st_pos), b(l.st_num), b(l.st_name), b(l.st_gap), b(l.st_interval), b(l.st_laps), b(l.st_current),
-        b(l.st_best), b(l.st_last), b(l.st_status), b(l.st_bike), b(l.st_penalty), b(l.st_crashed), b(l.st_category),
+        b(l.st_best), b(l.st_last), b(l.st_status), b(l.st_bike), b(l.st_penalty), b(l.st_crashed), b(l.st_category), b(l.st_lapdiff),
         join_st(&l.st_order),
         l.st_w_pos, l.st_w_num, l.st_w_name, l.st_w_gap, l.st_w_interval, l.st_w_laps,
-        l.st_w_current, l.st_w_best, l.st_w_last, l.st_w_status, l.st_w_bike, l.st_w_penalty, l.st_w_crashed, l.st_w_category,
+        l.st_w_current, l.st_w_best, l.st_w_last, l.st_w_status, l.st_w_bike, l.st_w_penalty, l.st_w_crashed, l.st_w_category, l.st_w_lapdiff,
         st.bg, l.st_hl, l.st_text.key(), b(l.st_stripe), l.st_plaque_text.key(), b(l.st_plaque), st.font, b(st.bold),
         join_board(&l.st_head), join_board(&l.st_foot),
         b(l.rel_num), b(l.rel_name), b(l.rel_gap), b(l.rel_laps), b(l.rel_current), b(l.rel_pos), b(l.rel_bike),
-        b(l.rel_penalty), b(l.rel_interval), b(l.rel_status), b(l.rel_best), b(l.rel_last), b(l.rel_category), b(l.rel_speed),
+        b(l.rel_penalty), b(l.rel_interval), b(l.rel_status), b(l.rel_best), b(l.rel_last), b(l.rel_category), b(l.rel_speed), b(l.rel_lapdiff),
         join_rel(&l.rel_order),
         l.rel_w_num, l.rel_w_name, l.rel_w_gap, l.rel_w_laps, l.rel_w_current, l.rel_w_pos,
         l.rel_w_bike, l.rel_w_penalty, l.rel_w_interval, l.rel_w_status, l.rel_w_best, l.rel_w_last,
-        l.rel_w_category, l.rel_w_speed,
+        l.rel_w_category, l.rel_w_speed, l.rel_w_lapdiff,
         rel.bg, l.rel_hl, l.rel_text.key(), b(l.rel_stripe), l.rel_plaque_text.key(), b(l.rel_plaque), rel.font, b(rel.bold),
         join_board(&l.rel_head), join_board(&l.rel_foot),
         b(l.map_others), b(l.map_sf), b(l.map_sectors), b(l.map_name), b(l.map_numbers), b(l.map_arrows),
+        b(l.map_follow),
         b(l.map_crown), b(l.map_place), l.map_dot.key(), map.bg, map.font, b(map.bold),
         b(l.mini_others), b(l.mini_sf), b(l.mini_sectors), b(l.mini_numbers), b(l.mini_arrows), b(l.mini_crown),
         b(l.mini_place), l.mini_dot.key(), mini.bg, l.mini_zoom, mini.font, b(mini.bold),
-        b(l.radar_sides), b(l.radar_rear), b(l.radar_rings), l.radar_range, radar.bg, radar.font, b(radar.bold),
+        b(l.radar_sides), b(l.radar_rear), b(l.radar_rings), l.radar_style.key(), l.radar_range, radar.bg, radar.font, b(radar.bold),
         b(l.dash_rev), b(l.dash_yellow), b(l.dash_blue), b(l.dash_red), b(l.dash_simple), b(l.dash_shift_color), l.dash_left.key(), l.dash_mid.key(), l.dash_right.key(),
         dash.bg, dash.font, b(dash.bold),
         l.ticker_left.key(), l.ticker_right.key(), b(l.ticker_title), b(l.ticker_autoscroll), b(l.ticker_status), b(l.ticker_slide),
@@ -3417,6 +3499,7 @@ pub enum BoardField {
     GapBehind,
     Delta,
     Last,
+    LapDiff,
     Current,
     Gap,
     Engine,
@@ -3425,7 +3508,7 @@ pub enum BoardField {
 }
 
 impl BoardField {
-    pub const ALL: [Self; 26] = [
+    pub const ALL: [Self; 27] = [
         Self::None,
         Self::Position,
         Self::ClassPos,
@@ -3447,6 +3530,7 @@ impl BoardField {
         Self::GapBehind,
         Self::Delta,
         Self::Last,
+        Self::LapDiff,
         Self::Current,
         Self::Gap,
         Self::Engine,
@@ -3480,6 +3564,7 @@ impl BoardField {
             Self::GapBehind => "gapbehind",
             Self::Delta => "delta",
             Self::Last => "last",
+            Self::LapDiff => "lapdiff",
             Self::Current => "cur",
             Self::Gap => "gap",
             Self::Engine => "eng",
@@ -3511,6 +3596,7 @@ impl BoardField {
             Self::GapBehind => "Gap behind",
             Self::Delta => "Delta",
             Self::Last => "Last lap",
+            Self::LapDiff => "Last lap diff",
             Self::Current => "Current lap",
             Self::Gap => "Gap to leader",
             Self::Engine => "Engine temp",
@@ -3542,6 +3628,7 @@ impl BoardField {
             "gapbehind" | "gap_behind" | "behind" => Self::GapBehind,
             "delta" => Self::Delta,
             "last" => Self::Last,
+            "lapdiff" | "lap_diff" => Self::LapDiff,
             "cur" | "current" => Self::Current,
             "gap" => Self::Gap,
             "eng" | "engine" => Self::Engine,
@@ -3555,8 +3642,14 @@ impl BoardField {
         match self {
             Self::None => '\0',
             Self::Position | Self::ClassPos => '\u{f091}',
-            Self::Session | Self::RaceTime | Self::LocalTime | Self::Last | Self::Current
-            | Self::Best | Self::SessionBest => '\u{f2f2}',
+            Self::Session
+            | Self::RaceTime
+            | Self::LocalTime
+            | Self::Last
+            | Self::Current
+            | Self::Best
+            | Self::SessionBest
+            | Self::LapDiff => '\u{f2f2}',
             Self::Lap | Self::LapsLeft => '\u{f1da}',
             Self::Track | Self::Riders => '\u{f553}',
             Self::Air => '\u{f72e}',
@@ -3588,6 +3681,7 @@ pub enum DashField {
     LapCount,
     LapsLeft,
     Last,
+    LapDiff,
     Best,
     Current,
     Delta,
@@ -3607,7 +3701,7 @@ pub enum DashField {
 }
 
 impl DashField {
-    pub const ALL: [Self; 25] = [
+    pub const ALL: [Self; 26] = [
         Self::None,
         Self::Speed,
         Self::Rpm,
@@ -3617,6 +3711,7 @@ impl DashField {
         Self::LapCount,
         Self::LapsLeft,
         Self::Last,
+        Self::LapDiff,
         Self::Best,
         Self::Current,
         Self::Delta,
@@ -3646,6 +3741,7 @@ impl DashField {
             Self::LapCount => "laps",
             Self::LapsLeft => "left",
             Self::Last => "last",
+            Self::LapDiff => "lapdiff",
             Self::Best => "best",
             Self::Current => "cur",
             Self::Delta => "delta",
@@ -3676,6 +3772,7 @@ impl DashField {
             Self::LapCount => "Lap count",
             Self::LapsLeft => "Laps left",
             Self::Last => "Last lap",
+            Self::LapDiff => "Last lap diff",
             Self::Best => "Best lap",
             Self::Current => "Current lap",
             Self::Delta => "Delta",
@@ -3706,6 +3803,7 @@ impl DashField {
             "laps" | "lapcount" => Self::LapCount,
             "left" | "lapsleft" => Self::LapsLeft,
             "last" => Self::Last,
+            "lapdiff" | "lap_diff" => Self::LapDiff,
             "best" => Self::Best,
             "cur" | "current" => Self::Current,
             "delta" => Self::Delta,
@@ -3735,7 +3833,12 @@ impl DashField {
             Self::Position => '\u{f091}',
             Self::Number => '\u{f292}',
             Self::LapCount | Self::LapsLeft => '\u{f1da}',
-            Self::Last | Self::Best | Self::Current | Self::Session | Self::LocalTime => '\u{f2f2}',
+            Self::Last
+            | Self::LapDiff
+            | Self::Best
+            | Self::Current
+            | Self::Session
+            | Self::LocalTime => '\u{f2f2}',
             Self::Delta => '\u{f362}',
             Self::Air => '\u{f72e}',
             Self::Engine => '\u{f2c9}',

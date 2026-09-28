@@ -13,7 +13,7 @@ Drawn into a square pixmap (`MINI_PX`, reused) then blitted as a circle. Layout 
 
 ## Behavior
 
-With a camera-subject pose (live telemetry while riding, or the spectated rider via `rider_map_pose` / `track_pos`): **north-up along the track**, origin on them, only the nearby polyline (`append_visible_track`). Heading comes from `track_forward` (polyline tangent), falling back to radar axes while riding or the rider’s yaw while spectating.
+With a camera-subject pose (live telemetry while riding, or the spectated rider via `rider_map_pose` / `track_pos`): **north-up along the track**, origin on them, only the nearby polyline (`stroke_smooth_minimap_track`). Heading comes from `track_forward` (polyline tangent), falling back to radar axes while riding or the rider’s yaw while spectating.
 
 Without a pose: whole-track fit, world-up, centered on the poly bounds.
 
@@ -31,6 +31,7 @@ Toggles match Map, plus **Zoom**. Default background 0.
 - Red only when you gained a lap on them (pairwise). Leader lapping someone behind you is not red.
 - Same-race S/F straddles must not paint blue/red (same continuous-progress rule as Map).
 - Position labels, leader crown and ahead / behind rings use live `RaceStore` rank during a race (same as Map). See [live race order](../live-order.md).
+- Ahead / behind rings stay off in warmup and practice (shared `place_rings_for_session` with Map).
 - When live, keep north-up (along-track forward = up). Do not rotate the circle with bike roll/yaw as a radar.
 - Follow / north-up must use `subject_pose`, not `has_telemetry` alone, or spectate falls back to a whole-track fit with no orange you-dot.
 - After spectate, live telemetry must put the origin back on you. Do not keep following a stale camera target.
@@ -38,6 +39,8 @@ Toggles match Map, plus **Zoom**. Default background 0.
 
 ## Change log
 
+- 2026-09-25 — Track outline is thinned, smoothed, and stroked with anti-aliased cubic segments (same idea as Motos Analyze). Sectors / S/F / arrows stay on the raw poly.
+- 2026-09-25 — Shares Map: ahead / behind rings stay off in warmup and practice.
 - 2026-09-25 — Shares Map: gate / prestart dots stay on world XZ; race still uses `track_pos`.
 - 2026-09-25 — Shares Map: other-rider and spectate dots follow live `track_pos` on the centerline.
 - 2026-09-24 — Shares Map: red is pairwise only; leader lapping someone behind you is not red.

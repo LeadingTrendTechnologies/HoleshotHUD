@@ -3,6 +3,7 @@
 mod changelog;
 mod compat;
 mod config;
+mod crash_dump;
 mod feedback;
 mod game_ui;
 mod gpu;

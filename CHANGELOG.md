@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.20.0
+
+Map follows you, Radar can show arrows, and boards can show last lap diff.
+
+### Map
+
+- **Follow me** (default off) keeps you centered with your nose up and rotates the whole track around you so it still fits.
+- North stays the direction you are traveling along the track. A scrub or whip no longer spins the map. The scale stays put, and whatever a turn pushes outside the widget is clipped.
+- Nearest ahead / behind rings stay off in warmup and practice. Race motos keep them.
+
+### Minimap
+
+- Track outline is smoothed (thinned + cubic stroke with anti-aliasing).
+- Ahead / behind rings match Map: off in warmup and practice.
+
+### Radar
+
+- **Look** chooses **Plaque** (range arcs + blips, default) or **Arrows** (edge indicators that slide with bike-frame bearing). Same side/rear range and stretch filters. Switching to Arrows expands the default plaque rect once so arrows sit on the screen frame.
+- Arrow tips are larger (28–56 px) with a night-ink border. Nearby crashes flash on the arrow with the crash icon for ~1.75 s, then stay hidden (Plaque still shows downed riders).
+
+### Standings
+
+- **Status** column paints the same mark icons as Relative / H-Standings (finish, crash, DNS, OUT, DSQ, pit).
+- **Last lap diff** is a header, footer, and column option. It is the last completed lap minus the previous one, not Delta versus your best. Faster is green, slower is red, and the same time reads `0.000`. The column stays off until you turn it on.
+
+### Relative
+
+- Same **Last lap diff** column, off by default. Each row is that rider's own previous lap.
+
+### Dash
+
+- **Last lap diff** is a footer option.
+- Warmup/practice no longer sticks on a frozen `00:30` after the session ends. The clock clears when the game jumps to or holds a start board without counting through zero, including kind-5 warmup with leaked extras.
+
+### Horizontal Standings
+
+- **Last lap diff** is a side-slot option.
+
+### Live order
+
+- First lap after the start: places update when you pass riders who went down, even if the HUD missed the gate or a rider briefly dropped out of the position list. Boards no longer keep the gate order until someone hits the line.
+
+### MX Bikes menus
+
+- Opening splash PiBoSo logo plaque hugs the wordmark, with a little more pad and a translucent black plate so the photo shows through.
+- Live multiplayer replay: Settings, Save, and Done sit on the same chrome row as Chat so they no longer overlap.
+
+### Diagnostics
+
+- Settings → Diagnostics shows the latest crash minidump: exception, module, and the instructions at RIP. Copy puts that full text on the clipboard.
+- Crash minidumps include code segments so the next game-EXE access violation can be disassembled from the `.dmp`.
+
 ## 0.19.0
 
 Profile Tracks shows your best Motos lap vs a living ideal line; Controller leaves Labs; board fields expand.

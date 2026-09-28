@@ -82,6 +82,7 @@ const REL_COLS = [
 ];
 
 const MAP_TOGGLES = [
+  ["map_follow", "Follow me"],
   ["map_others", "Other riders"],
   ["map_sf", "Start / finish"],
   ["map_sectors", "Sector lines"],

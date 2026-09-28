@@ -109,11 +109,10 @@ pub(crate) fn sync_at(
             apply_with_opts(game, accent, splash, loading, false)
         } else {
             // Accent unchanged — still refresh splash / loading from config.
-            write_screen_images(&ui, Some(&game.join(BAK_DIR)), splash, loading)
-                .map(|_| {
-                    // Ensure manifest lists the two screens so remove restores bak.
-                    ensure_screen_manifest_entries(&ui, accent);
-                })
+            write_screen_images(&ui, Some(&game.join(BAK_DIR)), splash, loading).map(|_| {
+                // Ensure manifest lists the two screens so remove restores bak.
+                ensure_screen_manifest_entries(&ui, accent);
+            })
         }
     } else {
         remove(game)
@@ -135,17 +134,15 @@ pub(crate) fn sync_at(
 #[cfg(test)]
 pub fn apply(game: &Path, accent: [u8; 3]) -> Result<(), String> {
     let (splash, loading) = crate::config::with_config(|c| {
-        (c.game_ui_splash_path.clone(), c.game_ui_loading_path.clone())
+        (
+            c.game_ui_splash_path.clone(),
+            c.game_ui_loading_path.clone(),
+        )
     });
     apply_paths(game, accent, &splash, &loading)
 }
 
-fn apply_paths(
-    game: &Path,
-    accent: [u8; 3],
-    splash: &str,
-    loading: &str,
-) -> Result<(), String> {
+fn apply_paths(game: &Path, accent: [u8; 3], splash: &str, loading: &str) -> Result<(), String> {
     apply_pack_inner(
         &game.join("ui"),
         accent,

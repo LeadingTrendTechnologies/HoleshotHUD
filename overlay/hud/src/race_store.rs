@@ -207,7 +207,7 @@ struct RiderProgress {
     travelled_m: f32,
     lap_base_m: f32,
     laps_at_base: i32,
-    /// We saw where this lap started for them: the gate drop or a line crossing.
+    /// We saw where this lap started: gate, race-go cold arm, or a line crossing.
     armed: bool,
     /// Armed travel grew more than a lap + slack without a `num_laps` rise. Pin to the
     /// game place (no S/F fallback) until the next crossing or gate.
@@ -223,6 +223,11 @@ fn note_progress(s: &Snapshot, clock: &SessionClock, n: usize) {
     let Ok(mut tracked) = PROGRESS.lock() else {
         return;
     };
+    // Cold-arm on the first real step when the race is live and we never saw the gate:
+    // without a known line, far pairs only score through the tracker. Skip when the line
+    // is known so a mid-race join still uses S/F metres. Do not arm on a zero step — that
+    // would invent equal travel for riders who are already spread out.
+    let cold_arm = live_order_active(s, clock) && !line_known(s);
     for standing in &s.standings[..n] {
         let frac = rider_lap_pos(s, standing.race_num);
         let index = match tracked.iter().position(|p| p.race_num == standing.race_num) {
@@ -258,10 +263,17 @@ fn note_progress(s: &Snapshot, clock: &SessionClock, n: usize) {
                 let step_m = wrap_signed(now - last) * s.track_length;
                 if step_m.abs() <= MAX_STEP_M {
                     progress.travelled_m += step_m;
+                    if cold_arm
+                        && !progress.armed
+                        && !progress.corrupt
+                        && step_m.abs() > 0.01
+                    {
+                        progress.armed = true;
+                    }
                 }
             }
-            // Distance ridden out of sight is unknown until their next crossing.
-            (Some(_), None) => progress.armed = false,
+            // Missing from riders[]: freeze distance and keep armed. last_frac clears
+            // below; on reappear we resume without inventing a teleport step.
             _ => {}
         }
         progress.last_frac = frac;
@@ -458,7 +470,15 @@ fn score_ahead(
         (track_score(s, tracked, a), track_score(s, tracked, b))
     };
     if let (Some(score_a), Some(score_b)) = (score_a, score_b) {
-        return score_b > score_a + margin;
+        let delta = score_b - score_a;
+        // Clear lead on the tracker. Within the pass margin, fall through so a
+        // close wrap (cold-arm with equal travel, side-by-side) can still decide.
+        if delta > margin {
+            return true;
+        }
+        if delta < -margin {
+            return false;
+        }
     }
     if a.num_laps != b.num_laps || out_of_race(a) || out_of_race(b) {
         return false;
@@ -789,6 +809,7 @@ impl RaceStore {
     pub fn refresh(s: &Snapshot) {
         // Clock first, and only it may mutate session state: the field reads the result.
         let clock = build_clock(s);
+        note_field_laps(s);
         let field = build_field(s, &clock);
         if s.has_telemetry != 0 {
             let (thr, brk, _) = crate::telemetry::inputs(s);
@@ -1078,6 +1099,116 @@ pub(crate) fn session_test_lock() -> std::sync::MutexGuard<'static, ()> {
     LOCK.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// Last completed lap and the one before it, per race number.
+/// `prior_ms` stays 0 until a second lap is real.
+struct LapPace {
+    seen_ms: i32,
+    prior_ms: i32,
+    laps: i32,
+    /// Completed-lap count seen once with the same time. A second sample at
+    /// that count is an equal lap. One stale frame before the new time arrives
+    /// does not count.
+    pending_laps: i32,
+}
+
+static LAP_PACE: Mutex<Vec<(i32, LapPace)>> = Mutex::new(Vec::new());
+
+fn focus_id(s: &Snapshot) -> i32 {
+    if s.focus_race_num > 0 {
+        s.focus_race_num
+    } else {
+        s.local_race_num
+    }
+}
+
+/// Same last-lap the Last column shows: the row, or your `last_lap_ms` when
+/// classification has not filled the row yet.
+fn resolved_last_lap_ms(s: &Snapshot, standing: &Standing) -> i32 {
+    if standing.last_lap_ms > 0 {
+        standing.last_lap_ms
+    } else if standing.race_num == focus_id(s) {
+        s.last_lap_ms
+    } else {
+        0
+    }
+}
+
+fn note_lap_pace(row: &mut LapPace, last_ms: i32, completed_laps: i32) {
+    if last_ms != row.seen_ms {
+        row.prior_ms = row.seen_ms;
+        row.seen_ms = last_ms;
+        row.laps = completed_laps.max(row.laps);
+        row.pending_laps = 0;
+        return;
+    }
+    if completed_laps > row.laps {
+        if row.pending_laps == completed_laps {
+            row.prior_ms = row.seen_ms;
+            row.laps = completed_laps;
+            row.pending_laps = 0;
+        } else {
+            row.pending_laps = completed_laps;
+        }
+    }
+}
+
+fn note_field_laps(s: &Snapshot) {
+    let n = (s.standing_count.max(0) as usize).min(MAX_STANDINGS);
+    let focus = focus_id(s);
+    let mut saw_focus = false;
+    let Ok(mut pace) = LAP_PACE.lock() else {
+        return;
+    };
+    for standing in &s.standings[..n] {
+        if standing.race_num <= 0 {
+            continue;
+        }
+        if standing.race_num == focus {
+            saw_focus = true;
+        }
+        let last_ms = resolved_last_lap_ms(s, standing);
+        if last_ms <= 0 {
+            continue;
+        }
+        let completed = standing_num_laps(s, standing.race_num, standing.num_laps);
+        remember_lap(&mut pace, standing.race_num, last_ms, completed);
+    }
+    if focus > 0 && !saw_focus && s.last_lap_ms > 0 {
+        let completed = standing_num_laps(s, focus, 0);
+        remember_lap(&mut pace, focus, s.last_lap_ms, completed);
+    }
+}
+
+fn remember_lap(pace: &mut Vec<(i32, LapPace)>, race_num: i32, last_ms: i32, completed: i32) {
+    if let Some((_, row)) = pace.iter_mut().find(|(num, _)| *num == race_num) {
+        note_lap_pace(row, last_ms, completed);
+        return;
+    }
+    pace.push((
+        race_num,
+        LapPace {
+            seen_ms: last_ms,
+            prior_ms: 0,
+            laps: completed.max(0),
+            pending_laps: 0,
+        },
+    ));
+}
+
+/// Last completed lap minus the one before it. `None` until that rider has two
+/// laps this session. Negative is faster.
+pub(crate) fn lap_diff_ms(race_num: i32) -> Option<i32> {
+    let pace = LAP_PACE.lock().unwrap_or_else(|e| e.into_inner());
+    let row = pace
+        .iter()
+        .find(|(num, _)| *num == race_num)
+        .map(|(_, row)| row)?;
+    if row.prior_ms <= 0 || row.seen_ms <= 0 {
+        return None;
+    }
+    Some(row.seen_ms - row.prior_ms)
+}
+
 pub(crate) fn reset_session_clock_track() {
     LAST_SESSION_CLOCK.store(0, Ordering::Relaxed);
     DIP_FROM_CLOCK.store(-1, Ordering::Relaxed);
@@ -1119,6 +1250,9 @@ pub(crate) fn reset_session_clock_track() {
         g.clear();
     }
     if let Ok(mut g) = PROGRESS.lock() {
+        g.clear();
+    }
+    if let Ok(mut g) = LAP_PACE.lock() {
         g.clear();
     }
     // `with()` holds VIEW. Clearing it here would deadlock, and mutating through
@@ -1801,12 +1935,19 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
     }
     let short_clock =
         clock > 0 && clock <= 35_000 && (total <= 0 || clock * 3 < total) && total > 180_000;
-    let enter_gate =
-        is_gate_clock(clock, total) && !moving(s) && !post && !armed && s.session_laps > 0;
+    let warmup = is_warmup(s);
+    // Kind 5 with leaked extras must not pin a frozen start board as a live gate.
+    let enter_gate = is_gate_clock(clock, total)
+        && !moving(s)
+        && !post
+        && !armed
+        && s.session_laps > 0
+        && !warmup;
     let gate_clock = enter_gate
         || (!post && in_gate && clock > 0 && clock <= 180_000 && (total <= 0 || clock * 3 < total));
     // Frozen 00:30 wait is a race board. Practice remaining that hitch-pauses is not.
-    let held_board = short_clock && board_held(clock, last) && !armed && s.session_laps > 0;
+    let held_board =
+        !warmup && short_clock && board_held(clock, last) && !armed && s.session_laps > 0;
     if held_board {
         IN_GATE.store(0, Ordering::Relaxed);
         POST_GATE.store(1, Ordering::Relaxed);
@@ -1828,8 +1969,7 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
         && clock < last
         && last - clock >= 50
         && last - clock < 5_000;
-    let waiting_for_race =
-        (post || board_restart) && !armed && !race_ticking && clock <= 180_000;
+    let waiting_for_race = (post || board_restart) && !armed && !race_ticking && clock <= 180_000;
 
     if drop_off_gate {
         IN_GATE.store(0, Ordering::Relaxed);
@@ -1983,12 +2123,22 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
         let _ = overtime_base(s);
         return Some(0);
     }
-    // Warmup / practice: once the countdown hits zero, stay blank (ignore 00:30 junk).
-    if s.session_laps <= 0
+    // Warmup / practice: blank after zero, or when the game jumps to / freezes a
+    // start board (~00:30) without ever counting down through zero. Near-zero
+    // frames (00:02) are not boards — those still show until the zero path.
+    let snap_to_board =
+        last > 60_000 && clock >= 8_000 && clock <= 35_000 && last - clock > 30_000;
+    let stuck_board = clock >= 8_000
+        && clock <= 35_000
+        && (total <= 0 || clock * 3 < total)
+        && (board_held(clock, last) || clock_stuck(clock, last));
+    let junk_board = snap_to_board || stuck_board;
+    if (s.session_laps <= 0 || warmup)
         && !gate
         && SAW_SESSION_TIME.load(Ordering::Relaxed) == 1
-        && (remain <= 800 || (started && timed_out))
+        && (remain <= 800 || (started && timed_out) || junk_board)
     {
+        IN_GATE.store(0, Ordering::Relaxed);
         SESSION_EXPIRED.store(1, Ordering::Relaxed);
         let _ = overtime_base(s);
         return Some(0);
@@ -2311,8 +2461,11 @@ fn format_session_banner(s: &Snapshot, remain: Option<i32>) -> (char, String) {
             return ('\u{f11e}', overtime_lap_text(s));
         }
         // Timed race over, extras not published yet. Don't look like warmup ended.
-        if s.session_laps <= 0 && (remain <= 0 || SESSION_EXPIRED.load(Ordering::Relaxed) == 1) {
-            if timed_race_awaiting_extras(s) {
+        // Kind 5 with leaked extras still blanks — that is not a race awaiting +N.
+        if (s.session_laps <= 0 || is_warmup(s))
+            && (remain <= 0 || SESSION_EXPIRED.load(Ordering::Relaxed) == 1)
+        {
+            if !is_warmup(s) && timed_race_awaiting_extras(s) {
                 let _ = overtime_base(s);
                 return ('\u{f2f2}', "00:00".into());
             }

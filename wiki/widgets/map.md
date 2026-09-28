@@ -18,23 +18,28 @@ Dots and chevrons place from the centerline via `rider_map_pose` (`norm_lap_pos`
 ## Behavior
 
 - Fits the whole polyline in the rect (10% pad). Y is unused; Z is the track plane.
+- **Follow me** (default off): pins the camera subject to the center. North is the centerline direction about 22 m ahead (`track_forward`), eased so a kink does not shake the track. A scrub or whip leaves the map put; the orange chevron still shows bike heading and can sit off north. Scale is the unrotated fit (10% pad) and does not change as you turn. Overflow past the widget is clipped. Off, or no subject pose, keeps the fixed world-up fit.
 - Track fill + stroke is cached in `MAP_LAYER` until poly / size / S/F / arrows change. Rider dots and sector lines are redrawn every frame.
 - You: larger orange dot on the camera subject (you while riding, the spectated rider in replay). Others: slate, or blue/red when lap-delta and within catch span either side (see [widgets.md](../widgets.md)). Two laps down is still blue if they are nearby.
 - Chevrons show heading. Optional: S/F, **sector lines**, track arrows, leader crown, nearest ahead/behind marks, numbers in dots (bike number or classification position).
 - **Sector lines** are thin violet dotted gates at where each sector **starts** (same tape as Sectors). **S1** is the start/finish line. **S2** / **S3** appear after those splits are known for this track. Do not mark the split that *ends* S1 as S1.
 - Missing poly (`< 2` points) shows “No track map”.
 
-Toggles: other riders, start/finish, sector lines, track arrows, leader crown, nearest ahead/behind, numbers in dots, dot number vs position. Default background opacity is **0** (transparent over the game). Sector lines default on, like S/F.
+Toggles: **Follow me** (default off), other riders, start/finish, sector lines, track arrows, leader crown, nearest ahead/behind, numbers in dots, dot number vs position. Default background opacity is **0** (transparent over the game). Sector lines default on, like S/F.
 
 ## Do not regress
 
-- Do not flash the track blank when segments are sparse; the cache and polyline close path are what stopped that (0.1.0).
+- **Follow me** stays off unless the toggle is on. Off keeps the fixed world-up map and `MAP_LAYER` cache.
+- When **Follow me** is on, north is travel along the centerline (`track_forward`) while `subject_pose` exists. No pose keeps the fixed map. Do not drive that rotation from yaw or velocity, or a scrub spins the track.
+- Follow me scale stays the unrotated fit. Do not zoom to keep the whole track inside while you are centered. Clip overflow to the widget.
+- Do not flash the track blank when segments are sparse; the cache and polyline close path are what stopped that (0.1.0). Follow mode redraws that same closed path each frame instead of the cache.
 - Place other-rider (and spectate) dots from live `track_pos` on the poly first — do not trust world XZ alone, or icons freeze while standings/dash keep moving. Exception: at the gate / prestart, keep world XZ so stalls do not stack on one centerline point.
 - Lapping color is **not** “anyone a lap up is blue”. They must also be inside `catch_span_m` (either side — holds through a pass while nearby).
 - Do not trust `num_laps` over `gap_laps` for **blue**. A rider two down can have a completed-lap count that looks a lap *up*; that used to paint the leader red the second time they went by. `other_laps_ahead` uses `gap_laps` only when they are ahead of you.
 - Red only when you gained a lap on them (pairwise). Leader lapping someone behind you is not red.
 - Same-race S/F straddles must not paint blue/red. When `num_laps` differ, `other_laps_ahead` requires continuous `num_laps + track_pos` to round non-zero.
 - Dot **Position** labels, leader crown and the nearest ahead / behind rings use live `RaceStore` rank during a race (`standing_pos` / `leader_num` prefer `live_position` / `live_leader`). See [live race order](../live-order.md).
+- Nearest ahead / behind rings stay off in warmup and practice (`place_rings_for_session`). Crowns and the settings toggle are unchanged.
 - No blue/red lapping dots in warmup; `lap_rel` is `Same` until the race starts. `session_kind` 5 wins even when extras leak.
 - Map uses snapshot rect `s.map` (copied from config), not only `cfg.map` at draw time.
 - In spectate/replay, do not leave the orange marker on leftover local telemetry; overlay drops `has_telemetry` while `SpectateVehicles` is live so `subject_pose` uses the focused rider’s `track_pos` (XZ fallback).
@@ -43,6 +48,9 @@ Toggles: other riders, start/finish, sector lines, track arrows, leader crown, n
 
 ## Change log
 
+- 2026-09-25 — Nearest ahead / behind rings stay off in warmup and practice; race motos keep them.
+- 2026-09-25 — **Follow me** north is the centerline ahead, not the bike. Scale stays the unrotated fit and overflow is clipped. A scrub or whip no longer spins or resizes the map.
+- 2026-09-25 — **Follow me** (default off) pins you to the center and rotates the map with you.
 - 2026-09-25 — Gate / prestart dots stay on world XZ so starting stalls do not pile onto one centerline point; race still uses `track_pos`.
 - 2026-09-25 — Other-rider and spectate dots follow live `track_pos` on the centerline (`rider_map_pose`); world XZ is fallback only so icons move with standings/dash.
 - 2026-09-24 — Red is pairwise only: leader lapping someone behind you no longer paints them red.

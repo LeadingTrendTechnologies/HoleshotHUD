@@ -565,7 +565,9 @@ fn gamepad_theme_row_opens_for_every_pad() {
         draw(&mut px, &fonts, 1000.0, 720.0);
         let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
         *UI.lock().unwrap() = None;
-        hits.iter().filter(|h| h.id == Hit::GamepadThemeOpen).count()
+        hits.iter()
+            .filter(|h| h.id == Hit::GamepadThemeOpen)
+            .count()
     };
     let playstation = theme_hits(GamepadStyle::PlayStation);
     let xbox = theme_hits(GamepadStyle::Xbox);

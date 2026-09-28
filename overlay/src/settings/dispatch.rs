@@ -41,6 +41,14 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             set_app_section(AppSection::Updates);
             return;
         }
+        Hit::AppDiagnostics => {
+            set_app_section(AppSection::Diagnostics);
+            return;
+        }
+        Hit::DiagCopy => {
+            let _ = crate::crash_dump::copy_latest();
+            return;
+        }
         Hit::TabProfile => {
             set_tab(Tab::Profile);
             return;
@@ -476,6 +484,10 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             toggle_drop(Drop::LeanStyle);
             return;
         }
+        Hit::RadarStyleOpen => {
+            toggle_drop(Drop::RadarStyle);
+            return;
+        }
         Hit::GamepadStyleOpen => {
             toggle_drop(Drop::GamepadStyle);
             return;
@@ -757,6 +769,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::StCrashed => c.st_crashed = !c.st_crashed,
         Hit::StInterval => c.st_interval = !c.st_interval,
         Hit::StCategory => c.st_category = !c.st_category,
+        Hit::StLapDiff => c.st_lapdiff = !c.st_lapdiff,
         Hit::RelNum => c.rel_num = !c.rel_num,
         Hit::RelName => c.rel_name = !c.rel_name,
         Hit::RelGap => c.rel_gap = !c.rel_gap,
@@ -771,10 +784,12 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::RelLast => c.rel_last = !c.rel_last,
         Hit::RelCategory => c.rel_category = !c.rel_category,
         Hit::RelSpeed => c.rel_speed = !c.rel_speed,
+        Hit::RelLapDiff => c.rel_lapdiff = !c.rel_lapdiff,
         Hit::MapOthers => c.map_others = !c.map_others,
         Hit::MapSf => c.map_sf = !c.map_sf,
         Hit::MapSectors => c.map_sectors = !c.map_sectors,
         Hit::MapArrows => c.map_arrows = !c.map_arrows,
+        Hit::MapFollow => c.map_follow = !c.map_follow,
         Hit::MapCrown => c.map_crown = !c.map_crown,
         Hit::MapPlace => c.map_place = !c.map_place,
         Hit::MapNumbers => c.map_numbers = !c.map_numbers,
@@ -819,6 +834,10 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::StanceModePick(mode) => c.stance_mode = mode,
         Hit::StanceStylePick(style) => c.stance_style = style,
         Hit::LeanStylePick(style) => c.lean_style = style,
+        Hit::RadarStylePick(style) => {
+            c.radar_style = style;
+            mxbo_hud::config::maybe_expand_radar_for_arrows(c);
+        }
         Hit::GamepadStylePick(style) => c.gamepad_style = style,
         Hit::GamepadThemePick(theme) => c.gamepad_theme = theme,
         Hit::DashFootPick(slot, field) => match slot {
@@ -855,6 +874,8 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::AppStartup
         | Hit::AppLabs
         | Hit::AppUpdates
+        | Hit::AppDiagnostics
+        | Hit::DiagCopy
         | Hit::TabProfile
         | Hit::ProfileNavOverview
         | Hit::ProfileNavMotos
@@ -918,6 +939,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::StanceModeOpen
         | Hit::StanceStyleOpen
         | Hit::LeanStyleOpen
+        | Hit::RadarStyleOpen
         | Hit::GamepadStyleOpen
         | Hit::GamepadThemeOpen
         | Hit::SysAddOpen

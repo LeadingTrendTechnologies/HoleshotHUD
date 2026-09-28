@@ -106,17 +106,7 @@ fn pane_track_detail(
 ) -> f32 {
     let mut y = y;
     let back_w = (measure(fonts, "Back", 13.0) + 28.0).max(64.0);
-    profile::profile_chip(
-        px,
-        fonts,
-        x,
-        y,
-        "Back",
-        false,
-        Hit::TrackBack,
-        hover,
-        hits,
-    );
+    profile::profile_chip(px, fonts, x, y, "Back", false, Hit::TrackBack, hover, hits);
     let title = ellipsize(fonts, track, 18.0, (w - back_w - 24.0).max(40.0));
     text(
         px,

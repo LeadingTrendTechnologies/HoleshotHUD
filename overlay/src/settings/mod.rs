@@ -41,15 +41,16 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use crate::config::{
     format_primary_color, hsv_to_rgb, rgb_to_hsv, update_config, with_config, BoardField,
-    DashField, DotLabel, FontFamily, GamepadStyle, GamepadTheme, HudConfig, LeanStyle, RelField,
-    SessionPreset, SettingsKey, SettingsTheme, SnapAlign, StField, StanceBind, StanceMode,
-    StanceStyle, TableText, UnitKind, Units, WidgetId, COL_W_MAX, COL_W_MIN, DEFAULT_PRIMARY,
-    PRIMARY_SWATCHES, RADAR_RANGE_MAX, RADAR_RANGE_MIN, SYS_PRESETS, SYS_PROC_MAX,
+    DashField, DotLabel, FontFamily, GamepadStyle, GamepadTheme, HudConfig, LeanStyle, RadarStyle,
+    RelField, SessionPreset, SettingsKey, SettingsTheme, SnapAlign, StField, StanceBind,
+    StanceMode, StanceStyle, TableText, UnitKind, Units, WidgetId, COL_W_MAX, COL_W_MIN,
+    DEFAULT_PRIMARY, PRIMARY_SWATCHES, RADAR_RANGE_MAX, RADAR_RANGE_MIN, SYS_PRESETS, SYS_PROC_MAX,
 };
 use crate::render::{fill_rect, icon, measure, text, Fonts};
 
 mod app;
 mod clear;
+mod controls;
 mod dispatch;
 mod feedback;
 mod profile;
@@ -58,9 +59,9 @@ mod review;
 mod tracks;
 mod whats_new;
 mod widgets;
-mod controls;
 pub(crate) use app::*;
 pub(crate) use clear::*;
+pub(crate) use controls::*;
 pub(crate) use dispatch::*;
 pub(crate) use feedback::*;
 pub(crate) use profile::*;
@@ -68,7 +69,6 @@ pub(crate) use reply::*;
 pub(crate) use review::*;
 pub(crate) use whats_new::*;
 pub(crate) use widgets::*;
-pub(crate) use controls::*;
 
 #[derive(Clone, Copy)]
 struct Pal {
@@ -482,6 +482,7 @@ pub(crate) enum AppSection {
     Startup,
     Labs,
     Updates,
+    Diagnostics,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -518,6 +519,7 @@ impl AppSection {
             Self::Startup => "Startup",
             Self::Labs => "Labs",
             Self::Updates => "Updates",
+            Self::Diagnostics => "Diagnostics",
         }
     }
 
@@ -529,6 +531,7 @@ impl AppSection {
             Self::Startup => Hit::AppStartup,
             Self::Labs => Hit::AppLabs,
             Self::Updates => Hit::AppUpdates,
+            Self::Diagnostics => Hit::AppDiagnostics,
         }
     }
 }
@@ -545,6 +548,7 @@ fn app_section_groups() -> [(&'static str, &'static [AppSection]); 2] {
                 AppSection::Startup,
                 AppSection::Labs,
                 AppSection::Updates,
+                AppSection::Diagnostics,
             ],
         ),
     ]
@@ -568,6 +572,8 @@ pub(crate) enum Hit {
     AppStartup,
     AppLabs,
     AppUpdates,
+    AppDiagnostics,
+    DiagCopy,
     ReviewFilterAll,
     ReviewFilterRanked,
     ReviewFilterSaved,
@@ -673,6 +679,7 @@ pub(crate) enum Hit {
     StCrashed,
     StInterval,
     StCategory,
+    StLapDiff,
     RelNum,
     RelName,
     RelGap,
@@ -687,10 +694,12 @@ pub(crate) enum Hit {
     RelLast,
     RelCategory,
     RelSpeed,
+    RelLapDiff,
     MapOthers,
     MapSf,
     MapSectors,
     MapArrows,
+    MapFollow,
     MapCrown,
     MapPlace,
     MapNumbers,
@@ -781,6 +790,8 @@ pub(crate) enum Hit {
     StanceStylePick(StanceStyle),
     LeanStyleOpen,
     LeanStylePick(LeanStyle),
+    RadarStyleOpen,
+    RadarStylePick(RadarStyle),
     GamepadStyleOpen,
     GamepadStylePick(GamepadStyle),
     GamepadThemeOpen,
@@ -873,6 +884,7 @@ pub(crate) enum Drop {
     StanceMode,
     StanceStyle,
     LeanStyle,
+    RadarStyle,
     GamepadStyle,
     GamepadTheme,
     SysAdd,
@@ -2315,7 +2327,12 @@ fn release(p: (f32, f32)) {
         let mut ui = UI.lock().unwrap();
         ui.as_mut().and_then(|u| u.slide.take()).map(|s| s.hit)
     };
-    if was_sv || matches!(slide_hit, Some(Hit::PrimaryHue) | Some(Hit::GameUiPrimaryHue)) {
+    if was_sv
+        || matches!(
+            slide_hit,
+            Some(Hit::PrimaryHue) | Some(Hit::GameUiPrimaryHue)
+        )
+    {
         if was_sv {
             let menu = UI
                 .lock()
@@ -2405,6 +2422,7 @@ fn is_drop_pick(hit: Hit) -> bool {
             | Hit::StanceModePick(_)
             | Hit::StanceStylePick(_)
             | Hit::LeanStylePick(_)
+            | Hit::RadarStylePick(_)
             | Hit::GamepadStylePick(_)
             | Hit::GamepadThemePick(_)
             | Hit::SysAddPick(_)
@@ -2462,6 +2480,8 @@ fn hit_label(hit: Hit) -> String {
         Hit::AppStartup => "Startup".into(),
         Hit::AppLabs => "Labs".into(),
         Hit::AppUpdates => "Updates".into(),
+        Hit::AppDiagnostics => "Diagnostics".into(),
+        Hit::DiagCopy => "Copy crash report".into(),
         Hit::TabProfile => "Profile".into(),
         Hit::TabFeedback => "Feedback".into(),
         Hit::ProfileNavOverview => "Overview".into(),
@@ -2603,7 +2623,7 @@ fn hit_label(hit: Hit) -> String {
             }
         }
         Hit::StanceModeOpen => "Sit mode".into(),
-        Hit::StanceStyleOpen | Hit::LeanStyleOpen => "Look".into(),
+        Hit::StanceStyleOpen | Hit::LeanStyleOpen | Hit::RadarStyleOpen => "Look".into(),
         Hit::GamepadStyleOpen => "Pad".into(),
         Hit::GamepadThemeOpen => "Theme".into(),
         Hit::SysAddOpen => "Add app".into(),
@@ -3222,15 +3242,7 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
                     1.5,
                     menu_edge(),
                 );
-                fill_round(
-                    px,
-                    track_x,
-                    thumb_y,
-                    3.0,
-                    thumb_h,
-                    1.5,
-                    menu_edge_strong(),
-                );
+                fill_round(px, track_x, thumb_y, 3.0, thumb_h, 1.5, menu_edge_strong());
             }
         } else {
             draw_app_rail(px, fonts, app_section, hover, &mut hits, clip_top);
@@ -3364,7 +3376,7 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
         ),
         Tab::Map => pane_map(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
         Tab::Minimap => pane_minimap(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
-        Tab::Radar => pane_radar(px, fonts, &cfg, hover, &mut hits, x, py, cw),
+        Tab::Radar => pane_radar(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
         Tab::Dash => pane_dash(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
         Tab::Ticker => pane_ticker(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
         Tab::Sys => pane_sys(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
@@ -3605,15 +3617,7 @@ fn paint_snap_tooltip(
         ty = (win_h - th - 10.0).max(clip_top + 8.0);
     }
 
-    fill_round(
-        px,
-        tx - 1.0,
-        ty - 1.0,
-        tw + 2.0,
-        th + 2.0,
-        12.0,
-        shadow(),
-    );
+    fill_round(px, tx - 1.0, ty - 1.0, tw + 2.0, th + 2.0, 12.0, shadow());
     outlined(px, tx, ty, tw, th, 11.0, menu_fill());
     text(px, fonts, name, 11.0, tx + pad, ty + pad, muted(), false);
     text(
@@ -4060,16 +4064,7 @@ fn draw_preset_strip(
             hits,
         );
     }
-    let _ = preset_copy_btn(
-        px,
-        fonts,
-        mx + 8.0,
-        cy,
-        selected,
-        open_drop,
-        hover,
-        hits,
-    );
+    let _ = preset_copy_btn(px, fonts, mx + 8.0, cy, selected, open_drop, hover, hits);
     let _ = w;
 }
 
@@ -4099,16 +4094,7 @@ fn preset_copy_btn(
     if open || hover == Some(hit) {
         fill_round(px, x, y, bw, h, 8.0, hover_wash());
     }
-    text(
-        px,
-        fonts,
-        copy,
-        12.0,
-        x + 10.0,
-        y + 6.0,
-        nav_idle(),
-        false,
-    );
+    text(px, fonts, copy, 12.0, x + 10.0, y + 6.0, nav_idle(), false);
     chevron(px, x + bw - 12.0, y + h * 0.5, open, muted());
     if open {
         let mut options: Vec<(Hit, String, bool)> = SessionPreset::ALL
@@ -4134,11 +4120,7 @@ fn preset_copy_btn(
     bw
 }
 
-fn preset_strip_status(
-    live: bool,
-    selected: SessionPreset,
-    live_preset: SessionPreset,
-) -> String {
+fn preset_strip_status(live: bool, selected: SessionPreset, live_preset: SessionPreset) -> String {
     let board = selected.label();
     if live {
         if selected == live_preset {
@@ -4230,16 +4212,7 @@ fn mode_tab(
         if hover == Some(hit) {
             fill_round(px, x, y, bw, h, 8.0, hover_wash());
         }
-        text(
-            px,
-            fonts,
-            label,
-            size,
-            x + 14.0,
-            y + 8.0,
-            nav_idle(),
-            false,
-        );
+        text(px, fonts, label, size, x + 14.0, y + 8.0, nav_idle(), false);
     }
     bw + 8.0
 }
@@ -4406,6 +4379,11 @@ fn nav_icon(px: &mut Pixmap, hit: Hit, cx: f32, cy: f32, c: Color) {
                 icon_stroke(px, &path, c, 1.5);
             }
             icon_stroke_line(px, cx - 2.0, cy - 1.0, cx + 2.0, cy - 1.0, c, 1.4);
+        }
+        Hit::AppDiagnostics => {
+            icon_stroke_line(px, cx - 6.0, cy - 4.2, cx + 6.0, cy - 4.2, c, 1.5);
+            icon_stroke_line(px, cx - 6.0, cy, cx + 2.2, cy, c, 1.5);
+            icon_stroke_line(px, cx - 6.0, cy + 4.2, cx + 6.0, cy + 4.2, c, 1.5);
         }
         Hit::AppUpdates => {
             icon_stroke_circle(px, cx, cy, 5.6, c);
@@ -4677,11 +4655,7 @@ fn nav_tab(
     } else if hover == Some(hit) {
         fill_round(px, x, y, w, h, 8.0, hover_wash());
     }
-    let name_c = if selected {
-        accent()
-    } else {
-        nav_idle()
-    };
+    let name_c = if selected { accent() } else { nav_idle() };
     nav_icon(px, hit, x + 18.0, y + h * 0.5, name_c);
     text(px, fonts, name, 13.0, x + 32.0, y + 10.0, name_c, false);
     let dx = x + w - 16.0;
@@ -4720,11 +4694,7 @@ fn section_nav_tab(
     } else if hover == Some(hit) {
         fill_round(px, x, y, w, h, 8.0, hover_wash());
     }
-    let name_c = if selected {
-        accent()
-    } else {
-        nav_idle()
-    };
+    let name_c = if selected { accent() } else { nav_idle() };
     nav_icon(px, hit, x + 18.0, y + h * 0.5, name_c);
     text(px, fonts, name, 13.0, x + 32.0, y + 10.0, name_c, false);
 }
@@ -5330,7 +5300,11 @@ fn ellipsize_heading(fonts: &Fonts, s: &str, size: f32, max_w: f32) -> String {
     if measure(fonts, s, size) <= max_w {
         return s.to_string();
     }
-    let dots = if fonts.ui.has_glyph('…') { "…" } else { "..." };
+    let dots = if fonts.ui.has_glyph('…') {
+        "…"
+    } else {
+        "..."
+    };
     let mut out = String::new();
     for ch in s.chars() {
         let next = format!("{out}{ch}{dots}");
@@ -5609,6 +5583,7 @@ fn st_toggle(f: StField) -> Hit {
         StField::Crashed => Hit::StCrashed,
         StField::Interval => Hit::StInterval,
         StField::Category => Hit::StCategory,
+        StField::LapDiff => Hit::StLapDiff,
     }
 }
 
@@ -5628,6 +5603,7 @@ fn rel_toggle(f: RelField) -> Hit {
         RelField::Last => Hit::RelLast,
         RelField::Category => Hit::RelCategory,
         RelField::Speed => Hit::RelSpeed,
+        RelField::LapDiff => Hit::RelLapDiff,
     }
 }
 
@@ -5728,9 +5704,7 @@ where
     let stride = col_stride();
     let col_drag = drag.filter(|d| d.kind == kind);
     let preview = match col_drag {
-        Some(d) if d.from != d.over => {
-            preview_move_to(order, d.from as usize, d.over as usize)
-        }
+        Some(d) if d.from != d.over => preview_move_to(order, d.from as usize, d.over as usize),
         _ => order.to_vec(),
     };
     let ids: Vec<i32> = preview.iter().copied().map(&field_id).collect();
@@ -5906,24 +5880,12 @@ fn game_ui_image_row(
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| path.to_string())
     };
-    text(
-        px,
-        fonts,
-        &status,
-        11.0,
-        x + 16.0,
-        y + 34.0,
-        dim(),
-        false,
-    );
+    text(px, fonts, &status, 11.0, x + 16.0, y + 34.0, dim(), false);
     let btn_w = 72.0;
     let gap = 8.0;
     let def_x = x + w - 16.0 - btn_w;
     let br_x = def_x - gap - btn_w;
-    for (hit, bx, caption) in [
-        (browse, br_x, "Browse"),
-        (reset, def_x, "Default"),
-    ] {
+    for (hit, bx, caption) in [(browse, br_x, "Browse"), (reset, def_x, "Default")] {
         hits.push(HitBox {
             id: hit,
             x: bx,
@@ -6161,15 +6123,7 @@ fn paint_drop_menus(px: &mut Pixmap, fonts: &Fonts, hover: Option<Hit>, hits: &m
             10.0,
             shadow(),
         );
-        outlined(
-            px,
-            mx,
-            my,
-            bw,
-            view_h,
-            9.0,
-            menu_fill(),
-        );
+        outlined(px, mx, my, bw, view_h, 9.0, menu_fill());
 
         let view_top = my + pad;
         let view_bot = my + view_h - pad;
@@ -6213,15 +6167,7 @@ fn paint_drop_menus(px: &mut Pixmap, fonts: &Fonts, hover: Option<Hit>, hits: &m
             let track_h = (view_h - 12.0).max(8.0);
             let thumb_h = (view_h / content_h * track_h).clamp(12.0, track_h);
             let thumb_y = my + 6.0 + (drop_scroll / max_scroll) * (track_h - thumb_h);
-            fill_round(
-                px,
-                mx + bw - 7.0,
-                my + 6.0,
-                3.0,
-                track_h,
-                1.5,
-                menu_edge(),
-            );
+            fill_round(px, mx + bw - 7.0, my + 6.0, 3.0, track_h, 1.5, menu_edge());
             fill_round(
                 px,
                 mx + bw - 7.0,
@@ -6290,15 +6236,7 @@ fn paint_color_picker(
         10.0,
         shadow(),
     );
-    outlined(
-        px,
-        mx,
-        my,
-        picker_w,
-        content_h,
-        9.0,
-        menu_fill(),
-    );
+    outlined(px, mx, my, picker_w, content_h, 9.0, menu_fill());
 
     let inner_x = mx + pad;
     let inner_w = picker_w - pad * 2.0;
@@ -6420,11 +6358,7 @@ fn paint_color_picker(
             rw,
             foot_h,
             6.0,
-            if hot {
-                chip_hover()
-            } else {
-                hover_wash()
-            },
+            if hot { chip_hover() } else { hover_wash() },
         );
         text(
             px,

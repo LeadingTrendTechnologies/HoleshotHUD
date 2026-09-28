@@ -49,7 +49,10 @@ each tick) and where their current lap started:
 - When a rider's `num_laps` rises the lap base moves to the current distance and they are
   armed. Spectating / joining mid-race arms each rider on their first crossing we see.
 - A step over `MAX_STEP_M` (80 m) is a reset / shortcut / teleport and adds nothing.
-  Dropping out of `riders[]` disarms until the next crossing.
+  Dropping out of `riders[]` freezes distance and keeps `armed`; on reappear travel
+  resumes without inventing a teleport step.
+- If the race goes live without a gate tick and the line is still unknown, the first
+  real motion step cold-arms that rider so far pairs still score on lap 1.
 - Armed tracker distance is the lap metres in the score. Unarmed riders use metres past
   the line instead. Armed metres into the lap are capped to one lap. A small overshoot
   past one lap only clamps; past one lap plus slack without a `num_laps` rise the rider
@@ -80,9 +83,16 @@ each tick) and where their current lap started:
   after a wrap (that drops a true leader to mid-pack until the line).
 - The same `PAIR_MAX_M` / continuous-motion rule applies to the Dash `~Lapped` pass latch
   (`note_lapped_by_leader`): an over/under tabletop projection spike must not sticky-latch.
+- Do not clear `armed` when a rider briefly drops from `riders[]`; freeze travel only.
+- When the line is unknown, cold-arm on the first real motion step after the race goes
+  live (missed gate). Do not arm on a zero step — that invents equal travel for riders
+  already spread out.
 
 ## Change log
 
+- 2026-09-26 — First-lap places after start crashes: keep `armed` across brief track-pos
+  gaps; cold-arm on first real step when the race is live and the line is unknown so
+  far passes show without waiting for S/F.
 - 2026-09-25 — Overflow past one lap + slack pins to game place (no S/F fallback); small
   overshoot only clamps. Stops P1→mid-pack when wrap beats `num_laps`.
 - 2026-09-25 — Armed lap metres capped to one lap; over that without a `num_laps` bump

@@ -83,20 +83,17 @@ pub(crate) fn draw_standings(
                         }
                         let name_c = if out { row.out_c } else { row.ink };
                         let dim = if out { row.out_c } else { row.ink_dim };
-                        let status = standing_status(standing);
                         row.paint(
                             px,
                             fonts,
                             accent_c,
                             Some(standing.race_num),
                             |kind| match kind {
-                                StField::Pos => {
-                                    (
-                                        format_place_digits(standing.position.max(0), false),
-                                        name_c,
-                                        true,
-                                    )
-                                }
+                                StField::Pos => (
+                                    format_place_digits(standing.position.max(0), false),
+                                    name_c,
+                                    true,
+                                ),
                                 StField::Num => (format!("{}", standing.race_num), dim, true),
                                 StField::Name => (cstr(&standing.name).to_string(), name_c, false),
                                 StField::Bike => (cstr(&standing.bike).to_string(), name_c, false),
@@ -158,7 +155,20 @@ pub(crate) fn draw_standings(
                                     };
                                     (format_lap(ms), dim, true)
                                 }
-                                StField::Status => (status.unwrap_or("").to_string(), dim, true),
+                                StField::LapDiff => (
+                                    lap_diff_text(standing.race_num),
+                                    lap_diff_ink(standing.race_num, dim),
+                                    true,
+                                ),
+                                StField::Status => (
+                                    mark_key(standing_mark(
+                                        s,
+                                        standing.race_num,
+                                        standing.crashed != 0,
+                                    )),
+                                    dim,
+                                    true,
+                                ),
                                 StField::Penalty => {
                                     (format_penalty(standing.penalty_ms), dim, true)
                                 }
