@@ -86,6 +86,7 @@ void fillSnapshot(MxboShmSnapshot& local,
     local.localCrashed = state.localCrashed();
     local.localX = state.localX();
     local.localZ = state.localZ();
+    local.localY = state.localY();
     local.localVelX = state.localVelX();
     local.localVelZ = state.localVelZ();
     local.localYaw = state.localYaw();
@@ -97,6 +98,8 @@ void fillSnapshot(MxboShmSnapshot& local,
     local.steerLock = state.steerLock();
     copyBounded(local.trackName, MXBO_TRACK_NAME, state.trackName().c_str());
     copyBounded(local.setupName, MXBO_TRACK_NAME, state.setupName().c_str());
+    copyBounded(local.serverName, MXBO_TRACK_NAME, state.serverName().c_str());
+    copyBounded(local.eventGuid, MXBO_GUID, state.eventGuid().c_str());
     local.trackLength = state.trackLength();
     local.sfMeters = state.startFinishMeters();
 
@@ -119,6 +122,7 @@ void fillSnapshot(MxboShmSnapshot& local,
         d.raceNum = p.raceNum;
         d.x = p.x;
         d.z = p.z;
+        d.y = p.y;
         d.yaw = p.yaw;
         d.trackPos = p.trackPos;
         d.crashed = p.crashed;
@@ -126,6 +130,11 @@ void fillSnapshot(MxboShmSnapshot& local,
         copyBounded(d.name, MXBO_NAME, e ? e->name.c_str() : "");
         const VehicleLive* live = state.findVehicle(p.raceNum);
         d.lean = live ? live->lean : 0.0f;
+        d.speed = live ? live->speed : 0.0f;
+        d.rpm = live ? live->rpm : 0;
+        d.gear = live ? live->gear : 0;
+        d.throttle = live ? live->throttle : 0.0f;
+        d.frontBrake = live ? live->frontBrake : 0.0f;
     }
 
     const int nStand = std::min(static_cast<int>(state.standings().size()), MXBO_MAX_STANDINGS);
@@ -218,6 +227,8 @@ void fillSnapshot(MxboShmSnapshot& local,
         local.sectorBest[i] = state.sectorBest(i);
         local.sectorDelta[i] = state.sectorDelta(i);
     }
+    local.holeshotRaceNum = state.holeshotRaceNum();
+    local.holeshotTime = state.holeshotTime();
 }
 
 void seqlockStore(MxboShmSnapshot& dst, const MxboShmSnapshot& local)

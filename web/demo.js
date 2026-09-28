@@ -20,6 +20,7 @@ const BOARD = [
   ["setup", "Setup"],
   ["gapahead", "Gap ahead"],
   ["gapbehind", "Gap behind"],
+  ["lapdiff", "Last lap diff"],
 ];
 
 const DASH = [
@@ -32,6 +33,7 @@ const DASH = [
   ["laps", "Lap count"],
   ["left", "Laps left"],
   ["last", "Last lap"],
+  ["lapdiff", "Last lap diff"],
   ["best", "Best lap"],
   ["cur", "Current lap"],
   ["delta", "Delta"],
@@ -60,6 +62,7 @@ const ST_COLS = [
   ["st_current", "Current lap"],
   ["st_best", "Fastest"],
   ["st_last", "Last lap"],
+  ["st_lapdiff", "Last lap diff"],
   ["st_status", "Status"],
   ["st_bike", "Bike"],
   ["st_penalty", "Penalty"],
@@ -76,12 +79,13 @@ const REL_COLS = [
   ["rel_bike", "Bike"],
   ["rel_penalty", "Penalty"],
   ["rel_interval", "Interval"],
-  ["rel_crashed", "Crashed"],
   ["rel_best", "Fastest"],
   ["rel_last", "Last lap"],
+  ["rel_lapdiff", "Last lap diff"],
 ];
 
 const MAP_TOGGLES = [
+  ["map_follow", "Follow me"],
   ["map_others", "Other riders"],
   ["map_sf", "Start / finish"],
   ["map_sectors", "Sector lines"],
@@ -120,6 +124,7 @@ const NAMES = {
   pitboard: "Pit Board",
 };
 
+const pit = document.querySelector(".pit");
 const canvas = document.getElementById("hud");
 const ctx = canvas.getContext("2d", { alpha: true });
 const settings = document.getElementById("settings");
@@ -130,7 +135,7 @@ stageStatus.hidden = false;
 
 let preview;
 try {
-  await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=0.9.0", import.meta.url) });
+  await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=0.20.0", import.meta.url) });
   preview = new Preview();
   stageStatus.hidden = true;
 } catch (err) {
@@ -183,13 +188,20 @@ function fieldRow(key, label, options) {
 
 function styleControls(prefix, opacityLabel = "Background") {
   let html = `${sliderRow(`${prefix}_font`, "Font size", 70, 160, "%")}${sliderRow(`${prefix}_bg`, opacityLabel, 0, 100, "%")}`;
-  if (prefix === "st" || prefix === "rel") {
+    if (prefix === "st" || prefix === "rel") {
     html += sliderRow(`${prefix}_hl`, "Row highlight", 0, 100, "%");
     html += fieldRow(`${prefix}_text`, "Text color", [
       ["white", "White"],
       ["black", "Black"],
     ]);
     html += toggleRow(`${prefix}_stripe`, "Alternating rows");
+    html += toggleRow(`${prefix}_plaque`, "Show plaques");
+    if (preview.get_bool(`${prefix}_plaque`)) {
+      html += fieldRow(`${prefix}_plaque_text`, "Plaque text", [
+        ["white", "White"],
+        ["black", "Black"],
+      ]);
+    }
   }
   html += toggleRow(`${prefix}_bold`, "Bold text");
   return html;
@@ -235,20 +247,30 @@ function renderSettings() {
     html += styleControls("map");
     html += `<div class="section">On the map</div>`;
     html += MAP_TOGGLES.map(([k, l]) => toggleRow(k, l)).join("");
-    html += fieldRow("map_dot", "Dot number", [["num", "Number"], ["pos", "Position"]]);
+    if (preview.get_bool("map_numbers")) {
+      html += fieldRow("map_dot", "Dot number", [["num", "Number"], ["pos", "Position"]]);
+    }
   } else if (w === "minimap") {
     html += styleControls("mini");
     html += `<div class="section">On the minimap</div>`;
     html += MINI_TOGGLES.map(([k, l]) => toggleRow(k, l)).join("");
-    html += fieldRow("mini_dot", "Dot number", [["num", "Number"], ["pos", "Position"]]);
+    if (preview.get_bool("mini_numbers")) {
+      html += fieldRow("mini_dot", "Dot number", [["num", "Number"], ["pos", "Position"]]);
+    }
     html += sliderRow("mini_zoom", "Zoom", 0, 100, "%");
   } else if (w === "radar") {
     html += styleControls("radar", "Panel opacity");
     html += `<div class="section">On the radar</div>`;
+    html += fieldRow("radar_style", "Look", [
+      ["plaque", "Plaque"],
+      ["arrows", "Arrows"],
+    ]);
     html += sliderRow("radar_range", "Range", 6, 30, "m");
     html += toggleRow("radar_sides", "Riders beside you");
     html += toggleRow("radar_rear", "Riders behind you");
-    html += toggleRow("radar_rings", "Range rings");
+    if (preview.get_field("radar_style") !== "arrows") {
+      html += toggleRow("radar_rings", "Range rings");
+    }
   } else if (w === "dash") {
     html += styleControls("dash", "Panel opacity");
     html += toggleRow("dash_simple", "Simple dash");
@@ -265,8 +287,10 @@ function renderSettings() {
     }
   } else if (w === "ticker") {
     html += styleControls("ticker", "Panel opacity");
+    html += sliderRow("ticker_hl", "Row highlight", 0, 100, "%");
     html += toggleRow("ticker_title", "Track name");
     html += toggleRow("ticker_autoscroll", "Autoscroll");
+    html += toggleRow("ticker_slide", "Slide on pass");
     html += `<div class="section">Side info</div>`;
     html += fieldRow("ticker_left", "Left", BOARD);
     html += fieldRow("ticker_right", "Right", BOARD);
@@ -277,7 +301,9 @@ function renderSettings() {
     html += toggleRow("sector_live", "Live sector");
     html += toggleRow("sector_session", "Compare to session best");
     html += toggleRow("sector_hist", "Lap log");
-    html += stepperRow("sector_hist_laps", "Laps back", 1, 5);
+    if (preview.get_bool("sector_hist")) {
+      html += stepperRow("sector_hist_laps", "Laps back", 1, 5);
+    }
     html += styleControls("sector", "Panel opacity");
   } else if (w === "delta") {
     html += toggleRow("delta_session", "Compare to session best");
@@ -336,6 +362,10 @@ function renderSettings() {
       ["playstation", "PlayStation"],
       ["xbox", "Xbox"],
     ]);
+    html += fieldRow("gamepad_theme", "Theme", [
+      ["light", "Light"],
+      ["dark", "Dark"],
+    ]);
     html += styleControls("gamepad", "Panel opacity");
   }
   html += snapGrid();
@@ -381,7 +411,17 @@ settings.addEventListener("change", (e) => {
       label.textContent = `${t.value}${t.dataset.suffix || ""}`;
     }
   }
-  if (t.dataset.bool === "dash_simple" || t.dataset.bool === "telemetry_traces" || t.dataset.bool === "telemetry_bars") {
+  if (
+    t.dataset.bool === "dash_simple" ||
+    t.dataset.bool === "telemetry_traces" ||
+    t.dataset.bool === "telemetry_bars" ||
+    t.dataset.bool === "st_plaque" ||
+    t.dataset.bool === "rel_plaque" ||
+    t.dataset.bool === "map_numbers" ||
+    t.dataset.bool === "mini_numbers" ||
+    t.dataset.bool === "sector_hist" ||
+    t.dataset.field === "radar_style"
+  ) {
     renderSettings();
   }
 });
@@ -401,32 +441,79 @@ settings.addEventListener("click", (e) => {
 
 function norm(e) {
   const r = canvas.getBoundingClientRect();
-  return {
-    nx: (e.clientX - r.left) / r.width,
-    ny: (e.clientY - r.top) / r.height,
-  };
+  const cw = canvas.width;
+  const ch = canvas.height;
+  const scale = Math.min(r.width / cw, r.height / ch) || 1;
+  const dw = cw * scale;
+  const dh = ch * scale;
+  const ox = (r.width - dw) * 0.5;
+  const oy = (r.height - dh) * 0.5;
+  const px = e.clientX - r.left - ox;
+  const py = e.clientY - r.top - oy;
+  return { nx: px / dw, ny: py / dh };
+}
+
+function setMode(mode) {
+  preview.set_mode(mode);
+  pit.classList.toggle("mode-motos", mode === "motos");
+  if (mode === "motos") {
+    canvas.width = 1000;
+    canvas.height = 920;
+  } else {
+    canvas.width = 1280;
+    canvas.height = 720;
+  }
+  for (const btn of document.querySelectorAll("[data-mode]")) {
+    const on = btn.dataset.mode === mode;
+    btn.classList.toggle("on", on);
+    if (on) btn.setAttribute("aria-current", "true");
+    else btn.removeAttribute("aria-current");
+  }
+}
+
+for (const btn of document.querySelectorAll("[data-mode]")) {
+  btn.addEventListener("click", () => setMode(btn.dataset.mode));
 }
 
 let dragging = false;
 canvas.addEventListener("pointerdown", (e) => {
   const { nx, ny } = norm(e);
-  preview.pointer_down(nx, ny, canvas.width, canvas.height);
+  if (preview.mode() === "motos") {
+    preview.motos_pointer_down(nx, ny, canvas.width, canvas.height);
+  } else {
+    preview.pointer_down(nx, ny, canvas.width, canvas.height);
+  }
   dragging = true;
   canvas.setPointerCapture(e.pointerId);
 });
 canvas.addEventListener("pointermove", (e) => {
   const { nx, ny } = norm(e);
   if (dragging) {
-    preview.pointer_move(nx, ny, canvas.width, canvas.height);
-  } else {
+    if (preview.mode() === "motos") {
+      preview.motos_pointer_move(nx, ny, canvas.width, canvas.height);
+    } else {
+      preview.pointer_move(nx, ny, canvas.width, canvas.height);
+    }
+  } else if (preview.mode() !== "motos") {
     canvas.style.cursor = preview.hover_cursor(nx, ny, canvas.width, canvas.height) || "default";
   }
 });
 canvas.addEventListener("pointerup", (e) => {
-  preview.pointer_up();
+  if (preview.mode() === "motos") preview.motos_pointer_up();
+  else preview.pointer_up();
   dragging = false;
   try { canvas.releasePointerCapture(e.pointerId); } catch {}
 });
+canvas.addEventListener(
+  "wheel",
+  (e) => {
+    if (preview.mode() !== "motos") return;
+    e.preventDefault();
+    const { nx, ny } = norm(e);
+    preview.motos_wheel(nx, ny, e.deltaY);
+  },
+  { passive: false },
+);
 canvas.addEventListener("pointerleave", () => {
   if (!dragging) canvas.style.cursor = "default";
 });
@@ -435,6 +522,11 @@ syncButtons();
 renderSettings();
 
 const q = new URLSearchParams(location.search);
+if (q.get("mode") === "widgets") {
+  setMode("widgets");
+} else {
+  setMode("motos");
+}
 if (q.get("widget") && NAMES[q.get("widget")]) {
   preview.select_widget(q.get("widget"));
   syncButtons();
@@ -449,7 +541,7 @@ let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  preview.tick(dt);
+  if (preview.mode() !== "motos") preview.tick(dt);
   const w = canvas.width;
   const h = canvas.height;
   const bytes = preview.frame(w, h);

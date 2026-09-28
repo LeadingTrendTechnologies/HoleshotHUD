@@ -14,3 +14,10 @@ fn quit_does_not_leave_waiter_when_setting_is_off() {
 fn uninstall_does_not_leave_waiter() {
     assert!(!should_leave_game_waiter(true, true));
 }
+
+#[test]
+fn hud_exe_rejects_escape_and_wrong_name() {
+    assert!(sanitize_hud_exe(r"C:\foo\..\Holeshot-HUD.exe").is_none());
+    assert!(sanitize_hud_exe(r"C:\Windows\notepad.exe").is_none());
+    assert!(sanitize_hud_exe("").is_none());
+}

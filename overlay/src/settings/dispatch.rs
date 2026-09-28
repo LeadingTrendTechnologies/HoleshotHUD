@@ -4,12 +4,12 @@ use super::*;
 pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
     match id {
         Hit::TabWidgets => {
-            let last = UI.lock().unwrap().as_ref().map(|u| u.last_widget).unwrap_or(Tab::Standings);
-            let last = if last.is_labs() && !with_config(|c| c.experimental_unlocked()) {
-                Tab::Standings
-            } else {
-                last
-            };
+            let last = UI
+                .lock()
+                .unwrap()
+                .as_ref()
+                .map(|u| u.last_widget)
+                .unwrap_or(Tab::Standings);
             set_tab(last);
             return;
         }
@@ -17,8 +17,248 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             set_tab(Tab::App);
             return;
         }
+        Hit::AppLook => {
+            set_app_section(AppSection::Look);
+            return;
+        }
+        Hit::AppMenus => {
+            set_app_section(AppSection::Menus);
+            return;
+        }
+        Hit::AppInstall => {
+            set_app_section(AppSection::Install);
+            return;
+        }
+        Hit::AppStartup => {
+            set_app_section(AppSection::Startup);
+            return;
+        }
+        Hit::AppLabs => {
+            set_app_section(AppSection::Labs);
+            return;
+        }
+        Hit::AppUpdates => {
+            set_app_section(AppSection::Updates);
+            return;
+        }
+        Hit::AppDiagnostics => {
+            set_app_section(AppSection::Diagnostics);
+            return;
+        }
+        Hit::DiagCopy => {
+            let _ = crate::crash_dump::copy_latest();
+            return;
+        }
+        Hit::TabProfile => {
+            set_tab(Tab::Profile);
+            return;
+        }
+        Hit::ProfileNavOverview => {
+            set_profile_section(ProfileSection::Overview);
+            return;
+        }
+        Hit::ProfileNavMotos => {
+            set_profile_section(ProfileSection::Motos);
+            open_live_analyze(true);
+            return;
+        }
+        Hit::ProfileNavTracks => {
+            if with_config(|c| c.experimental_unlocked()) {
+                set_profile_section(ProfileSection::Tracks);
+            }
+            return;
+        }
+        Hit::TrackOpen(idx) => {
+            let rows = crate::review::track_bank_rows();
+            if let Some(row) = rows.get(idx as usize) {
+                if let Some(ui) = UI.lock().unwrap().as_mut() {
+                    ui.tracks_selected = Some(row.track.clone());
+                    ui.scroll = 0.0;
+                    ui.tracks_zoom = 1.0;
+                    ui.tracks_pan_x = 0.0;
+                    ui.tracks_pan_z = 0.0;
+                    ui.tracks_map_drag = None;
+                }
+            }
+            return;
+        }
+        Hit::TrackBack => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.tracks_selected = None;
+                ui.scroll = 0.0;
+                ui.tracks_zoom = 1.0;
+                ui.tracks_pan_x = 0.0;
+                ui.tracks_pan_z = 0.0;
+                ui.tracks_map_drag = None;
+            }
+            return;
+        }
         Hit::TabFeedback => {
             set_tab(Tab::Feedback);
+            return;
+        }
+        Hit::ReviewFilterAll => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.review_filter = crate::review::ListFilter::All;
+            }
+            return;
+        }
+        Hit::ReviewFilterRanked => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.review_filter = crate::review::ListFilter::Ranked;
+            }
+            return;
+        }
+        Hit::ReviewFilterSaved => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.review_filter = crate::review::ListFilter::Saved;
+            }
+            return;
+        }
+        Hit::ReviewOpen(id) => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.motos_list_scroll = ui.scroll;
+                ui.analyze_id = Some(id as i64);
+                ui.analyze_compare = -1;
+                ui.analyze_you_lap = -1;
+                ui.analyze_warmup = false;
+                ui.analyze_zoom = 1.0;
+                ui.analyze_pan_x = 0.0;
+                ui.analyze_pan_z = 0.0;
+                ui.analyze_follow = false;
+                ui.scroll = 0.0;
+            }
+            reset_analyze_scrub();
+            return;
+        }
+        Hit::ReviewKeep(id) => {
+            let cur = crate::review::list(crate::review::ListFilter::All)
+                .into_iter()
+                .find(|r| r.id == id as i64)
+                .map(|r| r.kept)
+                .unwrap_or(false);
+            crate::review::set_kept(id as i64, !cur);
+            return;
+        }
+        Hit::ReviewDelete(id) => {
+            let was_live = crate::review::live_id() == Some(id as i64);
+            crate::review::delete(id as i64);
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                if ui.analyze_id == Some(id as i64) {
+                    ui.analyze_id = None;
+                    ui.scroll = ui.motos_list_scroll;
+                }
+                if was_live {
+                    ui.review_stay_on_list = true;
+                }
+            }
+            return;
+        }
+        Hit::ReviewBack => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.analyze_id = None;
+                ui.scroll = ui.motos_list_scroll;
+                ui.review_stay_on_list = true;
+            }
+            return;
+        }
+        Hit::ReviewToggle => {
+            let mut now_on = false;
+            update_config(|c| {
+                c.review = !c.review;
+                now_on = c.review;
+            });
+            if !now_on {
+                crate::review::tick(&mxbo_hud::shm::Snapshot::default(), false);
+            }
+            return;
+        }
+        Hit::ProfileAllTime => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.profile_all_time = true;
+            }
+            return;
+        }
+        Hit::ProfileTwoWeeks => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.profile_all_time = false;
+            }
+            return;
+        }
+        Hit::ProfileClear => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.clear_confirm = Some(ClearKind::Profile);
+            }
+            return;
+        }
+        Hit::ReviewClear => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.clear_confirm = Some(ClearKind::Motos);
+            }
+            return;
+        }
+        Hit::ClearCancel | Hit::ClearScrim => {
+            dismiss_clear_confirm();
+            return;
+        }
+        Hit::ClearPanel => return,
+        Hit::ClearConfirm => {
+            let kind = UI.lock().unwrap().as_ref().and_then(|u| u.clear_confirm);
+            match kind {
+                Some(ClearKind::Profile) => crate::review::clear_profile(),
+                Some(ClearKind::Motos) => {
+                    crate::review::clear_motos();
+                    if let Some(ui) = UI.lock().unwrap().as_mut() {
+                        if let Some(id) = ui.analyze_id {
+                            if crate::review::load(id).is_none() {
+                                ui.analyze_id = None;
+                                ui.review_stay_on_list = true;
+                            }
+                        }
+                    }
+                }
+                None => {}
+            }
+            dismiss_clear_confirm();
+            return;
+        }
+        Hit::ProfileAxis(_) => return,
+        Hit::AnalyzeFollow => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.analyze_follow = !ui.analyze_follow;
+            }
+            return;
+        }
+        Hit::AnalyzeCompare(n) => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.analyze_compare = n;
+                ui.open_drop = None;
+            }
+            reset_analyze_scrub();
+            return;
+        }
+        Hit::AnalyzeCompareOpen => {
+            toggle_drop(Drop::AnalyzeCompare);
+            return;
+        }
+        Hit::AnalyzeYouLap(n) => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.analyze_you_lap = n;
+                if let Some(id) = ui.analyze_id {
+                    if let Some(d) = crate::review::load(id) {
+                        ui.analyze_warmup = d
+                            .laps
+                            .iter()
+                            .any(|l| l.lap_num == n && l.race_num == d.your_race_num && l.warmup);
+                    }
+                }
+                ui.open_drop = None;
+            }
+            reset_analyze_scrub();
+            return;
+        }
+        Hit::AnalyzeLapOpen => {
+            toggle_drop(Drop::AnalyzeLap);
             return;
         }
         Hit::TabSt => {
@@ -106,6 +346,93 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             toggle_drop(Drop::FontFamily);
             return;
         }
+        Hit::PrimaryOpen => {
+            toggle_drop(Drop::PrimaryColor);
+            return;
+        }
+        Hit::PrimaryPanel | Hit::PrimarySv | Hit::PrimaryHue => return,
+        Hit::PrimaryReset => {
+            update_config(|c| c.primary = DEFAULT_PRIMARY);
+            sync_menus_after_app_primary_change();
+            return;
+        }
+        Hit::PrimarySwatch(i) => {
+            if let Some(&rgb) = PRIMARY_SWATCHES.get(i as usize) {
+                update_config(|c| c.primary = rgb);
+                sync_menus_after_app_primary_change();
+            }
+            return;
+        }
+        Hit::GameUi => {
+            close_drop();
+            crate::config::update_config(|c| c.game_ui = !c.game_ui);
+            crate::game_ui::sync_from_config();
+            return;
+        }
+        Hit::GameUiMatchPrimary => {
+            close_drop();
+            crate::config::update_config(|c| {
+                c.game_ui_match_primary = !c.game_ui_match_primary;
+                if !c.game_ui_match_primary {
+                    c.game_ui_primary = c.primary;
+                }
+            });
+            crate::game_ui::sync_from_config();
+            return;
+        }
+        Hit::GameUiPrimaryOpen => {
+            toggle_drop(Drop::GameUiPrimaryColor);
+            return;
+        }
+        Hit::GameUiPrimaryPanel | Hit::GameUiPrimarySv | Hit::GameUiPrimaryHue => return,
+        Hit::GameUiPrimaryReset => {
+            update_config(|c| c.game_ui_primary = DEFAULT_PRIMARY);
+            sync_menus_after_menu_accent_change();
+            return;
+        }
+        Hit::GameUiPrimarySwatch(i) => {
+            if let Some(&rgb) = PRIMARY_SWATCHES.get(i as usize) {
+                update_config(|c| c.game_ui_primary = rgb);
+                sync_menus_after_menu_accent_change();
+            }
+            return;
+        }
+        Hit::GameUiSplashBrowse => {
+            close_drop();
+            let host = UI.lock().unwrap().as_ref().map(|u| u.host);
+            let Some(host) = host else {
+                return;
+            };
+            if let Some(path) = browse_image(host) {
+                update_config(|c| c.game_ui_splash_path = path);
+                crate::game_ui::sync_forced();
+            }
+            return;
+        }
+        Hit::GameUiSplashDefault => {
+            close_drop();
+            update_config(|c| c.game_ui_splash_path.clear());
+            crate::game_ui::sync_forced();
+            return;
+        }
+        Hit::GameUiLoadingBrowse => {
+            close_drop();
+            let host = UI.lock().unwrap().as_ref().map(|u| u.host);
+            let Some(host) = host else {
+                return;
+            };
+            if let Some(path) = browse_image(host) {
+                update_config(|c| c.game_ui_loading_path = path);
+                crate::game_ui::sync_forced();
+            }
+            return;
+        }
+        Hit::GameUiLoadingDefault => {
+            close_drop();
+            update_config(|c| c.game_ui_loading_path.clear());
+            crate::game_ui::sync_forced();
+            return;
+        }
         Hit::UnitsOpen(kind) => {
             toggle_drop(Drop::Units(kind));
             return;
@@ -118,8 +445,20 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             toggle_drop(Drop::RelText);
             return;
         }
+        Hit::StPlaqueTextOpen => {
+            toggle_drop(Drop::StPlaqueText);
+            return;
+        }
+        Hit::RelPlaqueTextOpen => {
+            toggle_drop(Drop::RelPlaqueText);
+            return;
+        }
         Hit::SettingsKeyOpen => {
             toggle_drop(Drop::SettingsKey);
+            return;
+        }
+        Hit::ThemeOpen => {
+            toggle_drop(Drop::Theme);
             return;
         }
         Hit::StanceBindOpen => {
@@ -154,8 +493,16 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             toggle_drop(Drop::LeanStyle);
             return;
         }
+        Hit::RadarStyleOpen => {
+            toggle_drop(Drop::RadarStyle);
+            return;
+        }
         Hit::GamepadStyleOpen => {
             toggle_drop(Drop::GamepadStyle);
+            return;
+        }
+        Hit::GamepadThemeOpen => {
+            toggle_drop(Drop::GamepadTheme);
             return;
         }
         Hit::SysAddOpen => {
@@ -285,6 +632,9 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         }
         Hit::QuitApp => {
             close_drop();
+            if let Some(host) = UI.lock().unwrap().as_ref().map(|u| u.host) {
+                crate::settings::persist_host_pos(host);
+            }
             crate::config::update_config(|_| {});
             crate::quit_app();
             return;
@@ -296,6 +646,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
                 return;
             };
             if crate::uninstall::confirm(host) && crate::uninstall::start(host) {
+                crate::settings::persist_host_pos(host);
                 crate::config::update_config(|_| {});
                 crate::quit_app();
             }
@@ -425,7 +776,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             if let Some(p) = SYS_PRESETS.get(i as usize) {
                 c.add_sys_preset(p.key);
             }
-        },
+        }
         Hit::SectorShow => c[WidgetId::Sector].show ^= true,
         Hit::SectorLive => c.sector_live = !c.sector_live,
         Hit::SectorSession => c.sector_session = !c.sector_session,
@@ -470,9 +821,6 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::GamepadShow => c[WidgetId::Gamepad].show ^= true,
         Hit::FeatureSector => {
             c.experimental = !c.experimental;
-            if !c.experimental {
-                c[WidgetId::Gamepad].show = false;
-            }
         }
         Hit::FlagYellow => c.flag_yellow = !c.flag_yellow,
         Hit::FlagBlue => c.flag_blue = !c.flag_blue,
@@ -481,8 +829,12 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::StanceShowSit => c.stance_show_sit = !c.stance_show_sit,
         Hit::TickerTitle => c.ticker_title = !c.ticker_title,
         Hit::TickerAutoscroll => c.ticker_autoscroll = !c.ticker_autoscroll,
+        Hit::TickerStatus => c.ticker_status = !c.ticker_status,
+        Hit::TickerSlide => c.ticker_slide = !c.ticker_slide,
         Hit::StStripe => c.st_stripe = !c.st_stripe,
         Hit::RelStripe => c.rel_stripe = !c.rel_stripe,
+        Hit::StPlaque => c.st_plaque = !c.st_plaque,
+        Hit::RelPlaque => c.rel_plaque = !c.rel_plaque,
         Hit::StPos => c.st_pos = !c.st_pos,
         Hit::StNum => c.st_num = !c.st_num,
         Hit::StName => c.st_name = !c.st_name,
@@ -496,6 +848,8 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::StPenalty => c.st_penalty = !c.st_penalty,
         Hit::StCrashed => c.st_crashed = !c.st_crashed,
         Hit::StInterval => c.st_interval = !c.st_interval,
+        Hit::StCategory => c.st_category = !c.st_category,
+        Hit::StLapDiff => c.st_lapdiff = !c.st_lapdiff,
         Hit::RelNum => c.rel_num = !c.rel_num,
         Hit::RelName => c.rel_name = !c.rel_name,
         Hit::RelGap => c.rel_gap = !c.rel_gap,
@@ -505,13 +859,17 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::RelBike => c.rel_bike = !c.rel_bike,
         Hit::RelPenalty => c.rel_penalty = !c.rel_penalty,
         Hit::RelInterval => c.rel_interval = !c.rel_interval,
-        Hit::RelCrashed => c.rel_crashed = !c.rel_crashed,
+        Hit::RelStatus => c.rel_status = !c.rel_status,
         Hit::RelBest => c.rel_best = !c.rel_best,
         Hit::RelLast => c.rel_last = !c.rel_last,
+        Hit::RelCategory => c.rel_category = !c.rel_category,
+        Hit::RelSpeed => c.rel_speed = !c.rel_speed,
+        Hit::RelLapDiff => c.rel_lapdiff = !c.rel_lapdiff,
         Hit::MapOthers => c.map_others = !c.map_others,
         Hit::MapSf => c.map_sf = !c.map_sf,
         Hit::MapSectors => c.map_sectors = !c.map_sectors,
         Hit::MapArrows => c.map_arrows = !c.map_arrows,
+        Hit::MapFollow => c.map_follow = !c.map_follow,
         Hit::MapCrown => c.map_crown = !c.map_crown,
         Hit::MapPlace => c.map_place = !c.map_place,
         Hit::MapNumbers => c.map_numbers = !c.map_numbers,
@@ -547,11 +905,21 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::StTextBlack => c.st_text = TableText::Black,
         Hit::RelTextWhite => c.rel_text = TableText::White,
         Hit::RelTextBlack => c.rel_text = TableText::Black,
+        Hit::StPlaqueTextWhite => c.st_plaque_text = TableText::White,
+        Hit::StPlaqueTextBlack => c.st_plaque_text = TableText::Black,
+        Hit::RelPlaqueTextWhite => c.rel_plaque_text = TableText::White,
+        Hit::RelPlaqueTextBlack => c.rel_plaque_text = TableText::Black,
         Hit::SettingsKeyPick(key) => c.settings_key = key,
+        Hit::ThemePick(theme) => c.settings_theme = theme,
         Hit::StanceModePick(mode) => c.stance_mode = mode,
         Hit::StanceStylePick(style) => c.stance_style = style,
         Hit::LeanStylePick(style) => c.lean_style = style,
+        Hit::RadarStylePick(style) => {
+            c.radar_style = style;
+            mxbo_hud::config::maybe_expand_radar_for_arrows(c);
+        }
         Hit::GamepadStylePick(style) => c.gamepad_style = style,
+        Hit::GamepadThemePick(theme) => c.gamepad_theme = theme,
         Hit::DashFootPick(slot, field) => match slot {
             0 => c.dash_left = field,
             1 => c.dash_mid = field,
@@ -578,37 +946,242 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::TickerInc => c.ticker_count = (c.ticker_count + 1).min(15),
         Hit::SectorHistDec => c.sector_hist_laps = (c.sector_hist_laps - 1).max(1),
         Hit::SectorHistInc => c.sector_hist_laps = (c.sector_hist_laps + 1).min(5),
-        Hit::TabWidgets | Hit::TabApp | Hit::TabFeedback | Hit::TabSt | Hit::TabRel | Hit::TabMap | Hit::TabMini | Hit::TabRadar | Hit::TabDash
-        | Hit::TabTicker | Hit::TabSys | Hit::TabSector | Hit::TabDelta | Hit::TabStance | Hit::TabFlag | Hit::TabLean | Hit::TabGamepad | Hit::TabTelemetry | Hit::TabPitboard
-        | Hit::MapDotOpen | Hit::MiniDotOpen | Hit::FontOpen | Hit::UnitsOpen(_) | Hit::StTextOpen | Hit::RelTextOpen
+        Hit::TabWidgets
+        | Hit::TabApp
+        | Hit::AppLook
+        | Hit::AppMenus
+        | Hit::AppInstall
+        | Hit::AppStartup
+        | Hit::AppLabs
+        | Hit::AppUpdates
+        | Hit::AppDiagnostics
+        | Hit::DiagCopy
+        | Hit::TabProfile
+        | Hit::ProfileNavOverview
+        | Hit::ProfileNavMotos
+        | Hit::ProfileNavTracks
+        | Hit::TrackOpen(_)
+        | Hit::TrackBack
+        | Hit::TrackMap
+        | Hit::TabFeedback
+        | Hit::ProfileAllTime
+        | Hit::ProfileTwoWeeks
+        | Hit::ProfileClear
+        | Hit::ProfileAxis(_)
+        | Hit::ReviewClear
+        | Hit::ClearScrim
+        | Hit::ClearPanel
+        | Hit::ClearCancel
+        | Hit::ClearConfirm
+        | Hit::TabSt
+        | Hit::TabRel
+        | Hit::TabMap
+        | Hit::TabMini
+        | Hit::TabRadar
+        | Hit::TabDash
+        | Hit::TabTicker
+        | Hit::TabSys
+        | Hit::TabSector
+        | Hit::TabDelta
+        | Hit::TabStance
+        | Hit::TabFlag
+        | Hit::TabLean
+        | Hit::TabGamepad
+        | Hit::TabTelemetry
+        | Hit::TabPitboard
+        | Hit::MapDotOpen
+        | Hit::MiniDotOpen
+        | Hit::FontOpen
+        | Hit::PrimaryOpen
+        | Hit::PrimaryPanel
+        | Hit::PrimarySv
+        | Hit::PrimaryHue
+        | Hit::PrimarySwatch(_)
+        | Hit::PrimaryReset
+        | Hit::GameUiMatchPrimary
+        | Hit::GameUiPrimaryOpen
+        | Hit::GameUiPrimaryPanel
+        | Hit::GameUiPrimarySv
+        | Hit::GameUiPrimaryHue
+        | Hit::GameUiPrimarySwatch(_)
+        | Hit::GameUiPrimaryReset
+        | Hit::GameUiSplashBrowse
+        | Hit::GameUiSplashDefault
+        | Hit::GameUiLoadingBrowse
+        | Hit::GameUiLoadingDefault
+        | Hit::UnitsOpen(_)
+        | Hit::StTextOpen
+        | Hit::RelTextOpen
+        | Hit::StPlaqueTextOpen
+        | Hit::RelPlaqueTextOpen
         | Hit::SettingsKeyOpen
+        | Hit::ThemeOpen
         | Hit::StanceBindOpen
         | Hit::StanceModeOpen
         | Hit::StanceStyleOpen
         | Hit::LeanStyleOpen
+        | Hit::RadarStyleOpen
         | Hit::GamepadStyleOpen
+        | Hit::GamepadThemeOpen
         | Hit::SysAddOpen
         | Hit::DashFootOpen(_)
         | Hit::TickerFootOpen(_)
         | Hit::InfoOpen(_, _)
         | Hit::PitSlotOpen(_)
         | Hit::PresetCopyOpen
-        | Hit::UpdateCheck | Hit::UpdateInstall | Hit::UpdateBanner | Hit::UpdateBannerDismiss
-        | Hit::WhatsNewOpen | Hit::WhatsNewDismiss | Hit::WhatsNewScrim | Hit::WhatsNewPanel
-        | Hit::ReplyDismiss | Hit::ReplySend | Hit::ReplyText | Hit::ReplyScrim | Hit::ReplyPanel
-        | Hit::StartWithWindows | Hit::MinimizeOnClose
-        | Hit::CloseWithGame | Hit::OpenWithGame
-        | Hit::AutoUpdateOnLaunch | Hit::QuitApp | Hit::Uninstall | Hit::GameFolder | Hit::SysAppBrowse
-        | Hit::FbRate | Hit::FbBug | Hit::FbFeature | Hit::FbStar(_) | Hit::FbText | Hit::FbAttach | Hit::FbSend
-        | Hit::StDrag(_) | Hit::RelDrag(_)
-        | Hit::StBg | Hit::StHl | Hit::RelBg | Hit::RelHl | Hit::MapBg | Hit::MiniBg | Hit::MiniZoom | Hit::RadarRange | Hit::RadarBg | Hit::DashBg | Hit::TickerBg | Hit::SysBg | Hit::SectorBg | Hit::DeltaBg | Hit::StanceBg | Hit::FlagBg | Hit::LeanBg | Hit::GamepadBg | Hit::TelemetryBg | Hit::PitBg
-        | Hit::PitBrowse | Hit::PitOpenFolder
-        | Hit::StW(_) | Hit::RelW(_) | Hit::Font(_) | Hit::StanceReset | Hit::TrackPbClear => {}
+        | Hit::UpdateCheck
+        | Hit::UpdateInstall
+        | Hit::UpdateBanner
+        | Hit::UpdateBannerDismiss
+        | Hit::WhatsNewOpen
+        | Hit::WhatsNewDismiss
+        | Hit::WhatsNewScrim
+        | Hit::WhatsNewPanel
+        | Hit::ReplyDismiss
+        | Hit::ReplySend
+        | Hit::ReplyText
+        | Hit::ReplyScrim
+        | Hit::ReplyPanel
+        | Hit::StartWithWindows
+        | Hit::GameUi
+        | Hit::MinimizeOnClose
+        | Hit::CloseWithGame
+        | Hit::OpenWithGame
+        | Hit::AutoUpdateOnLaunch
+        | Hit::QuitApp
+        | Hit::Uninstall
+        | Hit::GameFolder
+        | Hit::SysAppBrowse
+        | Hit::FbRate
+        | Hit::FbBug
+        | Hit::FbFeature
+        | Hit::FbStar(_)
+        | Hit::FbText
+        | Hit::FbAttach
+        | Hit::FbSend
+        | Hit::StDrag(_)
+        | Hit::RelDrag(_)
+        | Hit::StBg
+        | Hit::StHl
+        | Hit::RelBg
+        | Hit::RelHl
+        | Hit::MapBg
+        | Hit::MiniBg
+        | Hit::MiniZoom
+        | Hit::RadarRange
+        | Hit::RadarBg
+        | Hit::DashBg
+        | Hit::TickerBg
+        | Hit::TickerHl
+        | Hit::SysBg
+        | Hit::SectorBg
+        | Hit::DeltaBg
+        | Hit::StanceBg
+        | Hit::FlagBg
+        | Hit::LeanBg
+        | Hit::GamepadBg
+        | Hit::TelemetryBg
+        | Hit::PitBg
+        | Hit::PitBrowse
+        | Hit::PitOpenFolder
+        | Hit::StW(_)
+        | Hit::RelW(_)
+        | Hit::Font(_)
+        | Hit::StanceReset
+        | Hit::TrackPbClear
+        | Hit::ReviewFilterAll
+        | Hit::ReviewFilterRanked
+        | Hit::ReviewFilterSaved
+        | Hit::ReviewOpen(_)
+        | Hit::ReviewKeep(_)
+        | Hit::ReviewDelete(_)
+        | Hit::ReviewBack
+        | Hit::ReviewToggle
+        | Hit::AnalyzeCompare(_)
+        | Hit::AnalyzeCompareOpen
+        | Hit::AnalyzeYouLap(_)
+        | Hit::AnalyzeLapOpen
+        | Hit::AnalyzeScrub
+        | Hit::AnalyzeMap
+        | Hit::AnalyzeFollow => {}
     });
-    if id == Hit::FeatureSector && !with_config(|c| c.experimental_unlocked()) {
-        let on_labs = UI.lock().unwrap().as_ref().is_some_and(|u| u.tab.is_labs());
-        if on_labs {
-            set_tab(Tab::App);
+    if matches!(id, Hit::ThemePick(_)) {
+        if let Some(host) = UI.lock().unwrap().as_ref().map(|u| u.host) {
+            refresh_palette();
+            sync_titlebar(host);
         }
     }
+    if id == Hit::FeatureSector && !with_config(|c| c.experimental_unlocked()) {
+        if let Some(ui) = UI.lock().unwrap().as_mut() {
+            if ui.profile_section == ProfileSection::Tracks {
+                ui.profile_section = ProfileSection::Overview;
+                ui.tracks_selected = None;
+            }
+        }
+    }
+}
+
+fn reset_analyze_scrub() {
+    let (id, you_lap, warmup) = {
+        let ui = UI.lock().unwrap();
+        let Some(ui) = ui.as_ref() else {
+            return;
+        };
+        (ui.analyze_id, ui.analyze_you_lap, ui.analyze_warmup)
+    };
+    let scrub = id
+        .and_then(crate::review::load)
+        .map(|d| default_analyze_scrub(&d, you_lap, warmup))
+        .unwrap_or(0.0);
+    if let Some(ui) = UI.lock().unwrap().as_mut() {
+        ui.analyze_scrub = scrub;
+    }
+}
+
+/// Jump Analyze to the live moto. `force` is F8 / Review tab; paint is not.
+pub(crate) fn open_live_analyze(force: bool) {
+    let live = crate::review::live_id();
+    {
+        let mut ui = UI.lock().unwrap();
+        let Some(ui) = ui.as_mut() else {
+            return;
+        };
+        if force {
+            ui.review_stay_on_list = false;
+        }
+        let Some(id) = live_analyze_target(force, ui.review_stay_on_list, ui.analyze_id, live)
+        else {
+            return;
+        };
+        ui.analyze_id = Some(id);
+        ui.analyze_compare = -1;
+        ui.analyze_you_lap = -1;
+        ui.analyze_warmup = false;
+        ui.analyze_zoom = 1.0;
+        ui.analyze_pan_x = 0.0;
+        ui.analyze_pan_z = 0.0;
+        ui.analyze_follow = false;
+        ui.motos_list_scroll = ui.scroll;
+        ui.scroll = 0.0;
+    }
+    reset_analyze_scrub();
+}
+
+pub(crate) fn live_analyze_target(
+    force: bool,
+    stay: bool,
+    analyze_id: Option<i64>,
+    live_id: Option<i64>,
+) -> Option<i64> {
+    let live = live_id?;
+    if analyze_id == Some(live) {
+        return None;
+    }
+    if force {
+        return Some(live);
+    }
+    if stay || analyze_id.is_some() {
+        return None;
+    }
+    Some(live)
 }

@@ -5,11 +5,11 @@
 #[path = "../../../web-preview/src/demo_track.rs"]
 mod demo_track;
 
-use mxbo_hud::config::{FontFamily, HudConfig, LeanStyle, SnapAlign, UnitPrefs, Units, WidgetId};
-use mxbo_hud::render::{draw, Fonts};
-use mxbo_hud::shm::{
-    write_name, Point, Rider, Snapshot, Standing, MAGIC, VERSION,
+use mxbo_hud::config::{
+    FontFamily, GamepadTheme, HudConfig, LeanStyle, RadarStyle, SnapAlign, UnitPrefs, Units, WidgetId,
 };
+use mxbo_hud::render::{draw, Fonts};
+use mxbo_hud::shm::{write_name, Point, Rider, Snapshot, Standing, MAGIC, VERSION};
 use mxbo_hud::{set_sys_procs, set_sys_stats, SysProc};
 use tiny_skia::Pixmap;
 
@@ -42,12 +42,28 @@ fn main() {
     std::fs::create_dir_all(&out).expect("announce-shots dir");
 
     let shots: &[(&str, u32, u32, fn(&mut HudConfig))] = &[
-        ("standings.png", W, H, |c| size_show(c, "standings", 0.28, 0.70)),
-        ("relative.png", W, H, |c| size_show(c, "relative", 0.26, 0.52)),
+        ("standings.png", W, H, |c| {
+            size_show(c, "standings", 0.28, 0.70)
+        }),
+        ("relative.png", W, H, |c| {
+            size_show(c, "relative", 0.26, 0.52)
+        }),
         ("map.png", W, H, |c| size_show(c, "map", 0.48, 0.72)),
+        ("map-follow.png", W, H, |c| {
+            size_show(c, "map", 0.48, 0.72);
+            c.map_follow = true;
+        }),
         ("minimap.png", W, H, |c| size_show(c, "minimap", 0.34, 0.58)),
         ("radar.png", W, H, |c| size_show(c, "radar", 0.24, 0.42)),
+        ("radar-arrows.png", W, H, |c| {
+            size_show(c, "radar", 0.24, 0.42);
+            c.radar_style = RadarStyle::Arrows;
+        }),
         ("dash.png", W, H, |c| size_show(c, "dash", 0.22, 0.14)),
+        ("dash-simple.png", W, H, |c| {
+            size_show(c, "dash", 0.22, 0.14);
+            c.dash_simple = true;
+        }),
         ("flag.png", W, H, |c| {
             size_show(c, "flag", 0.107, 0.019);
             mxbo_hud::set_flag_preview(2);
@@ -97,8 +113,12 @@ fn main() {
             c.lean_style = LeanStyle::Minimal;
         }),
         ("gamepad.png", W, H, |c| {
-            c.experimental = true;
             size_show(c, "gamepad", 0.28, 0.22);
+            mxbo_hud::gamepad::set(mxbo_hud::gamepad::demo_sony());
+        }),
+        ("gamepad-dark.png", W, H, |c| {
+            size_show(c, "gamepad", 0.28, 0.22);
+            c.gamepad_theme = GamepadTheme::Dark;
             mxbo_hud::gamepad::set(mxbo_hud::gamepad::demo_sony());
         }),
         ("telemetry.png", W, H, |c| {
@@ -147,23 +167,116 @@ fn main() {
         if name == "sys.png" {
             set_sys_stats(48.0, 62.0, 91.0, 41.0, 24);
             set_sys_procs(vec![
-                SysProc { label: "HUD".into(), cpu: 12.0, gpu: 3.0, mem_mb: 420.0, mem_pct: 2.6, on: true },
-                SysProc { label: "MX Bikes".into(), cpu: 41.0, gpu: 38.0, mem_mb: 1800.0, mem_pct: 11.0, on: true },
-                SysProc { label: "MXB App".into(), cpu: 8.0, gpu: 1.0, mem_mb: 180.0, mem_pct: 1.1, on: true },
-                SysProc { label: "ReShade".into(), cpu: -1.0, gpu: -1.0, mem_mb: 44.0, mem_pct: 0.3, on: true },
+                SysProc {
+                    label: "HUD".into(),
+                    cpu: 12.0,
+                    gpu: 3.0,
+                    mem_mb: 420.0,
+                    mem_pct: 2.6,
+                    on: true,
+                },
+                SysProc {
+                    label: "MX Bikes".into(),
+                    cpu: 41.0,
+                    gpu: 38.0,
+                    mem_mb: 1800.0,
+                    mem_pct: 11.0,
+                    on: true,
+                },
+                SysProc {
+                    label: "MXB App".into(),
+                    cpu: 8.0,
+                    gpu: 1.0,
+                    mem_mb: 180.0,
+                    mem_pct: 1.1,
+                    on: true,
+                },
+                SysProc {
+                    label: "ReShade".into(),
+                    cpu: -1.0,
+                    gpu: -1.0,
+                    mem_mb: 44.0,
+                    mem_pct: 0.3,
+                    on: true,
+                },
             ]);
         }
         cfg.apply_to_snapshot(&mut snap);
         let mut px = Pixmap::new(w, h).expect("pixmap");
         fill_backdrop(&mut px);
         // Warm layout / race store, then draw for real on a clean plate.
-        draw(&mut px, &fonts, Some(&snap), &cfg, w, h, 0.35, false, false, false);
+        draw(
+            &mut px,
+            &fonts,
+            Some(&snap),
+            &cfg,
+            w,
+            h,
+            0.35,
+            false,
+            false,
+            false,
+        );
         fill_backdrop(&mut px);
-        draw(&mut px, &fonts, Some(&snap), &cfg, w, h, 0.35, false, false, false);
+        draw(
+            &mut px,
+            &fonts,
+            Some(&snap),
+            &cfg,
+            w,
+            h,
+            0.35,
+            false,
+            false,
+            false,
+        );
         let path = out.join(name);
-        std::fs::write(&path, px.encode_png().expect("png")).expect("write");
+        let png = if let Some(id) = pair_widget(name) {
+            crop_widget(&px, cfg[id].rect, w, h).encode_png().expect("png")
+        } else {
+            px.encode_png().expect("png")
+        };
+        std::fs::write(&path, png).expect("write");
         println!("wrote {}", path.display());
     }
+}
+
+fn pair_widget(name: &str) -> Option<WidgetId> {
+    match name {
+        "dash.png" | "dash-simple.png" => Some(WidgetId::Dash),
+        "map.png" | "map-follow.png" => Some(WidgetId::Map),
+        "radar.png" | "radar-arrows.png" => Some(WidgetId::Radar),
+        "lean.png" | "lean-min.png" => Some(WidgetId::Lean),
+        "gamepad.png" | "gamepad-dark.png" => Some(WidgetId::Gamepad),
+        _ => None,
+    }
+}
+
+fn crop_widget(px: &Pixmap, rect: mxbo_hud::snapshot::Rect, frame_w: u32, frame_h: u32) -> Pixmap {
+    let pad = 8.0;
+    let fw = frame_w as f32;
+    let fh = frame_h as f32;
+    let x0 = ((rect.x * fw) - pad).max(0.0).round() as u32;
+    let y0 = ((rect.y * fh) - pad).max(0.0).round() as u32;
+    let x1 = ((rect.x + rect.w) * fw + pad).min(fw).round() as u32;
+    let y1 = ((rect.y + rect.h) * fh + pad).min(fh).round() as u32;
+    let cw = (x1.saturating_sub(x0)).max(1);
+    let ch = (y1.saturating_sub(y0)).max(1);
+    let mut out = Pixmap::new(cw, ch).expect("crop");
+    for row in 0..ch {
+        for col in 0..cw {
+            let sx = x0 + col;
+            let sy = y0 + row;
+            if sx >= frame_w || sy >= frame_h {
+                continue;
+            }
+            if let Some(color) = px.pixel(sx, sy) {
+                out.pixels_mut()[(row * cw + col) as usize] = color;
+            }
+        }
+    }
+    println!("crop {cw}x{ch}");
+    out
 }
 
 fn base_cfg() -> HudConfig {
@@ -359,6 +472,7 @@ fn demo_snapshot() -> Snapshot {
             crashed: 0,
             name: [0; 32],
             lean: 0.0,
+            ..Rider::default()
         };
         write_name(&mut s.riders[i].name, name);
     }

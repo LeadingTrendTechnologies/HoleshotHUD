@@ -1,30 +1,39 @@
 # Radar
 
-Proximity blips beside and behind you. Settings subtitle: “Riders beside and behind you”. No track outline. Hairline range arcs at **3 / 6 / 12 m**, centered on the bike, with dim labels on the outer two arcs (hidden when the widget is under 72 px). **Range** only changes how far dots show — rings stay 6 and 12.
+Proximity beside and behind you. Settings subtitle: “Riders beside and behind you”. Two looks via **Look**:
+
+- **Plaque** (default) — hairline range arcs at **3 / 6 / 12 m**, centered on the bike, with dim labels on the outer two arcs (hidden when the widget is under 72 px). **Range** only changes how far dots show — rings stay 6 and 12. No track outline.
+- **Arrows** — no plaque, rings, or bike silhouette. One heat-colored triangle per in-range rider sits on the **widget rect edge** and slides as bike-frame bearing changes (back-left → bottom-left; directly behind → mid-bottom). Tip points outward toward the rider.
 
 ## Code
 
-- Draw: `draw_radar` in `overlay/hud/src/render.rs`
+- Draw: `draw_radar` in `overlay/hud/src/render/radar.rs` (`draw_radar_plaque` / `draw_radar_arrows`, shared `collect_radar_blips`)
 - Axes: `radar_axes` (velocity if moving, else yaw). Yaw in radians if `|yaw| > 6.5`, else already radians.
-- Settings: `pane_radar` in `overlay/src/settings.rs`
+- Edge map: `radar_arrow_on_edge` — ray from rect center along `(lat, -fwd)` hits the rim.
+- Settings: `pane_radar` in `overlay/src/settings/widgets.rs` (`radar_style`)
 
 ## Geometry (meters, bike frame)
 
 | Constant / setting | Value | Meaning |
 | --- | --- | --- |
-| `radar_range` | 6–30 m, default 12 | How far behind (and half of that beside) dots show. Rings stay 3 / 6 / 12; past 12 m, dots sit outside the 12 m ring |
+| `radar_style` | `plaque` / `arrows` | Plaque blips or edge arrows |
+| `radar_range` | 6–30 m, default 12 | How far behind (and half of that beside) riders show. Rings stay 3 / 6 / 12; past 12 m, plaque dots sit outside the 12 m ring |
 | `RADAR_FWD_AHEAD` | 3 | Almost nothing in front (this is rear/side radar) |
 | `RADAR_SIDE_LAT` | 0.4 | Deadband: closer than this is “in line”, not beside |
 | `RADAR_REAR_FWD` | −0.6 | Behind threshold |
 | `RADAR_STRETCH_M` | max(20, range) | Must be on the same stretch of `track_pos` |
 
-`radar_in_view`: rear blips if `radar_rear` and behind; side blips if `radar_sides` and `|lat| > 0.4`. You are a white bike silhouette near the top (`radar_you_frac` from the 3 m forward cap vs range), with a night-ink outline so the mark still reads on a light sky when the panel is glass.
+`radar_in_view`: rear blips if `radar_rear` and behind; side blips if `radar_sides` and `|lat| > 0.4`.
 
-Blips heat by distance (closer = larger, more orange). Farther blips draw first so near ones sit on top. Colors follow the Range Arcs mock: close `#FA7602`, far cream `#E4C670`, both opaque with a same-hue glow (no dark halo). Size is `0.020 + heat×0.014` of the widget, clamped 7–15 px. Crashed riders (and pit / DNS / out / DSQ) use the same `draw_state_mark` triangle as map/minimap — crash is the common one on radar. You get the mark on the white bike if you are down.
+**Plaque:** You are a white bike silhouette near the top (`radar_you_frac` from the 3 m forward cap vs range), with a night-ink outline so the mark still reads on a light sky when the panel is glass. Blips heat by distance (closer = larger, more orange). Farther blips draw first so near ones sit on top. Colors follow the Range Arcs mock: close `#FA7602`, far cream `#E4C670`, both opaque with a same-hue glow (no dark halo). Size is `0.020 + heat×0.014` of the widget, clamped 7–15 px. When `lap_rel` is set (same rules as map / relative — see [widgets.md](../widgets.md) § Shared rider colors), a **blue** or **red** ring strokes just outside the solid fill; heat fill stays. Crashed riders (and pit / DNS / out / DSQ) use the same `draw_state_mark` triangle as map/minimap — crash is the common one on radar. You get the mark on the white bike if you are down.
 
-**Range rings** (default on) can be toggled in settings / the demo. Off: panel, bike, and blips only. Stroke and the two outer labels lift with panel opacity so they still read on a solid `#0E0E10` plaque (100% background). Rings are always 3 / 6 / 12 m. Raising **Range** past 12 m leaves those rings in place and puts farther blips outside the 12 m ring.
+**Range rings** (default on, Plaque only) can be toggled in settings / the demo. Off: panel, bike, and blips only. Stroke and the two outer labels lift with panel opacity so they still read on a solid `#0E0E10` plaque (100% background). Rings are always 3 / 6 / 12 m. Raising **Range** past 12 m leaves those rings in place and puts farther blips outside the 12 m ring. The Range rings toggle is hidden while Look is Arrows.
 
-Local position is predicted with `age`, same as map/minimap. Requires telemetry; otherwise only the empty panel + your bike mark draw.
+**Arrows:** Heat fill and glow match plaque blips; size is `0.032 + heat×0.024` of `min(w,h)`, clamped 28–56 px, with a night-ink border. Lapper blue/red strokes outside that border. Crash / state mark sits on the arrow (~0.45× tip). Switching to Arrows expands the rect once if it is still the default plaque (`RADAR_ARROWS_RECT` ≈ 2% inset full frame). Switching back to Plaque does not shrink a custom rect. Panel opacity does not fill a plaque in Arrows mode.
+
+**Arrows crash flash:** Sustained crashed riders are hidden (unlike Plaque). When a nearby rider’s crash bit rises, the arrow holds ~1.75 s at the last bearing with the crash icon, then drops.
+
+Local position is predicted with `age`, same as map/minimap. Requires telemetry; otherwise Plaque draws the empty panel + bike mark, Arrows draws nothing.
 
 ## Do not regress
 
@@ -34,14 +43,28 @@ Local position is predicted with `age`, same as map/minimap. Requires telemetry;
 - Default `radar_range` is 12 m so the 12 m ring still fills the plaque. Past 12 m, only the view grows so extra dots sit outside that ring.
 - Panel opacity default is 86, unlike map/minimap.
 - Nearby crashed riders keep the map crash triangle (`\u{f071}`), not a color-only blip.
+- Lapper rings only for `lap_rel` within catch span (blue / red, either side); heat fill stays orange→cream. Do not recolor the whole blip.
+- Red rings only when you gained a lap on them (pairwise). Leader lapping someone behind you is not red.
+- Same-race S/F straddles must not get lapper rings. `lap_rel` uses continuous progress when `num_laps` differ.
 - Do not draw the old orange side/rear zone wedges again; the panel is range arcs + blips + your bike.
 - Range rings are circles fitted inside the plaque (at 12 m the 12 m ring touches the sides or the bottom, not stretched to fill height). Past 12 m, that extra distance is what touches the edge. The two outer rings sit in a gap on the stroke. Do not draw ovals, a sci-fi sweep, or a compass.
 - Range rings default on; `radar_rings` off still draws the panel, bike, and blips.
 - Solid panel (high `radar_bg`) must keep the rings lighter than `#0E0E10` — do not use the hairline token `#2A2A2E` for the arcs.
 - The white bike keeps a night-ink outline (`#0E0E10`) so it does not vanish on a light sky when `radar_bg` is low.
+- Arrows ride the Radar widget rect edges and stay rear/side-only (`radar_in_view`). Do not pin to the full overlay when the rect is a small plaque.
+- Arrows must slide continuously with bearing — no snap to fixed compass ticks.
+- Expanding to `RADAR_ARROWS_RECT` happens only when the rect still matches the default plaque.
+- Arrows hide sustained crashed riders; only a ~1.75 s rising-edge flash (with crash icon) shows a nearby crash. Plaque still shows crashed blips.
 
 ## Change log
 
+- 2026-09-26 — Arrows larger (28–56 px) with night-ink border; crash icon bigger. Sustained crashed riders hidden; ~1.75 s flash when someone goes down nearby.
+- 2026-09-26 — Arrows are larger (22–48 px) with a wider glow so they read on bright track/sky.
+- 2026-09-26 — **Look**: Plaque (default) or Arrows. Arrows are edge indicators that track bike-frame bearing; shared filters with the plaque. Switching to Arrows expands the default plaque rect once.
+- 2026-09-24 — Red rings are pairwise only: leader lapping someone behind you is not red.
+- 2026-09-24 — Same-race S/F straddles no longer get blue/red lapper rings (`lap_rel` continuous progress when `gap_laps` match).
+- 2026-09-22 — Lapper rings follow sticky `lap_rel` (hold through a pass while nearby).
+- 2026-09-22 — Lapper / lapped closing blips get a blue or red ring (`lap_rel`); heat fill unchanged.
 - Overlay radar added as a separate widget from map/minimap (side + rear only).
 - 0.1.8 — Hidden until **Show on overlay**.
 - 2026-08-18 — Wiki created. Stretch filter and meter caps documented.

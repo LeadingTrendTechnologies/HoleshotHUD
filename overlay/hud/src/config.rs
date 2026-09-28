@@ -1,7 +1,8 @@
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::fs;
 use std::ops::{Deref, DerefMut, Index, IndexMut};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 use std::time::SystemTime;
 
@@ -16,6 +17,131 @@ pub const NAME_W_MAX: i32 = 400;
 pub const RADAR_RANGE_MIN: i32 = 6;
 pub const RADAR_RANGE_MAX: i32 = 30;
 pub const RADAR_RANGE_DEFAULT: i32 = 12;
+
+/// Holeshot orange. Default primary for HUD, settings plaques, and Motos.
+pub const DEFAULT_PRIMARY: [u8; 3] = [255, 148, 48];
+
+/// Preset chips in Settings → Look → Primary color. First entry is the default.
+pub const PRIMARY_SWATCHES: [[u8; 3]; 7] = [
+    DEFAULT_PRIMARY,
+    [239, 68, 68],
+    [234, 179, 8],
+    [74, 222, 128],
+    [34, 211, 238],
+    [167, 139, 250],
+    [232, 121, 249],
+];
+
+thread_local! {
+    static ACCENT_RGB: Cell<[u8; 3]> = const { Cell::new(DEFAULT_PRIMARY) };
+    static SETTINGS_THEME_LIGHT: Cell<bool> = const { Cell::new(false) };
+}
+
+pub fn set_accent_rgb(rgb: [u8; 3]) {
+    ACCENT_RGB.with(|c| c.set(rgb));
+}
+
+pub fn accent_rgb() -> [u8; 3] {
+    ACCENT_RGB.with(|c| c.get())
+}
+
+/// Cached for paint paths that already hold the config lock (settings / Motos chrome).
+pub fn set_settings_theme_light(light: bool) {
+    SETTINGS_THEME_LIGHT.with(|c| c.set(light));
+}
+
+pub fn settings_theme_light() -> bool {
+    SETTINGS_THEME_LIGHT.with(|c| c.get())
+}
+
+pub fn format_primary_color(rgb: [u8; 3]) -> String {
+    format!("#{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2])
+}
+
+pub fn parse_primary_color(s: &str) -> Option<[u8; 3]> {
+    let hex = s.trim().strip_prefix('#').unwrap_or(s.trim());
+    if hex.len() != 6 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    Some([
+        u8::from_str_radix(&hex[0..2], 16).ok()?,
+        u8::from_str_radix(&hex[2..4], 16).ok()?,
+        u8::from_str_radix(&hex[4..6], 16).ok()?,
+    ])
+}
+
+/// Keep a custom game-ui image path only when the file still exists.
+pub fn game_ui_image_path(s: &str) -> String {
+    let p = s.trim();
+    if p.is_empty() {
+        return String::new();
+    }
+    if std::path::Path::new(p).is_file() {
+        p.to_string()
+    } else {
+        String::new()
+    }
+}
+
+/// Hue 0..360, saturation 0..1, value 0..1.
+pub fn rgb_to_hsv(rgb: [u8; 3]) -> (f32, f32, f32) {
+    let r = rgb[0] as f32 / 255.0;
+    let g = rgb[1] as f32 / 255.0;
+    let b = rgb[2] as f32 / 255.0;
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let d = max - min;
+    let h = if d < 1e-6 {
+        0.0
+    } else if (max - r).abs() < 1e-6 {
+        60.0 * ((g - b) / d)
+    } else if (max - g).abs() < 1e-6 {
+        60.0 * ((b - r) / d + 2.0)
+    } else {
+        60.0 * ((r - g) / d + 4.0)
+    };
+    let h = if h < 0.0 { h + 360.0 } else { h };
+    let s = if max < 1e-6 { 0.0 } else { d / max };
+    (h, s, max)
+}
+
+pub fn hsv_to_rgb(h: f32, s: f32, v: f32) -> [u8; 3] {
+    let h = h.rem_euclid(360.0);
+    let s = s.clamp(0.0, 1.0);
+    let v = v.clamp(0.0, 1.0);
+    let c = v * s;
+    let x = c * (1.0 - ((h / 60.0).rem_euclid(2.0) - 1.0).abs());
+    let m = v - c;
+    let (r, g, b) = if h < 60.0 {
+        (c, x, 0.0)
+    } else if h < 120.0 {
+        (x, c, 0.0)
+    } else if h < 180.0 {
+        (0.0, c, x)
+    } else if h < 240.0 {
+        (0.0, x, c)
+    } else if h < 300.0 {
+        (x, 0.0, c)
+    } else {
+        (c, 0.0, x)
+    };
+    [
+        ((r + m) * 255.0).round().clamp(0.0, 255.0) as u8,
+        ((g + m) * 255.0).round().clamp(0.0, 255.0) as u8,
+        ((b + m) * 255.0).round().clamp(0.0, 255.0) as u8,
+    ]
+}
+
+pub fn ink_on_rgb(rgb: [u8; 3]) -> [u8; 3] {
+    let lum = 0.2126 * (rgb[0] as f32 / 255.0)
+        + 0.7152 * (rgb[1] as f32 / 255.0)
+        + 0.0722 * (rgb[2] as f32 / 255.0);
+    if lum > 0.62 {
+        [16, 16, 18]
+    } else {
+        [248, 248, 250]
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum FontFamily {
@@ -86,9 +212,18 @@ impl FontFamily {
 
     pub fn windows_files(self) -> Option<(&'static str, &'static str)> {
         match self {
-            Self::Segoe => Some((r"C:\Windows\Fonts\segoeui.ttf", r"C:\Windows\Fonts\segoeuib.ttf")),
-            Self::Arial => Some((r"C:\Windows\Fonts\arial.ttf", r"C:\Windows\Fonts\arialbd.ttf")),
-            Self::Tahoma => Some((r"C:\Windows\Fonts\tahoma.ttf", r"C:\Windows\Fonts\tahomabd.ttf")),
+            Self::Segoe => Some((
+                r"C:\Windows\Fonts\segoeui.ttf",
+                r"C:\Windows\Fonts\segoeuib.ttf",
+            )),
+            Self::Arial => Some((
+                r"C:\Windows\Fonts\arial.ttf",
+                r"C:\Windows\Fonts\arialbd.ttf",
+            )),
+            Self::Tahoma => Some((
+                r"C:\Windows\Fonts\tahoma.ttf",
+                r"C:\Windows\Fonts\tahomabd.ttf",
+            )),
             _ => None,
         }
     }
@@ -362,6 +497,42 @@ impl SettingsKey {
             Self::Home => 0x24,
             Self::End => 0x23,
         }
+    }
+}
+
+/// F8 Settings window chrome. Does not retheme in-game HUD plaques.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SettingsTheme {
+    Dark,
+    Light,
+}
+
+impl SettingsTheme {
+    pub const ALL: [Self; 2] = [Self::Dark, Self::Light];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Dark => "Dark",
+            Self::Light => "Light",
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Dark => "dark",
+            Self::Light => "light",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "light" => Self::Light,
+            _ => Self::Dark,
+        }
+    }
+
+    pub fn is_dark(self) -> bool {
+        matches!(self, Self::Dark)
     }
 }
 
@@ -643,6 +814,40 @@ impl GamepadStyle {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum GamepadTheme {
+    #[default]
+    Light,
+    Dark,
+}
+
+impl GamepadTheme {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Light => "Light",
+            Self::Dark => "Dark",
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Light => "light",
+            Self::Dark => "dark",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "dark" => Self::Dark,
+            _ => Self::Light,
+        }
+    }
+
+    pub fn filled(self) -> bool {
+        matches!(self, Self::Light)
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum LeanStyle {
     Figure,
@@ -669,6 +874,66 @@ impl LeanStyle {
             "minimal" | "attitude" => Self::Minimal,
             _ => Self::Figure,
         }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum RadarStyle {
+    #[default]
+    Plaque,
+    Arrows,
+}
+
+impl RadarStyle {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Plaque => "Plaque",
+            Self::Arrows => "Arrows",
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Plaque => "plaque",
+            Self::Arrows => "arrows",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "arrows" | "arrow" | "edge" => Self::Arrows,
+            _ => Self::Plaque,
+        }
+    }
+}
+
+/// Near-fullscreen inset used when Arrows mode expands the default plaque rect.
+pub const RADAR_ARROWS_RECT: Rect = Rect {
+    x: 0.02,
+    y: 0.02,
+    w: 0.96,
+    h: 0.96,
+};
+
+pub fn radar_default_plaque_rect() -> Rect {
+    WidgetId::Radar.default_rect()
+}
+
+pub fn radar_rect_is_default_plaque(rect: Rect) -> bool {
+    let d = radar_default_plaque_rect();
+    (rect.x - d.x).abs() < 0.001
+        && (rect.y - d.y).abs() < 0.001
+        && (rect.w - d.w).abs() < 0.001
+        && (rect.h - d.h).abs() < 0.001
+}
+
+/// Expand the Radar rect once when switching to Arrows if it is still the default plaque.
+pub fn maybe_expand_radar_for_arrows(cfg: &mut HudConfig) {
+    if cfg.radar_style != RadarStyle::Arrows {
+        return;
+    }
+    if radar_rect_is_default_plaque(cfg[WidgetId::Radar].rect) {
+        cfg[WidgetId::Radar].rect = RADAR_ARROWS_RECT;
     }
 }
 
@@ -729,22 +994,102 @@ impl WidgetId {
 
     fn default_rect(self) -> Rect {
         match self {
-            Self::Standings => Rect { x: 0.012, y: 0.03, w: 0.20, h: 0.46 },
-            Self::Relative => Rect { x: 0.012, y: 0.62, w: 0.20, h: 0.36 },
-            Self::Map => Rect { x: 0.775, y: 0.62, w: 0.21, h: 0.34 },
-            Self::Minimap => Rect { x: 0.815, y: 0.035, w: 0.165, h: 0.295 },
-            Self::Radar => Rect { x: 0.438, y: 0.755, w: 0.124, h: 0.22 },
-            Self::Dash => Rect { x: 0.445, y: 0.865, w: 0.111, h: 0.115 },
-            Self::Ticker => Rect { x: 0.06, y: 0.012, w: 0.88, h: 0.055 },
-            Self::Sys => Rect { x: 0.012, y: 0.36, w: 0.086, h: 0.25 },
-            Self::Sector => Rect { x: 0.62, y: 0.68, w: 0.36, h: 0.26 },
-            Self::Delta => Rect { x: 0.36, y: 0.76, w: 0.28, h: 0.09 },
-            Self::Stance => Rect { x: 0.445, y: 0.705, w: 0.11, h: 0.065 },
-            Self::Flag => Rect { x: 0.447, y: 0.026, w: 0.107, h: 0.019 },
-            Self::Lean => Rect { x: 0.318, y: 0.755, w: 0.11, h: 0.20 },
-            Self::Gamepad => Rect { x: 0.38, y: 0.76, w: 0.24, h: 0.20 },
-            Self::Telemetry => Rect { x: 0.22, y: 0.80, w: 0.56, h: 0.145 },
-            Self::Pitboard => Rect { x: 0.34, y: 0.05, w: 0.32, h: 0.22 },
+            Self::Standings => Rect {
+                x: 0.012,
+                y: 0.03,
+                w: 0.20,
+                h: 0.46,
+            },
+            Self::Relative => Rect {
+                x: 0.012,
+                y: 0.62,
+                w: 0.20,
+                h: 0.36,
+            },
+            Self::Map => Rect {
+                x: 0.775,
+                y: 0.62,
+                w: 0.21,
+                h: 0.34,
+            },
+            Self::Minimap => Rect {
+                x: 0.815,
+                y: 0.035,
+                w: 0.165,
+                h: 0.295,
+            },
+            Self::Radar => Rect {
+                x: 0.438,
+                y: 0.755,
+                w: 0.124,
+                h: 0.22,
+            },
+            Self::Dash => Rect {
+                x: 0.445,
+                y: 0.865,
+                w: 0.111,
+                h: 0.115,
+            },
+            Self::Ticker => Rect {
+                x: 0.06,
+                y: 0.012,
+                w: 0.88,
+                h: 0.055,
+            },
+            Self::Sys => Rect {
+                x: 0.012,
+                y: 0.36,
+                w: 0.086,
+                h: 0.25,
+            },
+            Self::Sector => Rect {
+                x: 0.62,
+                y: 0.68,
+                w: 0.36,
+                h: 0.26,
+            },
+            Self::Delta => Rect {
+                x: 0.36,
+                y: 0.76,
+                w: 0.28,
+                h: 0.09,
+            },
+            Self::Stance => Rect {
+                x: 0.445,
+                y: 0.705,
+                w: 0.11,
+                h: 0.065,
+            },
+            Self::Flag => Rect {
+                x: 0.447,
+                y: 0.026,
+                w: 0.107,
+                h: 0.019,
+            },
+            Self::Lean => Rect {
+                x: 0.318,
+                y: 0.755,
+                w: 0.11,
+                h: 0.20,
+            },
+            Self::Gamepad => Rect {
+                x: 0.38,
+                y: 0.76,
+                w: 0.24,
+                h: 0.20,
+            },
+            Self::Telemetry => Rect {
+                x: 0.22,
+                y: 0.80,
+                w: 0.56,
+                h: 0.145,
+            },
+            Self::Pitboard => Rect {
+                x: 0.34,
+                y: 0.05,
+                w: 0.32,
+                h: 0.22,
+            },
         }
     }
 
@@ -762,22 +1107,118 @@ impl WidgetId {
     /// Disk key names. Changing these breaks existing `Holeshot-HUD.ini` files.
     fn ini(self) -> WidgetIni {
         match self {
-            Self::Standings => WidgetIni { rect: "standings", show: "show_standings", font: "st_font", bold: "st_bold", bg: "st_bg" },
-            Self::Relative => WidgetIni { rect: "relative", show: "show_relative", font: "rel_font", bold: "rel_bold", bg: "rel_bg" },
-            Self::Map => WidgetIni { rect: "map", show: "show_map", font: "map_font", bold: "map_bold", bg: "map_bg" },
-            Self::Minimap => WidgetIni { rect: "minimap", show: "show_minimap", font: "mini_font", bold: "mini_bold", bg: "mini_bg" },
-            Self::Radar => WidgetIni { rect: "radar", show: "show_radar", font: "radar_font", bold: "radar_bold", bg: "radar_bg" },
-            Self::Dash => WidgetIni { rect: "dash", show: "show_dash", font: "dash_font", bold: "dash_bold", bg: "dash_bg" },
-            Self::Ticker => WidgetIni { rect: "ticker", show: "show_ticker", font: "ticker_font", bold: "ticker_bold", bg: "ticker_bg" },
-            Self::Sys => WidgetIni { rect: "sys", show: "show_sys", font: "sys_font", bold: "sys_bold", bg: "sys_bg" },
-            Self::Sector => WidgetIni { rect: "sector", show: "show_sector", font: "sector_font", bold: "sector_bold", bg: "sector_bg" },
-            Self::Delta => WidgetIni { rect: "delta", show: "show_delta", font: "delta_font", bold: "delta_bold", bg: "delta_bg" },
-            Self::Stance => WidgetIni { rect: "stance", show: "show_stance", font: "stance_font", bold: "stance_bold", bg: "stance_bg" },
-            Self::Flag => WidgetIni { rect: "flag", show: "show_flag", font: "flag_font", bold: "flag_bold", bg: "flag_bg" },
-            Self::Lean => WidgetIni { rect: "lean", show: "show_lean", font: "lean_font", bold: "lean_bold", bg: "lean_bg" },
-            Self::Gamepad => WidgetIni { rect: "gamepad", show: "show_gamepad", font: "gamepad_font", bold: "gamepad_bold", bg: "gamepad_bg" },
-            Self::Telemetry => WidgetIni { rect: "telemetry", show: "show_telemetry", font: "telemetry_font", bold: "telemetry_bold", bg: "telemetry_bg" },
-            Self::Pitboard => WidgetIni { rect: "pitboard", show: "show_pitboard", font: "pit_font", bold: "pit_bold", bg: "pit_bg" },
+            Self::Standings => WidgetIni {
+                rect: "standings",
+                show: "show_standings",
+                font: "st_font",
+                bold: "st_bold",
+                bg: "st_bg",
+            },
+            Self::Relative => WidgetIni {
+                rect: "relative",
+                show: "show_relative",
+                font: "rel_font",
+                bold: "rel_bold",
+                bg: "rel_bg",
+            },
+            Self::Map => WidgetIni {
+                rect: "map",
+                show: "show_map",
+                font: "map_font",
+                bold: "map_bold",
+                bg: "map_bg",
+            },
+            Self::Minimap => WidgetIni {
+                rect: "minimap",
+                show: "show_minimap",
+                font: "mini_font",
+                bold: "mini_bold",
+                bg: "mini_bg",
+            },
+            Self::Radar => WidgetIni {
+                rect: "radar",
+                show: "show_radar",
+                font: "radar_font",
+                bold: "radar_bold",
+                bg: "radar_bg",
+            },
+            Self::Dash => WidgetIni {
+                rect: "dash",
+                show: "show_dash",
+                font: "dash_font",
+                bold: "dash_bold",
+                bg: "dash_bg",
+            },
+            Self::Ticker => WidgetIni {
+                rect: "ticker",
+                show: "show_ticker",
+                font: "ticker_font",
+                bold: "ticker_bold",
+                bg: "ticker_bg",
+            },
+            Self::Sys => WidgetIni {
+                rect: "sys",
+                show: "show_sys",
+                font: "sys_font",
+                bold: "sys_bold",
+                bg: "sys_bg",
+            },
+            Self::Sector => WidgetIni {
+                rect: "sector",
+                show: "show_sector",
+                font: "sector_font",
+                bold: "sector_bold",
+                bg: "sector_bg",
+            },
+            Self::Delta => WidgetIni {
+                rect: "delta",
+                show: "show_delta",
+                font: "delta_font",
+                bold: "delta_bold",
+                bg: "delta_bg",
+            },
+            Self::Stance => WidgetIni {
+                rect: "stance",
+                show: "show_stance",
+                font: "stance_font",
+                bold: "stance_bold",
+                bg: "stance_bg",
+            },
+            Self::Flag => WidgetIni {
+                rect: "flag",
+                show: "show_flag",
+                font: "flag_font",
+                bold: "flag_bold",
+                bg: "flag_bg",
+            },
+            Self::Lean => WidgetIni {
+                rect: "lean",
+                show: "show_lean",
+                font: "lean_font",
+                bold: "lean_bold",
+                bg: "lean_bg",
+            },
+            Self::Gamepad => WidgetIni {
+                rect: "gamepad",
+                show: "show_gamepad",
+                font: "gamepad_font",
+                bold: "gamepad_bold",
+                bg: "gamepad_bg",
+            },
+            Self::Telemetry => WidgetIni {
+                rect: "telemetry",
+                show: "show_telemetry",
+                font: "telemetry_font",
+                bold: "telemetry_bold",
+                bg: "telemetry_bg",
+            },
+            Self::Pitboard => WidgetIni {
+                rect: "pitboard",
+                show: "show_pitboard",
+                font: "pit_font",
+                bold: "pit_bold",
+                bg: "pit_bg",
+            },
         }
     }
 }
@@ -874,14 +1315,16 @@ pub enum StField {
     Current,
     Best,
     Last,
+    LapDiff,
     Status,
     Bike,
     Penalty,
     Crashed,
+    Category,
 }
 
 impl StField {
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 15] = [
         Self::Pos,
         Self::Num,
         Self::Name,
@@ -891,10 +1334,12 @@ impl StField {
         Self::Current,
         Self::Best,
         Self::Last,
+        Self::LapDiff,
         Self::Status,
         Self::Bike,
         Self::Penalty,
         Self::Crashed,
+        Self::Category,
     ];
 
     pub fn key(self) -> &'static str {
@@ -908,10 +1353,12 @@ impl StField {
             Self::Current => "current",
             Self::Best => "best",
             Self::Last => "last",
+            Self::LapDiff => "lapdiff",
             Self::Status => "status",
             Self::Bike => "bike",
             Self::Penalty => "pen",
             Self::Crashed => "crash",
+            Self::Category => "cat",
         }
     }
 
@@ -920,16 +1367,18 @@ impl StField {
             Self::Pos => "Position",
             Self::Num => "Number",
             Self::Name => "Name",
-            Self::Gap => "Gap",
-            Self::Interval => "Interval",
+            Self::Gap => "Gap to leader",
+            Self::Interval => "Gap to rider ahead",
             Self::Laps => "Completed Laps",
             Self::Current => "Current lap",
             Self::Best => "Fastest",
             Self::Last => "Last lap",
+            Self::LapDiff => "Last lap diff",
             Self::Status => "Status",
             Self::Bike => "Bike",
             Self::Penalty => "Penalty",
             Self::Crashed => "Crashed",
+            Self::Category => "Category",
         }
     }
 
@@ -944,10 +1393,12 @@ impl StField {
             "cur" | "current" => Self::Current,
             "best" => Self::Best,
             "last" => Self::Last,
+            "lapdiff" | "lap_diff" => Self::LapDiff,
             "status" => Self::Status,
             "bike" => Self::Bike,
             "pen" | "penalty" => Self::Penalty,
             "crash" | "crashed" => Self::Crashed,
+            "cat" | "category" | "class" => Self::Category,
             _ => return None,
         })
     }
@@ -963,10 +1414,12 @@ impl StField {
             Self::Current => c.st_current,
             Self::Best => c.st_best,
             Self::Last => c.st_last,
+            Self::LapDiff => c.st_lapdiff,
             Self::Status => c.st_status,
             Self::Bike => c.st_bike,
             Self::Penalty => c.st_penalty,
             Self::Crashed => c.st_crashed,
+            Self::Category => c.st_category,
         }
     }
 
@@ -981,10 +1434,12 @@ impl StField {
             Self::Current => c.st_w_current,
             Self::Best => c.st_w_best,
             Self::Last => c.st_w_last,
+            Self::LapDiff => c.st_w_lapdiff,
             Self::Status => c.st_w_status,
             Self::Bike => c.st_w_bike,
             Self::Penalty => c.st_w_penalty,
             Self::Crashed => c.st_w_crashed,
+            Self::Category => c.st_w_category,
         }
     }
 
@@ -1011,10 +1466,12 @@ impl StField {
             Self::Current => c.st_w_current = next,
             Self::Best => c.st_w_best = next,
             Self::Last => c.st_w_last = next,
+            Self::LapDiff => c.st_w_lapdiff = next,
             Self::Status => c.st_w_status = next,
             Self::Bike => c.st_w_bike = next,
             Self::Penalty => c.st_w_penalty = next,
             Self::Crashed => c.st_w_crashed = next,
+            Self::Category => c.st_w_category = next,
         }
     }
 }
@@ -1059,13 +1516,16 @@ pub enum RelField {
     Bike,
     Penalty,
     Interval,
-    Crashed,
+    Status,
     Best,
     Last,
+    LapDiff,
+    Category,
+    Speed,
 }
 
 impl RelField {
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 15] = [
         Self::Num,
         Self::Name,
         Self::Gap,
@@ -1075,9 +1535,12 @@ impl RelField {
         Self::Bike,
         Self::Penalty,
         Self::Interval,
-        Self::Crashed,
+        Self::Status,
         Self::Best,
         Self::Last,
+        Self::LapDiff,
+        Self::Category,
+        Self::Speed,
     ];
 
     pub fn key(self) -> &'static str {
@@ -1091,9 +1554,12 @@ impl RelField {
             Self::Bike => "bike",
             Self::Penalty => "pen",
             Self::Interval => "int",
-            Self::Crashed => "crash",
+            Self::Status => "status",
             Self::Best => "best",
             Self::Last => "last",
+            Self::LapDiff => "lapdiff",
+            Self::Category => "cat",
+            Self::Speed => "speed",
         }
     }
 
@@ -1108,9 +1574,12 @@ impl RelField {
             Self::Bike => "Bike",
             Self::Penalty => "Penalty",
             Self::Interval => "Interval",
-            Self::Crashed => "Crashed",
+            Self::Status => "Status",
             Self::Best => "Fastest",
             Self::Last => "Last lap",
+            Self::LapDiff => "Last lap diff",
+            Self::Category => "Category",
+            Self::Speed => "Speed",
         }
     }
 
@@ -1125,9 +1594,12 @@ impl RelField {
             "bike" => Self::Bike,
             "pen" | "penalty" => Self::Penalty,
             "int" | "interval" => Self::Interval,
-            "crash" | "crashed" => Self::Crashed,
+            "status" => Self::Status,
             "best" => Self::Best,
             "last" => Self::Last,
+            "lapdiff" | "lap_diff" => Self::LapDiff,
+            "cat" | "category" | "class" => Self::Category,
+            "speed" => Self::Speed,
             _ => return None,
         })
     }
@@ -1143,9 +1615,12 @@ impl RelField {
             Self::Bike => c.rel_bike,
             Self::Penalty => c.rel_penalty,
             Self::Interval => c.rel_interval,
-            Self::Crashed => c.rel_crashed,
+            Self::Status => c.rel_status,
             Self::Best => c.rel_best,
             Self::Last => c.rel_last,
+            Self::LapDiff => c.rel_lapdiff,
+            Self::Category => c.rel_category,
+            Self::Speed => c.rel_speed,
         }
     }
 
@@ -1160,9 +1635,12 @@ impl RelField {
             Self::Bike => c.rel_w_bike,
             Self::Penalty => c.rel_w_penalty,
             Self::Interval => c.rel_w_interval,
-            Self::Crashed => c.rel_w_crashed,
+            Self::Status => c.rel_w_status,
             Self::Best => c.rel_w_best,
             Self::Last => c.rel_w_last,
+            Self::LapDiff => c.rel_w_lapdiff,
+            Self::Category => c.rel_w_category,
+            Self::Speed => c.rel_w_speed,
         }
     }
 
@@ -1189,9 +1667,12 @@ impl RelField {
             Self::Bike => c.rel_w_bike = next,
             Self::Penalty => c.rel_w_penalty = next,
             Self::Interval => c.rel_w_interval = next,
-            Self::Crashed => c.rel_w_crashed = next,
+            Self::Status => c.rel_w_status = next,
             Self::Best => c.rel_w_best = next,
             Self::Last => c.rel_w_last = next,
+            Self::LapDiff => c.rel_w_lapdiff = next,
+            Self::Category => c.rel_w_category = next,
+            Self::Speed => c.rel_w_speed = next,
         }
     }
 }
@@ -1229,29 +1710,90 @@ impl SysPreset {
 }
 
 pub const SYS_PRESETS: &[SysPreset] = &[
-    SysPreset { key: "hud", label: "HUD", names: &[], kind: SysAppKind::Hud },
-    SysPreset { key: "mxbikes", label: "MX Bikes", names: &["mxbikes.exe"], kind: SysAppKind::Mxbikes },
+    SysPreset {
+        key: "hud",
+        label: "HUD",
+        names: &[],
+        kind: SysAppKind::Hud,
+    },
+    SysPreset {
+        key: "mxbikes",
+        label: "MX Bikes",
+        names: &["mxbikes.exe"],
+        kind: SysAppKind::Mxbikes,
+    },
     SysPreset {
         key: "mxbapp",
         label: "MXB App",
-        names: &["frost.exe", "mxb app.exe", "mxb-app.exe", "mxbapp.exe", "frostmod.exe"],
+        names: &[
+            "frost.exe",
+            "mxb app.exe",
+            "mxb-app.exe",
+            "mxbapp.exe",
+            "frostmod.exe",
+        ],
         kind: SysAppKind::MxbApp,
     },
-    SysPreset { key: "reshade", label: "ReShade", names: &[], kind: SysAppKind::Reshade },
-    SysPreset { key: "obs", label: "OBS", names: &["obs64.exe", "obs32.exe"], kind: SysAppKind::Exe },
-    SysPreset { key: "discord", label: "Discord", names: &["discord.exe"], kind: SysAppKind::Exe },
-    SysPreset { key: "steam", label: "Steam", names: &["steam.exe"], kind: SysAppKind::Exe },
+    SysPreset {
+        key: "reshade",
+        label: "ReShade",
+        names: &[],
+        kind: SysAppKind::Reshade,
+    },
+    SysPreset {
+        key: "obs",
+        label: "OBS",
+        names: &["obs64.exe", "obs32.exe"],
+        kind: SysAppKind::Exe,
+    },
+    SysPreset {
+        key: "discord",
+        label: "Discord",
+        names: &["discord.exe"],
+        kind: SysAppKind::Exe,
+    },
+    SysPreset {
+        key: "steam",
+        label: "Steam",
+        names: &["steam.exe"],
+        kind: SysAppKind::Exe,
+    },
     SysPreset {
         key: "nvidia",
         label: "NVIDIA",
         names: &["nvidia overlay.exe", "nvidia app.exe", "nvidia share.exe"],
         kind: SysAppKind::Exe,
     },
-    SysPreset { key: "afterburner", label: "Afterburner", names: &["msiafterburner.exe"], kind: SysAppKind::Exe },
-    SysPreset { key: "rtss", label: "RTSS", names: &["rtss.exe"], kind: SysAppKind::Exe },
-    SysPreset { key: "medal", label: "Medal", names: &["medal.exe"], kind: SysAppKind::Exe },
-    SysPreset { key: "spotify", label: "Spotify", names: &["spotify.exe"], kind: SysAppKind::Exe },
-    SysPreset { key: "gamebar", label: "Game Bar", names: &["gamebar.exe"], kind: SysAppKind::Exe },
+    SysPreset {
+        key: "afterburner",
+        label: "Afterburner",
+        names: &["msiafterburner.exe"],
+        kind: SysAppKind::Exe,
+    },
+    SysPreset {
+        key: "rtss",
+        label: "RTSS",
+        names: &["rtss.exe"],
+        kind: SysAppKind::Exe,
+    },
+    SysPreset {
+        key: "medal",
+        label: "Medal",
+        names: &["medal.exe"],
+        kind: SysAppKind::Exe,
+    },
+    SysPreset {
+        key: "spotify",
+        label: "Spotify",
+        names: &["spotify.exe"],
+        kind: SysAppKind::Exe,
+    },
+    SysPreset {
+        key: "gamebar",
+        label: "Game Bar",
+        names: &["gamebar.exe"],
+        kind: SysAppKind::Exe,
+    },
 ];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1339,10 +1881,14 @@ fn parse_sys_app_token(token: &str) -> Option<SysApp> {
         let label = sanitize_sys_token(parts.next().unwrap_or(""));
         let name = parts.next().unwrap_or("").trim().to_ascii_lowercase();
         let show = parts.next().is_some_and(|s| s == "1");
-        if label.is_empty() || !name.ends_with(".exe") || name.contains('\\') || name.contains('/') {
+        if label.is_empty() || !name.ends_with(".exe") || name.contains('\\') || name.contains('/')
+        {
             return None;
         }
-        if let Some(p) = SYS_PRESETS.iter().find(|p| p.names.iter().any(|n| *n == name)) {
+        if let Some(p) = SYS_PRESETS
+            .iter()
+            .find(|p| p.names.iter().any(|n| *n == name))
+        {
             return Some(SysApp::from_preset(p, show));
         }
         return Some(SysApp {
@@ -1397,6 +1943,9 @@ pub struct HudLayout {
     pub ticker_count: i32,
     pub ticker_title: bool,
     pub ticker_autoscroll: bool,
+    pub ticker_status: bool,
+    pub ticker_slide: bool,
+    pub ticker_hl: i32,
     pub st_pos: bool,
     pub st_num: bool,
     pub st_name: bool,
@@ -1410,6 +1959,8 @@ pub struct HudLayout {
     pub st_bike: bool,
     pub st_penalty: bool,
     pub st_crashed: bool,
+    pub st_category: bool,
+    pub st_lapdiff: bool,
     pub rel_num: bool,
     pub rel_name: bool,
     pub rel_gap: bool,
@@ -1419,15 +1970,20 @@ pub struct HudLayout {
     pub rel_bike: bool,
     pub rel_penalty: bool,
     pub rel_interval: bool,
-    pub rel_crashed: bool,
+    pub rel_status: bool,
     pub rel_best: bool,
     pub rel_last: bool,
+    pub rel_category: bool,
+    pub rel_speed: bool,
+    pub rel_lapdiff: bool,
     pub map_others: bool,
     pub map_sf: bool,
     pub map_sectors: bool,
     pub map_name: bool,
     pub map_numbers: bool,
     pub map_arrows: bool,
+    /// Heading-up map: you stay centered, nose up, whole track still fits. Off by default.
+    pub map_follow: bool,
     pub map_crown: bool,
     pub map_place: bool,
     pub map_dot: DotLabel,
@@ -1442,15 +1998,25 @@ pub struct HudLayout {
     pub radar_sides: bool,
     pub radar_rear: bool,
     pub radar_rings: bool,
+    /// Plaque (range arcs + blips) or Arrows (edge indicators on the widget frame).
+    pub radar_style: RadarStyle,
     /// How far beside and behind, in meters, the radar shows other riders.
     /// Rings stay at 3 / 6 / 12 m; a longer range places dots outside the 12 m ring.
     pub radar_range: i32,
     pub st_hl: i32,
     pub st_text: TableText,
     pub st_stripe: bool,
+    /// Ink on the orange rider-count / track-name plaques. Default black.
+    pub st_plaque_text: TableText,
+    /// Draw the orange rider-count / track-name plaques. Default on.
+    pub st_plaque: bool,
     pub rel_hl: i32,
     pub rel_text: TableText,
     pub rel_stripe: bool,
+    /// Ink on the orange rider-count / track-name plaques. Default black.
+    pub rel_plaque_text: TableText,
+    /// Draw the orange rider-count / track-name plaques. Default on.
+    pub rel_plaque: bool,
     pub mini_zoom: i32,
     pub dash_rev: bool,
     /// Nearby crash wrap on Dash. Off by default.
@@ -1477,6 +2043,7 @@ pub struct HudLayout {
     pub stance_show_sit: bool,
     pub lean_style: LeanStyle,
     pub gamepad_style: GamepadStyle,
+    pub gamepad_theme: GamepadTheme,
     /// Throttle / brake history well.
     pub telemetry_traces: bool,
     pub telemetry_trace_throttle: bool,
@@ -1513,6 +2080,8 @@ pub struct HudLayout {
     pub st_w_bike: i32,
     pub st_w_penalty: i32,
     pub st_w_crashed: i32,
+    pub st_w_category: i32,
+    pub st_w_lapdiff: i32,
     pub rel_w_num: i32,
     pub rel_w_name: i32,
     pub rel_w_gap: i32,
@@ -1522,9 +2091,12 @@ pub struct HudLayout {
     pub rel_w_bike: i32,
     pub rel_w_penalty: i32,
     pub rel_w_interval: i32,
-    pub rel_w_crashed: i32,
+    pub rel_w_status: i32,
     pub rel_w_best: i32,
     pub rel_w_last: i32,
+    pub rel_w_category: i32,
+    pub rel_w_speed: i32,
+    pub rel_w_lapdiff: i32,
 }
 
 impl HudLayout {
@@ -1545,6 +2117,9 @@ impl HudLayout {
             ticker_count: 7,
             ticker_title: true,
             ticker_autoscroll: false,
+            ticker_status: false,
+            ticker_slide: true,
+            ticker_hl: 50,
             st_pos: true,
             st_num: true,
             st_name: true,
@@ -1558,6 +2133,8 @@ impl HudLayout {
             st_bike: false,
             st_penalty: false,
             st_crashed: false,
+            st_category: false,
+            st_lapdiff: false,
             rel_num: true,
             rel_name: true,
             rel_gap: true,
@@ -1567,15 +2144,19 @@ impl HudLayout {
             rel_bike: false,
             rel_penalty: false,
             rel_interval: false,
-            rel_crashed: false,
+            rel_status: false,
             rel_best: true,
             rel_last: true,
+            rel_category: false,
+            rel_speed: false,
+            rel_lapdiff: false,
             map_others: true,
             map_sf: true,
             map_sectors: true,
             map_name: true,
             map_numbers: true,
             map_arrows: true,
+            map_follow: false,
             map_crown: true,
             map_place: true,
             map_dot: DotLabel::Position,
@@ -1590,13 +2171,18 @@ impl HudLayout {
             radar_sides: true,
             radar_rear: true,
             radar_rings: true,
+            radar_style: RadarStyle::Plaque,
             radar_range: RADAR_RANGE_DEFAULT,
             st_hl: 50,
             st_text: TableText::White,
             st_stripe: true,
+            st_plaque_text: TableText::Black,
+            st_plaque: true,
             rel_hl: 50,
             rel_text: TableText::White,
             rel_stripe: true,
+            rel_plaque_text: TableText::Black,
+            rel_plaque: true,
             mini_zoom: 70,
             dash_rev: true,
             dash_yellow: false,
@@ -1618,6 +2204,7 @@ impl HudLayout {
             stance_show_sit: false,
             lean_style: LeanStyle::Figure,
             gamepad_style: GamepadStyle::Auto,
+            gamepad_theme: GamepadTheme::Light,
             telemetry_traces: true,
             telemetry_trace_throttle: true,
             telemetry_trace_brake: true,
@@ -1649,6 +2236,8 @@ impl HudLayout {
             st_w_bike: 56,
             st_w_penalty: 48,
             st_w_crashed: 44,
+            st_w_category: 48,
+            st_w_lapdiff: 58,
             rel_w_num: 32,
             rel_w_name: 80,
             rel_w_gap: 58,
@@ -1658,9 +2247,12 @@ impl HudLayout {
             rel_w_bike: 56,
             rel_w_penalty: 48,
             rel_w_interval: 58,
-            rel_w_crashed: 44,
+            rel_w_status: 40,
             rel_w_best: 54,
             rel_w_last: 54,
+            rel_w_category: 48,
+            rel_w_speed: 56,
+            rel_w_lapdiff: 58,
         }
     }
 
@@ -1700,12 +2292,26 @@ pub struct HudConfig {
     pub settings_preset: SessionPreset,
     /// True while a session is live. The HUD uses `active_preset`; F8 can edit another slot.
     pub session_live: bool,
-    /// Kept in the ini for older builds. No widget is gated on this anymore.
+    /// Settings → Labs → Experimental features. Gates Profile → Tracks.
     pub experimental: bool,
+    /// F8 Motos records motos only when this is on. Default off; missing ini key stays off.
+    pub review: bool,
     /// Plugin-only: when true the frozen in-game HUD draws standings / relative / map.
     /// Overlay still saves this key. The plugin never writes the ini.
     pub ingame_hud: bool,
+    /// F8 Look: install the Floating F8 MX Bikes menu pack into the game `ui/` folder.
+    pub game_ui: bool,
+    /// When true, MX Bikes menus use Look `primary`. When false, use `game_ui_primary`.
+    pub game_ui_match_primary: bool,
+    /// Menu pack accent when `game_ui_match_primary` is false.
+    pub game_ui_primary: [u8; 3],
+    /// Custom opening splash (`splash.tga`). Empty = bundled night-ink default.
+    pub game_ui_splash_path: String,
+    /// Custom loading background (`bkgrnd.tga`). Empty = bundled night-ink default.
+    pub game_ui_loading_path: String,
     pub font_family: FontFamily,
+    /// HUD / settings / Motos accent. Default Holeshot orange.
+    pub primary: [u8; 3],
     pub units: UnitPrefs,
     pub start_with_windows: bool,
     pub minimize_on_close: bool,
@@ -1718,6 +2324,11 @@ pub struct HudConfig {
     /// `"unknown"` if they already had settings before this field existed.
     pub first_install_version: String,
     pub settings_key: SettingsKey,
+    /// F8 Settings chrome theme. Dark is the default charcoal look.
+    pub settings_theme: SettingsTheme,
+    /// Settings host origin in virtual-screen pixels. A second monitor can be `x >= primary` or negative.
+    pub settings_x: i32,
+    pub settings_y: i32,
     pub stance_bind: StanceBind,
     loaded_mtime: Option<SystemTime>,
 }
@@ -1726,18 +2337,20 @@ impl HudConfig {
     pub fn new() -> Self {
         let layout = HudLayout::new();
         Self {
-            layouts: [
-                layout.clone(),
-                layout.clone(),
-                layout.clone(),
-                layout,
-            ],
+            layouts: [layout.clone(), layout.clone(), layout.clone(), layout],
             active_preset: SessionPreset::Race,
             settings_preset: SessionPreset::Race,
             session_live: false,
             experimental: false,
+            review: false,
             ingame_hud: false,
+            game_ui: false,
+            game_ui_match_primary: true,
+            game_ui_primary: DEFAULT_PRIMARY,
+            game_ui_splash_path: String::new(),
+            game_ui_loading_path: String::new(),
             font_family: FontFamily::Exo2,
+            primary: DEFAULT_PRIMARY,
             units: UnitPrefs::all(Units::Metric),
             start_with_windows: false,
             minimize_on_close: false,
@@ -1747,6 +2360,9 @@ impl HudConfig {
             whats_new_seen: String::new(),
             first_install_version: String::new(),
             settings_key: SettingsKey::F8,
+            settings_theme: SettingsTheme::Dark,
+            settings_x: 80,
+            settings_y: 80,
             stance_bind: StanceBind::PadRb,
             loaded_mtime: None,
         }
@@ -1774,16 +2390,25 @@ impl HudConfig {
         c
     }
 
+    /// Accent written into the MX Bikes menu pack.
+    pub fn game_ui_accent(&self) -> [u8; 3] {
+        if self.game_ui_match_primary {
+            self.primary
+        } else {
+            self.game_ui_primary
+        }
+    }
+
     pub fn copy_settings_to(&mut self, dst: SessionPreset) {
         if dst == self.settings_preset {
             return;
         }
-        let src = self.edit().clone();
+        let src = self.layouts[self.settings_preset.idx()].clone();
         self.layouts[dst.idx()] = src;
     }
 
     pub fn copy_settings_to_all(&mut self) {
-        let src = self.edit().clone();
+        let src = self.layouts[self.settings_preset.idx()].clone();
         self.layouts = [src.clone(), src.clone(), src.clone(), src];
     }
 
@@ -1806,104 +2431,51 @@ impl HudConfig {
         let path = ini_path();
         let legacy = legacy_ini_path();
         let mut cfg = Self::new();
-        let text = fs::read_to_string(&path)
-            .or_else(|_| fs::read_to_string(&legacy));
-        let Ok(text) = text else {
-            cfg.first_install_version = env!("CARGO_PKG_VERSION").to_string();
-            cfg.save();
-            return cfg;
+        let primary = fs::read_to_string(&path);
+        let (mut scan, mut meta_path): (IniScan, Option<&Path>) = match &primary {
+            Ok(text) => (apply_ini_text(&mut cfg, text), Some(path.as_path())),
+            Err(_) => match fs::read_to_string(&legacy) {
+                Ok(text) => (apply_ini_text(&mut cfg, &text), Some(legacy.as_path())),
+                Err(_) => {
+                    cfg.first_install_version = env!("CARGO_PKG_VERSION").to_string();
+                    cfg.save();
+                    return cfg;
+                }
+            },
         };
-        let meta_path = if path.is_file() { &path } else { &legacy };
-        cfg.loaded_mtime = fs::metadata(meta_path).and_then(|m| m.modified()).ok();
-        let mut saw_last_cols = [false; SessionPreset::COUNT];
-        let mut saw_first_install = false;
-        let mut saw_unit = [false; UnitKind::COUNT];
-        let mut saw_preset = [false; SessionPreset::COUNT];
-        let mut section = IniSection::Legacy;
-        let mut legacy_layout = HudLayout::new();
-        let mut saw_legacy_layout = false;
-        let mut legacy_last_cols = false;
-        for raw in text.lines() {
-            let line = raw.trim();
-            if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
-                continue;
-            }
-            if line.starts_with('[') {
-                section = parse_ini_section(line);
-                continue;
-            }
-            let Some((k, v)) = line.split_once('=') else {
-                continue;
-            };
-            let key = k.trim();
-            let val = v.trim();
-            let f = val.parse::<f32>().unwrap_or(0.0);
-            let b = val == "1" || val.eq_ignore_ascii_case("true") || val.eq_ignore_ascii_case("yes");
-            match section {
-                IniSection::App => {
-                    apply_app_key(&mut cfg, key, val, b, &mut saw_first_install, &mut saw_unit);
-                }
-                IniSection::Preset(p) => {
-                    saw_preset[p.idx()] = true;
-                    let layout = &mut cfg.layouts[p.idx()];
-                    if apply_widget_prefs(layout, key, val, f, b) {
-                        continue;
-                    }
-                    apply_layout_key(layout, key, val, b, &mut saw_last_cols[p.idx()]);
-                }
-                IniSection::Legacy => {
-                    if apply_app_key(&mut cfg, key, val, b, &mut saw_first_install, &mut saw_unit) {
-                        continue;
-                    }
-                    saw_legacy_layout = true;
-                    if apply_widget_prefs(&mut legacy_layout, key, val, f, b) {
-                        continue;
-                    }
-                    apply_layout_key(&mut legacy_layout, key, val, b, &mut legacy_last_cols);
+        if !scan.has_layout() && primary.is_ok() {
+            if let Ok(legacy_text) = fs::read_to_string(&legacy) {
+                let extra = apply_ini_text(&mut cfg, &legacy_text);
+                if extra.has_layout() {
+                    scan.take_layout(extra);
+                    meta_path = Some(legacy.as_path());
                 }
             }
         }
-        if saw_preset.iter().any(|&on| on) {
-            let donor = SessionPreset::ALL
-                .iter()
-                .find(|p| saw_preset[p.idx()])
-                .map(|p| cfg.layouts[p.idx()].clone())
-                .unwrap_or_else(HudLayout::new);
-            for p in SessionPreset::ALL {
-                if !saw_preset[p.idx()] {
-                    cfg.layouts[p.idx()] = donor.clone();
-                }
-                if !saw_last_cols[p.idx()] && saw_preset[p.idx()] {
-                    cfg.layouts[p.idx()].st_best = true;
-                    cfg.layouts[p.idx()].st_last = true;
-                    cfg.layouts[p.idx()].rel_best = true;
-                    cfg.layouts[p.idx()].rel_last = true;
-                }
-            }
-        } else if saw_legacy_layout {
-            if !legacy_last_cols {
-                legacy_layout.st_best = true;
-                legacy_layout.st_last = true;
-                legacy_layout.rel_best = true;
-                legacy_layout.rel_last = true;
-            }
-            cfg.layouts = [
-                legacy_layout.clone(),
-                legacy_layout.clone(),
-                legacy_layout.clone(),
-                legacy_layout,
-            ];
+        if !scan.saw_first_install || cfg.first_install_version.is_empty() {
+            cfg.first_install_version = "unknown".into();
         }
+        apply_scanned_layouts(&mut cfg, scan);
         for layout in &mut cfg.layouts {
             layout.migrate_rects();
             crate::pitboard::normalize_places(&mut layout.pit_vars);
         }
-        if !saw_first_install || cfg.first_install_version.is_empty() {
-            cfg.first_install_version = "unknown".into();
-            cfg.save();
+        if let Some(p) = meta_path {
+            cfg.loaded_mtime = fs::metadata(p).and_then(|m| m.modified()).ok();
         }
         cfg
     }
+
+    /// Apply an INI body (App + layout sections) without touching disk.
+    pub fn apply_ini_str(&mut self, text: &str) {
+        let scan = apply_ini_text(self, text);
+        apply_scanned_layouts(self, scan);
+        for layout in &mut self.layouts {
+            layout.migrate_rects();
+        }
+    }
+
+    /// Full ini body for the live stream layout (WASM feed).
 
     pub fn add_sys_preset(&mut self, key: &str) {
         if self.sys_apps.len() >= SYS_APP_MAX {
@@ -1919,10 +2491,17 @@ impl HudConfig {
 
     pub fn add_sys_exe(&mut self, exe_name: &str) {
         let name = exe_name.trim().to_ascii_lowercase();
-        if !name.ends_with(".exe") || name.contains('\\') || name.contains('/') || name.contains('|') {
+        if !name.ends_with(".exe")
+            || name.contains('\\')
+            || name.contains('/')
+            || name.contains('|')
+        {
             return;
         }
-        if let Some(p) = SYS_PRESETS.iter().find(|p| p.names.iter().any(|n| *n == name)) {
+        if let Some(p) = SYS_PRESETS
+            .iter()
+            .find(|p| p.names.iter().any(|n| *n == name))
+        {
             if let Some(a) = self.sys_apps.iter_mut().find(|a| a.key == p.key) {
                 a.show = true;
                 return;
@@ -1930,8 +2509,16 @@ impl HudConfig {
             self.add_sys_preset(p.key);
             return;
         }
-        if self.sys_apps.iter().any(|a| a.names.iter().any(|n| n == &name)) {
-            if let Some(a) = self.sys_apps.iter_mut().find(|a| a.names.iter().any(|n| n == &name)) {
+        if self
+            .sys_apps
+            .iter()
+            .any(|a| a.names.iter().any(|n| n == &name))
+        {
+            if let Some(a) = self
+                .sys_apps
+                .iter_mut()
+                .find(|a| a.names.iter().any(|n| n == &name))
+            {
                 a.show = true;
             }
             return;
@@ -1979,17 +2566,23 @@ impl HudConfig {
         let body = format!(
             "# Holeshot HUD layout (normalized 0..1, origin top-left)\n\
              [App]\n\
-             font_family={}\nunits={}\nunits_speed={}\nunits_liquids={}\nunits_temperature={}\n\
-             settings_key={}\nstart_with_windows={}\nminimize_on_close={}\n\
+             font_family={}\nprimary_color={}\nunits={}\nunits_speed={}\nunits_liquids={}\nunits_temperature={}\n\
+             settings_key={}\nsettings_theme={}\nsettings_x={}\nsettings_y={}\nstart_with_windows={}\nminimize_on_close={}\n\
              close_with_game={}\nopen_with_game={}\nauto_update_on_launch={}\nwhats_new_seen={}\n\
-             first_install_version={}\nexperimental={}\ningame_hud={}\nstance_bind={}\nactive_preset={}\n\
+             first_install_version={}\nexperimental={}\nreview={}\ningame_hud={}\ngame_ui={}\n\
+             game_ui_match_primary={}\ngame_ui_primary_color={}\n\
+             game_ui_splash_path={}\ngame_ui_loading_path={}\nstance_bind={}\nactive_preset={}\n\
              \n[Practice]\n{}\n\n[Warmup]\n{}\n\n[Race]\n{}\n\n[Spectate]\n{}\n",
             self.font_family.key(),
+            format_primary_color(self.primary),
             self.units.speed.key(),
             self.units.speed.key(),
             self.units.liquids.key(),
             self.units.temperature.key(),
             self.settings_key.key(),
+            self.settings_theme.key(),
+            self.settings_x,
+            self.settings_y,
             b(self.start_with_windows),
             b(self.minimize_on_close),
             b(self.close_with_game),
@@ -1998,16 +2591,23 @@ impl HudConfig {
             self.whats_new_seen,
             self.first_install_version,
             b(self.experimental),
+            b(self.review),
             b(self.ingame_hud),
+            b(self.game_ui),
+            b(self.game_ui_match_primary),
+            format_primary_color(self.game_ui_primary),
+            self.game_ui_splash_path,
+            self.game_ui_loading_path,
             self.stance_bind.key(),
             self.active_preset.key(),
             layout_ini(&self.layouts[SessionPreset::Practice.idx()]),
             layout_ini(&self.layouts[SessionPreset::Warmup.idx()]),
             layout_ini(&self.layouts[SessionPreset::Race.idx()]),
-            layout_ini(&self.layouts[SessionPreset::Spectate.idx()]),
+            layout_ini(&self.layouts[SessionPreset::Spectate.idx()])
         );
-        let _ = fs::write(&path, body);
-        self.loaded_mtime = fs::metadata(&path).and_then(|m| m.modified()).ok();
+        if write_atomic(&path, &body).is_ok() {
+            self.loaded_mtime = fs::metadata(&path).and_then(|m| m.modified()).ok();
+        }
         let legacy = legacy_ini_path();
         if legacy != path {
             let _ = fs::remove_file(legacy);
@@ -2015,7 +2615,10 @@ impl HudConfig {
     }
 
     pub fn apply_to_snapshot(&self, s: &mut Snapshot) {
-        let lay = self.live();
+        Self::write_layout_to_snapshot(self.live(), s);
+    }
+
+    fn write_layout_to_snapshot(lay: &HudLayout, s: &mut Snapshot) {
         s.standings_rect = lay[WidgetId::Standings].rect;
         s.relative = lay[WidgetId::Relative].rect;
         s.map = lay[WidgetId::Map].rect;
@@ -2035,7 +2638,12 @@ impl HudConfig {
     }
 
     pub fn standings_cols(&self) -> Vec<StField> {
-        let mut cols: Vec<_> = self.st_order.iter().copied().filter(|c| c.enabled(self)).collect();
+        let mut cols: Vec<_> = self
+            .st_order
+            .iter()
+            .copied()
+            .filter(|c| c.enabled(self))
+            .collect();
         if cols.is_empty() {
             cols.push(StField::Name);
         }
@@ -2081,20 +2689,25 @@ impl HudConfig {
     }
 
     pub fn relative_cols(&self) -> Vec<RelField> {
-        let mut cols: Vec<_> = self.rel_order.iter().copied().filter(|c| c.enabled(self)).collect();
+        let mut cols: Vec<_> = self
+            .rel_order
+            .iter()
+            .copied()
+            .filter(|c| c.enabled(self))
+            .collect();
         if cols.is_empty() {
             cols.push(RelField::Name);
         }
         cols
     }
 
-    /// Settings → Labs → Experimental widgets. Gates Controller.
+    /// Settings → Labs → Experimental features. Gates Profile → Tracks.
     pub fn experimental_unlocked(&self) -> bool {
         self.experimental
     }
 
     pub fn gamepad_visible(&self) -> bool {
-        self.experimental_unlocked() && self[WidgetId::Gamepad].show
+        self[WidgetId::Gamepad].show
     }
 
     pub fn sector_visible(&self) -> bool {
@@ -2107,7 +2720,9 @@ impl HudConfig {
 
     pub fn telemetry_draw_traces(&self) -> bool {
         self.telemetry_traces
-            && (self.telemetry_trace_throttle || self.telemetry_trace_brake || self.telemetry_trace_steer)
+            && (self.telemetry_trace_throttle
+                || self.telemetry_trace_brake
+                || self.telemetry_trace_steer)
     }
 
     pub fn telemetry_draw_bars(&self) -> bool {
@@ -2172,6 +2787,168 @@ enum IniSection {
     Legacy,
 }
 
+struct IniScan {
+    saw_last_cols: [bool; SessionPreset::COUNT],
+    saw_first_install: bool,
+    saw_unit: [bool; UnitKind::COUNT],
+    saw_preset: [bool; SessionPreset::COUNT],
+    saw_legacy_layout: bool,
+    legacy_last_cols: bool,
+    legacy_layout: HudLayout,
+}
+
+impl Default for IniScan {
+    fn default() -> Self {
+        Self {
+            saw_last_cols: [false; SessionPreset::COUNT],
+            saw_first_install: false,
+            saw_unit: [false; UnitKind::COUNT],
+            saw_preset: [false; SessionPreset::COUNT],
+            saw_legacy_layout: false,
+            legacy_last_cols: false,
+            legacy_layout: HudLayout::new(),
+        }
+    }
+}
+
+impl IniScan {
+    fn has_layout(&self) -> bool {
+        self.saw_preset.iter().any(|&on| on) || self.saw_legacy_layout
+    }
+
+    fn take_layout(&mut self, extra: Self) {
+        self.saw_last_cols = extra.saw_last_cols;
+        self.saw_preset = extra.saw_preset;
+        self.saw_legacy_layout = extra.saw_legacy_layout;
+        self.legacy_last_cols = extra.legacy_last_cols;
+        self.legacy_layout = extra.legacy_layout;
+        self.saw_first_install = self.saw_first_install || extra.saw_first_install;
+    }
+}
+
+fn apply_ini_text(cfg: &mut HudConfig, text: &str) -> IniScan {
+    let mut scan = IniScan::default();
+    let mut section = IniSection::Legacy;
+    for raw in text.lines() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
+            continue;
+        }
+        if line.starts_with('[') {
+            section = parse_ini_section(line);
+            continue;
+        }
+        let Some((k, v)) = line.split_once('=') else {
+            continue;
+        };
+        let key = k.trim();
+        let val = v.trim();
+        let f = val.parse::<f32>().unwrap_or(0.0);
+        let b = val == "1" || val.eq_ignore_ascii_case("true") || val.eq_ignore_ascii_case("yes");
+        match section {
+            IniSection::App => {
+                apply_app_key(
+                    cfg,
+                    key,
+                    val,
+                    b,
+                    &mut scan.saw_first_install,
+                    &mut scan.saw_unit,
+                );
+            }
+            IniSection::Preset(p) => {
+                scan.saw_preset[p.idx()] = true;
+                let layout = &mut cfg.layouts[p.idx()];
+                if apply_widget_prefs(layout, key, val, f, b) {
+                    continue;
+                }
+                apply_layout_key(layout, key, val, b, &mut scan.saw_last_cols[p.idx()]);
+            }
+            IniSection::Legacy => {
+                if apply_app_key(
+                    cfg,
+                    key,
+                    val,
+                    b,
+                    &mut scan.saw_first_install,
+                    &mut scan.saw_unit,
+                ) {
+                    continue;
+                }
+                scan.saw_legacy_layout = true;
+                if apply_widget_prefs(&mut scan.legacy_layout, key, val, f, b) {
+                    continue;
+                }
+                apply_layout_key(
+                    &mut scan.legacy_layout,
+                    key,
+                    val,
+                    b,
+                    &mut scan.legacy_last_cols,
+                );
+            }
+        }
+    }
+    scan
+}
+
+fn apply_scanned_layouts(cfg: &mut HudConfig, scan: IniScan) {
+    if scan.saw_preset.iter().any(|&on| on) {
+        let donor = SessionPreset::ALL
+            .iter()
+            .find(|p| scan.saw_preset[p.idx()])
+            .map(|p| cfg.layouts[p.idx()].clone())
+            .unwrap_or_else(HudLayout::new);
+        for p in SessionPreset::ALL {
+            if !scan.saw_preset[p.idx()] {
+                cfg.layouts[p.idx()] = donor.clone();
+            }
+            if !scan.saw_last_cols[p.idx()] && scan.saw_preset[p.idx()] {
+                cfg.layouts[p.idx()].st_best = true;
+                cfg.layouts[p.idx()].st_last = true;
+                cfg.layouts[p.idx()].rel_best = true;
+                cfg.layouts[p.idx()].rel_last = true;
+            }
+        }
+    } else if scan.saw_legacy_layout {
+        let mut legacy_layout = scan.legacy_layout;
+        if !scan.legacy_last_cols {
+            legacy_layout.st_best = true;
+            legacy_layout.st_last = true;
+            legacy_layout.rel_best = true;
+            legacy_layout.rel_last = true;
+        }
+        cfg.layouts = [
+            legacy_layout.clone(),
+            legacy_layout.clone(),
+            legacy_layout.clone(),
+            legacy_layout,
+        ];
+    }
+}
+
+fn ini_tmp_path(path: &Path) -> PathBuf {
+    let mut name = path.as_os_str().to_os_string();
+    name.push(".tmp");
+    PathBuf::from(name)
+}
+
+fn write_atomic(path: &Path, body: &str) -> std::io::Result<()> {
+    let tmp = ini_tmp_path(path);
+    fs::write(&tmp, body)?;
+    match fs::rename(&tmp, path) {
+        Ok(()) => Ok(()),
+        Err(_) if path.exists() => {
+            fs::remove_file(path)?;
+            fs::rename(&tmp, path)
+        }
+        Err(e) => {
+            let _ = fs::remove_file(&tmp);
+            Err(e)
+        }
+    }
+}
+
 fn parse_ini_section(line: &str) -> IniSection {
     let name = line
         .trim()
@@ -2199,8 +2976,27 @@ fn apply_app_key(
 ) -> bool {
     match key {
         "experimental" | "feature_experimental" | "feature_sector" => cfg.experimental = b,
+        "review" => cfg.review = b,
         "ingame_hud" => cfg.ingame_hud = b,
+        "game_ui" => cfg.game_ui = b,
+        "game_ui_match_primary" => cfg.game_ui_match_primary = b,
+        "game_ui_primary_color" => {
+            if let Some(rgb) = parse_primary_color(val) {
+                cfg.game_ui_primary = rgb;
+            }
+        }
+        "game_ui_splash_path" => {
+            cfg.game_ui_splash_path = game_ui_image_path(val);
+        }
+        "game_ui_loading_path" => {
+            cfg.game_ui_loading_path = game_ui_image_path(val);
+        }
         "font_family" => cfg.font_family = FontFamily::parse(val),
+        "primary_color" => {
+            if let Some(rgb) = parse_primary_color(val) {
+                cfg.primary = rgb;
+            }
+        }
         "units" => {
             let u = Units::parse(val);
             for kind in UnitKind::ALL {
@@ -2220,6 +3016,17 @@ fn apply_app_key(
             *saw_first_install = true;
         }
         "settings_key" => cfg.settings_key = SettingsKey::parse(val),
+        "settings_theme" => cfg.settings_theme = SettingsTheme::parse(val),
+        "settings_x" => {
+            if let Ok(n) = val.parse::<i32>() {
+                cfg.settings_x = n;
+            }
+        }
+        "settings_y" => {
+            if let Ok(n) = val.parse::<i32>() {
+                cfg.settings_y = n;
+            }
+        }
         "stance_bind" => cfg.stance_bind = StanceBind::parse(val),
         "active_preset" => {
             let p = SessionPreset::parse(val);
@@ -2257,6 +3064,9 @@ fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last
         "ticker_count" => cfg.ticker_count = val.parse().unwrap_or(7).clamp(3, 15),
         "ticker_title" => cfg.ticker_title = b,
         "ticker_autoscroll" => cfg.ticker_autoscroll = b,
+        "ticker_status" => cfg.ticker_status = b,
+        "ticker_slide" => cfg.ticker_slide = b,
+        "ticker_hl" => cfg.ticker_hl = clamp_pct(val),
         "st_pos" => cfg.st_pos = b,
         "st_num" => cfg.st_num = b,
         "st_name" => cfg.st_name = b,
@@ -2273,6 +3083,8 @@ fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last
         "st_bike" => cfg.st_bike = b,
         "st_penalty" => cfg.st_penalty = b,
         "st_crashed" => cfg.st_crashed = b,
+        "st_category" => cfg.st_category = b,
+        "st_lapdiff" => cfg.st_lapdiff = b,
         "rel_num" => cfg.rel_num = b,
         "rel_name" => cfg.rel_name = b,
         "rel_gap" => cfg.rel_gap = b,
@@ -2282,15 +3094,19 @@ fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last
         "rel_bike" => cfg.rel_bike = b,
         "rel_penalty" => cfg.rel_penalty = b,
         "rel_interval" => cfg.rel_interval = b,
-        "rel_crashed" => cfg.rel_crashed = b,
+        "rel_status" => cfg.rel_status = b,
         "rel_best" => cfg.rel_best = b,
         "rel_last" => cfg.rel_last = b,
+        "rel_category" => cfg.rel_category = b,
+        "rel_speed" => cfg.rel_speed = b,
+        "rel_lapdiff" => cfg.rel_lapdiff = b,
         "map_others" => cfg.map_others = b,
         "map_sf" => cfg.map_sf = b,
         "map_sectors" => cfg.map_sectors = b,
         "map_name" => cfg.map_name = b,
         "map_numbers" => cfg.map_numbers = b,
         "map_arrows" => cfg.map_arrows = b,
+        "map_follow" => cfg.map_follow = b,
         "map_crown" => cfg.map_crown = b,
         "map_place" => cfg.map_place = b,
         "map_dot" => cfg.map_dot = DotLabel::parse(val),
@@ -2305,13 +3121,18 @@ fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last
         "radar_sides" => cfg.radar_sides = b,
         "radar_rear" => cfg.radar_rear = b,
         "radar_rings" => cfg.radar_rings = b,
+        "radar_style" => cfg.radar_style = RadarStyle::parse(val),
         "radar_range" => cfg.radar_range = clamp_radar_range(val),
         "st_hl" => cfg.st_hl = clamp_pct(val),
         "st_text" => cfg.st_text = TableText::parse(val),
         "st_stripe" => cfg.st_stripe = b,
+        "st_plaque_text" => cfg.st_plaque_text = TableText::parse(val),
+        "st_plaque" => cfg.st_plaque = b,
         "rel_hl" => cfg.rel_hl = clamp_pct(val),
         "rel_text" => cfg.rel_text = TableText::parse(val),
         "rel_stripe" => cfg.rel_stripe = b,
+        "rel_plaque_text" => cfg.rel_plaque_text = TableText::parse(val),
+        "rel_plaque" => cfg.rel_plaque = b,
         "mini_zoom" => cfg.mini_zoom = clamp_pct(val),
         "dash_rev" => cfg.dash_rev = b,
         "dash_yellow" => cfg.dash_yellow = b,
@@ -2332,6 +3153,7 @@ fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last
         "stance_style" => cfg.stance_style = StanceStyle::parse(val),
         "lean_style" => cfg.lean_style = LeanStyle::parse(val),
         "gamepad_style" => cfg.gamepad_style = GamepadStyle::parse(val),
+        "gamepad_theme" => cfg.gamepad_theme = GamepadTheme::parse(val),
         "sys_apps" => cfg.sys_apps = parse_sys_apps(val),
         "stance_show_sit" => cfg.stance_show_sit = b,
         "stance_icon" => {
@@ -2354,6 +3176,8 @@ fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last
         "st_w_bike" => cfg.st_w_bike = clamp_w(val),
         "st_w_penalty" => cfg.st_w_penalty = clamp_w(val),
         "st_w_crashed" => cfg.st_w_crashed = clamp_w(val),
+        "st_w_category" => cfg.st_w_category = clamp_w(val),
+        "st_w_lapdiff" => cfg.st_w_lapdiff = clamp_w(val),
         "rel_w_num" => cfg.rel_w_num = clamp_w(val),
         "rel_w_name" => cfg.rel_w_name = clamp_name_w(val),
         "rel_w_gap" => cfg.rel_w_gap = clamp_w(val),
@@ -2363,9 +3187,12 @@ fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last
         "rel_w_bike" => cfg.rel_w_bike = clamp_w(val),
         "rel_w_penalty" => cfg.rel_w_penalty = clamp_w(val),
         "rel_w_interval" => cfg.rel_w_interval = clamp_w(val),
-        "rel_w_crashed" => cfg.rel_w_crashed = clamp_w(val),
+        "rel_w_status" => cfg.rel_w_status = clamp_w(val),
         "rel_w_best" => cfg.rel_w_best = clamp_w(val),
         "rel_w_last" => cfg.rel_w_last = clamp_w(val),
+        "rel_w_category" => cfg.rel_w_category = clamp_w(val),
+        "rel_w_speed" => cfg.rel_w_speed = clamp_w(val),
+        "rel_w_lapdiff" => cfg.rel_w_lapdiff = clamp_w(val),
         "telemetry_traces" => cfg.telemetry_traces = b,
         "telemetry_trace_throttle" => cfg.telemetry_trace_throttle = b,
         "telemetry_trace_brake" => cfg.telemetry_trace_brake = b,
@@ -2463,28 +3290,28 @@ fn layout_ini(l: &HudLayout) -> String {
          show_stance={}\nshow_flag={}\nshow_lean={}\nshow_gamepad={}\nshow_telemetry={}\nshow_pitboard={}\n\
          standings_rows={}\nrelative_count={}\nticker_count={}\n\
          st_pos={}\nst_num={}\nst_name={}\nst_gap={}\nst_interval={}\nst_laps={}\nst_current={}\n\
-         st_best={}\nst_last={}\nst_status={}\nst_bike={}\nst_penalty={}\nst_crashed={}\n\
+         st_best={}\nst_last={}\nst_status={}\nst_bike={}\nst_penalty={}\nst_crashed={}\nst_category={}\nst_lapdiff={}\n\
          st_order={}\n\
          st_w_pos={}\nst_w_num={}\nst_w_name={}\nst_w_gap={}\nst_w_interval={}\nst_w_laps={}\n\
-         st_w_current={}\nst_w_best={}\nst_w_last={}\nst_w_status={}\nst_w_bike={}\nst_w_penalty={}\nst_w_crashed={}\n\
-         st_bg={}\nst_hl={}\nst_text={}\nst_stripe={}\nst_font={}\nst_bold={}\n\
+         st_w_current={}\nst_w_best={}\nst_w_last={}\nst_w_status={}\nst_w_bike={}\nst_w_penalty={}\nst_w_crashed={}\nst_w_category={}\nst_w_lapdiff={}\n\
+         st_bg={}\nst_hl={}\nst_text={}\nst_stripe={}\nst_plaque_text={}\nst_plaque={}\nst_font={}\nst_bold={}\n\
          st_head={}\nst_foot={}\n\
          rel_num={}\nrel_name={}\nrel_gap={}\nrel_laps={}\nrel_current={}\nrel_pos={}\nrel_bike={}\n\
-         rel_penalty={}\nrel_interval={}\nrel_crashed={}\nrel_best={}\nrel_last={}\n\
+         rel_penalty={}\nrel_interval={}\nrel_status={}\nrel_best={}\nrel_last={}\nrel_category={}\nrel_speed={}\nrel_lapdiff={}\n\
          rel_order={}\n\
          rel_w_num={}\nrel_w_name={}\nrel_w_gap={}\nrel_w_laps={}\nrel_w_current={}\nrel_w_pos={}\n\
-         rel_w_bike={}\nrel_w_penalty={}\nrel_w_interval={}\nrel_w_crashed={}\nrel_w_best={}\nrel_w_last={}\n\
-         rel_bg={}\nrel_hl={}\nrel_text={}\nrel_stripe={}\nrel_font={}\nrel_bold={}\n\
+         rel_w_bike={}\nrel_w_penalty={}\nrel_w_interval={}\nrel_w_status={}\nrel_w_best={}\nrel_w_last={}\nrel_w_category={}\nrel_w_speed={}\nrel_w_lapdiff={}\n\
+         rel_bg={}\nrel_hl={}\nrel_text={}\nrel_stripe={}\nrel_plaque_text={}\nrel_plaque={}\nrel_font={}\nrel_bold={}\n\
          rel_head={}\nrel_foot={}\n\
-         map_others={}\nmap_sf={}\nmap_sectors={}\nmap_name={}\nmap_numbers={}\nmap_arrows={}\n\
+         map_others={}\nmap_sf={}\nmap_sectors={}\nmap_name={}\nmap_numbers={}\nmap_arrows={}\nmap_follow={}\n\
          map_crown={}\nmap_place={}\nmap_dot={}\nmap_bg={}\nmap_font={}\nmap_bold={}\n\
          mini_others={}\nmini_sf={}\nmini_sectors={}\nmini_numbers={}\nmini_arrows={}\nmini_crown={}\n\
          mini_place={}\nmini_dot={}\nmini_bg={}\nmini_zoom={}\nmini_font={}\nmini_bold={}\n\
-         radar_sides={}\nradar_rear={}\nradar_rings={}\nradar_range={}\nradar_bg={}\nradar_font={}\nradar_bold={}\n\
+         radar_sides={}\nradar_rear={}\nradar_rings={}\nradar_style={}\nradar_range={}\nradar_bg={}\nradar_font={}\nradar_bold={}\n\
          dash_rev={}\ndash_yellow={}\ndash_blue={}\ndash_red={}\ndash_simple={}\ndash_shift_color={}\ndash_left={}\ndash_mid={}\ndash_right={}\n\
          dash_bg={}\ndash_font={}\ndash_bold={}\n\
-         ticker_left={}\nticker_right={}\nticker_title={}\nticker_autoscroll={}\n\
-         ticker_bg={}\nticker_font={}\nticker_bold={}\n\
+         ticker_left={}\nticker_right={}\nticker_title={}\nticker_autoscroll={}\nticker_status={}\nticker_slide={}\n\
+         ticker_bg={}\nticker_hl={}\nticker_font={}\nticker_bold={}\n\
          sys_bg={}\nsys_font={}\nsys_bold={}\nsys_apps={}\n\
          sector_live={}\nsector_session={}\nsector_hist={}\nsector_hist_laps={}\n\
          sector_bg={}\nsector_font={}\nsector_bold={}\n\
@@ -2493,7 +3320,7 @@ fn layout_ini(l: &HudLayout) -> String {
          stance_bg={}\nstance_font={}\nstance_bold={}\n\
          flag_bg={}\nflag_yellow={}\nflag_blue={}\nflag_red={}\nflag_text={}\nflag_font={}\nflag_bold={}\n\
          lean_style={}\nlean_bg={}\nlean_font={}\nlean_bold={}\n\
-         gamepad_style={}\ngamepad_bg={}\ngamepad_font={}\ngamepad_bold={}\n\
+         gamepad_style={}\ngamepad_theme={}\ngamepad_bg={}\ngamepad_font={}\ngamepad_bold={}\n\
          telemetry_traces={}\ntelemetry_trace_throttle={}\ntelemetry_trace_brake={}\ntelemetry_trace_steer={}\n\
          telemetry_bars={}\ntelemetry_bar_clutch={}\ntelemetry_bar_brake={}\ntelemetry_bar_throttle={}\ntelemetry_bar_steer={}\n\
          telemetry_dial={}\n\
@@ -2521,28 +3348,30 @@ fn layout_ini(l: &HudLayout) -> String {
         b(stance.show), b(flag.show), b(lean.show), b(gamepad.show), b(telemetry.show), b(pit.show),
         l.standings_rows, l.relative_count, l.ticker_count,
         b(l.st_pos), b(l.st_num), b(l.st_name), b(l.st_gap), b(l.st_interval), b(l.st_laps), b(l.st_current),
-        b(l.st_best), b(l.st_last), b(l.st_status), b(l.st_bike), b(l.st_penalty), b(l.st_crashed),
+        b(l.st_best), b(l.st_last), b(l.st_status), b(l.st_bike), b(l.st_penalty), b(l.st_crashed), b(l.st_category), b(l.st_lapdiff),
         join_st(&l.st_order),
         l.st_w_pos, l.st_w_num, l.st_w_name, l.st_w_gap, l.st_w_interval, l.st_w_laps,
-        l.st_w_current, l.st_w_best, l.st_w_last, l.st_w_status, l.st_w_bike, l.st_w_penalty, l.st_w_crashed,
-        st.bg, l.st_hl, l.st_text.key(), b(l.st_stripe), st.font, b(st.bold),
+        l.st_w_current, l.st_w_best, l.st_w_last, l.st_w_status, l.st_w_bike, l.st_w_penalty, l.st_w_crashed, l.st_w_category, l.st_w_lapdiff,
+        st.bg, l.st_hl, l.st_text.key(), b(l.st_stripe), l.st_plaque_text.key(), b(l.st_plaque), st.font, b(st.bold),
         join_board(&l.st_head), join_board(&l.st_foot),
         b(l.rel_num), b(l.rel_name), b(l.rel_gap), b(l.rel_laps), b(l.rel_current), b(l.rel_pos), b(l.rel_bike),
-        b(l.rel_penalty), b(l.rel_interval), b(l.rel_crashed), b(l.rel_best), b(l.rel_last),
+        b(l.rel_penalty), b(l.rel_interval), b(l.rel_status), b(l.rel_best), b(l.rel_last), b(l.rel_category), b(l.rel_speed), b(l.rel_lapdiff),
         join_rel(&l.rel_order),
         l.rel_w_num, l.rel_w_name, l.rel_w_gap, l.rel_w_laps, l.rel_w_current, l.rel_w_pos,
-        l.rel_w_bike, l.rel_w_penalty, l.rel_w_interval, l.rel_w_crashed, l.rel_w_best, l.rel_w_last,
-        rel.bg, l.rel_hl, l.rel_text.key(), b(l.rel_stripe), rel.font, b(rel.bold),
+        l.rel_w_bike, l.rel_w_penalty, l.rel_w_interval, l.rel_w_status, l.rel_w_best, l.rel_w_last,
+        l.rel_w_category, l.rel_w_speed, l.rel_w_lapdiff,
+        rel.bg, l.rel_hl, l.rel_text.key(), b(l.rel_stripe), l.rel_plaque_text.key(), b(l.rel_plaque), rel.font, b(rel.bold),
         join_board(&l.rel_head), join_board(&l.rel_foot),
         b(l.map_others), b(l.map_sf), b(l.map_sectors), b(l.map_name), b(l.map_numbers), b(l.map_arrows),
+        b(l.map_follow),
         b(l.map_crown), b(l.map_place), l.map_dot.key(), map.bg, map.font, b(map.bold),
         b(l.mini_others), b(l.mini_sf), b(l.mini_sectors), b(l.mini_numbers), b(l.mini_arrows), b(l.mini_crown),
         b(l.mini_place), l.mini_dot.key(), mini.bg, l.mini_zoom, mini.font, b(mini.bold),
-        b(l.radar_sides), b(l.radar_rear), b(l.radar_rings), l.radar_range, radar.bg, radar.font, b(radar.bold),
+        b(l.radar_sides), b(l.radar_rear), b(l.radar_rings), l.radar_style.key(), l.radar_range, radar.bg, radar.font, b(radar.bold),
         b(l.dash_rev), b(l.dash_yellow), b(l.dash_blue), b(l.dash_red), b(l.dash_simple), b(l.dash_shift_color), l.dash_left.key(), l.dash_mid.key(), l.dash_right.key(),
         dash.bg, dash.font, b(dash.bold),
-        l.ticker_left.key(), l.ticker_right.key(), b(l.ticker_title), b(l.ticker_autoscroll),
-        ticker.bg, ticker.font, b(ticker.bold),
+        l.ticker_left.key(), l.ticker_right.key(), b(l.ticker_title), b(l.ticker_autoscroll), b(l.ticker_status), b(l.ticker_slide),
+        ticker.bg, l.ticker_hl, ticker.font, b(ticker.bold),
         sys.bg, sys.font, b(sys.bold), encode_sys_apps(&l.sys_apps),
         b(l.sector_live), b(l.sector_session), b(l.sector_hist), l.sector_hist_laps.clamp(1, 5),
         sector.bg, sector.font, b(sector.bold),
@@ -2551,7 +3380,11 @@ fn layout_ini(l: &HudLayout) -> String {
         stance.bg, stance.font, b(stance.bold),
         flag.bg, b(l.flag_yellow), b(l.flag_blue), b(l.flag_red), b(l.flag_text), flag.font, b(flag.bold),
         l.lean_style.key(), lean.bg, lean.font, b(lean.bold),
-        l.gamepad_style.key(), gamepad.bg, gamepad.font, b(gamepad.bold),
+        l.gamepad_style.key(),
+        l.gamepad_theme.key(),
+        gamepad.bg,
+        gamepad.font,
+        b(gamepad.bold),
         b(l.telemetry_traces), b(l.telemetry_trace_throttle), b(l.telemetry_trace_brake), b(l.telemetry_trace_steer),
         b(l.telemetry_bars), b(l.telemetry_bar_clutch), b(l.telemetry_bar_brake), b(l.telemetry_bar_throttle), b(l.telemetry_bar_steer),
         b(l.telemetry_dial),
@@ -2591,7 +3424,9 @@ fn clamp_pct(val: &str) -> i32 {
 }
 
 fn clamp_radar_range(val: &str) -> i32 {
-    val.parse().unwrap_or(RADAR_RANGE_DEFAULT).clamp(RADAR_RANGE_MIN, RADAR_RANGE_MAX)
+    val.parse()
+        .unwrap_or(RADAR_RANGE_DEFAULT)
+        .clamp(RADAR_RANGE_MIN, RADAR_RANGE_MAX)
 }
 
 fn clamp_font(val: &str) -> i32 {
@@ -2647,11 +3482,17 @@ fn snap_rect(r: &mut Rect, align: SnapAlign) {
 }
 
 fn parse_st_order(s: &str) -> Vec<StField> {
-    normalize(s.split(',').filter_map(|p| StField::parse(p.trim())), &StField::ALL)
+    normalize(
+        s.split(',').filter_map(|p| StField::parse(p.trim())),
+        &StField::ALL,
+    )
 }
 
 fn parse_rel_order(s: &str) -> Vec<RelField> {
-    normalize(s.split(',').filter_map(|p| RelField::parse(p.trim())), &RelField::ALL)
+    normalize(
+        s.split(',').filter_map(|p| RelField::parse(p.trim())),
+        &RelField::ALL,
+    )
 }
 
 fn normalize<T: Copy + PartialEq>(found: impl Iterator<Item = T>, all: &[T]) -> Vec<T> {
@@ -2710,10 +3551,18 @@ pub enum BoardField {
     Setup,
     GapAhead,
     GapBehind,
+    Delta,
+    Last,
+    LapDiff,
+    Current,
+    Gap,
+    Engine,
+    Penalty,
+    Server,
 }
 
 impl BoardField {
-    pub const ALL: [Self; 19] = [
+    pub const ALL: [Self; 27] = [
         Self::None,
         Self::Position,
         Self::ClassPos,
@@ -2733,6 +3582,14 @@ impl BoardField {
         Self::Setup,
         Self::GapAhead,
         Self::GapBehind,
+        Self::Delta,
+        Self::Last,
+        Self::LapDiff,
+        Self::Current,
+        Self::Gap,
+        Self::Engine,
+        Self::Penalty,
+        Self::Server,
     ];
 
     pub const DEFAULT_HEAD: [Self; 3] = [Self::Session, Self::None, Self::Riders];
@@ -2759,6 +3616,14 @@ impl BoardField {
             Self::Setup => "setup",
             Self::GapAhead => "gapahead",
             Self::GapBehind => "gapbehind",
+            Self::Delta => "delta",
+            Self::Last => "last",
+            Self::LapDiff => "lapdiff",
+            Self::Current => "cur",
+            Self::Gap => "gap",
+            Self::Engine => "eng",
+            Self::Penalty => "pen",
+            Self::Server => "server",
         }
     }
 
@@ -2783,6 +3648,14 @@ impl BoardField {
             Self::Setup => "Setup",
             Self::GapAhead => "Gap ahead",
             Self::GapBehind => "Gap behind",
+            Self::Delta => "Delta",
+            Self::Last => "Last lap",
+            Self::LapDiff => "Last lap diff",
+            Self::Current => "Current lap",
+            Self::Gap => "Gap to leader",
+            Self::Engine => "Engine temp",
+            Self::Penalty => "Penalty",
+            Self::Server => "Server",
         }
     }
 
@@ -2807,6 +3680,14 @@ impl BoardField {
             "setup" => Self::Setup,
             "gapahead" | "gap_ahead" | "ahead" => Self::GapAhead,
             "gapbehind" | "gap_behind" | "behind" => Self::GapBehind,
+            "delta" => Self::Delta,
+            "last" => Self::Last,
+            "lapdiff" | "lap_diff" => Self::LapDiff,
+            "cur" | "current" => Self::Current,
+            "gap" => Self::Gap,
+            "eng" | "engine" => Self::Engine,
+            "pen" | "penalty" => Self::Penalty,
+            "server" => Self::Server,
             _ => Self::None,
         }
     }
@@ -2815,16 +3696,26 @@ impl BoardField {
         match self {
             Self::None => '\0',
             Self::Position | Self::ClassPos => '\u{f091}',
-            Self::Session | Self::RaceTime | Self::LocalTime => '\u{f2f2}',
+            Self::Session
+            | Self::RaceTime
+            | Self::LocalTime
+            | Self::Last
+            | Self::Current
+            | Self::Best
+            | Self::SessionBest
+            | Self::LapDiff => '\u{f2f2}',
             Self::Lap | Self::LapsLeft => '\u{f1da}',
             Self::Track | Self::Riders => '\u{f553}',
             Self::Air => '\u{f72e}',
-            Self::Best | Self::SessionBest => '\u{f2f2}',
-            Self::GapAhead => '\u{f062}',
+            Self::Delta => '\u{f362}',
+            Self::Gap | Self::GapAhead => '\u{f062}',
             Self::GapBehind => '\u{f063}',
             Self::SessionType => '\u{f11e}',
             Self::Fuel | Self::FuelPct => '\u{f52f}',
             Self::Setup => '\u{f0ad}',
+            Self::Engine => '\u{f2c9}',
+            Self::Penalty => '\u{f06a}',
+            Self::Server => '\u{f233}',
         }
     }
 
@@ -2844,6 +3735,7 @@ pub enum DashField {
     LapCount,
     LapsLeft,
     Last,
+    LapDiff,
     Best,
     Current,
     Delta,
@@ -2863,7 +3755,7 @@ pub enum DashField {
 }
 
 impl DashField {
-    pub const ALL: [Self; 25] = [
+    pub const ALL: [Self; 26] = [
         Self::None,
         Self::Speed,
         Self::Rpm,
@@ -2873,6 +3765,7 @@ impl DashField {
         Self::LapCount,
         Self::LapsLeft,
         Self::Last,
+        Self::LapDiff,
         Self::Best,
         Self::Current,
         Self::Delta,
@@ -2902,6 +3795,7 @@ impl DashField {
             Self::LapCount => "laps",
             Self::LapsLeft => "left",
             Self::Last => "last",
+            Self::LapDiff => "lapdiff",
             Self::Best => "best",
             Self::Current => "cur",
             Self::Delta => "delta",
@@ -2932,6 +3826,7 @@ impl DashField {
             Self::LapCount => "Lap count",
             Self::LapsLeft => "Laps left",
             Self::Last => "Last lap",
+            Self::LapDiff => "Last lap diff",
             Self::Best => "Best lap",
             Self::Current => "Current lap",
             Self::Delta => "Delta",
@@ -2962,6 +3857,7 @@ impl DashField {
             "laps" | "lapcount" => Self::LapCount,
             "left" | "lapsleft" => Self::LapsLeft,
             "last" => Self::Last,
+            "lapdiff" | "lap_diff" => Self::LapDiff,
             "best" => Self::Best,
             "cur" | "current" => Self::Current,
             "delta" => Self::Delta,
@@ -2991,7 +3887,12 @@ impl DashField {
             Self::Position => '\u{f091}',
             Self::Number => '\u{f292}',
             Self::LapCount | Self::LapsLeft => '\u{f1da}',
-            Self::Last | Self::Best | Self::Current | Self::Session | Self::LocalTime => '\u{f2f2}',
+            Self::Last
+            | Self::LapDiff
+            | Self::Best
+            | Self::Current
+            | Self::Session
+            | Self::LocalTime => '\u{f2f2}',
             Self::Delta => '\u{f362}',
             Self::Air => '\u{f72e}',
             Self::Engine => '\u{f2c9}',
@@ -3113,12 +4014,9 @@ pub fn ini_path() -> PathBuf {
 }
 
 fn legacy_ini_path() -> PathBuf {
-    let home = std::env::var("USERPROFILE").unwrap_or_else(|_| "C:\\Users\\Public".into());
-    PathBuf::from(home)
-        .join("Documents")
-        .join("PiBoSo")
-        .join("MX Bikes")
-        .join("mxbo.ini")
+    let mut p = ini_path();
+    p.set_file_name("mxbo.ini");
+    p
 }
 
 pub fn with_config<T>(f: impl FnOnce(&HudConfig) -> T) -> T {

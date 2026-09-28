@@ -12,6 +12,49 @@ $LegacyDir = Join-Path $env:LOCALAPPDATA "MXBO Overlay"
 $SettingsIni = Join-Path $env:USERPROFILE "Documents\PiBoSo\MX Bikes\Holeshot-HUD.ini"
 $LegacySettingsIni = Join-Path $env:USERPROFILE "Documents\PiBoSo\MX Bikes\mxbo.ini"
 
+function Test-IsGameTree([string]$dir) {
+    if (-not $dir) { return $false }
+    $resolved = $dir
+    try {
+        if (Test-Path -LiteralPath $dir) {
+            $resolved = (Resolve-Path -LiteralPath $dir).Path
+        }
+    } catch {}
+    if (Test-Path -LiteralPath (Join-Path $resolved "mxbikes.exe")) { return $true }
+    $leaf = Split-Path $resolved -Leaf
+    if ($leaf -ieq "MX Bikes") { return $true }
+    if (Test-Path -LiteralPath (Join-Path $resolved "steamapps\common")) { return $true }
+    if ($leaf -ieq "steamapps") { return $true }
+    $parent = Split-Path $resolved -Parent
+    $parentLeaf = if ($parent) { Split-Path $parent -Leaf } else { "" }
+    if ($leaf -ieq "common" -and $parentLeaf -ieq "steamapps") { return $true }
+    if ($leaf -ieq "plugins" -and $parent -and (Test-Path -LiteralPath (Join-Path $parent "mxbikes.exe"))) { return $true }
+    $false
+}
+
+function Remove-HudFilesFrom([string]$dir) {
+    if (-not (Test-Path -LiteralPath $dir)) { return }
+    foreach ($name in @(
+            "Holeshot-HUD.exe",
+            "Holeshot-HUD.dlo",
+            "Install-Plugin.ps1",
+            "Uninstall.ps1",
+            "Uninstall.bat",
+            "README.txt",
+            "Holeshot-HUD.ini",
+            "mxbo.ini",
+            "gamedir.txt",
+            "tickets.json"
+        )) {
+        $p = Join-Path $dir $name
+        if (Test-Path -LiteralPath $p) {
+            Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue
+        }
+    }
+    Get-ChildItem -LiteralPath $dir -Filter "unins000.*" -ErrorAction SilentlyContinue |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+}
+
 function Get-SteamLibraries {
     $roots = @()
     foreach ($key in @(
@@ -55,7 +98,8 @@ function Remove-SavedSettings {
                 Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue
             }
         }
-        foreach ($name in @("logs", "track-pbs")) {
+        if (Test-IsGameTree $dir) { continue }
+        foreach ($name in @("logs", "track-pbs", "reviews")) {
             $p = Join-Path $dir $name
             if (Test-Path -LiteralPath $p) {
                 Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction SilentlyContinue
@@ -101,8 +145,8 @@ foreach ($name in @($AppName, "MXBO Overlay")) {
 }
 
 # Always drop layout / options and AppData leftovers so a reinstall is brand new.
-# During Inno -Silent, leave the install folder itself for the uninstaller to finish;
-# [UninstallDelete] then removes {app}. Standalone uninstall wipes the folders below.
+# During Inno -Silent, leave the install folder itself for Inno to finish
+# (it removes only the files it installed plus HUD leftovers — never a game tree).
 Remove-SavedSettings
 
 if ($Silent) {
@@ -110,10 +154,14 @@ if ($Silent) {
 }
 
 foreach ($dir in @($InstallDir, $DataDir, $LegacyDir) | Select-Object -Unique) {
-    if (Test-Path $dir) {
-        Start-Sleep -Milliseconds 400
-        Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
+    if (-not (Test-Path $dir)) { continue }
+    Start-Sleep -Milliseconds 400
+    if (Test-IsGameTree $dir) {
+        Remove-HudFilesFrom $dir
+        Write-Host "Left $dir in place (looks like MX Bikes / Steam, not a HUD-only folder)."
+        continue
     }
+    Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host "Holeshot HUD has been removed."

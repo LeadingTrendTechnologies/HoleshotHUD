@@ -94,6 +94,50 @@ export class Preview {
             wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
         }
     }
+    /**
+     * @returns {string}
+     */
+    mode() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.preview_mode(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @param {number} nx
+     * @param {number} ny
+     * @param {number} width
+     * @param {number} height
+     */
+    motos_pointer_down(nx, ny, width, height) {
+        wasm.preview_motos_pointer_down(this.__wbg_ptr, nx, ny, width, height);
+    }
+    /**
+     * @param {number} nx
+     * @param {number} ny
+     * @param {number} width
+     * @param {number} height
+     */
+    motos_pointer_move(nx, ny, width, height) {
+        wasm.preview_motos_pointer_move(this.__wbg_ptr, nx, ny, width, height);
+    }
+    motos_pointer_up() {
+        wasm.preview_motos_pointer_up(this.__wbg_ptr);
+    }
+    /**
+     * @param {number} nx
+     * @param {number} ny
+     * @param {number} delta
+     */
+    motos_wheel(nx, ny, delta) {
+        wasm.preview_motos_wheel(this.__wbg_ptr, nx, ny, delta);
+    }
     constructor() {
         const ret = wasm.preview_new();
         if (ret[2]) {
@@ -160,6 +204,14 @@ export class Preview {
         const ptr0 = passStringToWasm0(key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
         wasm.preview_set_int(this.__wbg_ptr, ptr0, len0, value);
+    }
+    /**
+     * @param {string} mode
+     */
+    set_mode(mode) {
+        const ptr0 = passStringToWasm0(mode, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.preview_set_mode(this.__wbg_ptr, ptr0, len0);
     }
     /**
      * @param {string} name

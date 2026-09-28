@@ -50,7 +50,9 @@ fn banner_stays_up_while_installing() {
 #[test]
 fn protected_paths_need_admin() {
     assert!(looks_protected(Path::new(r"C:\Program Files\Holeshot HUD")));
-    assert!(looks_protected(Path::new(r"C:\Program Files (x86)\Holeshot HUD")));
+    assert!(looks_protected(Path::new(
+        r"C:\Program Files (x86)\Holeshot HUD"
+    )));
     assert!(!looks_protected(Path::new(
         r"C:\Users\troye\AppData\Local\Holeshot HUD"
     )));
@@ -133,17 +135,20 @@ fn zip_paths_cannot_escape_extract_dir() {
 
 #[test]
 fn digest_must_be_sha256_hex() {
-    assert!(parse_sha256_digest("sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").is_some());
-    assert!(parse_sha256_digest("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").is_none());
+    assert!(parse_sha256_digest(
+        "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    )
+    .is_some());
+    assert!(parse_sha256_digest(
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    )
+    .is_none());
     assert!(parse_sha256_digest("sha256:short").is_none());
 }
 
 #[test]
 fn overlay_only_relaunch_skips_plugin_changed() {
-    assert_eq!(
-        relaunch_args(false),
-        vec!["--skip-update", "--whats-new"]
-    );
+    assert_eq!(relaunch_args(false), vec!["--skip-update", "--whats-new"]);
     assert!(!dlo_differs(b"plugin", Some(b"plugin")));
 }
 

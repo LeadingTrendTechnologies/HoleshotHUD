@@ -9,6 +9,14 @@ fn seqlock_delta_is_half_the_seq_step() {
     assert_eq!(shm_publishes(u32::MAX - 1, 2), 2);
 }
 
+#[test]
+fn draw_count_delta_is_raw_not_halved() {
+    // Systems FPS uses Snapshot.draw_count (one bump per Draw), not seq/2.
+    assert_eq!(70u32.wrapping_sub(0), 70);
+    assert_eq!(10u32.wrapping_sub(10), 0);
+    assert_eq!(2u32.wrapping_sub(u32::MAX - 1), 4);
+}
+
 fn exe(key: &str, names: &[&str]) -> SysApp {
     SysApp {
         key: key.into(),
@@ -30,26 +38,41 @@ fn pid_for_matches_kind_and_exe_names() {
         (60, "reshade_setup.exe".into()),
     ];
     let hud = SysApp::from_preset(
-        mxbo_hud::config::SYS_PRESETS.iter().find(|p| p.key == "hud").unwrap(),
+        mxbo_hud::config::SYS_PRESETS
+            .iter()
+            .find(|p| p.key == "hud")
+            .unwrap(),
         true,
     );
     assert_eq!(pid_for(&hud, 10, &procs), Some(10));
     let mx = SysApp::from_preset(
-        mxbo_hud::config::SYS_PRESETS.iter().find(|p| p.key == "mxbikes").unwrap(),
+        mxbo_hud::config::SYS_PRESETS
+            .iter()
+            .find(|p| p.key == "mxbikes")
+            .unwrap(),
         true,
     );
     assert_eq!(pid_for(&mx, 10, &procs), Some(20));
     let app = SysApp::from_preset(
-        mxbo_hud::config::SYS_PRESETS.iter().find(|p| p.key == "mxbapp").unwrap(),
+        mxbo_hud::config::SYS_PRESETS
+            .iter()
+            .find(|p| p.key == "mxbapp")
+            .unwrap(),
         true,
     );
     assert_eq!(pid_for(&app, 10, &procs), Some(40));
     let shade = SysApp::from_preset(
-        mxbo_hud::config::SYS_PRESETS.iter().find(|p| p.key == "reshade").unwrap(),
+        mxbo_hud::config::SYS_PRESETS
+            .iter()
+            .find(|p| p.key == "reshade")
+            .unwrap(),
         true,
     );
     assert_eq!(pid_for(&shade, 10, &procs), Some(60));
-    assert_eq!(pid_for(&exe("obs", &["obs64.exe", "obs32.exe"]), 10, &procs), Some(50));
+    assert_eq!(
+        pid_for(&exe("obs", &["obs64.exe", "obs32.exe"]), 10, &procs),
+        Some(50)
+    );
     assert_eq!(
         pid_for(
             &exe("obs", &["obs64.exe", "obs32.exe"]),

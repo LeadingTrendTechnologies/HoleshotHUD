@@ -31,6 +31,9 @@ pub fn confirm(host: HWND) -> bool {
 pub fn start(host: HWND) -> bool {
     crate::startup::set_enabled(false);
     crate::plugin::remove();
+    if let Some(game) = crate::plugin::game_dir() {
+        let _ = crate::game_ui::remove(&game);
+    }
     crate::tray::remove();
     if launch_inno() || launch_sidecar_script() || launch_fallback() {
         true
@@ -58,7 +61,10 @@ fn launch_inno() -> bool {
     let Some((exe, mut args)) = split_cmd(&raw) else {
         return false;
     };
-    if args.iter().all(|a| !a.eq_ignore_ascii_case("/SILENT") && !a.eq_ignore_ascii_case("/VERYSILENT")) {
+    if args
+        .iter()
+        .all(|a| !a.eq_ignore_ascii_case("/SILENT") && !a.eq_ignore_ascii_case("/VERYSILENT"))
+    {
         args.push("/VERYSILENT".into());
         args.push("/NORESTART".into());
     }
@@ -121,6 +127,7 @@ if ({wipe}) {{
   Remove-Item -LiteralPath (Join-Path '{install}' 'gamedir.txt') -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath (Join-Path '{install}' 'tickets.json') -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath (Join-Path '{install}' 'track-pbs') -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath (Join-Path '{install}' 'reviews') -Recurse -Force -ErrorAction SilentlyContinue
 }}
 "#
     );

@@ -17,9 +17,15 @@ fn toggle_flips_on_press() {
 
 #[test]
 fn hold_follows_button() {
-    assert_eq!(apply_edge(false, false, true, StanceMode::Hold), (true, true));
+    assert_eq!(
+        apply_edge(false, false, true, StanceMode::Hold),
+        (true, true)
+    );
     assert_eq!(apply_edge(true, true, true, StanceMode::Hold), (true, true));
-    assert_eq!(apply_edge(true, true, false, StanceMode::Hold), (false, false));
+    assert_eq!(
+        apply_edge(true, true, false, StanceMode::Hold),
+        (false, false)
+    );
 }
 
 #[test]
@@ -108,7 +114,12 @@ fn ds4_usb_square_and_l2() {
 
 #[test]
 fn xinput_trigger_and_dpad() {
-    assert!(xinput_held(XINPUT_GAMEPAD_DPAD_LEFT.0, 0, 0, StanceBind::PadDpadLeft));
+    assert!(xinput_held(
+        XINPUT_GAMEPAD_DPAD_LEFT.0,
+        0,
+        0,
+        StanceBind::PadDpadLeft
+    ));
     assert!(!xinput_held(0, 0, 0, StanceBind::PadLt));
     assert!(xinput_held(0, 40, 0, StanceBind::PadLt));
     assert!(xinput_held(0, 0, 40, StanceBind::PadRt));

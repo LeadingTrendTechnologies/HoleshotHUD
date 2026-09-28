@@ -2,7 +2,7 @@
 
 Suggestions only. **No code was changed** when this page was written (2026-08-29). Use it when deciding whether a refactor is worth the risk.
 
-Plugin field inventory: [Home.md](Home.md). Widget behavior: [widgets.md](widgets.md). Live order: [live-order.md](live-order.md).
+Plugin field inventory: [Home.md](Home.md). Widget behavior: [widgets.md](widgets.md). Live order: [live-order.md](live-order.md). MX Bikes menu pack backlog: [game-ui.md](game-ui.md).
 
 ---
 
@@ -142,7 +142,7 @@ Priority is **value vs risk**, not “how textbook.” Skip anything in [Do not 
 
 **Why.** Widgets scatter `s.show_map != 0` and `standing_count.max(0) as usize`. An adapter is the typed boundary; it does not replace SHM.
 
-**Break logic?** **Critical** if you change `Snapshot` field order, `MAGIC`, `VERSION`, or `Local\MXBOHudV14`. The adapter must not invent fields the plugin did not publish.
+**Break logic?** **Critical** if you change `Snapshot` field order, `MAGIC`, `VERSION`, or `Local\MXBOHudV18`. The adapter must not invent fields the plugin did not publish.
 
 **Need to know.** Version &lt; 9 backfill in `Shm::read` must remain. Spectate still clears `has_telemetry` on the **copy** in `main.rs` before draw.
 

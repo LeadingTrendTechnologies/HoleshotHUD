@@ -1,0 +1,116 @@
+{
+  "title": "Choose the Analyze layout",
+  "question": "Three compositions in the Holeshot Settings world. Same job: after a moto, read your line against one rider without a crowded board. Helper copy, S1–S3, and Results may recede; the data stays. Nixie-tube digits wait in the re-roll pool.",
+  "options": [
+    {
+      "id": "assigned",
+      "label": "Two acts",
+      "kicker": "THE ROLL",
+      "thesis": "The line is one page. The numbers are the next page. Never both at once.",
+      "palette": ["#0A0A0A", "#18191D", "#FF9430", "#E4E4E6", "#303440"],
+      "materials": ["night-ink glass", "orange skew plaque", "Exo 2 ExtraBold Italic", "6px rounds"],
+      "viewport": "F8 Analyze. Orange Analyze plaque. Icons then lap stepper. Map fills the well with you-orange and Cole-slate lines, scrubber under it, Compare as one menu. No charts, no Results, no S1–S3. A Numbers control opens the second act: SPD | them, GEAR, THR, then traces.",
+      "risk": "A second click to see speed can feel like hiding the compare.",
+      "raised": [
+        { "from": "Gravity rain garden", "raise": "The first viewport has one gravity: the dirt. Numbers wait until you leave that field." },
+        { "from": "Variety telop", "raise": "When numbers appear, SPD is huge; helper copy is gone." }
+      ],
+      "comp": ".impeccable/mocks/decision/analyze-two-acts.png"
+    },
+    {
+      "id": "session-sheet",
+      "label": "Session sheet",
+      "thesis": "The moto is a timing sheet first. The map is a thumbnail you open into.",
+      "palette": ["#0A0A0A", "#18191D", "#FF9430", "#E4E4E6", "#C48424"],
+      "materials": ["hairline rows", "you-row gold", "Exo 2 ExtraBold Italic", "night-ink thumbnail"],
+      "viewport": "Analyze plaque and Hangtown. Huge 1:53.08 for you. Results table as the body (P1 Cole 1:51.42, P3 You gold). A small map sits in the corner. Open map for zoom, scrubber, and At this spot.",
+      "risk": "Riders who came to zoom a corner start on a table.",
+      "comp": ".impeccable/mocks/decision/analyze-session-sheet.png"
+    },
+    {
+      "id": "corner-desk",
+      "label": "Corner desk",
+      "thesis": "The map owns the page. Spot numbers sit in a corner overlay; traces stay closed until Follow.",
+      "palette": ["#0A0A0A", "#FF9430", "#E4E4E6", "#303440", "#30DC58"],
+      "materials": ["full-bleed night-ink map", "corner night-ink plaque", "Exo 2 ExtraBold Italic"],
+      "viewport": "Map edge to edge under the plaque. Lap stepper and Compare as thin chips on the map. Scrubber along the bottom. A small plaque bottom-right: YOU 1:53.08, Cole 1:51.42, SPD 41.2 | 44.0. No Results. No S1–S3. Follow reveals SPEED / HEIGHT / THR.",
+      "risk": "Overlay type can hide the line it is meant to explain.",
+      "comp": ".impeccable/mocks/decision/analyze-corner.png"
+    },
+    {
+      "id": "challenger-wayfinding",
+      "label": "One band",
+      "verdict": "competitive",
+      "lineage": "airport overhead wayfinding",
+      "thesis": "One Analyze fact per band. The next decision is the only one on screen.",
+      "palette": ["#0A0A0A", "#FF9430", "#E4E4E6", "#101012"],
+      "materials": ["stacked charcoal bands", "monumental ExtraBold Italic", "orange plaque only on Analyze"],
+      "viewport": "Band 1: L1 1:53.08 with < >. Band 2: Compare Cole | 450 | 1:51.42. Band 3: the map as the destination, filling the rest. Spot numbers appear only after you scrub, as a single band: SPD 41 | 44. Results stay on the Review list.",
+      "case": "Holds product clarity: crowded Analyze is too many decisions at once.",
+      "risk": "Stacked bands can read as another Settings list.",
+      "comp": ".impeccable/mocks/decision/analyze-wayfinding.png",
+      "hero": "https://impeccable.style/worlds/cards/wayfinding-cartography-signage-terminal-yellow-wayfinding-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/wayfinding-cartography-signage-terminal-yellow-wayfinding.webp"
+    },
+    {
+      "id": "challenger-hypercard",
+      "label": "Card stack",
+      "verdict": "competitive",
+      "lineage": "HyperCard shoebox stack",
+      "thesis": "Analyze is two cards. Back retraces the exact trail: numbers, then line, then the list.",
+      "palette": ["#0A0A0A", "#18191D", "#FF9430", "#E4E4E6"],
+      "materials": ["fixed night-ink cards", "painted Back", "Exo 2 ExtraBold Italic"],
+      "viewport": "Card LINE: map, scrubber, Compare. A Numbers button paints to card SPOT: huge SPD | them, GEAR, THR, traces. Results is a third card from the Review list, not this stack.",
+      "case": "Holds clarity: Back is already the product's trail.",
+      "risk": "Three cards can feel like a wizard, not a garage tool.",
+      "comp": ".impeccable/mocks/decision/analyze-hypercard.png",
+      "hero": "https://impeccable.style/worlds/cards/medium-native-hypercard-stack-shoebox-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/medium-native-hypercard-stack-shoebox.webp"
+    },
+    {
+      "id": "challenger-deep-dive",
+      "label": "Depth dive",
+      "verdict": "competitive",
+      "lineage": "mesophotic wall dive",
+      "thesis": "You descend: map at the surface, spot at the thermocline, traces in the dark.",
+      "palette": ["#0A0A0A", "#FF9430", "#E4E4E6", "#303440"],
+      "materials": ["one vertical well", "night-ink deepening down", "Exo 2 ExtraBold Italic"],
+      "viewport": "Top third: map and scrubber (surface). Mid: one readout plaque SPD | GEAR | THR (thermocline). Bottom: SPEED / HEIGHT / THR traces, dim until Follow. Results and S1–S3 stay off this dive.",
+      "case": "Holds clarity: progressive depth instead of equal-weight stacks.",
+      "risk": "A vertical metaphor is extra if the rider only wanted a quieter map.",
+      "comp": ".impeccable/mocks/decision/analyze-dive.png",
+      "hero": "https://impeccable.style/worlds/cards/rivers-tides-ocean-depths-mesophotic-deep-dive-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/rivers-tides-ocean-depths-mesophotic-deep-dive.webp"
+    },
+    {
+      "id": "challenger-gravity",
+      "label": "Rain garden",
+      "verdict": "declined",
+      "lineage": "gravity-rain garden",
+      "thesis": "Each cloud pulls a different stream of data toward a habitat.",
+      "palette": ["#0A0A0A", "#FF9430", "#E4E4E6"],
+      "materials": ["night-ink ground", "one dominant field"],
+      "viewport": "Map as the only gravity well; numbers orbit until you pin a corner.",
+      "case": "Loses both axes: MX garage is not an impossible garden, and competing pulls recreate the crowd.",
+      "kept": "The first viewport has one gravity: the dirt.",
+      "hero": "https://impeccable.style/worlds/cards/dream-surreal-impossible-worlds-gravity-rain-garden-hero.webp"
+    },
+    {
+      "id": "challenger-telop",
+      "label": "Telop field",
+      "verdict": "declined",
+      "lineage": "variety-show telop captions",
+      "thesis": "Spot numbers land on the map at the size of the beat.",
+      "palette": ["#0A0A0A", "#FF9430", "#E4E4E6", "#FF4048"],
+      "materials": ["outlined ExtraBold Italic over the line"],
+      "viewport": "Huge SPD over the corner, tiny Cole time in the other.",
+      "case": "Loses both axes: captions over dirt hide the line and shout like TV, not a garage tool.",
+      "kept": "When numbers appear, SPD is huge; helper copy is gone.",
+      "hero": "https://impeccable.style/worlds/cards/variety-telop-caption-field-hero.webp"
+    }
+  ],
+  "reroll": { "registers": ["safer", "bolder"] },
+  "buildPath": { "value": "comp", "toggle": true },
+  "canon": false,
+  "steer": true
+}

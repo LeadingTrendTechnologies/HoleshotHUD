@@ -1,0 +1,45 @@
+{
+  "title": "Choose the MX Bikes menu composition",
+  "question": "Your current main menu (rider, #77 bike, grey studio) stays the stage. Holeshot F8 chrome restyles the dests only — no Holeshot mark or HUD wordmark.",
+  "options": [
+    {
+      "id": "top-hardware",
+      "label": "Top hardware bar",
+      "kicker": "THE ROLL",
+      "thesis": "A thin charcoal-side bar owns destinations. The in-game rider and bike own the rest of the screen.",
+      "palette": ["#0A0A0A", "#08080A", "#FF9430", "#E4E4E6", "#84848A"],
+      "materials": ["F8 charcoal-side bar", "orange skew CTA plaque", "Exo 2 ExtraBold Italic", "3px orange pip", "hairline #2A2A2E", "full-bleed rider"],
+      "viewport": "Same 3D stage as now: grey studio, dirt floor, blue #77 bike on a stand, rider in white kit standing beside it. Destinations move into a 56px charcoal-side top bar. Single Player is the orange skew plaque. No Holeshot mark.",
+      "risk": "Can read as a website chrome strip instead of a game menu.",
+      "raised": [
+        { "from": "Mesophotic dive", "raise": "One horizontal chrome band is the only committed layer; the rider is everything else." },
+        { "from": "Orizuru crane", "raise": "Garage, options, pit, and replay reuse this same bar, not a new layout per screen." }
+      ],
+      "comp": ".impeccable/mocks/decision/mxb-ui-top-hardware.png"
+    },
+    {
+      "id": "left-rail",
+      "label": "Left rail over track",
+      "thesis": "Stock MX Bikes topology: a night-ink left plaque of destinations, rider and bike filling the open stage.",
+      "palette": ["#0A0A0A", "#18191D", "#FF9430", "#E4E4E6", "#2A2A2E"],
+      "materials": ["F8 night-ink plaque", "8px rail rows", "tab-on wash", "3px orange pip", "Exo 2 ExtraBold Italic"],
+      "viewport": "Keep today's layout. Left night-ink F8 rail: Single Player, Multi Player, My Bike, My Profiles, My Replays, My Best Laps, Settings, Exit. Orange pip on Single Player. Quiet MX BIKES in ExtraBold Italic, not a Holeshot mark. Rider and #77 bike stay exactly where they are.",
+      "risk": "Reads as a recolor of the stock PiBoSo menu.",
+      "comp": ".impeccable/mocks/decision/mxb-ui-left-rail.png"
+    },
+    {
+      "id": "split-booth",
+      "label": "Split booth",
+      "thesis": "Destinations left, last-session as a thin lower-third, rider stays center-stage.",
+      "palette": ["#0A0A0A", "#141416", "#FF9430", "#E4E4E6", "#C48424"],
+      "materials": ["F8 charcoal rail", "orange LAST SESSION skew plaque", "night-ink lower-third", "Exo 2 ExtraBold Italic", "hairline frame"],
+      "viewport": "Today's rider and #77 bike stay center-right. Left F8 rail of the same dests. Thin LAST SESSION orange skew strip under the dirt, never covering boots.",
+      "risk": "The lower-third can still clip boots if it sits too high.",
+      "comp": ".impeccable/mocks/decision/mxb-ui-split-booth.png"
+    }
+  ],
+  "reroll": { "registers": ["safer", "bolder"] },
+  "buildPath": { "value": "comp", "toggle": true },
+  "canon": false,
+  "steer": true
+}

@@ -263,7 +263,11 @@ fn clock_off_does_not_replace_duration_hist_with_cumulative() {
     s.sector_last_lap = [40_367, 81_157, 58_045];
     tick(&s);
     assert_eq!(history_times()[0], [40_367, 40_790, 58_045]);
-    assert_eq!(history_times()[1], [0, 0, 0], "cumulative last-lap must not shift a second row");
+    assert_eq!(
+        history_times()[1],
+        [0, 0, 0],
+        "cumulative last-lap must not shift a second row"
+    );
 }
 
 #[test]
@@ -381,7 +385,10 @@ fn origin_wrap_mid_s3_keeps_live_delta() {
     tick(&s);
     let after = row(&s, 2, true);
     assert_eq!(hero_index(&s), 2);
-    assert!(after.live, "centerline origin in S3 is not S/F; S3 must keep ticking");
+    assert!(
+        after.live,
+        "centerline origin in S3 is not S/F; S3 must keep ticking"
+    );
     assert!(!after.pending);
     assert!(
         after.delta_ms.abs() <= 250,
@@ -394,7 +401,11 @@ fn origin_wrap_mid_s3_keeps_live_delta() {
         before.delta_ms,
         after.delta_ms
     );
-    assert_eq!(live().freeze_ok & 0b100, 0, "origin wrap must not freeze S3");
+    assert_eq!(
+        live().freeze_ok & 0b100,
+        0,
+        "origin wrap must not freeze S3"
+    );
 }
 
 #[test]
@@ -408,7 +419,10 @@ fn session_compare_uses_this_visit_not_saved_best() {
     s.sector_cur = [24_500, 0, 0];
     tick(&s);
     let first = row_vs(&s, 0, true, true);
-    assert!(!first.has_delta, "first session split has no session best yet");
+    assert!(
+        !first.has_delta,
+        "first session split has no session best yet"
+    );
     assert!(row_vs(&s, 0, true, false).has_delta);
 
     s.current_lap_ms = 0;
@@ -510,7 +524,11 @@ fn history_skips_incomplete_and_duplicate() {
     finish_lap(&mut s, [24_500, 25_200, 22_300]);
     finish_lap(&mut s, [24_500, 25_200, 22_300]);
     assert_eq!(history_times()[0], [24_500, 25_200, 22_300]);
-    assert_eq!(history_times()[1], [0, 0, 0], "same lap must not shift twice");
+    assert_eq!(
+        history_times()[1],
+        [0, 0, 0],
+        "same lap must not shift twice"
+    );
 }
 
 #[test]
@@ -575,7 +593,10 @@ fn ideal_sums_best_sectors() {
     let i = ideal(&s, false);
     assert_eq!(i.sectors, [24_180, 25_640, 20_147]);
     assert_eq!(i.lap_ms, 69_967);
-    assert!(!ideal(&s, true).ready(), "session ideal waits for this visit's splits");
+    assert!(
+        !ideal(&s, true).ready(),
+        "session ideal waits for this visit's splits"
+    );
 }
 
 fn sector_ref_lap(ref_ms: i32, live_delta: i32) {

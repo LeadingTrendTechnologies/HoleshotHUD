@@ -7,15 +7,19 @@ fn dummy_ui(open: bool) -> SettingsUi {
         host: HWND::default(),
         tab: Tab::App,
         last_widget: Tab::Standings,
+        app_section: AppSection::Look,
+        profile_section: ProfileSection::Overview,
         hover: None,
         focus: None,
         hits: Vec::new(),
         open_drop: None,
         drag: None,
         slide: None,
+        sv_drag: None,
         scroll: 0.0,
         content_h: 0.0,
         scroll_max: 0.0,
+        motos_list_scroll: 0.0,
         nav_scroll: 0.0,
         nav_content_h: 0.0,
         nav_top: 0.0,
@@ -30,6 +34,31 @@ fn dummy_ui(open: bool) -> SettingsUi {
         drop_scroll: 0.0,
         drop_menu: None,
         bind_listen: false,
+        review_filter: crate::review::ListFilter::All,
+        review_stay_on_list: false,
+        analyze_id: None,
+        analyze_compare: -1,
+        analyze_you_lap: -1,
+        analyze_warmup: false,
+        analyze_scrub: 0.0,
+        analyze_zoom: 1.0,
+        analyze_pan_x: 0.0,
+        analyze_pan_z: 0.0,
+        analyze_scrubbing: false,
+        analyze_follow: false,
+        map_drag: None,
+        profile_all_time: true,
+        tracks_selected: None,
+        tracks_zoom: 1.0,
+        tracks_pan_x: 0.0,
+        tracks_pan_z: 0.0,
+        tracks_map_drag: None,
+        clear_confirm: None,
+        st_col_slides: ColSlides::new(),
+        rel_col_slides: ColSlides::new(),
+        col_list_y: 0.0,
+        col_list_n: 0,
+        col_list_kind: None,
     }
 }
 
@@ -52,9 +81,8 @@ fn assert_golden(name: &str, px: &Pixmap) {
         fs::write(&path, px.encode_png().expect("png")).expect("write golden");
         return;
     }
-    let bytes = fs::read(&path).unwrap_or_else(|_| {
-        panic!("missing golden {name}.png — run with UPDATE_GOLDENS=1")
-    });
+    let bytes = fs::read(&path)
+        .unwrap_or_else(|_| panic!("missing golden {name}.png — run with UPDATE_GOLDENS=1"));
     let expected = Pixmap::decode_png(&bytes).expect("decode golden");
     if expected.width() != px.width()
         || expected.height() != px.height()
@@ -68,6 +96,19 @@ fn assert_golden(name: &str, px: &Pixmap) {
 
 fn hit_ids(hits: &[HitBox]) -> Vec<Hit> {
     hits.iter().map(|h| h.id).collect()
+}
+
+fn snap_analyze() -> (Option<i64>, bool, i32, i32, bool, f32) {
+    let ui = UI.lock().unwrap();
+    let u = ui.as_ref().unwrap();
+    (
+        u.analyze_id,
+        u.review_stay_on_list,
+        u.analyze_compare,
+        u.analyze_you_lap,
+        u.analyze_warmup,
+        u.analyze_scrub,
+    )
 }
 
 #[test]
@@ -119,6 +160,332 @@ fn reply_modal_paints_got_it() {
 }
 
 #[test]
+fn dump_review_mock_images() {
+    if std::env::var("DUMP_REVIEW_MOCKS").as_deref() != Ok("1") {
+        return;
+    }
+    let _g = crate::review::serial();
+    let tmp = std::env::temp_dir().join("mxbo-review-mocks");
+    let _ = fs::remove_dir_all(&tmp);
+    crate::review::init(tmp);
+    let dest = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join(".impeccable")
+        .join("mocks");
+    dump_review_pages(&dest).expect("dump Review mocks");
+    crate::review::reset();
+}
+
+#[test]
+fn review_empty_paints_enable_gate() {
+    let _g = crate::review::serial();
+    crate::review::reset();
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        g.review = false;
+    }
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Profile;
+    ui.profile_section = ProfileSection::Motos;
+    *UI.lock().unwrap() = Some(ui);
+    let mut px = Pixmap::new(1000, 720).expect("pixmap");
+    draw(&mut px, &fonts, 1000.0, 720.0);
+    let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
+    let ids = hit_ids(&hits);
+    assert!(ids.contains(&Hit::TabProfile));
+    assert!(ids.contains(&Hit::ProfileNavMotos));
+    assert!(ids.contains(&Hit::ReviewToggle));
+    assert!(!ids.contains(&Hit::ReviewFilterAll));
+    assert!(!ids.contains(&Hit::ReviewFilterRanked));
+    assert!(!ids.contains(&Hit::ReviewFilterSaved));
+    assert_golden("review-empty", &px);
+    *UI.lock().unwrap() = None;
+}
+
+#[test]
+fn review_empty_recording_on_paints_filters() {
+    let _g = crate::review::serial();
+    crate::review::reset();
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        g.review = true;
+    }
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Profile;
+    ui.profile_section = ProfileSection::Motos;
+    *UI.lock().unwrap() = Some(ui);
+    let mut px = Pixmap::new(1000, 720).expect("pixmap");
+    draw(&mut px, &fonts, 1000.0, 720.0);
+    let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
+    let ids = hit_ids(&hits);
+    assert!(ids.contains(&Hit::ReviewFilterAll));
+    assert!(ids.contains(&Hit::ReviewFilterRanked));
+    assert!(ids.contains(&Hit::ReviewFilterSaved));
+    *UI.lock().unwrap() = None;
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        g.review = false;
+    }
+}
+
+#[test]
+fn review_list_sheet_has_icon_hits() {
+    let _g = crate::review::serial();
+    let tmp = std::env::temp_dir().join("mxbo-review-list-hits");
+    let _ = fs::remove_dir_all(&tmp);
+    crate::review::init(tmp);
+    crate::review::seed_demo().expect("demo");
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Profile;
+    ui.profile_section = ProfileSection::Motos;
+    *UI.lock().unwrap() = Some(ui);
+    let mut px = Pixmap::new(1000, 720).expect("pixmap");
+    draw(&mut px, &fonts, 1000.0, 720.0);
+    let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
+    let ids = hit_ids(&hits);
+    assert!(ids.iter().any(|h| matches!(h, Hit::ReviewOpen(_))));
+    assert!(ids.iter().any(|h| matches!(h, Hit::ReviewDelete(_))));
+    assert!(ids.iter().any(|h| matches!(h, Hit::ReviewKeep(_))));
+    assert!(ids.contains(&Hit::ReviewClear));
+    *UI.lock().unwrap() = None;
+    crate::review::reset();
+}
+
+#[test]
+fn review_analyze_has_lap_map_and_compare_drop() {
+    let _g = crate::review::serial();
+    let tmp = std::env::temp_dir().join("mxbo-review-analyze-hits");
+    let _ = fs::remove_dir_all(&tmp);
+    crate::review::init(tmp);
+    let id = crate::review::seed_demo().expect("demo");
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Profile;
+    ui.profile_section = ProfileSection::Motos;
+    ui.analyze_id = Some(id);
+    ui.analyze_zoom = 2.0;
+    *UI.lock().unwrap() = Some(ui);
+    let mut px = Pixmap::new(1000, 920).expect("pixmap");
+    draw(&mut px, &fonts, 1000.0, 920.0);
+    let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
+    let ids = hit_ids(&hits);
+    assert!(ids.contains(&Hit::AnalyzeLapOpen));
+    assert!(ids.contains(&Hit::AnalyzeMap));
+    assert!(ids.contains(&Hit::AnalyzeCompareOpen));
+    assert!(ids.contains(&Hit::AnalyzeScrub));
+    assert!(ids.contains(&Hit::AnalyzeFollow));
+    assert!(ids.contains(&Hit::ReviewBack));
+    assert!(ids.contains(&Hit::ReviewDelete(id as u64)));
+    *UI.lock().unwrap() = None;
+    crate::review::reset();
+}
+
+#[test]
+fn review_follow_paint_stores_pan() {
+    let _g = crate::review::serial();
+    let tmp = std::env::temp_dir().join("mxbo-review-follow-pan");
+    let _ = fs::remove_dir_all(&tmp);
+    crate::review::init(tmp);
+    let id = crate::review::seed_demo().expect("demo");
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Profile;
+    ui.profile_section = ProfileSection::Motos;
+    ui.analyze_id = Some(id);
+    ui.analyze_zoom = 2.0;
+    ui.analyze_follow = true;
+    ui.analyze_scrub = 0.0;
+    *UI.lock().unwrap() = Some(ui);
+    let mut px = Pixmap::new(1000, 920).expect("pixmap");
+    draw(&mut px, &fonts, 1000.0, 920.0);
+    let want = follow_pan_for(id, -1, false, 0.0).expect("follow pan");
+    let ui = UI.lock().unwrap();
+    let u = ui.as_ref().unwrap();
+    assert!(
+        (u.analyze_pan_x - want.0).abs() < 1.0e-4 && (u.analyze_pan_z - want.1).abs() < 1.0e-4,
+        "follow paint must store pan ({}, {}) got ({}, {})",
+        want.0,
+        want.1,
+        u.analyze_pan_x,
+        u.analyze_pan_z
+    );
+    drop(ui);
+    *UI.lock().unwrap() = None;
+    crate::review::reset();
+}
+
+#[test]
+fn review_analyze_open_lap_drop_has_you_lap_hits() {
+    let _g = crate::review::serial();
+    let tmp = std::env::temp_dir().join("mxbo-review-analyze-lap-drop");
+    let _ = fs::remove_dir_all(&tmp);
+    crate::review::init(tmp);
+    let id = crate::review::seed_demo().expect("demo");
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Profile;
+    ui.profile_section = ProfileSection::Motos;
+    ui.analyze_id = Some(id);
+    ui.open_drop = Some(Drop::AnalyzeLap);
+    *UI.lock().unwrap() = Some(ui);
+    let mut px = Pixmap::new(1000, 920).expect("pixmap");
+    draw(&mut px, &fonts, 1000.0, 920.0);
+    {
+        let ui = UI.lock().unwrap();
+        let ui = ui.as_ref().unwrap();
+        assert!(
+            ui.drop_menu.is_some(),
+            "open lap menu must reach overlay drop painter"
+        );
+        assert!(
+            ui.hits
+                .iter()
+                .any(|h| matches!(h.id, Hit::AnalyzeYouLap(_))),
+            "open lap menu must register AnalyzeYouLap hits"
+        );
+    }
+    *UI.lock().unwrap() = None;
+
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Profile;
+    ui.profile_section = ProfileSection::Motos;
+    ui.analyze_id = Some(id);
+    ui.open_drop = Some(Drop::AnalyzeCompare);
+    *UI.lock().unwrap() = Some(ui);
+    draw(&mut px, &fonts, 1000.0, 920.0);
+    let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
+    let ids = hit_ids(&hits);
+    assert!(
+        ids.iter().any(|h| matches!(h, Hit::AnalyzeCompare(_))),
+        "open compare menu must register AnalyzeCompare hits"
+    );
+    *UI.lock().unwrap() = None;
+    crate::review::reset();
+}
+
+#[test]
+fn open_dropdown_menu_sits_above_focus_ring() {
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::App;
+    ui.app_section = AppSection::Look;
+    ui.open_drop = Some(Drop::Theme);
+    ui.focus = Some(Hit::ThemeOpen);
+    *UI.lock().unwrap() = Some(ui);
+    let mut px = Pixmap::new(1000, 720).expect("pixmap");
+    draw(&mut px, &fonts, 1000.0, 720.0);
+    let (mx, my, mw, mh) = {
+        let ui = UI.lock().unwrap();
+        let menu = ui.as_ref().unwrap().drop_menu.expect("theme menu painted");
+        (menu.0, menu.1, menu.2, menu.3)
+    };
+    *UI.lock().unwrap() = None;
+    // Focus ring used to stroke the full setting row after the menu; sample just
+    // inside the menu top where that stroke crossed the panel.
+    let sx = (mx + mw * 0.5).round() as u32;
+    let sy = (my + 3.0).round() as u32;
+    assert!(sy < (my + mh) as u32, "sample must stay inside menu");
+    let p = px.pixel(sx, sy).expect("menu pixel");
+    assert_eq!(
+        (p.red(), p.green(), p.blue()),
+        (24, 24, 28),
+        "menu fill must sit above the setting focus ring at ({sx},{sy})"
+    );
+}
+
+#[test]
+fn live_analyze_target_force_from_list() {
+    assert_eq!(live_analyze_target(true, false, None, Some(7)), Some(7));
+    assert_eq!(live_analyze_target(true, true, None, Some(7)), Some(7));
+}
+
+#[test]
+fn live_analyze_target_skip_when_stay() {
+    assert_eq!(live_analyze_target(false, true, None, Some(7)), None);
+}
+
+#[test]
+fn live_analyze_target_skip_when_already_live() {
+    assert_eq!(live_analyze_target(true, false, Some(7), Some(7)), None);
+    assert_eq!(live_analyze_target(false, false, Some(7), Some(7)), None);
+}
+
+#[test]
+fn live_analyze_target_paint_open_when_analyze_none() {
+    assert_eq!(live_analyze_target(false, false, None, Some(7)), Some(7));
+    assert_eq!(live_analyze_target(false, false, Some(3), Some(7)), None);
+    assert_eq!(live_analyze_target(true, false, None, None), None);
+}
+
+#[test]
+fn open_live_analyze_cases() {
+    let _g = crate::review::serial();
+    crate::review::reset();
+    crate::review::set_live(7, "Hangtown");
+
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Profile;
+    ui.profile_section = ProfileSection::Motos;
+    *UI.lock().unwrap() = Some(ui);
+    open_live_analyze(true);
+    let (id, stay, compare, you_lap, warmup, _) = snap_analyze();
+    assert_eq!(id, Some(7), "force from list");
+    assert!(!stay);
+    assert_eq!(compare, -1);
+    assert_eq!(you_lap, -1);
+    assert!(!warmup);
+
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Profile;
+    ui.profile_section = ProfileSection::Motos;
+    ui.review_stay_on_list = true;
+    *UI.lock().unwrap() = Some(ui);
+    open_live_analyze(false);
+    let (id, stay, _, _, _, _) = snap_analyze();
+    assert_eq!(id, None, "skip when stay");
+    assert!(stay);
+
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Profile;
+    ui.profile_section = ProfileSection::Motos;
+    ui.analyze_id = Some(7);
+    ui.analyze_compare = 3;
+    ui.analyze_you_lap = 2;
+    ui.analyze_scrub = 0.4;
+    *UI.lock().unwrap() = Some(ui);
+    open_live_analyze(true);
+    let (id, stay, compare, you_lap, _, scrub) = snap_analyze();
+    assert_eq!(id, Some(7), "skip when already live");
+    assert_eq!(compare, 3);
+    assert_eq!(you_lap, 2);
+    assert!((scrub - 0.4).abs() < 1.0e-6);
+    assert!(!stay);
+
+    crate::review::set_live(7, "Hangtown");
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Profile;
+    ui.profile_section = ProfileSection::Motos;
+    *UI.lock().unwrap() = Some(ui);
+    open_live_analyze(false);
+    let (id, stay, _, _, _, _) = snap_analyze();
+    assert_eq!(id, Some(7), "paint-open when analyze_id is None");
+    assert!(!stay);
+
+    *UI.lock().unwrap() = None;
+    crate::review::reset();
+}
+
+#[test]
 fn wrap_fb_does_not_split_words() {
     let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
     assert_eq!(wrap_fb(&fonts, "", 100.0, 16.0), vec![""]);
@@ -132,7 +499,9 @@ fn wrap_fb_does_not_split_words() {
     let lines = wrap_fb(&fonts, s, max_w, 16.0);
     for word in s.split_whitespace() {
         assert!(
-            lines.iter().any(|l| l.split_whitespace().any(|w| w == word)),
+            lines
+                .iter()
+                .any(|l| l.split_whitespace().any(|w| w == word)),
             "word {word:?} split across {lines:?}"
         );
     }
@@ -159,7 +528,10 @@ fn on_track_preset_strip_names_the_edit_and_live_slots() {
         let mut g = crate::config::CONFIG.lock().unwrap();
         g.settings_preset = SessionPreset::Race;
     }
-    assert_eq!(hit_label(Hit::Preset(SessionPreset::Warmup)), "Warmup — live HUD");
+    assert_eq!(
+        hit_label(Hit::Preset(SessionPreset::Warmup)),
+        "Warmup — live HUD"
+    );
     assert_eq!(hit_label(Hit::Preset(SessionPreset::Race)), "Race");
     assert_eq!(
         hit_label(Hit::PresetCopyOpen),
@@ -170,6 +542,43 @@ fn on_track_preset_strip_names_the_edit_and_live_slots() {
         let mut g = crate::config::CONFIG.lock().unwrap();
         g.settings_preset = g.active_preset;
     }
+}
+
+#[test]
+fn gamepad_theme_row_opens_for_every_pad() {
+    let _g = crate::review::serial();
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let saved = {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        let saved = (g[WidgetId::Gamepad].show, g.gamepad_style);
+        g[WidgetId::Gamepad].show = true;
+        saved
+    };
+    let theme_hits = |style: GamepadStyle| {
+        crate::config::CONFIG.lock().unwrap().gamepad_style = style;
+        let mut ui = dummy_ui(false);
+        ui.tab = Tab::Gamepad;
+        ui.banner_dismissed = true;
+        *UI.lock().unwrap() = Some(ui);
+        let mut px = Pixmap::new(1000, 720).expect("pixmap");
+        draw(&mut px, &fonts, 1000.0, 720.0);
+        let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
+        *UI.lock().unwrap() = None;
+        hits.iter()
+            .filter(|h| h.id == Hit::GamepadThemeOpen)
+            .count()
+    };
+    let playstation = theme_hits(GamepadStyle::PlayStation);
+    let xbox = theme_hits(GamepadStyle::Xbox);
+    let auto = theme_hits(GamepadStyle::Auto);
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        (g[WidgetId::Gamepad].show, g.gamepad_style) = saved;
+    }
+    assert!(playstation > 0, "Theme should open for PlayStation");
+    assert!(xbox > 0, "Theme should open for Xbox");
+    assert!(auto > 0, "Theme should open for Auto");
 }
 
 #[test]
@@ -244,8 +653,234 @@ fn on_track_preset_strip_keeps_copy_to_and_other_chips() {
         g.settings_preset = g.active_preset;
     }
 
-    assert!(hits.iter().any(|h| h.id == Hit::Preset(SessionPreset::Practice)));
-    assert!(hits.iter().any(|h| h.id == Hit::Preset(SessionPreset::Race)));
+    assert!(hits
+        .iter()
+        .any(|h| h.id == Hit::Preset(SessionPreset::Practice)));
+    assert!(hits
+        .iter()
+        .any(|h| h.id == Hit::Preset(SessionPreset::Race)));
     assert!(hits.iter().any(|h| h.id == Hit::PresetCopyOpen));
     assert!(!hits.iter().any(|h| h.id == Hit::PresetCopyAll));
+}
+
+#[test]
+fn clamp_keeps_second_monitor_and_negative_origin() {
+    let primary = [0, 0, 1920, 1080];
+    let right = [1920, 0, 3840, 1080];
+    let left = [-1920, 0, 0, 1080];
+    let dual = [primary, right];
+    assert_eq!(
+        clamp_settings_origin(2000, 80, SETTINGS_W, SETTINGS_H, &dual),
+        (2000, 80)
+    );
+    assert_eq!(
+        clamp_settings_origin(-1800, 80, SETTINGS_W, SETTINGS_H, &[left, primary]),
+        (-1800, 80)
+    );
+    assert_eq!(
+        clamp_settings_origin(80, 80, SETTINGS_W, SETTINGS_H, &dual),
+        (80, 80)
+    );
+}
+
+#[test]
+fn clamp_snaps_to_nearest_when_monitor_is_gone() {
+    let primary = [0, 0, 1920, 1080];
+    assert_eq!(
+        clamp_settings_origin(2000, 80, SETTINGS_W, SETTINGS_H, &[primary]),
+        (920, 80)
+    );
+    assert_eq!(
+        clamp_settings_origin(80, 80, SETTINGS_W, SETTINGS_H, &[]),
+        (80, 80)
+    );
+}
+
+#[test]
+fn profile_tab_visible_when_motos_off() {
+    let _g = crate::review::serial();
+    crate::review::reset();
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        g.review = false;
+    }
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Profile;
+    ui.profile_section = ProfileSection::Overview;
+    *UI.lock().unwrap() = Some(ui);
+    let mut px = Pixmap::new(1000, 720).expect("pixmap");
+    draw(&mut px, &fonts, 1000.0, 720.0);
+    let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
+    let ids = hit_ids(&hits);
+    assert!(ids.contains(&Hit::TabProfile));
+    assert!(ids.contains(&Hit::ProfileNavOverview));
+    assert!(ids.contains(&Hit::ProfileNavMotos));
+    assert!(
+        !ids.contains(&Hit::ProfileNavTracks),
+        "Tracks is Labs-only until experimental is on"
+    );
+    *UI.lock().unwrap() = None;
+}
+
+#[test]
+fn profile_nav_tracks_when_experimental() {
+    let _g = crate::review::serial();
+    crate::review::reset();
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        g.review = false;
+        g.experimental = true;
+    }
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Profile;
+    ui.profile_section = ProfileSection::Overview;
+    *UI.lock().unwrap() = Some(ui);
+    let mut px = Pixmap::new(1000, 720).expect("pixmap");
+    draw(&mut px, &fonts, 1000.0, 720.0);
+    let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
+    let ids = hit_ids(&hits);
+    assert!(ids.contains(&Hit::ProfileNavTracks));
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        g.experimental = false;
+    }
+    *UI.lock().unwrap() = None;
+}
+
+#[test]
+fn map_zoom_clamps_to_analyze_bounds() {
+    assert!((clamp_map_zoom(0.5) - 1.0).abs() < 1e-6);
+    assert!((clamp_map_zoom(1.0) - 1.0).abs() < 1e-6);
+    assert!((clamp_map_zoom(6.0) - 6.0).abs() < 1e-6);
+    assert!((clamp_map_zoom(12.0) - 12.0).abs() < 1e-6);
+    assert!((clamp_map_zoom(40.0) - 12.0).abs() < 1e-6);
+}
+
+#[test]
+fn tracks_detail_registers_track_map_hit() {
+    let _g = crate::review::serial();
+    let tmp = std::env::temp_dir().join("mxbo-tracks-map-hit");
+    let _ = fs::remove_dir_all(&tmp);
+    crate::review::init(tmp);
+    crate::review::seed_demo().expect("demo");
+    let rows = crate::review::track_bank_rows();
+    assert!(!rows.is_empty(), "demo should seed track bank");
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        g.experimental = true;
+    }
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Profile;
+    ui.profile_section = ProfileSection::Tracks;
+    ui.tracks_selected = Some(rows[0].track.clone());
+    ui.tracks_zoom = 2.0;
+    *UI.lock().unwrap() = Some(ui);
+    let mut px = Pixmap::new(1000, 920).expect("pixmap");
+    draw(&mut px, &fonts, 1000.0, 920.0);
+    let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
+    let ids = hit_ids(&hits);
+    assert!(ids.contains(&Hit::TrackMap));
+    assert!(ids.contains(&Hit::TrackBack));
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        g.experimental = false;
+    }
+    *UI.lock().unwrap() = None;
+    crate::review::reset();
+}
+
+#[test]
+fn profile_empty_paints_teach_copy() {
+    let _g = crate::review::serial();
+    crate::review::reset();
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        g.review = true;
+    }
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Profile;
+    *UI.lock().unwrap() = Some(ui);
+    let mut px = Pixmap::new(1000, 720).expect("pixmap");
+    draw(&mut px, &fonts, 1000.0, 720.0);
+    let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
+    let ids = hit_ids(&hits);
+    assert!(ids.contains(&Hit::TabProfile));
+    assert!(ids.contains(&Hit::ProfileNavOverview));
+    assert!(ids.contains(&Hit::ProfileAllTime));
+    assert!(ids.contains(&Hit::ProfileTwoWeeks));
+    assert!(!ids.contains(&Hit::ProfileClear));
+    assert_golden("profile-empty", &px);
+    *UI.lock().unwrap() = None;
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        g.review = false;
+    }
+}
+
+#[test]
+fn profile_demo_paints_spider() {
+    let _g = crate::review::serial();
+    let tmp = std::env::temp_dir().join("mxbo-profile-demo");
+    let _ = fs::remove_dir_all(&tmp);
+    crate::review::reset();
+    crate::review::init(tmp);
+    crate::review::seed_demo().expect("demo");
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        g.review = true;
+    }
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Profile;
+    *UI.lock().unwrap() = Some(ui);
+    let mut px = Pixmap::new(1000, 720).expect("pixmap");
+    draw(&mut px, &fonts, 1000.0, 720.0);
+    let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
+    let ids = hit_ids(&hits);
+    assert!(ids.contains(&Hit::ProfileAllTime));
+    assert!(ids.contains(&Hit::ProfileClear));
+    for i in 0..8 {
+        assert!(ids.contains(&Hit::ProfileAxis(i)), "missing axis {i}");
+    }
+    assert_eq!(
+        hit_label(Hit::ProfileAxis(0)),
+        "Your best lap vs the fastest in that race."
+    );
+    assert_golden("profile", &px);
+    *UI.lock().unwrap() = None;
+    crate::review::reset();
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        g.review = false;
+    }
+}
+
+#[test]
+fn profile_clear_confirm_paints_buttons() {
+    let _g = crate::review::serial();
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Profile;
+    ui.clear_confirm = Some(ClearKind::Profile);
+    *UI.lock().unwrap() = Some(ui);
+    let mut px = Pixmap::new(1000, 720).expect("pixmap");
+    draw(&mut px, &fonts, 1000.0, 720.0);
+    let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
+    let ids = hit_ids(&hits);
+    assert!(ids.contains(&Hit::ClearScrim));
+    assert!(ids.contains(&Hit::ClearCancel));
+    assert!(ids.contains(&Hit::ClearConfirm));
+    assert_eq!(hit_label(Hit::ClearConfirm), "Clear");
+    assert_golden("clear-profile", &px);
+    *UI.lock().unwrap() = None;
 }

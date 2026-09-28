@@ -1,5 +1,6 @@
 #include "vendor/piboso/mxb_api.h"
 #include "config.h"
+#include "crash_log.h"
 #include "state.h"
 #include "hud/draw_list.h"
 #include "hud/map_hud.h"
@@ -120,6 +121,11 @@ namespace
 
     FILETIME g_iniWriteTime{};
 
+    void breadcrumb(const char* name)
+    {
+        crash_log::breadcrumb(name);
+    }
+
     void reloadConfigIfChanged()
     {
         if (g_iniPath.empty())
@@ -167,6 +173,7 @@ namespace
         }
         catch (...)
         {
+            crash_log::flushTrail();
         }
     }
 
@@ -187,22 +194,26 @@ extern "C" {
 
 __declspec(dllexport) char* GetModID()
 {
+    breadcrumb("GetModID");
     static char modId[] = "mxbikes";
     return modId;
 }
 
 __declspec(dllexport) int GetModDataVersion()
 {
+    breadcrumb("GetModDataVersion");
     return 8;
 }
 
 __declspec(dllexport) int GetInterfaceVersion()
 {
+    breadcrumb("GetInterfaceVersion");
     return 9;
 }
 
 __declspec(dllexport) int Startup(char* _szSavePath)
 {
+    breadcrumb("Startup");
     try
     {
         g_savePath = _szSavePath ? _szSavePath : "";
@@ -225,6 +236,8 @@ __declspec(dllexport) int Startup(char* _szSavePath)
         g_layoutDirty = true;
         g_shm.open();
         ensureOverlayCompat();
+        crash_log::install(&g_state);
+        crash_log::flushTrail();
         return kTelemetryHz;
     }
     catch (...)
@@ -235,6 +248,8 @@ __declspec(dllexport) int Startup(char* _szSavePath)
 
 __declspec(dllexport) void Shutdown()
 {
+    breadcrumb("Shutdown");
+    crash_log::flushTrail();
     safeCall([] {
         if (!g_iniPath.empty())
         {
@@ -252,25 +267,30 @@ __declspec(dllexport) void Shutdown()
 
 __declspec(dllexport) void EventInit(void* _pData, int _iDataSize)
 {
+    breadcrumb("EventInit");
     safeCall([&] {
         SPluginsBikeEvent_t data{};
         copySized(data, _pData, _iDataSize);
         g_state.setEvent(data);
         g_layoutDirty = true;
     });
+    crash_log::flushTrail();
 }
 
 __declspec(dllexport) void EventDeinit()
 {
+    breadcrumb("EventDeinit");
     safeCall([] {
         g_state.clearEvent();
         g_layoutDirty = true;
         publishHud();
     });
+    crash_log::flushTrail();
 }
 
 __declspec(dllexport) void RunInit(void* _pData, int _iDataSize)
 {
+    breadcrumb("RunInit");
     safeCall([&] {
         SPluginsBikeSession_t data{};
         if (copySized(data, _pData, _iDataSize))
@@ -283,6 +303,7 @@ __declspec(dllexport) void RunInit(void* _pData, int _iDataSize)
 
 __declspec(dllexport) void RunDeinit()
 {
+    breadcrumb("RunDeinit");
     safeCall([] {
         g_state.endRun();
         publishHud();
@@ -291,13 +312,18 @@ __declspec(dllexport) void RunDeinit()
 
 __declspec(dllexport) void RunStart()
 {
+    breadcrumb("RunStart");
     safeCall([] { g_state.beginRun(); });
 }
 
-__declspec(dllexport) void RunStop() {}
+__declspec(dllexport) void RunStop()
+{
+    breadcrumb("RunStop");
+}
 
 __declspec(dllexport) void RunLap(void* _pData, int _iDataSize)
 {
+    breadcrumb("RunLap");
     onCopied<SPluginsBikeLap_t>(_pData, _iDataSize, [](const SPluginsBikeLap_t& data) {
         g_state.setLocalLap(data.m_iLapNum, data.m_iLapTime);
         const int last = g_state.lastLapMs();
@@ -314,6 +340,7 @@ __declspec(dllexport) void RunLap(void* _pData, int _iDataSize)
 
 __declspec(dllexport) void RunSplit(void* _pData, int _iDataSize)
 {
+    breadcrumb("RunSplit");
     onCopied<SPluginsBikeSplit_t>(_pData, _iDataSize, [](const SPluginsBikeSplit_t& data) {
         g_state.setLocalSplit(data.m_iSplit, data.m_iSplitTime, data.m_iBestDiff);
     });
@@ -321,13 +348,16 @@ __declspec(dllexport) void RunSplit(void* _pData, int _iDataSize)
 
 __declspec(dllexport) void RunTelemetry(void* _pData, int _iDataSize, float _fTime, float _fPos)
 {
+    breadcrumb("RunTelemetry");
     onCopied<SPluginsBikeData_t>(_pData, _iDataSize, [&](const SPluginsBikeData_t& data) {
         g_state.setTelemetry(data, _fTime, _fPos);
     });
+    crash_log::noteTelemetry();
 }
 
 __declspec(dllexport) int DrawInit(int* _piNumSprites, char** _pszSpriteName, int* _piNumFonts, char** _pszFontName)
 {
+    breadcrumb("DrawInit");
     if (_piNumSprites)
     {
         *_piNumSprites = 0;
@@ -350,6 +380,7 @@ __declspec(dllexport) int DrawInit(int* _piNumSprites, char** _pszSpriteName, in
 
 __declspec(dllexport) void Draw(int _iState, int* _piNumQuads, void** _ppQuad, int* _piNumString, void** _ppString)
 {
+    breadcrumb("Draw");
     if (_piNumQuads) *_piNumQuads = 0;
     if (_ppQuad) *_ppQuad = nullptr;
     if (_piNumString) *_piNumString = 0;
@@ -360,7 +391,7 @@ __declspec(dllexport) void Draw(int _iState, int* _piNumQuads, void** _ppQuad, i
         (void)_iState;
         reloadConfigIfChanged();
         g_layout.update(g_config, g_layoutDirty, g_iniPath);
-        g_shm.publish(g_state, g_config);
+        g_shm.publish(g_state, g_config, true);
 
         // Frozen: standings, relative, and map only. Overlay widgets stay in Rust.
         if (!g_config.ingameHud)
@@ -419,6 +450,7 @@ __declspec(dllexport) void Draw(int _iState, int* _piNumQuads, void** _ppQuad, i
 
 __declspec(dllexport) void TrackCenterline(int _iNumSegments, SPluginsTrackSegment_t* _pasSegment, void* _pRaceData)
 {
+    breadcrumb("TrackCenterline");
     safeCall([&] {
         if (_iNumSegments > 0 && !_pasSegment)
         {
@@ -431,13 +463,16 @@ __declspec(dllexport) void TrackCenterline(int _iNumSegments, SPluginsTrackSegme
 
 __declspec(dllexport) void RaceEvent(void* _pData, int _iDataSize)
 {
+    breadcrumb("RaceEvent");
     onCopied<SPluginsRaceEvent_t>(_pData, _iDataSize, [](const SPluginsRaceEvent_t& data) {
         g_state.setRaceEvent(data);
     });
+    crash_log::flushTrail();
 }
 
 __declspec(dllexport) void RaceDeinit()
 {
+    breadcrumb("RaceDeinit");
     safeCall([] {
         g_state.endRun();
         g_state.clearRace();
@@ -448,6 +483,7 @@ __declspec(dllexport) void RaceDeinit()
 
 __declspec(dllexport) void RaceAddEntry(void* _pData, int _iDataSize)
 {
+    breadcrumb("RaceAddEntry");
     onCopied<SPluginsRaceAddEntry_t>(_pData, _iDataSize, [](const SPluginsRaceAddEntry_t& data) {
         g_state.addEntry(data);
     });
@@ -455,6 +491,7 @@ __declspec(dllexport) void RaceAddEntry(void* _pData, int _iDataSize)
 
 __declspec(dllexport) void RaceRemoveEntry(void* _pData, int _iDataSize)
 {
+    breadcrumb("RaceRemoveEntry");
     onCopied<SPluginsRaceRemoveEntry_t>(_pData, _iDataSize, [](const SPluginsRaceRemoveEntry_t& data) {
         g_state.removeEntry(data.m_iRaceNum);
     });
@@ -462,6 +499,7 @@ __declspec(dllexport) void RaceRemoveEntry(void* _pData, int _iDataSize)
 
 __declspec(dllexport) void RaceSession(void* _pData, int _iDataSize)
 {
+    breadcrumb("RaceSession");
     onCopied<SPluginsRaceSession_t>(_pData, _iDataSize, [](const SPluginsRaceSession_t& data) {
         g_state.setSession(data);
     });
@@ -469,6 +507,7 @@ __declspec(dllexport) void RaceSession(void* _pData, int _iDataSize)
 
 __declspec(dllexport) void RaceSessionState(void* _pData, int _iDataSize)
 {
+    breadcrumb("RaceSessionState");
     onCopied<SPluginsRaceSessionState_t>(_pData, _iDataSize, [](const SPluginsRaceSessionState_t& data) {
         g_state.setSessionState(data);
     });
@@ -476,6 +515,7 @@ __declspec(dllexport) void RaceSessionState(void* _pData, int _iDataSize)
 
 __declspec(dllexport) void RaceLap(void* _pData, int _iDataSize)
 {
+    breadcrumb("RaceLap");
     onCopied<SPluginsRaceLap_t>(_pData, _iDataSize, [](const SPluginsRaceLap_t& data) {
         g_state.setRaceLap(data.m_iRaceNum, data.m_iLapNum, data.m_iLapTime, data.m_aiSplit[0], data.m_aiSplit[1]);
     });
@@ -483,6 +523,7 @@ __declspec(dllexport) void RaceLap(void* _pData, int _iDataSize)
 
 __declspec(dllexport) void RaceSplit(void* _pData, int _iDataSize)
 {
+    breadcrumb("RaceSplit");
     onCopied<SPluginsRaceSplit_t>(_pData, _iDataSize, [](const SPluginsRaceSplit_t& data) {
         g_state.setRaceSplit(data.m_iRaceNum, data.m_iSplit, data.m_iSplitTime);
     });
@@ -490,18 +531,22 @@ __declspec(dllexport) void RaceSplit(void* _pData, int _iDataSize)
 
 __declspec(dllexport) void RaceHoleshot(void* _pData, int _iDataSize)
 {
-    (void)_pData;
-    (void)_iDataSize;
+    breadcrumb("RaceHoleshot");
+    onCopied<SPluginsRaceHoleshot_t>(_pData, _iDataSize, [](const SPluginsRaceHoleshot_t& data) {
+        g_state.setRaceHoleshot(data.m_iRaceNum, data.m_iTime);
+    });
 }
 
 __declspec(dllexport) void RaceCommunication(void* _pData, int _iDataSize)
 {
+    breadcrumb("RaceCommunication");
     (void)_pData;
     (void)_iDataSize;
 }
 
 __declspec(dllexport) void RaceClassification(void* _pData, int _iDataSize, void* _pArray, int _iElemSize)
 {
+    breadcrumb("RaceClassification");
     safeCall([&] {
         if (_iElemSize != static_cast<int>(sizeof(SPluginsRaceClassificationEntry_t)))
         {
@@ -524,6 +569,7 @@ __declspec(dllexport) void RaceClassification(void* _pData, int _iDataSize, void
 
 __declspec(dllexport) void RaceTrackPosition(int _iNumVehicles, void* _pArray, int _iElemSize)
 {
+    breadcrumb("RaceTrackPosition");
     safeCall([&] {
         if (_iElemSize != static_cast<int>(sizeof(SPluginsRaceTrackPosition_t)))
         {
@@ -541,13 +587,58 @@ __declspec(dllexport) void RaceTrackPosition(int _iNumVehicles, void* _pArray, i
 
 __declspec(dllexport) void RaceVehicleData(void* _pData, int _iDataSize)
 {
-    onCopied<SPluginsRaceVehicleData_t>(_pData, _iDataSize, [](const SPluginsRaceVehicleData_t& data) {
-        g_state.setVehicleData(data);
+    breadcrumb("RaceVehicleData");
+    safeCall([&] {
+        if (!_pData || _iDataSize <= 0)
+        {
+            return;
+        }
+        const int stride = static_cast<int>(sizeof(SPluginsRaceVehicleData_t));
+        int n = 0;
+        bool onePartial = false;
+        if (_iDataSize >= stride && _iDataSize % stride == 0)
+        {
+            n = _iDataSize / stride;
+        }
+        else
+        {
+            const int field = std::clamp(
+                static_cast<int>(g_state.trackPositions().size()),
+                0,
+                kMaxRaceEntries);
+            if (field > 1 && _iDataSize == field)
+            {
+                n = field;
+            }
+            else
+            {
+                onePartial = true;
+            }
+        }
+        if (onePartial)
+        {
+            SPluginsRaceVehicleData_t one{};
+            if (copySized(one, _pData, _iDataSize))
+            {
+                g_state.setVehicleData(one);
+            }
+        }
+        else
+        {
+            n = std::clamp(n, 0, kMaxRaceEntries);
+            auto* entries = static_cast<SPluginsRaceVehicleData_t*>(_pData);
+            for (int i = 0; i < n; ++i)
+            {
+                g_state.setVehicleData(entries[i]);
+            }
+        }
+        publishHud();
     });
 }
 
 __declspec(dllexport) int SpectateVehicles(int _iNumVehicles, void* _pVehicleData, int _iCurSelection, int* _piSelect)
 {
+    breadcrumb("SpectateVehicles");
     int pick = -1;
     safeCall([&] {
         g_shm.noteSpectating();
@@ -581,6 +672,7 @@ __declspec(dllexport) int SpectateVehicles(int _iNumVehicles, void* _pVehicleDat
 
 __declspec(dllexport) int SpectateCameras(int _iNumCameras, void* _pCameraData, int _iCurSelection, int* _piSelect)
 {
+    breadcrumb("SpectateCameras");
     (void)_iNumCameras;
     (void)_pCameraData;
     (void)_iCurSelection;

@@ -8,7 +8,15 @@ pub(crate) fn mini_view_radius(zoom: i32) -> f32 {
     FAR_M + t * (NEAR_M - FAR_M)
 }
 
-pub(crate) fn draw_minimap(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32, age: f32) {
+pub(crate) fn draw_minimap(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    s: &Snapshot,
+    cfg: &HudConfig,
+    sw: f32,
+    sh: f32,
+    age: f32,
+) {
     let r = cfg[WidgetId::Minimap].rect;
     let x = r.x * sw;
     let y = r.y * sh;
@@ -59,7 +67,16 @@ pub(crate) fn draw_minimap(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &H
             }
         });
         let radius_m = mini_view_radius(cfg.mini_zoom);
-        (fx, fz, fz, -fx, (sdim * 0.46) / radius_m, pose.x, pose.z, true)
+        (
+            fx,
+            fz,
+            fz,
+            -fx,
+            (sdim * 0.46) / radius_m,
+            pose.x,
+            pose.z,
+            true,
+        )
     } else {
         let mut min_x = s.poly[0].x;
         let mut max_x = min_x;
@@ -75,7 +92,16 @@ pub(crate) fn draw_minimap(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &H
         let dx = (max_x - min_x).max(8.0);
         let dz = (max_z - min_z).max(8.0);
         let scale = (usable / dx).min(usable / dz);
-        (0.0, 1.0, 1.0, 0.0, scale, (min_x + max_x) * 0.5, (min_z + max_z) * 0.5, false)
+        (
+            0.0,
+            1.0,
+            1.0,
+            0.0,
+            scale,
+            (min_x + max_x) * 0.5,
+            (min_z + max_z) * 0.5,
+            false,
+        )
     };
     let mc = sdim * 0.5;
     let to_px = |wx: f32, wz: f32| -> (f32, f32) {
@@ -96,27 +122,35 @@ pub(crate) fn draw_minimap(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &H
     } else {
         (16.0 * scale).clamp(12.0, 28.0)
     };
-    let mut pb = PathBuilder::new();
-    if north_up {
-        append_visible_track(&mut pb, s, n, origin_x, origin_z, mini_view_radius(cfg.mini_zoom) * 2.25, &to_px);
+    let visible_radius = if north_up {
+        Some(mini_view_radius(cfg.mini_zoom) * 2.25)
     } else {
-        let (sx, sy) = to_px(s.poly[0].x, s.poly[0].z);
-        pb.move_to(sx, sy);
-        for p in s.poly.iter().take(n).skip(1) {
-            let (px_, py_) = to_px(p.x, p.z);
-            pb.line_to(px_, py_);
-        }
-    }
-    if let Some(path) = pb.finish() {
-        stroke_path_fast(mini, &path, Color::from_rgba8(8, 8, 10, 220), track_px + 5.0);
-        stroke_path_fast(mini, &path, Color::from_rgba8(248, 248, 252, 255), track_px);
-    }
+        None
+    };
+    stroke_smooth_minimap_track(
+        mini,
+        s,
+        n,
+        origin_x,
+        origin_z,
+        visible_radius,
+        track_px,
+        &to_px,
+    );
 
     if n >= 2 && s.sf_meters >= 0.0 && cfg.mini_sf {
         draw_sf(mini, s, n, to_px, track_px);
     }
     if cfg.mini_sectors {
-        draw_sector_lines(mini, fonts, s, n, to_px, track_px, Some((mc, mc, sdim * 0.46)));
+        draw_sector_lines(
+            mini,
+            fonts,
+            s,
+            n,
+            to_px,
+            track_px,
+            Some((mc, mc, sdim * 0.46)),
+        );
     }
     if cfg.mini_arrows {
         draw_track_arrows(mini, s, n, to_px, track_px, Some((mc, sdim)), north_up);
@@ -132,7 +166,8 @@ pub(crate) fn draw_minimap(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &H
             if you.is_some() && rider.race_num == subject {
                 continue;
             }
-            let (hx, hy) = to_px(rider.x, rider.z);
+            let pose = rider_map_pose(s, rider);
+            let (hx, hy) = to_px(pose.x, pose.z);
             if (hx - mc) * (hx - mc) + (hy - mc) * (hy - mc) > sdim * sdim * 0.27 {
                 continue;
             }
@@ -148,11 +183,30 @@ pub(crate) fn draw_minimap(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &H
                 cfg.mini_numbers,
                 false,
             );
-            let (fwx, fwz) = yaw_forward(rider.yaw);
-            let (sdx, sdy) = screen_dir(&to_px, rider.x, rider.z, fwx, fwz);
+            let (fwx, fwz) = yaw_forward(pose.yaw);
+            let (sdx, sdy) = screen_dir(&to_px, pose.x, pose.z, fwx, fwz);
             draw_dot_chevron(mini, hx, hy, other_r, sdx, sdy, fill, false);
-            draw_rider_overhead(mini, fonts, s, rider.race_num, hx, hy, other_r, subject, leader, cfg.mini_crown, cfg.mini_place);
-            draw_state_mark(mini, fonts, hx, hy, other_r, rider_mark(s, rider.race_num, rider.crashed != 0));
+            draw_rider_overhead(
+                mini,
+                fonts,
+                s,
+                rider.race_num,
+                hx,
+                hy,
+                other_r,
+                subject,
+                leader,
+                cfg.mini_crown,
+                cfg.mini_place,
+            );
+            draw_state_mark(
+                mini,
+                fonts,
+                hx,
+                hy,
+                other_r,
+                rider_mark(s, rider.race_num, rider.crashed != 0),
+            );
         }
     }
 
@@ -165,7 +219,13 @@ pub(crate) fn draw_minimap(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &H
                 let t = i as f32 * 0.07;
                 let (tx, ty) = to_px(pose.x - vx * t, pose.z - vz * t);
                 let a = 40u8.saturating_mul(5 - i as u8);
-                fill_circle(mini, tx, ty, local_r * (0.55 + i as f32 * 0.04), Color::from_rgba8(255, 148, 48, a));
+                fill_circle(
+                    mini,
+                    tx,
+                    ty,
+                    local_r * (0.55 + i as f32 * 0.04),
+                    accent_a(a),
+                );
             }
         }
         numbered_dot(
@@ -189,7 +249,14 @@ pub(crate) fn draw_minimap(px: &mut Pixmap, fonts: &Fonts, s: &Snapshot, cfg: &H
         if cfg.mini_crown && leader > 0 && subject == leader {
             crown_over_dot(mini, fonts, hx, hy, local_r);
         }
-        draw_state_mark(mini, fonts, hx, hy, local_r, rider_mark(s, subject, pose.crashed));
+        draw_state_mark(
+            mini,
+            fonts,
+            hx,
+            hy,
+            local_r,
+            rider_mark(s, subject, pose.crashed),
+        );
     }
 
     blit_circle(px, mini, left, top);

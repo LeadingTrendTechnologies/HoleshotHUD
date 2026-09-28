@@ -73,7 +73,9 @@ fn start_and_search_hosts_count_as_shell_ui() {
     assert!(is_shell_ui_class("Shell_SecondaryTrayWnd"));
     assert!(is_shell_ui_class("ImmersiveLauncher"));
     assert!(!is_shell_ui_class("MXBOOverlay"));
-    assert!(is_shell_ui_process(r"C:\Windows\SystemApps\StartMenuExperienceHost.exe"));
+    assert!(is_shell_ui_process(
+        r"C:\Windows\SystemApps\StartMenuExperienceHost.exe"
+    ));
     assert!(is_shell_ui_process(r"C:\Windows\System32\SearchHost.exe"));
     assert!(is_shell_ui_process(r"C:\Windows\System32\ShellHost.exe"));
     assert!(!is_shell_ui_process(r"C:\Games\MX Bikes\mxbikes.exe"));
@@ -96,7 +98,10 @@ fn explorer_flyouts_count_as_shell_ui_not_file_explorer() {
         "Windows.UI.Core.CoreWindow",
         r"C:\Program Files\WindowsApps\Calculator.exe"
     ));
-    assert!(!is_shell_ui("MXBOOverlay", r"C:\Games\MX Bikes\mxbikes.exe"));
+    assert!(!is_shell_ui(
+        "MXBOOverlay",
+        r"C:\Games\MX Bikes\mxbikes.exe"
+    ));
 }
 
 #[test]
@@ -130,8 +135,5 @@ fn overlay_stays_on_the_game_monitor() {
         overlay_rect_on_monitor(rect(-1920, 0, 1920, 1080), rect(-1920, 0, 0, 1080)),
         Some((-1920, 0, 1920, 1080))
     );
-    assert_eq!(
-        overlay_rect_on_monitor(rect(0, 0, 50, 50), game),
-        None
-    );
+    assert_eq!(overlay_rect_on_monitor(rect(0, 0, 50, 50), game), None);
 }

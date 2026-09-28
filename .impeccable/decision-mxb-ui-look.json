@@ -1,0 +1,40 @@
+{
+  "title": "Choose the final left-rail look",
+  "question": "Same rider, bike, and dests. Pick the chrome.",
+  "options": [
+    {
+      "id": "float",
+      "label": "Floating F8 card",
+      "thesis": "An inset night-ink card with 8px rows and an orange pip. Closest to the last main comp.",
+      "palette": ["#0A0A0A", "#FF9430", "#E4E4E6", "#84848A", "#2A2A2E"],
+      "materials": ["floating 8px plaque", "hairline", "orange pip", "ExtraBold Italic"],
+      "viewport": "Your grey studio, #77 bike, standing rider. Left inset night-ink card. Single Player selected.",
+      "risk": "Can still read as a settings card dropped on the game.",
+      "comp": ".impeccable/mocks/decision/mxb-ui-look-float.png"
+    },
+    {
+      "id": "dock",
+      "label": "Docked F8 sidebar",
+      "thesis": "A full-height charcoal-side rail, the same stack as F8 settings.",
+      "palette": ["#08080A", "#18191D", "#FF9430", "#E4E4E6"],
+      "materials": ["full-height charcoal-side", "8px rail rows", "orange pip", "ExtraBold Italic"],
+      "viewport": "Same rider and bike. Left column edge-to-edge. Single Player pip.",
+      "risk": "Takes more of the studio than today's shorter list.",
+      "comp": ".impeccable/mocks/decision/mxb-ui-look-dock.png"
+    },
+    {
+      "id": "skew",
+      "label": "Broadcast skews",
+      "thesis": "No box. Each dest is a content-sized skew plaque. Orange is the one action.",
+      "palette": ["#FF9430", "#18191D", "#0C0C0E", "#E4E4E6"],
+      "materials": ["orange skew CTA", "charcoal skew rows", "no enclosing panel", "ExtraBold Italic"],
+      "viewport": "Same rider and bike. Stacked parallelogram dests. Single Player orange.",
+      "risk": "Harder to pack as TGA buttons; denser than a list.",
+      "comp": ".impeccable/mocks/decision/mxb-ui-look-skew.png"
+    }
+  ],
+  "reroll": false,
+  "buildPath": { "value": "comp", "toggle": true },
+  "canon": false,
+  "steer": true
+}

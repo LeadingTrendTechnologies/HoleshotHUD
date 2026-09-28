@@ -3,7 +3,7 @@
 Everything the PiBoSo plugin API can send this project, and whether we already keep it.
 
 Source of truth: `src/vendor/piboso/mxb_api.h` (data version **8**, interface **9**).  
-The game loads `Holeshot-HUD.dlo` and calls the exported functions below. The plugin may copy fields into `PluginState`, then into shared memory `Local\MXBOHudV14` for the Rust overlay. Field offsets for that snapshot are locked in [`src/shm/abi.txt`](../src/shm/abi.txt) — `tools/shm-abi.cpp` and the Rust `Snapshot` / `CmdView` must match, or CI fails. Tessellation, standings copy, and seqlock write are checked by `tools/shm-publish-test`. Bump `MXBO_SHM_VERSION` (and the mapping name) when the layout changes; regenerate the abi file with `UPDATE_SHM_ABI=1 cargo test --manifest-path overlay/Cargo.toml rust_shm_layout_matches_checked_in_abi`.
+The game loads `Holeshot-HUD.dlo` and calls the exported functions below. The plugin may copy fields into `PluginState`, then into shared memory `Local\MXBOHudV18` for the Rust overlay. Field offsets for that snapshot are locked in [`src/shm/abi.txt`](../src/shm/abi.txt) — `tools/shm-abi.cpp` and the Rust `Snapshot` / `CmdView` must match, or CI fails. Tessellation, standings copy, and seqlock write are checked by `tools/shm-publish-test`. Bump `MXBO_SHM_VERSION` (and the mapping name) when the layout changes; regenerate the abi file with `UPDATE_SHM_ABI=1 cargo test --manifest-path overlay/Cargo.toml rust_shm_layout_matches_checked_in_abi`.
 
 **Status**
 
@@ -39,9 +39,9 @@ To add a widget: if the field is **Overlay**, draw it. If **Cached** / **Receive
 
 ## Overlay widget wikis
 
-Per-widget behavior, pitfalls, and change history for agents: **[widgets.md](widgets.md)**. Wishlist (not shipped): **[future.md](widgets/future.md)**. Streaming (OBS Browser Source, not shipped): **[streaming.md](streaming.md)**.
+Per-widget behavior, pitfalls, and change history for agents: **[widgets.md](widgets.md)**. Wishlist (not shipped): **[future.md](widgets/future.md)**. Streaming (OBS Browser Source + stream layouts): **[streaming.md](streaming.md)**.
 
-Rust overlay structure and possible refactors (suggestions only): **[rust-patterns.md](rust-patterns.md)**.
+Rust overlay structure and possible refactors (suggestions only): **[rust-patterns.md](rust-patterns.md)**. MX Bikes menu pack (`game_ui/`) cleanup backlog: **[game-ui.md](game-ui.md)**.
 
 ## What the overlay already shows
 
@@ -58,8 +58,9 @@ Rust overlay structure and possible refactors (suggestions only): **[rust-patter
 - [Systems](widgets/systems.md): CPU / mem / FPS / ping / GPU, plus apps you pick
 - [Stance](widgets/stance.md): sit / stand from a local bind (not plugin telemetry)
 - [Lean](widgets/lean.md): bike roll, pitch, and steer on the bike; spectate follows camera lean. Figure or Minimal (numbers).
-- [Controller](widgets/gamepad.md): live local pad (sticks, analog triggers, bumpers, buttons). Labs. Not plugin telemetry.
+- [Controller](widgets/gamepad.md): live local pad (sticks, analog triggers, bumpers, buttons). Not plugin telemetry.
 - [Pit Board](widgets/pitboard.md): last lap, delta, and any other stats you tick; optional PNG plate
+- [Motos](review.md): F8 library of recent motos (opt-in recording) and an Analyze page (your line vs another rider)
 
 Local speed / yaw / crash / track pos are in SHM for the moving marker, not as their own widgets yet.
 
@@ -109,9 +110,9 @@ Local speed / yaw / crash / track pos are in SHM for the moving marker, not as t
 | `m_szTrackName` | char[100] | Overlay | Map header (also from race event) |
 | `m_fTrackLength` | float | Overlay | Length (meters). Relative wrap |
 | `m_iType` | int | Unused | Event type; **enum not in header** |
-| `m_szServerName` | char[64] | Unused | Online server name |
+| `m_szServerName` | char[64] | Overlay | Online server name (`serverName` SHM) |
 | `m_iServerType` | int | Unused | Online/offline style flag |
-| `m_szGUID` | char[100] | Unused | Event/session id |
+| `m_szGUID` | char[100] | Overlay | Event/session id (`eventGuid` SHM) |
 
 ---
 
@@ -414,7 +415,7 @@ This path is **frozen**: standings, relative, and map only. Do not add overlay w
 
 Already published (version **1**):
 
-- Clock: `tickQpc` (for interpolation)
+- Clock: `tickQpc` (for interpolation); Systems Draw FPS: `drawCount`
 - Local: race num, focus num, crashed, XZ, vel XZ, yaw, speed, track pos
 - Track: name, length, S/F meters, polyline
 - Riders: race num, XZ, yaw, track pos, crashed, name, lean
@@ -423,12 +424,12 @@ Already published (version **1**):
 - Fuel: `fuel` / `maxFuel` — SHM version **10**
 - Lean: `localRoll` / `localPitch` / `localSteer` / `steerLock`; per-rider `lean` — SHM version **12**
 - Setup: `setupName` — SHM version **13**. Filename from `RunInit`
-- Inputs: `localThrottle` / `localFrontBrake` / `localRearBrake` / `localClutch` — SHM version **14** (`Local\MXBOHudV14`). [Telemetry](widgets/telemetry.md)
+- Inputs: `localThrottle` / `localFrontBrake` / `localRearBrake` / `localClutch` — SHM version **14**. Per-rider `y` / speed / RPM / gear / throttle / front brake and `localY` — SHM version **15**. `holeshotRaceNum` / `holeshotTime` — SHM version **16**. `drawCount` (Systems Draw FPS) — SHM version **17**. `serverName` / `eventGuid` — SHM version **18** (`Local\MXBOHudV18`). [Motos](review.md)
 - Layout: map / standings / relative rects + show flags + row counts
 
 Command mapping `Local\MXBOHudCmdV1` (`MxboShmCmd`): overlay writes `spectateRaceNum`; plugin writes `spectating` while `SpectateVehicles` is live. Not part of the snapshot seqlock.
 
-**Not published yet** (but available in the API or `PluginState`): penalty, bike names, laps/splits, holeshot, comms, temps/suspension, spectate camera list. Local throttle / brakes / clutch are Overlay (V14). Other riders still only send throttle / front brake / lean.
+**Not published yet** (but available in the API or `PluginState`): penalty, bike names, laps/splits, comms, temps/suspension, spectate camera list, `m_iServerType`. Local throttle / brakes / clutch are Overlay (V14). Other riders still only send throttle / front brake / lean. Holeshot is Overlay (V16). Draw FPS counter is Overlay (V17). Server name + event GUID are Overlay (V18).
 
 Bump `MXBO_SHM_VERSION` when you add fields; keep C and Rust `#[repr(C)]` layouts identical.
 
@@ -465,7 +466,7 @@ Existing overlay widgets: [widgets.md](widgets.md) (behavior + change logs). Fie
 | Shift light | `m_iRPM` vs `m_iShiftRPM` | Need SHM |
 | Throttle / brakes / clutch | telemetry inputs | Overlay (V14) |
 | [Lean](widgets/lean.md) | `m_fRoll` / `m_fPitch` / `m_fSteer` / `m_fSteerLock` + `m_fLean` | Overlay |
-| [Controller](widgets/gamepad.md) | local XInput / DualShock HID | Overlay (not plugin). Labs. |
+| [Controller](widgets/gamepad.md) | local XInput / DualShock HID | Overlay (not plugin). |
 | Fuel | `m_fFuel` / `m_fMaxFuel` | Overlay (dash / standings / relative / ticker) |
 | Setup | `m_szSetupFileName` | Overlay (dash / standings / relative / ticker) |
 | Temps | engine/water + alarm band | Need SHM |
@@ -476,7 +477,7 @@ Existing overlay widgets: [widgets.md](widgets.md) (behavior + change logs). Fie
 | Sector delta | `RunSplit` / `RaceSplit` | Overlay (labs: Sectors) |
 | Session timer / laps to go | `RaceSession` + classification header | Unused |
 | Penalty banner | `m_iPenalty` + `RaceCommunication` | Cached / unused |
-| Holeshot | `RaceHoleshot` | Unused |
+| Holeshot | `RaceHoleshot` | Overlay (SHM v16). Profile count. |
 | Rival compare | `RaceVehicleData` speed/rpm vs you | Cached |
 | Air temp | session | Unused |
 

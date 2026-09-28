@@ -17,9 +17,17 @@ fn field_keys_round_trip() {
         assert_eq!(RelField::parse(field.key()), Some(field), "{field:?}");
     }
     assert_eq!(DotLabel::parse(DotLabel::Number.key()), DotLabel::Number);
-    assert_eq!(DotLabel::parse(DotLabel::Position.key()), DotLabel::Position);
+    assert_eq!(
+        DotLabel::parse(DotLabel::Position.key()),
+        DotLabel::Position
+    );
     for family in FontFamily::ALL {
-        assert_eq!(FontFamily::parse(family.key()), family, "{}", family.label());
+        assert_eq!(
+            FontFamily::parse(family.key()),
+            family,
+            "{}",
+            family.label()
+        );
     }
     assert_eq!(FontFamily::parse("agency"), FontFamily::Exo2);
     assert_eq!(FontFamily::parse("industry"), FontFamily::Teko);
@@ -53,6 +61,18 @@ fn field_keys_round_trip() {
     assert_eq!(LeanStyle::parse("minimal"), LeanStyle::Minimal);
     assert_eq!(LeanStyle::parse("attitude"), LeanStyle::Minimal);
     assert_eq!(LeanStyle::parse(""), LeanStyle::Figure);
+    assert_eq!(
+        crate::config::RadarStyle::parse("plaque"),
+        crate::config::RadarStyle::Plaque
+    );
+    assert_eq!(
+        crate::config::RadarStyle::parse("arrows"),
+        crate::config::RadarStyle::Arrows
+    );
+    assert_eq!(
+        crate::config::RadarStyle::parse(""),
+        crate::config::RadarStyle::Plaque
+    );
 }
 
 #[test]
@@ -65,6 +85,7 @@ fn default_hud_hides_every_widget() {
     assert!(!cfg[WidgetId::Radar].show);
     assert!(cfg.radar_rings);
     assert_eq!(cfg.radar_range, 12);
+    assert_eq!(cfg.radar_style, crate::config::RadarStyle::Plaque);
     assert!(!cfg[WidgetId::Dash].show);
     assert!(!cfg[WidgetId::Ticker].show);
     assert!(!cfg[WidgetId::Sys].show);
@@ -99,22 +120,33 @@ fn default_hud_hides_every_widget() {
     assert_eq!(cfg.stance_style, StanceStyle::Text);
     assert_eq!(cfg.lean_style, LeanStyle::Figure);
     assert_eq!(cfg.gamepad_style, GamepadStyle::Auto);
+    assert_eq!(cfg.gamepad_theme, GamepadTheme::Light);
     assert!(!cfg.stance_show_sit);
     assert!(!cfg.experimental);
+    assert!(!cfg.review);
+    assert!(!cfg.game_ui);
     assert!(!cfg.gamepad_visible());
     assert!(cfg.whats_new_seen.is_empty());
     assert!(cfg.first_install_version.is_empty());
     assert!(cfg.ticker_title);
     assert_eq!(cfg.font_family, FontFamily::Exo2);
+    assert_eq!(cfg.primary, DEFAULT_PRIMARY);
     assert_eq!(cfg.units, UnitPrefs::all(Units::Metric));
     assert!(cfg.st_stripe);
     assert!(cfg.rel_stripe);
-    assert_eq!(cfg[WidgetId::Standings].rect, crate::shm::Rect {
-        x: 0.012,
-        y: 0.03,
-        w: 0.20,
-        h: 0.46,
-    });
+    assert_eq!(cfg.st_plaque_text, TableText::Black);
+    assert!(cfg.st_plaque);
+    assert_eq!(cfg.rel_plaque_text, TableText::Black);
+    assert!(cfg.rel_plaque);
+    assert_eq!(
+        cfg[WidgetId::Standings].rect,
+        crate::shm::Rect {
+            x: 0.012,
+            y: 0.03,
+            w: 0.20,
+            h: 0.46,
+        }
+    );
     assert_eq!(cfg[WidgetId::Relative].rect.w, 0.20);
     assert_eq!(cfg[WidgetId::Dash].rect.w, 0.111);
     assert_eq!(cfg[WidgetId::Dash].rect.h, 0.115);
@@ -136,6 +168,157 @@ fn default_hud_hides_every_widget() {
         assert!(!cfg[id].bold);
         assert_eq!(cfg[id].font, 100);
     }
+}
+
+#[test]
+fn review_defaults_off_and_round_trips() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-review-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    std::fs::write(
+        &path,
+        "first_install_version=0.1.0\nst_last=1\nrel_last=1\n",
+    )
+    .unwrap();
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let mut cfg = HudConfig::load_file();
+    assert!(!cfg.review, "missing review= key stays off");
+    cfg.review = true;
+    cfg.save();
+    let loaded = HudConfig::load_file();
+    let text = std::fs::read_to_string(&path).unwrap();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(loaded.review);
+    assert!(text.contains("review=1"));
+}
+
+#[test]
+fn game_ui_defaults_off_and_round_trips() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-game-ui-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    std::fs::write(
+        &path,
+        "first_install_version=0.1.0\nst_last=1\nrel_last=1\n",
+    )
+    .unwrap();
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let mut cfg = HudConfig::load_file();
+    assert!(!cfg.game_ui, "missing game_ui= key stays off");
+    assert!(
+        cfg.game_ui_match_primary,
+        "missing game_ui_match_primary stays on"
+    );
+    assert_eq!(cfg.game_ui_primary, DEFAULT_PRIMARY);
+    assert_eq!(cfg.game_ui_accent(), cfg.primary);
+    cfg.game_ui = true;
+    cfg.game_ui_match_primary = false;
+    cfg.game_ui_primary = [59, 130, 246];
+    cfg.save();
+    let loaded = HudConfig::load_file();
+    let text = std::fs::read_to_string(&path).unwrap();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(loaded.game_ui);
+    assert!(!loaded.game_ui_match_primary);
+    assert_eq!(loaded.game_ui_primary, [59, 130, 246]);
+    assert_eq!(loaded.game_ui_accent(), [59, 130, 246]);
+    assert!(text.contains("game_ui=1"));
+    assert!(text.contains("game_ui_match_primary=0"));
+    assert!(text.contains("game_ui_primary_color=#3B82F6"));
+}
+
+#[test]
+fn game_ui_screen_paths_round_trip() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-game-ui-img-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    let png = dir.join("splash.png");
+    std::fs::write(&png, b"not-a-real-png-but-file-exists").unwrap();
+    std::fs::write(
+        &path,
+        "first_install_version=0.1.0\nst_last=1\nrel_last=1\n",
+    )
+    .unwrap();
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let mut cfg = HudConfig::load_file();
+    assert!(cfg.game_ui_splash_path.is_empty());
+    assert!(cfg.game_ui_loading_path.is_empty());
+    cfg.game_ui_splash_path = png.to_string_lossy().into_owned();
+    cfg.game_ui_loading_path = png.to_string_lossy().into_owned();
+    cfg.save();
+    let loaded = HudConfig::load_file();
+    let text = std::fs::read_to_string(&path).unwrap();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(loaded.game_ui_splash_path, png.to_string_lossy());
+    assert_eq!(loaded.game_ui_loading_path, png.to_string_lossy());
+    assert!(text.contains("game_ui_splash_path="));
+    assert!(text.contains("game_ui_loading_path="));
+}
+
+#[test]
+fn game_ui_accent_follows_primary_when_matched() {
+    let mut cfg = HudConfig::new();
+    cfg.primary = [59, 130, 246];
+    cfg.game_ui_primary = DEFAULT_PRIMARY;
+    cfg.game_ui_match_primary = true;
+    assert_eq!(cfg.game_ui_accent(), [59, 130, 246]);
+    cfg.game_ui_match_primary = false;
+    assert_eq!(cfg.game_ui_accent(), DEFAULT_PRIMARY);
+}
+
+#[test]
+fn primary_color_parses_and_defaults() {
+    assert_eq!(parse_primary_color("#FF9430"), Some(DEFAULT_PRIMARY));
+    assert_eq!(parse_primary_color("ff9430"), Some(DEFAULT_PRIMARY));
+    assert_eq!(parse_primary_color("#ff9430"), Some(DEFAULT_PRIMARY));
+    assert_eq!(parse_primary_color("#3B82F6"), Some([59, 130, 246]));
+    assert_eq!(parse_primary_color("nope"), None);
+    assert_eq!(parse_primary_color("#FFF"), None);
+    assert_eq!(parse_primary_color(""), None);
+    assert_eq!(format_primary_color(DEFAULT_PRIMARY), "#FF9430");
+    let (h, s, v) = rgb_to_hsv(DEFAULT_PRIMARY);
+    assert!((s - 0.81).abs() < 0.05);
+    assert!((v - 1.0).abs() < 0.01);
+    let back = hsv_to_rgb(h, s, v);
+    assert!(
+        back[0].abs_diff(DEFAULT_PRIMARY[0]) <= 1
+            && back[1].abs_diff(DEFAULT_PRIMARY[1]) <= 1
+            && back[2].abs_diff(DEFAULT_PRIMARY[2]) <= 1
+    );
+}
+
+#[test]
+fn primary_color_round_trips_ini() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-primary-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    std::fs::write(
+        &path,
+        "first_install_version=0.1.0\nst_last=1\nrel_last=1\n",
+    )
+    .unwrap();
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let missing = HudConfig::load_file();
+    assert_eq!(missing.primary, DEFAULT_PRIMARY);
+    let mut cfg = HudConfig::new();
+    cfg.primary = [59, 130, 246];
+    cfg.save();
+    let loaded = HudConfig::load_file();
+    let text = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(&path, "primary_color=not-a-color\n").unwrap();
+    let bad = HudConfig::load_file();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(loaded.primary, [59, 130, 246]);
+    assert!(text.contains("primary_color=#3B82F6"));
+    assert_eq!(bad.primary, DEFAULT_PRIMARY);
 }
 
 #[test]
@@ -382,11 +565,12 @@ fn disabled_columns_drop_from_widget_layout() {
 }
 
 #[test]
-fn gamepad_needs_experimental() {
+fn gamepad_show_does_not_need_experimental() {
     let mut cfg = HudConfig::new();
-    cfg[WidgetId::Gamepad].show = true;
+    assert!(!cfg.experimental);
     assert!(!cfg.experimental_unlocked());
-    assert!(!cfg.gamepad_visible());
+    cfg[WidgetId::Gamepad].show = true;
+    assert!(cfg.gamepad_visible());
     cfg.experimental = true;
     assert!(cfg.gamepad_visible());
     cfg[WidgetId::Gamepad].show = false;
@@ -401,19 +585,24 @@ fn experimental_no_longer_gates_sectors() {
     cfg[WidgetId::Sector].show = true;
     cfg[WidgetId::Delta].show = true;
     cfg[WidgetId::Stance].show = true;
+    cfg[WidgetId::Gamepad].show = true;
     assert!(cfg.sector_visible());
     assert!(cfg.delta_visible());
     assert!(cfg.stance_visible());
+    assert!(cfg.gamepad_visible());
     cfg.experimental = true;
     assert!(cfg.sector_visible());
     assert!(cfg.delta_visible());
     assert!(cfg.stance_visible());
+    assert!(cfg.gamepad_visible());
     cfg[WidgetId::Sector].show = false;
     cfg[WidgetId::Delta].show = false;
     cfg[WidgetId::Stance].show = false;
+    cfg[WidgetId::Gamepad].show = false;
     assert!(!cfg.sector_visible());
     assert!(!cfg.delta_visible());
     assert!(!cfg.stance_visible());
+    assert!(!cfg.gamepad_visible());
 }
 
 #[test]
@@ -485,10 +674,17 @@ fn flag_text_defaults_on_and_ini_can_turn_it_off() {
     let dir = std::env::temp_dir().join(format!("mxbo-ini-flag-text-{}", std::process::id()));
     let _ = std::fs::create_dir_all(&dir);
     let path = dir.join("Holeshot-HUD.ini");
-    std::fs::write(&path, "first_install_version=0.1.0\nst_last=1\nrel_last=1\n").unwrap();
+    std::fs::write(
+        &path,
+        "first_install_version=0.1.0\nst_last=1\nrel_last=1\n",
+    )
+    .unwrap();
     std::env::set_var("MXBO_TEST_INI", &path);
     let cfg = HudConfig::load_file();
-    assert!(cfg.flag_text, "old ini without flag_text keeps the caption on");
+    assert!(
+        cfg.flag_text,
+        "old ini without flag_text keeps the caption on"
+    );
     std::fs::write(
         &path,
         "flag_text=0\nfirst_install_version=0.1.0\nst_last=1\nrel_last=1\n",
@@ -506,7 +702,11 @@ fn telemetry_toggles_default_on_and_ini_can_turn_them_off() {
     let dir = std::env::temp_dir().join(format!("mxbo-ini-telemetry-{}", std::process::id()));
     let _ = std::fs::create_dir_all(&dir);
     let path = dir.join("Holeshot-HUD.ini");
-    std::fs::write(&path, "first_install_version=0.1.0\nst_last=1\nrel_last=1\n").unwrap();
+    std::fs::write(
+        &path,
+        "first_install_version=0.1.0\nst_last=1\nrel_last=1\n",
+    )
+    .unwrap();
     std::env::set_var("MXBO_TEST_INI", &path);
     let cfg = HudConfig::load_file();
     assert!(cfg.telemetry_traces);
@@ -624,7 +824,11 @@ fn sys_apps_encode_round_trip_and_custom_exe() {
     cfg.toggle_sys_app(1);
     assert!(!cfg.sys_apps[1].show);
     assert!(cfg.sys_apps.iter().any(|a| a.key == "discord" && a.show));
-    let custom = cfg.sys_apps.iter().find(|a| a.key == "exe:mycapture.exe").expect("custom");
+    let custom = cfg
+        .sys_apps
+        .iter()
+        .find(|a| a.key == "exe:mycapture.exe")
+        .expect("custom");
     assert_eq!(custom.label, "MyCapture");
     assert!(custom.removable());
 
@@ -641,7 +845,11 @@ fn sys_apps_encode_round_trip_and_custom_exe() {
     let obs_i = cfg.sys_apps.iter().position(|a| a.key == "obs").unwrap();
     cfg.remove_sys_app(obs_i);
     assert!(cfg.sys_apps.iter().any(|a| a.key == "obs"));
-    let discord_i = cfg.sys_apps.iter().position(|a| a.key == "discord").unwrap();
+    let discord_i = cfg
+        .sys_apps
+        .iter()
+        .position(|a| a.key == "discord")
+        .unwrap();
     cfg.remove_sys_app(discord_i);
     assert!(cfg.sys_apps.iter().all(|a| a.key != "discord"));
 }
@@ -781,4 +989,193 @@ fn sync_live_follows_when_settings_is_on_the_live_slot() {
     cfg.sync_live(Some(SessionPreset::Race), true);
     assert_eq!(cfg.active_preset, SessionPreset::Race);
     assert_eq!(cfg.settings_preset, SessionPreset::Race);
+}
+
+#[test]
+fn settings_window_pos_defaults_and_round_trips() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-settings-pos-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    std::fs::write(
+        &path,
+        "first_install_version=0.1.0\nst_last=1\nrel_last=1\n",
+    )
+    .unwrap();
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let cfg = HudConfig::load_file();
+    assert_eq!(cfg.settings_x, 80);
+    assert_eq!(cfg.settings_y, 80);
+
+    std::fs::write(
+        &path,
+        "settings_x=1920\nsettings_y=80\nfirst_install_version=0.1.0\nst_last=1\nrel_last=1\n",
+    )
+    .unwrap();
+    let mut cfg = HudConfig::load_file();
+    assert_eq!(cfg.settings_x, 1920);
+    assert_eq!(cfg.settings_y, 80);
+    cfg.settings_x = -1920;
+    cfg.settings_y = 120;
+    cfg.save();
+    let loaded = HudConfig::load_file();
+    let text = std::fs::read_to_string(&path).unwrap();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(loaded.settings_x, -1920);
+    assert_eq!(loaded.settings_y, 120);
+    assert!(text.contains("settings_x=-1920"));
+    assert!(text.contains("settings_y=120"));
+}
+
+#[test]
+fn empty_ini_does_not_write_factory_over_the_file() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-empty-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    std::fs::write(&path, "").unwrap();
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let cfg = HudConfig::load_file();
+    let text = std::fs::read_to_string(&path).unwrap();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(!cfg.any_overlay_widget());
+    assert!(
+        text.trim().is_empty(),
+        "empty ini must stay empty, got:\n{text}"
+    );
+}
+
+#[test]
+fn empty_primary_reads_legacy_layout_and_leaves_primary() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-legacy-fb-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    let legacy = dir.join("mxbo.ini");
+    std::fs::write(&path, "").unwrap();
+    std::fs::write(
+        &legacy,
+        "show_dash=1\ndash_x=0.33\nfirst_install_version=0.1.0\nst_last=1\nrel_last=1\n",
+    )
+    .unwrap();
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let cfg = HudConfig::load_file();
+    let primary = std::fs::read_to_string(&path).unwrap();
+    let leftover = std::fs::read_to_string(&legacy).unwrap();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(cfg[WidgetId::Dash].show);
+    assert!((cfg[WidgetId::Dash].rect.x - 0.33).abs() < 0.0001);
+    assert!(
+        primary.trim().is_empty(),
+        "must not cement factory over empty primary:\n{primary}"
+    );
+    assert!(leftover.contains("show_dash=1"));
+}
+
+#[test]
+fn missing_ini_writes_first_install() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-missing-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    let _ = std::fs::remove_file(&path);
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let cfg = HudConfig::load_file();
+    let text = std::fs::read_to_string(&path).unwrap();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(!cfg.any_overlay_widget());
+    assert!(text.contains("first_install_version="));
+    assert!(text.contains("[Race]"));
+}
+
+#[test]
+fn atomic_save_round_trip_leaves_no_tmp() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-atomic-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let mut cfg = HudConfig::new();
+    cfg.first_install_version = "0.1.0".into();
+    cfg[WidgetId::Map].show = true;
+    cfg.save();
+    let tmp = {
+        let mut name = path.as_os_str().to_os_string();
+        name.push(".tmp");
+        std::path::PathBuf::from(name)
+    };
+    let loaded = HudConfig::load_file();
+    let text = std::fs::read_to_string(&path).unwrap();
+    let tmp_left = tmp.is_file();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(loaded[WidgetId::Map].show);
+    assert!(text.contains("show_map=1"));
+    assert!(!tmp_left, "atomic save must not leave a .tmp sibling");
+}
+
+#[test]
+fn radar_style_round_trips_and_expands_default_plaque() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-radar-style-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let mut cfg = HudConfig::new();
+    cfg.first_install_version = "0.1.0".into();
+    cfg.radar_style = crate::config::RadarStyle::Arrows;
+    crate::config::maybe_expand_radar_for_arrows(&mut cfg);
+    assert_eq!(
+        cfg[WidgetId::Radar].rect,
+        crate::config::RADAR_ARROWS_RECT
+    );
+    cfg.save();
+    let loaded = HudConfig::load_file();
+    let text = std::fs::read_to_string(&path).unwrap();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(loaded.radar_style, crate::config::RadarStyle::Arrows);
+    assert!(text.contains("radar_style=arrows"));
+}
+
+#[test]
+fn radar_arrows_does_not_shrink_a_custom_rect() {
+    let mut cfg = HudConfig::new();
+    cfg[WidgetId::Radar].rect = crate::shm::Rect {
+        x: 0.1,
+        y: 0.1,
+        w: 0.5,
+        h: 0.5,
+    };
+    cfg.radar_style = crate::config::RadarStyle::Arrows;
+    crate::config::maybe_expand_radar_for_arrows(&mut cfg);
+    assert!((cfg[WidgetId::Radar].rect.w - 0.5).abs() < 0.0001);
+}
+
+#[test]
+fn gamepad_theme_round_trips_and_light_fills() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-pad-theme-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let mut cfg = HudConfig::new();
+    cfg.first_install_version = "0.1.0".into();
+    cfg.gamepad_theme = GamepadTheme::Dark;
+    cfg.save();
+    let loaded = HudConfig::load_file();
+    let text = std::fs::read_to_string(&path).unwrap();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(text.contains("gamepad_theme=dark"));
+    assert_eq!(loaded.gamepad_theme, GamepadTheme::Dark);
+
+    assert_eq!(GamepadTheme::parse("DARK"), GamepadTheme::Dark);
+    assert_eq!(GamepadTheme::parse("bogus"), GamepadTheme::Light);
+    assert!(GamepadTheme::Light.filled());
+    assert!(!GamepadTheme::Dark.filled());
 }

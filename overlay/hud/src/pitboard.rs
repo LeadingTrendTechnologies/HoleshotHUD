@@ -241,10 +241,12 @@ pub enum PitVar {
     SessionBest,
     Riders,
     SessionType,
+    LapDiff,
+    Server,
 }
 
 impl PitVar {
-    pub const ALL: [Self; 34] = [
+    pub const ALL: [Self; 36] = [
         Self::Name,
         Self::Num,
         Self::Sponsor,
@@ -279,6 +281,8 @@ impl PitVar {
         Self::SessionBest,
         Self::Riders,
         Self::SessionType,
+        Self::LapDiff,
+        Self::Server,
     ];
 
     pub fn key(self) -> &'static str {
@@ -317,6 +321,8 @@ impl PitVar {
             Self::SessionBest => "sbest",
             Self::Riders => "riders",
             Self::SessionType => "stype",
+            Self::LapDiff => "lapdiff",
+            Self::Server => "server",
         }
     }
 
@@ -356,6 +362,8 @@ impl PitVar {
             Self::SessionBest => "Session best",
             Self::Riders => "Riders",
             Self::SessionType => "Session type",
+            Self::LapDiff => "Last lap diff",
+            Self::Server => "Server",
         }
     }
 
@@ -364,9 +372,9 @@ impl PitVar {
             Self::Name | Self::Num | Self::Sponsor => "Identity",
             Self::Pos | Self::ClassPos | Self::Laps | Self::Left | Self::Gap | Self::Int
             | Self::GapBehind | Self::GapAhead | Self::Pen => "Race",
-            Self::Last | Self::Best | Self::Cur | Self::Delta => "Laps",
+            Self::Last | Self::Best | Self::Cur | Self::Delta | Self::LapDiff => "Laps",
             Self::Sess | Self::Local | Self::Track | Self::Lap | Self::RaceTime
-            | Self::SessionBest | Self::Riders | Self::SessionType => "Session",
+            | Self::SessionBest | Self::Riders | Self::SessionType | Self::Server => "Session",
             Self::Bike | Self::Class | Self::Setup | Self::Speed | Self::Rpm | Self::Gear
             | Self::Fuel | Self::FuelPct | Self::Air | Self::Eng => "Bike",
         }
@@ -408,6 +416,8 @@ impl PitVar {
             "sbest" | "sessionbest" => Self::SessionBest,
             "riders" | "count" => Self::Riders,
             "stype" | "sessiontype" => Self::SessionType,
+            "lapdiff" | "lastlapdiff" => Self::LapDiff,
+            "server" => Self::Server,
             _ => return None,
         })
     }
@@ -441,6 +451,14 @@ impl PitVar {
             BoardField::Setup => Self::Setup,
             BoardField::GapAhead => Self::GapAhead,
             BoardField::GapBehind => Self::GapBehind,
+            BoardField::Delta => Self::Delta,
+            BoardField::Last => Self::Last,
+            BoardField::LapDiff => Self::LapDiff,
+            BoardField::Current => Self::Cur,
+            BoardField::Gap => Self::Gap,
+            BoardField::Engine => Self::Eng,
+            BoardField::Penalty => Self::Pen,
+            BoardField::Server => Self::Server,
         })
     }
 }

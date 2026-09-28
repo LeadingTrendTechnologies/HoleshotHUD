@@ -319,7 +319,7 @@ fn pit_value(
             }
         }
         PitVar::Pos => dash_field_for(PitVar::Pos).and_then(|f| {
-            dash_foot_item(s, cfg, f).and_then(|(_, t)| {
+            dash_foot_item(s, cfg, f).and_then(|(_, t, _)| {
                 if pit_blank(&t) {
                     None
                 } else {
@@ -349,12 +349,14 @@ fn pit_value(
                 Some((text, ink))
             }
         }
-        PitVar::Lap | PitVar::RaceTime | PitVar::SessionBest | PitVar::Riders | PitVar::SessionType => {
+        PitVar::Lap | PitVar::RaceTime | PitVar::SessionBest | PitVar::Riders | PitVar::SessionType
+        | PitVar::Server => {
             let field = match var {
                 PitVar::Lap => BoardField::Lap,
                 PitVar::RaceTime => BoardField::RaceTime,
                 PitVar::SessionBest => BoardField::SessionBest,
                 PitVar::Riders => BoardField::Riders,
+                PitVar::Server => BoardField::Server,
                 _ => BoardField::SessionType,
             };
             board_item(s, cfg, field).and_then(|(_, t)| {
@@ -367,7 +369,7 @@ fn pit_value(
         }
         other => {
             dash_field_for(other).and_then(|f| {
-                dash_foot_item(s, cfg, f).and_then(|(_, t)| {
+                dash_foot_item(s, cfg, f).and_then(|(_, t, _)| {
                     if pit_blank(&t) {
                         None
                     } else {
@@ -419,6 +421,7 @@ fn dash_field_for(var: PitVar) -> Option<DashField> {
         PitVar::FuelPct => DashField::FuelPct,
         PitVar::Air => DashField::Air,
         PitVar::Eng => DashField::Engine,
+        PitVar::LapDiff => DashField::LapDiff,
         _ => return None,
     })
 }

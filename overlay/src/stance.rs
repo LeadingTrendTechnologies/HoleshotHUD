@@ -158,7 +158,9 @@ impl Tracker {
         self.hid.viz()
     }
 
-    fn xinput_gamepad(&mut self) -> Option<windows::Win32::UI::Input::XboxController::XINPUT_GAMEPAD> {
+    fn xinput_gamepad(
+        &mut self,
+    ) -> Option<windows::Win32::UI::Input::XboxController::XINPUT_GAMEPAD> {
         let mut state = XINPUT_STATE::default();
         if let Some(i) = self.xinput_slot {
             if unsafe { XInputGetState(i, &mut state) } == 0 {
@@ -221,11 +223,20 @@ impl Snap {
     }
 }
 
-pub(crate) fn apply_edge(sitting: bool, prev_down: bool, down: bool, mode: StanceMode) -> (bool, bool) {
+pub(crate) fn apply_edge(
+    sitting: bool,
+    prev_down: bool,
+    down: bool,
+    mode: StanceMode,
+) -> (bool, bool) {
     match mode {
         StanceMode::Hold => (down, down),
         StanceMode::Toggle => {
-            let next = if down && !prev_down { !sitting } else { sitting };
+            let next = if down && !prev_down {
+                !sitting
+            } else {
+                sitting
+            };
             (next, down)
         }
     }
@@ -264,14 +275,7 @@ fn skip_vk() -> u16 {
 fn capture_vk(vk: u16) -> bool {
     !matches!(
         vk,
-        0x01..=0x06
-            | 0x1B
-            | 0x10
-            | 0x11
-            | 0x12
-            | 0x5B
-            | 0x5C
-            | 0x5D
+        0x01..=0x06 | 0x1B | 0x10 | 0x11 | 0x12 | 0x5B | 0x5C | 0x5D
     )
 }
 
@@ -363,7 +367,9 @@ fn bind_bit(bind: StanceBind) -> u16 {
 }
 
 fn bind_from_mask(mask: u16) -> Option<StanceBind> {
-    StanceBind::ALL.into_iter().find(|&b| mask & bind_bit(b) != 0)
+    StanceBind::ALL
+        .into_iter()
+        .find(|&b| mask & bind_bit(b) != 0)
 }
 
 fn rising_bind(prev: u16, now: u16) -> Option<StanceBind> {
@@ -371,19 +377,22 @@ fn rising_bind(prev: u16, now: u16) -> Option<StanceBind> {
 }
 
 fn mask_from_buttons(check: impl Fn(StanceBind) -> bool) -> u16 {
-    StanceBind::ALL.iter().enumerate().fold(0u16, |m, (i, b)| {
-        if check(*b) {
-            m | (1 << i)
-        } else {
-            m
-        }
-    })
+    StanceBind::ALL.iter().enumerate().fold(
+        0u16,
+        |m, (i, b)| {
+            if check(*b) {
+                m | (1 << i)
+            } else {
+                m
+            }
+        },
+    )
 }
 
 fn xbox_viz(g: windows::Win32::UI::Input::XboxController::XINPUT_GAMEPAD) -> mxbo_hud::PadState {
     use mxbo_hud::gamepad::{
-        axis_i16, trigger_u8, BACK, DOWN, EAST, LB, LEFT, LS, NORTH, RB, RIGHT, RS, SOUTH, START, UP,
-        WEST,
+        axis_i16, trigger_u8, BACK, DOWN, EAST, LB, LEFT, LS, NORTH, RB, RIGHT, RS, SOUTH, START,
+        UP, WEST,
     };
     let b = g.wButtons.0;
     let mut buttons = 0u32;
@@ -565,8 +574,8 @@ fn ds4_buttons(buf: &[u8]) -> Option<DsPad> {
 
 fn sony_viz(pad: DsPad) -> mxbo_hud::PadState {
     use mxbo_hud::gamepad::{
-        axis_u8, trigger_u8, BACK, DOWN, EAST, GUIDE, LB, LEFT, LS, NORTH, RB, RIGHT, RS, SOUTH, START,
-        TOUCH, UP, WEST,
+        axis_u8, trigger_u8, BACK, DOWN, EAST, GUIDE, LB, LEFT, LS, NORTH, RB, RIGHT, RS, SOUTH,
+        START, TOUCH, UP, WEST,
     };
     let hat = pad.b0 & 0x0F;
     let mut buttons = 0u32;
@@ -690,7 +699,9 @@ impl HidPad {
 
     fn viz(&mut self) -> mxbo_hud::PadState {
         self.held_mask();
-        self.last_ds.map(sony_viz).unwrap_or(mxbo_hud::PadState::DISCONNECTED)
+        self.last_ds
+            .map(sony_viz)
+            .unwrap_or(mxbo_hud::PadState::DISCONNECTED)
     }
 
     fn ensure(&mut self) {

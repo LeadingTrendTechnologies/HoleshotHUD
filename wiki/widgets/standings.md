@@ -20,24 +20,31 @@ Primary SHM fields: race num, position, state, best / last lap, laps, gap ms / l
 
 Status labels: `1` DNS, `3` OUT, `4` DSQ, else PIT if `pit != 0`.
 
+**Status** column (`st_status`, default off) draws Font Awesome icons (same marks as map/radar): finish (after the leader takes the flag), crash, DNS, OUT, DSQ, pit. Priority: finish → crash → DNS/OUT/DSQ → pit. Finished riders show only the flag. No column header title.
+
 ## Behavior
 
 - Height grows with visible rows, even when the saved widget box is shorter (a Ctrl+move can write a hugged 1-row `standings_h`). If the field is larger than **Rows**, the window centers on you.
-- Your row is highlighted. OUT / DNS / DSQ rows dim. **Row highlight** opacity is adjustable in settings (`st_hl`). **Text color** is White or Black (`st_text`); bike pills keep brand colors. **Alternating rows** (`st_stripe`, default on) paints every other row near-black. On a solid panel the stripe lifts to a slightly lighter charcoal so it still reads; at lower background opacity it darkens (game shows through even rows).
+- Your row is highlighted. OUT / DNS / DSQ rows dim. **Row highlight** opacity is adjustable in settings (`st_hl`). **Text color** is White or Black (`st_text`); bike pills keep brand colors. **Alternating rows** (`st_stripe`, default on) paints every other row near-black. On a solid panel the stripe lifts to a slightly lighter charcoal so it still reads; at lower background opacity it darkens (game shows through even rows). **Plaque text** is Black or White on the orange rider-count / track-name skews (`st_plaque_text`, default Black). **Show plaques** (`st_plaque`, default on) hides those skews and collapses their band.
 - In replay / spectate, clicking a rider's **name** moves the game camera to them (`SpectateVehicles`). The overlay only captures that click while hovering a name; riding is not affected.
 - Best lap in the field is purple.
 - Bike column is a colored badge (`bike_color` from bike name + category). A skew bar after **Position** uses the same accent.
-- Header / footer are three `BoardField` slots each (session time, riders, fuel, setup, **Gap ahead**, **Gap behind**, etc.). Gap ahead / behind are live-order place neighbors (P−1 / P+1). A pass switches who. Same lap is a live running time along the track toward that rider; a lap or more is `1L` / `-1L` from completed laps, so a crashed rider you keep passing is not a ticking wrap.
+- Header / footer are three `BoardField` slots each (session time, riders, fuel, setup, **Gap ahead**, **Gap behind**, **Delta**, **Last** / **Last lap diff** / **Current**, **Gap to leader**, **Engine**, **Penalty**, **Server**, etc.). **Last lap diff** is the last completed lap minus the one before it (not Delta versus best). Faster is green, slower is red, the same time is `0.000`, and `--` until two laps. Optional **DIFF** column (`st_lapdiff`, default off) is that number per rider. Gap ahead / behind are live-order place neighbors (P−1 / P+1). **Gap to leader** is live-order gap to P1. A pass switches who. Same lap is a live running time along the track toward that rider; a lap or more is `1L` / `-1L` from completed laps, so a crashed rider you keep passing is not a ticking wrap.
+- Optional **Category** column (`st_category`, default off) shows the class string from the entry list.
 - Name column uses its configured width (and only shrinks when the table is too narrow); other columns keep configured widths. The plaque hugs that column pack, so leftover widget width is not empty glass. Ctrl+resize width grows the Name column so the plaque actually gets bigger; height grows **Rows** (3–40).
 - Rows slide when order changes (`ST_SLIDE`).
 
-Default columns on: Position, Number, Name, Gap, Fastest, Last lap.
+Default columns on: Position, Number, Name, Gap to leader, Fastest, Last lap.
 
 ## Do not regress
 
-- Gap to P1 uses `gap_ms` / `gap_laps`. Interval is gap to the rider one place ahead, not to the leader.
+- Settings labels: **Gap to leader** (`StField::Gap`) uses `gap_ms` / `gap_laps` to P1. **Gap to rider ahead** (`StField::Interval`) is gap to the rider one place ahead, not to the leader. Ini keys stay `gap` / `int`.
 - Header/footer **Gap ahead** / **Gap behind** are live-order P−1 / P+1. A pass switches the rider immediately. Same lap is seconds along the track toward them, not Interval’s line time and not Relative’s shortest wrap. A live lap or more is `1L` / `-1L`.
-- Last lap for you can fall back to `s.last_lap_ms` when the row has no last lap yet.
+- Header/footer **Gap to leader** is live-order gap to P1 (`gap_leader_text`). Distinct from Gap ahead.
+- Header/footer **Server** shows `server_name`; `--` when empty (offline / local).
+- Optional **Category** column is off by default; do not turn it on for existing inis.
+- Last lap for you can fall back to `s.last_lap_ms` when the row has no last lap yet. **Last lap diff** uses that same fallback. A zeroed last-lap does not replace the stored time. A new session clears it.
+- **Last lap diff** is not Delta. Delta is versus best. The column stays off unless `st_lapdiff` is set.
 - Practice / warmup **Laps** for you can follow `current_lap - 1` when classification skipped a crashed crossing. Do not do that in a moto.
 - Empty field shows “Waiting for race data”, not a blank panel.
 - Rows and places come from the live order, not the raw `s.standings` array. The row window and slide animation follow it.
@@ -45,14 +52,29 @@ Default columns on: Position, Number, Name, Gap, Fastest, Last lap.
 - Leaving replay must drop camera focus back to you. A stuck spectate target keeps their row highlighted and starves the dash of your telemetry.
 - Leaving spectate for the garage must hide the board. Leftover rider positions are not a session once `SpectateVehicles` stops.
 - Missing `st_stripe` in the ini keeps alternating rows on.
+- Missing `st_plaque` / `st_plaque_text` keep plaques on with black ink.
 - Alternating rows must still read at **Background** 100% (lift, not extra black on night-ink).
 - Fuel header/footer is liters/US gallons (`Fuel`) or tank percent (`Fuel %`). Empty volume is `0.0`; `--` / `--%` only when tank size is missing.
 - Setup header/footer is the loaded bike setup filename stem. `--` when `RunInit` has not sent it. Restart MX Bikes after the V13 plugin.
 - Ctrl+resize chrome is the hugged plaque (column pack × row stack), not leftover widget glass. Dragging it larger still grows Name / Rows — do not leave the orange box as a no-op hug.
 - The night-ink plaque must cover every visible row. Do not clamp stack height to a shorter saved `standings_h`.
+- Finished riders show only the Status finish flag — not crash / pit / DNS / OUT / DSQ on top of it.
 
 ## Change log
 
+- 2026-09-25 — **Last lap diff** (`BoardField::LapDiff`, column `st_lapdiff` default off). Last completed lap minus the previous one. Green is faster, red is slower, `0.000` is the same time. Not Delta versus best.
+- 2026-09-25 — Header/footer **BoardField** options: Delta, Last, Current, Gap to leader, Engine, Penalty, Server. Optional **Category** column (`st_category`, default off).
+- 2026-09-24 — Live order ranks the whole field by track progress minus each rider's own penalty, so several penalties stack in one tick. See `wiki/live-order.md`.
+- 2026-09-25 — Trailing green/red `*` on Position when live place ≠ on-track place due to penalties (see [live race order](../live-order.md)).
+- 2026-09-24 — Live order passes riders who crashed far back (start pile-ups) and steps over riders with no track position, instead of waiting for the next gate re-score. See `wiki/live-order.md`.
+- 2026-09-22 — Status finish flag wins over crash/pit for done riders. Your-row wash alpha 52 at default **Row highlight** (spider-scaled).
+- 2026-09-22 — Your-row highlight wash matches Profile spider fill (full chroma, alpha 40 at default **Row highlight**).
+- 2026-09-22 — Settings column names: **Gap** → **Gap to leader**, **Interval** → **Gap to rider ahead**. Same columns and ini keys.
+- 2026-09-22 — Removed the separate **Crashed** text column; crash is only on **Status** icons. Status header label is blank.
+- 2026-09-22 — **Status** column paints crash / DNS / OUT / DSQ / finish / pit icons (map-style marks) instead of DNS/OUT/DSQ/PIT text. Finish is inferred after the leader finishes (`done_racing`).
+- 2026-09-22 — Settings column drag slides neighboring rows into place (ease-out), instead of snapping on drop.
+- 2026-09-22 — Penalty column shows whole seconds as `#s` (e.g. `5s`), not lap-style `5.000`.
+- 2026-09-22 — **Plaque text** (Black/White, default Black) and **Show plaques** for the orange rider-count / track-name skews. Separate from row **Text color**. Hidden plaques collapse the track band height.
 - 2026-09-10 — Practice **Laps** still increment after a crash when `RunLap` advanced and classification did not.
 - 2026-09-09 — **Gap ahead** / **Gap behind** stay live-order P−1 / P+1. A pass switches who. Same lap ticks along the track toward that rider; a live lap or more is `1L` / `-1L` so a crashed rider you keep passing is not a shortest-wrap blip. Not the nearest on-track rider. Times have no leading `+`; ahead is an up arrow, behind a down arrow.
 - 2026-09-08 — **Gap ahead** and **Gap behind** are header/footer options (`BoardField::GapAhead` / `GapBehind`). Live-order P−1 / P+1, not the riders around you on track.

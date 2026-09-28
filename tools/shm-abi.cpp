@@ -19,6 +19,7 @@ int main()
     std::printf("MAX_SECTORS=%d\n", MXBO_MAX_SECTORS);
     std::printf("NAME=%d\n", MXBO_NAME);
     std::printf("TRACK_NAME=%d\n", MXBO_TRACK_NAME);
+    std::printf("GUID=%d\n", MXBO_GUID);
 
     std::printf("MxboShmPoint.size %zu\n", sizeof(MxboShmPoint));
     FIELD(MxboShmPoint, x);
@@ -33,6 +34,12 @@ int main()
     FIELD(MxboShmRider, crashed);
     FIELD(MxboShmRider, name);
     FIELD(MxboShmRider, lean);
+    FIELD(MxboShmRider, y);
+    FIELD(MxboShmRider, speed);
+    FIELD(MxboShmRider, rpm);
+    FIELD(MxboShmRider, gear);
+    FIELD(MxboShmRider, throttle);
+    FIELD(MxboShmRider, frontBrake);
 
     std::printf("MxboShmStanding.size %zu\n", sizeof(MxboShmStanding));
     FIELD(MxboShmStanding, raceNum);
@@ -68,6 +75,7 @@ int main()
     FIELD(MxboShmSnapshot, localCrashed);
     FIELD(MxboShmSnapshot, localX);
     FIELD(MxboShmSnapshot, localZ);
+    FIELD(MxboShmSnapshot, localY);
     FIELD(MxboShmSnapshot, localVelX);
     FIELD(MxboShmSnapshot, localVelZ);
     FIELD(MxboShmSnapshot, localYaw);
@@ -124,6 +132,11 @@ int main()
     FIELD(MxboShmSnapshot, localFrontBrake);
     FIELD(MxboShmSnapshot, localRearBrake);
     FIELD(MxboShmSnapshot, localClutch);
+    FIELD(MxboShmSnapshot, holeshotRaceNum);
+    FIELD(MxboShmSnapshot, holeshotTime);
+    FIELD(MxboShmSnapshot, drawCount);
+    FIELD(MxboShmSnapshot, serverName);
+    FIELD(MxboShmSnapshot, eventGuid);
 
     std::printf("MxboShmCmd.size %zu\n", sizeof(MxboShmCmd));
     FIELD(MxboShmCmd, magic);

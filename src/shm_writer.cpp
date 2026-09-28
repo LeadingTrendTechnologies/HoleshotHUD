@@ -119,6 +119,7 @@ void ShmWriter::close()
     m_polyCount = 0;
     m_polyRev = 0xFFFFFFFFu;
     m_polyTrail = static_cast<size_t>(-1);
+    m_drawCount = 0;
 }
 
 void ShmWriter::fillPolyCache(const PluginState& state)
@@ -136,7 +137,7 @@ void ShmWriter::fillPolyCache(const PluginState& state)
     m_polyTrail = trail_n;
 }
 
-void ShmWriter::publish(const PluginState& state, const PluginConfig& config)
+void ShmWriter::publish(const PluginState& state, const PluginConfig& config, bool drawFrame)
 {
     if (!m_view)
     {
@@ -148,6 +149,11 @@ void ShmWriter::publish(const PluginState& state, const PluginConfig& config)
     QueryPerformanceCounter(&qpc);
     fillPolyCache(state);
     fillSnapshot(local, state, config, m_poly.data(), m_polyCount, static_cast<uint64_t>(qpc.QuadPart));
+    if (drawFrame)
+    {
+        ++m_drawCount;
+    }
+    local.drawCount = m_drawCount;
     seqlockStore(*static_cast<MxboShmSnapshot*>(m_view), local);
     decaySpectating();
 }

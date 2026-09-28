@@ -1,0 +1,9 @@
+[package]
+name = "mxbo-motos-ui"
+version = "0.19.0"
+edition = "2021"
+
+[dependencies]
+mxbo-hud = { path = "../overlay/hud" }
+mxbo-review = { path = "../review", default-features = false }
+tiny-skia = "0.11"

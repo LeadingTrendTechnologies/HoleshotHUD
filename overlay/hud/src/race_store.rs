@@ -160,6 +160,10 @@ thread_local! {
 /// state that keeps a pass from flickering while two riders run side by side.
 static LIVE_ORDER: Mutex<Vec<i32>> = Mutex::new(Vec::new());
 
+/// Same bubble as [`LIVE_ORDER`] but ranked on track progress only (no penalties). Used to
+/// mark when live place and on-track place disagree.
+static TRACK_ORDER: Mutex<Vec<i32>> = Mutex::new(Vec::new());
+
 /// A rider has to be this far up the track before they take the place. About a bike and a
 /// half: `track_pos` is a centerline projection, so a rider taking a wide line or landing
 /// off a jump moves a metre or two on its own.
@@ -170,6 +174,144 @@ const HOLD_M: f32 = 0.5;
 /// fraction is measured from the centerline origin, not from the start/finish line, so
 /// only riders close together compare safely.
 const PAIR_MAX_M: f32 = 250.0;
+/// One tick moving further than this is a reset, a shortcut or a network teleport, not
+/// riding, so it does not count as distance covered.
+const MAX_STEP_M: f32 = 80.0;
+/// Pace a penalty is converted at before anyone has set a lap.
+const PENALTY_FALLBACK_MPS: f32 = 15.0;
+/// Small overshoot past one lap of armed travel is noise (centerline wobble near the
+/// line). Past this, the tracker rode more than a lap without a `num_laps` bump.
+const LAP_OVERFLOW_SLACK_M: f32 = 50.0;
+
+/// A time penalty as metres of track. The game only applies penalties to the results, and
+/// the live order compares distance, so the seconds are ridden off at the session best
+/// pace. One pace for the whole field keeps the order consistent from pair to pair.
+fn penalty_m(s: &Snapshot, penalty_ms: i32) -> f32 {
+    let best_ms = session_best_ms(s);
+    let metres_per_second = if best_ms > 0 {
+        s.track_length / (best_ms as f32 / 1000.0)
+    } else {
+        PENALTY_FALLBACK_MPS
+    };
+    penalty_ms as f32 / 1000.0 * metres_per_second
+}
+
+/// Distance a rider has covered since the gate dropped or since their last line crossing.
+/// This is what compares riders too far apart for `track_pos`: a rider who crashed on the
+/// start is still scored ahead of the pack until the game re-scores them at a gate.
+#[derive(Clone, Copy)]
+struct RiderProgress {
+    race_num: i32,
+    /// Lap fraction last tick, `None` while they were missing from `riders[]`.
+    last_frac: Option<f32>,
+    travelled_m: f32,
+    lap_base_m: f32,
+    laps_at_base: i32,
+    /// We saw where this lap started: gate, race-go cold arm, or a line crossing.
+    armed: bool,
+    /// Armed travel grew more than a lap + slack without a `num_laps` rise. Pin to the
+    /// game place (no S/F fallback) until the next crossing or gate.
+    corrupt: bool,
+}
+
+static PROGRESS: Mutex<Vec<RiderProgress>> = Mutex::new(Vec::new());
+
+fn note_progress(s: &Snapshot, clock: &SessionClock, n: usize) {
+    if s.track_length <= 10.0 {
+        return;
+    }
+    let Ok(mut tracked) = PROGRESS.lock() else {
+        return;
+    };
+    // Cold-arm on the first real step when the race is live and we never saw the gate:
+    // without a known line, far pairs only score through the tracker. Skip when the line
+    // is known so a mid-race join still uses S/F metres. Do not arm on a zero step — that
+    // would invent equal travel for riders who are already spread out.
+    let cold_arm = live_order_active(s, clock) && !line_known(s);
+    for standing in &s.standings[..n] {
+        let frac = rider_lap_pos(s, standing.race_num);
+        let index = match tracked.iter().position(|p| p.race_num == standing.race_num) {
+            Some(index) => index,
+            None => {
+                tracked.push(RiderProgress {
+                    race_num: standing.race_num,
+                    last_frac: frac,
+                    travelled_m: 0.0,
+                    lap_base_m: 0.0,
+                    laps_at_base: standing.num_laps,
+                    armed: false,
+                    corrupt: false,
+                });
+                tracked.len() - 1
+            }
+        };
+        let progress = &mut tracked[index];
+        if clock.in_gate {
+            *progress = RiderProgress {
+                race_num: standing.race_num,
+                last_frac: frac,
+                travelled_m: 0.0,
+                lap_base_m: 0.0,
+                laps_at_base: standing.num_laps,
+                armed: true,
+                corrupt: false,
+            };
+            continue;
+        }
+        match (progress.last_frac, frac) {
+            (Some(last), Some(now)) => {
+                let step_m = wrap_signed(now - last) * s.track_length;
+                if step_m.abs() <= MAX_STEP_M {
+                    progress.travelled_m += step_m;
+                    if cold_arm
+                        && !progress.armed
+                        && !progress.corrupt
+                        && step_m.abs() > 0.01
+                    {
+                        progress.armed = true;
+                    }
+                }
+            }
+            // Missing from riders[]: freeze distance and keep armed. last_frac clears
+            // below; on reappear we resume without inventing a teleport step.
+            _ => {}
+        }
+        progress.last_frac = frac;
+        if standing.num_laps > progress.laps_at_base {
+            progress.lap_base_m = progress.travelled_m;
+            progress.laps_at_base = standing.num_laps;
+            progress.armed = progress.last_frac.is_some();
+            progress.corrupt = false;
+        } else if standing.num_laps < progress.laps_at_base {
+            progress.laps_at_base = standing.num_laps;
+            progress.armed = false;
+            progress.corrupt = false;
+        }
+        let into_lap = progress.travelled_m - progress.lap_base_m;
+        if progress.armed && into_lap > s.track_length + LAP_OVERFLOW_SLACK_M {
+            // Multi-lap invent without a bump: pin to game place (no S/F score).
+            progress.armed = false;
+            progress.corrupt = true;
+        }
+    }
+}
+
+/// Metres into the lap they are scored on, when we saw that lap start.
+/// Capped to one lap: raw travel past `track_length` without a `num_laps` rise is clamped.
+fn lap_progress_m(tracked: &[RiderProgress], st: &Standing, track_length: f32) -> Option<f32> {
+    tracked
+        .iter()
+        .find(|p| p.race_num == st.race_num)
+        .filter(|p| p.armed && !p.corrupt && p.laps_at_base == st.num_laps)
+        .map(|p| (p.travelled_m - p.lap_base_m).clamp(0.0, track_length))
+}
+
+fn progress_corrupt(tracked: &[RiderProgress], race_num: i32) -> bool {
+    tracked
+        .iter()
+        .find(|p| p.race_num == race_num)
+        .is_some_and(|p| p.corrupt)
+}
 
 /// `track_pos` as a 0..1 lap fraction. The plugin sends metres on some tracks.
 pub(crate) fn norm_lap_pos(s: &Snapshot, pos: f32) -> f32 {
@@ -235,41 +377,166 @@ fn out_of_race(st: &Standing) -> bool {
 /// Scored and cruising: after the leader takes the flag a cool-down pass must not move
 /// anyone in the results. Reads the latch `build_clock` already set this tick — calling
 /// `leader_finished` / `effective_race_laps` here would move it.
-fn done_racing(st: &Standing) -> bool {
+pub(crate) fn done_racing(st: &Standing) -> bool {
     let base = LEADER_FIN_LOCAL_BASE.load(Ordering::Relaxed);
     base >= 0 && st.num_laps > base
 }
 
 fn prev_rank(prev: &[i32], race_num: i32) -> usize {
-    prev.iter().position(|&n| n == race_num).unwrap_or(usize::MAX)
+    prev.iter()
+        .position(|&n| n == race_num)
+        .unwrap_or(usize::MAX)
 }
 
-/// True when `b`, currently scored behind `a`, is clearly up the track on them.
-///
-/// Only riders on the same lap are compared: across lap counts the classification is
-/// right by definition, and two riders straddling the line always read a lap apart.
-fn passed(s: &Snapshot, prev: &[i32], a: &Standing, b: &Standing) -> bool {
-    if a.num_laps != b.num_laps || out_of_race(a) || out_of_race(b) {
-        return false;
+/// Start/finish as a lap fraction. A crossing we watched beats `sf_meters`.
+/// `sf_meters == 0` with nothing learned is "unknown", not the origin: the centerline
+/// fraction is not measured from the line.
+fn line_known(s: &Snapshot) -> bool {
+    SF_FRAC_LEARNED.load(Ordering::Relaxed) >= 0 || s.sf_meters > 0.0
+}
+
+fn sf_frac(s: &Snapshot) -> f32 {
+    let learned = SF_FRAC_LEARNED.load(Ordering::Relaxed);
+    if learned >= 0 {
+        return (learned as f32 / 10_000.0).rem_euclid(1.0);
     }
+    if s.track_length > 1.0 && s.sf_meters > 0.0 {
+        (s.sf_meters / s.track_length).rem_euclid(1.0)
+    } else {
+        0.0
+    }
+}
+
+/// Metres into the lap when we know where it started: the tracker after the gate or a
+/// crossing, otherwise metres past a known start/finish.
+/// Runaway/corrupt riders return `None` so they keep their game place (no S/F collapse
+/// to ~0 just after a wrap before `num_laps` bumps).
+fn lap_metres(s: &Snapshot, tracked: &[RiderProgress], st: &Standing) -> Option<f32> {
+    if progress_corrupt(tracked, st.race_num) {
+        return None;
+    }
+    if let Some(progress) = lap_progress_m(tracked, st, s.track_length) {
+        return Some(progress);
+    }
+    if !line_known(s) {
+        return None;
+    }
+    let frac = rider_lap_pos(s, st.race_num)?;
+    Some((frac - sf_frac(s)).rem_euclid(1.0) * s.track_length)
+}
+
+/// Laps completed, plus metres into this lap, minus this rider's own penalty.
+/// Higher is further up the race. `None` when we cannot place them on track.
+fn rider_score(s: &Snapshot, tracked: &[RiderProgress], st: &Standing) -> Option<f32> {
+    let metres = track_score(s, tracked, st)?;
+    Some(metres - penalty_m(s, st.penalty_ms))
+}
+
+/// Laps completed plus metres into this lap, ignoring penalties.
+fn track_score(s: &Snapshot, tracked: &[RiderProgress], st: &Standing) -> Option<f32> {
+    if out_of_race(st) {
+        return None;
+    }
+    let metres = lap_metres(s, tracked, st)?;
+    Some(st.num_laps as f32 * s.track_length + metres)
+}
+
+/// `b` is ahead of `a` on score by enough to take the place. The margin is only so two
+/// bikes on the same stretch do not swap every frame: `HOLD_M` once `b` already holds it,
+/// `PASS_M` to take it. Lap count is always in the score; `use_penalty` subtracts each
+/// rider's own time penalty (live order) or ignores it (on-track order).
+///
+/// With no tracker and no known line, only a same-lap pair inside `PAIR_MAX_M` can move.
+/// Further apart than that is not trustworthy.
+fn score_ahead(
+    s: &Snapshot,
+    prev: &[i32],
+    tracked: &[RiderProgress],
+    a: &Standing,
+    b: &Standing,
+    use_penalty: bool,
+) -> bool {
     if done_racing(a) && done_racing(b) {
         return false;
     }
-    let (Some(pa), Some(pb)) = (rider_lap_pos(s, a.race_num), rider_lap_pos(s, b.race_num)) else {
-        return false;
+    let margin = if prev_rank(prev, b.race_num) < prev_rank(prev, a.race_num) {
+        HOLD_M
+    } else {
+        PASS_M
     };
-    let ahead_m = wrap_signed(pb - pa) * s.track_length;
-    if ahead_m.abs() > PAIR_MAX_M {
+    let (score_a, score_b) = if use_penalty {
+        (rider_score(s, tracked, a), rider_score(s, tracked, b))
+    } else {
+        (track_score(s, tracked, a), track_score(s, tracked, b))
+    };
+    if let (Some(score_a), Some(score_b)) = (score_a, score_b) {
+        let delta = score_b - score_a;
+        // Clear lead on the tracker. Within the pass margin, fall through so a
+        // close wrap (cold-arm with equal travel, side-by-side) can still decide.
+        if delta > margin {
+            return true;
+        }
+        if delta < -margin {
+            return false;
+        }
+    }
+    if a.num_laps != b.num_laps || out_of_race(a) || out_of_race(b) {
         return false;
     }
-    let held = prev_rank(prev, b.race_num) < prev_rank(prev, a.race_num);
-    ahead_m > if held { HOLD_M } else { PASS_M }
+    let (Some(pos_a), Some(pos_b)) = (rider_lap_pos(s, a.race_num), rider_lap_pos(s, b.race_num))
+    else {
+        return false;
+    };
+    let wrap_m = wrap_signed(pos_b - pos_a) * s.track_length;
+    if wrap_m.abs() > PAIR_MAX_M {
+        return false;
+    }
+    let ahead_m = if use_penalty {
+        wrap_m + penalty_m(s, a.penalty_ms - b.penalty_ms)
+    } else {
+        wrap_m
+    };
+    ahead_m > margin
 }
 
-/// Indices into `s.standings[..n]`, P1 first: the game classification with every pass we
-/// can see on track applied on top. Rebuilt from the game order each tick so a bad swap
-/// cannot stick, and bubbled so a rider can gain several places through a pack.
+/// Bubble movable slots in `order` by [`score_ahead`]. `use_penalty` selects live vs
+/// on-track ranking. Pinned rows (no `track_pos`, out of race) stay put.
+fn bubble_live_slots(
+    s: &Snapshot,
+    order: &mut [usize],
+    prev: &[i32],
+    tracked: &[RiderProgress],
+    use_penalty: bool,
+) {
+    let n = order.len();
+    let movable: Vec<usize> = (0..n)
+        .filter(|&slot| {
+            let st = &s.standings[order[slot]];
+            !out_of_race(st) && rider_lap_pos(s, st.race_num).is_some()
+        })
+        .collect();
+    for _ in 0..n {
+        let mut moved = false;
+        for pair in movable.windows(2) {
+            let (ahead, behind) = (pair[0], pair[1]);
+            let (a, b) = (&s.standings[order[ahead]], &s.standings[order[behind]]);
+            if score_ahead(s, prev, tracked, a, b, use_penalty) {
+                order.swap(ahead, behind);
+                moved = true;
+            }
+        }
+        if !moved {
+            break;
+        }
+    }
+}
+
+/// Indices into `s.standings[..n]`, P1 first. Running riders are ordered by
+/// [`rider_score`] (track progress minus their own penalty), bubbled so one tick can move
+/// a rider through the whole pack. Riders we cannot place stay in their scored slot.
+/// Also publishes [`TRACK_ORDER`] (same bubble without penalties) while live order is on.
 fn live_order(s: &Snapshot, clock: &SessionClock, n: usize) -> Vec<usize> {
+    note_progress(s, clock, n);
     let mut order: Vec<usize> = (0..n).collect();
     order.sort_by_key(|&i| {
         let p = s.standings[i].position;
@@ -280,19 +547,18 @@ fn live_order(s: &Snapshot, clock: &SessionClock, n: usize) -> Vec<usize> {
         }
     });
     if n > 1 && live_order_active(s, clock) {
-        let prev = LIVE_ORDER.lock().map(|g| g.clone()).unwrap_or_default();
-        for _ in 0..n {
-            let mut moved = false;
-            for i in 0..n - 1 {
-                if passed(s, &prev, &s.standings[order[i]], &s.standings[order[i + 1]]) {
-                    order.swap(i, i + 1);
-                    moved = true;
-                }
-            }
-            if !moved {
-                break;
-            }
+        let prev_live = LIVE_ORDER.lock().map(|g| g.clone()).unwrap_or_default();
+        let prev_track = TRACK_ORDER.lock().map(|g| g.clone()).unwrap_or_default();
+        let tracked = PROGRESS.lock().map(|g| g.clone()).unwrap_or_default();
+        let mut track = order.clone();
+        bubble_live_slots(s, &mut order, &prev_live, &tracked, true);
+        bubble_live_slots(s, &mut track, &prev_track, &tracked, false);
+        if let Ok(mut g) = TRACK_ORDER.lock() {
+            g.clear();
+            g.extend(track.iter().map(|&i| s.standings[i].race_num));
         }
+    } else if let Ok(mut g) = TRACK_ORDER.lock() {
+        g.clear();
     }
     if let Ok(mut g) = LIVE_ORDER.lock() {
         g.clear();
@@ -301,17 +567,84 @@ fn live_order(s: &Snapshot, clock: &SessionClock, n: usize) -> Vec<usize> {
     order
 }
 
-/// Live place for a race number, `0` when we have no order yet.
-pub fn live_position(race_num: i32) -> i32 {
+fn place_in_order(order: &[i32], race_num: i32) -> i32 {
     if race_num <= 0 {
         return 0;
     }
+    order
+        .iter()
+        .position(|&n| n == race_num)
+        .map(|i| i as i32 + 1)
+        .unwrap_or(0)
+}
+
+/// Live place for a race number, `0` when we have no order yet.
+pub fn live_position(race_num: i32) -> i32 {
     LIVE_ORDER
         .lock()
         .ok()
-        .and_then(|g| g.iter().position(|&n| n == race_num))
-        .map(|i| i as i32 + 1)
+        .map(|g| place_in_order(&g, race_num))
         .unwrap_or(0)
+}
+
+/// On-track place (penalties ignored), `0` when live order is off or unknown.
+pub fn track_position(race_num: i32) -> i32 {
+    TRACK_ORDER
+        .lock()
+        .ok()
+        .map(|g| place_in_order(&g, race_num))
+        .unwrap_or(0)
+}
+
+/// How live place compares to on-track place: `Some(track − live)`.
+/// Positive = ahead of on-track (green `*`), negative = behind (red `*`).
+/// `None` when places match, either place is unknown, or live order is off.
+pub fn penalty_place_delta(race_num: i32) -> Option<i32> {
+    let live = live_position(race_num);
+    let track = track_position(race_num);
+    if live <= 0 || track <= 0 || live == track {
+        return None;
+    }
+    Some(track - live)
+}
+
+fn class_rank_in_order(s: &Snapshot, order: &[i32], race_num: i32, category: &str) -> i32 {
+    let mut rank = 0i32;
+    for &num in order {
+        let Some(row) = standing_of(s, num) else {
+            continue;
+        };
+        if cstr(&row.category) != category {
+            continue;
+        }
+        rank += 1;
+        if num == race_num {
+            return rank;
+        }
+    }
+    0
+}
+
+/// Same as [`penalty_place_delta`] but within the rider's class.
+pub fn penalty_class_place_delta(s: &Snapshot, race_num: i32) -> Option<i32> {
+    let Some(st) = standing_of(s, race_num) else {
+        return None;
+    };
+    let cat = cstr(&st.category);
+    if cat.is_empty() {
+        return penalty_place_delta(race_num);
+    }
+    let live_order = LIVE_ORDER.lock().ok()?;
+    let track_order = TRACK_ORDER.lock().ok()?;
+    if live_order.is_empty() || track_order.is_empty() {
+        return None;
+    }
+    let live = class_rank_in_order(s, &live_order, race_num, &cat);
+    let track = class_rank_in_order(s, &track_order, race_num, &cat);
+    if live <= 0 || track <= 0 || live == track {
+        return None;
+    }
+    Some(track - live)
 }
 
 /// Race number leading right now, `0` when we have no order yet.
@@ -354,7 +687,10 @@ fn build_field(s: &Snapshot, clock: &SessionClock) -> RaceField {
     let mut rows = Vec::with_capacity(n);
     let mut focus = None;
     let mut leader = None;
-    let focus_st = s.standings[..n].iter().find(|r| r.race_num == focus_num).copied();
+    let focus_st = s.standings[..n]
+        .iter()
+        .find(|r| r.race_num == focus_num)
+        .copied();
 
     for (i, &si) in order.iter().enumerate() {
         let mut st = s.standings[si];
@@ -442,8 +778,13 @@ pub(crate) fn timed_race_flag(s: &Snapshot) -> RaceFlag {
     if is_lap_race(s) || timed_clock_live(s) || prestart(s) || !overtime_active(s) {
         return RaceFlag::None;
     }
+    // Same recovery as `dash_race_flag`: do not keep a latched finish while laps remain.
     if CHECKERED_LATCH.load(Ordering::Relaxed) == 1 {
-        return RaceFlag::Checkered;
+        if extras_started(s) && laps_left(s).is_some_and(|n| n > 0) {
+            CHECKERED_LATCH.store(0, Ordering::Relaxed);
+        } else {
+            return RaceFlag::Checkered;
+        }
     }
     if !extras_started(s) {
         return RaceFlag::None;
@@ -468,6 +809,7 @@ impl RaceStore {
     pub fn refresh(s: &Snapshot) {
         // Clock first, and only it may mutate session state: the field reads the result.
         let clock = build_clock(s);
+        note_field_laps(s);
         let field = build_field(s, &clock);
         if s.has_telemetry != 0 {
             let (thr, brk, _) = crate::telemetry::inputs(s);
@@ -757,6 +1099,116 @@ pub(crate) fn session_test_lock() -> std::sync::MutexGuard<'static, ()> {
     LOCK.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// Last completed lap and the one before it, per race number.
+/// `prior_ms` stays 0 until a second lap is real.
+struct LapPace {
+    seen_ms: i32,
+    prior_ms: i32,
+    laps: i32,
+    /// Completed-lap count seen once with the same time. A second sample at
+    /// that count is an equal lap. One stale frame before the new time arrives
+    /// does not count.
+    pending_laps: i32,
+}
+
+static LAP_PACE: Mutex<Vec<(i32, LapPace)>> = Mutex::new(Vec::new());
+
+fn focus_id(s: &Snapshot) -> i32 {
+    if s.focus_race_num > 0 {
+        s.focus_race_num
+    } else {
+        s.local_race_num
+    }
+}
+
+/// Same last-lap the Last column shows: the row, or your `last_lap_ms` when
+/// classification has not filled the row yet.
+fn resolved_last_lap_ms(s: &Snapshot, standing: &Standing) -> i32 {
+    if standing.last_lap_ms > 0 {
+        standing.last_lap_ms
+    } else if standing.race_num == focus_id(s) {
+        s.last_lap_ms
+    } else {
+        0
+    }
+}
+
+fn note_lap_pace(row: &mut LapPace, last_ms: i32, completed_laps: i32) {
+    if last_ms != row.seen_ms {
+        row.prior_ms = row.seen_ms;
+        row.seen_ms = last_ms;
+        row.laps = completed_laps.max(row.laps);
+        row.pending_laps = 0;
+        return;
+    }
+    if completed_laps > row.laps {
+        if row.pending_laps == completed_laps {
+            row.prior_ms = row.seen_ms;
+            row.laps = completed_laps;
+            row.pending_laps = 0;
+        } else {
+            row.pending_laps = completed_laps;
+        }
+    }
+}
+
+fn note_field_laps(s: &Snapshot) {
+    let n = (s.standing_count.max(0) as usize).min(MAX_STANDINGS);
+    let focus = focus_id(s);
+    let mut saw_focus = false;
+    let Ok(mut pace) = LAP_PACE.lock() else {
+        return;
+    };
+    for standing in &s.standings[..n] {
+        if standing.race_num <= 0 {
+            continue;
+        }
+        if standing.race_num == focus {
+            saw_focus = true;
+        }
+        let last_ms = resolved_last_lap_ms(s, standing);
+        if last_ms <= 0 {
+            continue;
+        }
+        let completed = standing_num_laps(s, standing.race_num, standing.num_laps);
+        remember_lap(&mut pace, standing.race_num, last_ms, completed);
+    }
+    if focus > 0 && !saw_focus && s.last_lap_ms > 0 {
+        let completed = standing_num_laps(s, focus, 0);
+        remember_lap(&mut pace, focus, s.last_lap_ms, completed);
+    }
+}
+
+fn remember_lap(pace: &mut Vec<(i32, LapPace)>, race_num: i32, last_ms: i32, completed: i32) {
+    if let Some((_, row)) = pace.iter_mut().find(|(num, _)| *num == race_num) {
+        note_lap_pace(row, last_ms, completed);
+        return;
+    }
+    pace.push((
+        race_num,
+        LapPace {
+            seen_ms: last_ms,
+            prior_ms: 0,
+            laps: completed.max(0),
+            pending_laps: 0,
+        },
+    ));
+}
+
+/// Last completed lap minus the one before it. `None` until that rider has two
+/// laps this session. Negative is faster.
+pub(crate) fn lap_diff_ms(race_num: i32) -> Option<i32> {
+    let pace = LAP_PACE.lock().unwrap_or_else(|e| e.into_inner());
+    let row = pace
+        .iter()
+        .find(|(num, _)| *num == race_num)
+        .map(|(_, row)| row)?;
+    if row.prior_ms <= 0 || row.seen_ms <= 0 {
+        return None;
+    }
+    Some(row.seen_ms - row.prior_ms)
+}
+
 pub(crate) fn reset_session_clock_track() {
     LAST_SESSION_CLOCK.store(0, Ordering::Relaxed);
     DIP_FROM_CLOCK.store(-1, Ordering::Relaxed);
@@ -792,6 +1244,15 @@ pub(crate) fn reset_session_clock_track() {
     LEADER_BEHIND.store(0, Ordering::Relaxed);
     LAST_LEAD_FRAC.store(-1, Ordering::Relaxed);
     if let Ok(mut g) = LIVE_ORDER.lock() {
+        g.clear();
+    }
+    if let Ok(mut g) = TRACK_ORDER.lock() {
+        g.clear();
+    }
+    if let Ok(mut g) = PROGRESS.lock() {
+        g.clear();
+    }
+    if let Ok(mut g) = LAP_PACE.lock() {
         g.clear();
     }
     // `with()` holds VIEW. Clearing it here would deadlock, and mutating through
@@ -902,9 +1363,8 @@ pub(crate) fn note_session(s: &Snapshot) {
         && (RACE_ARMED.load(Ordering::Relaxed) == 1
             || SESSION_EXPIRED.load(Ordering::Relaxed) == 1);
     let entered_race = prev_laps == 0 && laps > 0 && from_practice && !timed_extras_arriving;
-    let kind_changed = prev_laps > 0
-        && laps > 0
-        && (prev_laps > EXTRA_LAPS_MAX) != (laps > EXTRA_LAPS_MAX);
+    let kind_changed =
+        prev_laps > 0 && laps > 0 && (prev_laps > EXTRA_LAPS_MAX) != (laps > EXTRA_LAPS_MAX);
     let kind = s.session_kind;
     let prev_kind = LAST_SESSION_KIND.swap(kind, Ordering::Relaxed);
     let session_kind_changed = prev_kind > 0 && kind > 0 && prev_kind != kind;
@@ -991,19 +1451,35 @@ pub fn session_preset(s: &Snapshot, spectating: bool) -> Option<SessionPreset> {
         return Some(SessionPreset::Race);
     }
     let total = session_len_ms(s.session_length);
-    if extra_laps_field(s.session_laps) && !is_lap_race(s) {
-        return Some(SessionPreset::Race);
-    }
+    // Practice length before leaked extras — kind 5 already returned Warmup above.
     if session_len_minutes(total) >= 40 {
         return Some(SessionPreset::Practice);
+    }
+    if extra_laps_field(s.session_laps) {
+        return Some(SessionPreset::Race);
     }
     if is_warmup(s) {
         return Some(SessionPreset::Warmup);
     }
-    if s.session_length > 0 || s.session_time_ms > 0 || prestart(s) {
+    // Open practice / Testing Setup: no race length and no extras.
+    if s.session_laps <= 0 && s.session_length <= 0 {
+        return Some(SessionPreset::Practice);
+    }
+    // Unpublished timed moto (standard race minutes) still maps to Race.
+    if standard_race_minutes(total) || s.session_length > 0 || prestart(s) {
         return Some(SessionPreset::Race);
     }
     None
+}
+
+/// Open practice (40+ min or Testing Setup with no race length), not a race moto and not short warmup.
+pub fn is_practice_session(s: &Snapshot) -> bool {
+    matches!(session_preset(s, false), Some(SessionPreset::Practice))
+}
+
+/// Short warmup (not Practice). Motos stores those laps on the race visit.
+pub(crate) fn skip_warmup_laps(s: &Snapshot) -> bool {
+    is_warmup(s) && !is_practice_session(s)
 }
 
 pub(crate) fn is_lap_race(s: &Snapshot) -> bool {
@@ -1159,18 +1635,26 @@ fn leader_lap_lead(s: &Snapshot) -> i32 {
 
 fn leader_is_lap_up(s: &Snapshot) -> bool {
     let lead = leader_lap_lead(s);
-    // After the leader takes the flag, +1 completed lap is "they finished, you have
-    // not crossed yet" — you are still on the same last lap, not lapped.
-    let need = if leader_finished(s) { 2 } else { 1 };
+    // After the leader takes the flag, +1 completed lap is usually "they finished,
+    // you have not crossed yet" — same last lap, not lapped (`need = 2`). Timed
+    // extras are different: on `1/2` while they have finished `2/2`, lead is often
+    // only 1 and you are a full extra behind, not on their finishing lap.
+    let need = if leader_finished(s) {
+        if extras_started(s) && raw_overtime_taken(s) < extra_laps(s).max(1) {
+            1
+        } else {
+            2
+        }
+    } else {
+        1
+    };
     if lead >= need {
         return true;
     }
-    // Extras started and you have not taken one: the leader is a lap up even when
-    // the game leaves both `num_laps` on the race lap.
-    !leader_finished(s)
-        && extras_started(s)
-        && raw_overtime_taken(s) == 0
-        && lead >= 0
+    // Extras started and you have not taken one: the leader is a lap up when they
+    // hold at least one completed lap more. Equal `num_laps` during extras is the
+    // same physical lap — do not arm the pass latch on a mid-pack battle.
+    !leader_finished(s) && extras_started(s) && raw_overtime_taken(s) == 0 && lead >= 1
 }
 
 /// Latch the moment the lap-up leader goes past you. `gap_laps` waits for a line crossing.
@@ -1203,10 +1687,26 @@ fn note_lapped_by_leader(s: &Snapshot) {
         1000.0
     };
     let along = wrap_signed(lp - fp) * len;
+    // Same as live order: centerline projection is only trustworthy nearby. An
+    // over/under tabletop can snap one bike to a wrong spline segment half a lap away.
+    if along.abs() > PAIR_MAX_M {
+        LEADER_BEHIND.store(0, Ordering::Relaxed);
+        LAST_LEAD_FRAC.store((lp * 10_000.0).round() as i32, Ordering::Relaxed);
+        return;
+    }
     let prev = LAST_LEAD_FRAC.load(Ordering::Relaxed);
     LAST_LEAD_FRAC.store((lp * 10_000.0).round() as i32, Ordering::Relaxed);
-    let lead_moved = prev >= 0
-        && wrap_signed(lp - prev as f32 / 10_000.0) * len > PASS_M;
+    let lead_delta_m = if prev >= 0 {
+        wrap_signed(lp - prev as f32 / 10_000.0) * len
+    } else {
+        0.0
+    };
+    // A real pass is continuous. A tabletop under-path teleport must not count as moving.
+    if lead_delta_m.abs() > PAIR_MAX_M {
+        LEADER_BEHIND.store(0, Ordering::Relaxed);
+        return;
+    }
+    let lead_moved = prev >= 0 && lead_delta_m > PASS_M;
     if along < -PASS_M {
         LEADER_BEHIND.store(1, Ordering::Relaxed);
     } else if along > PASS_M {
@@ -1265,7 +1765,12 @@ pub(crate) fn board_held(clock: i32, last: i32) -> bool {
     clock_held_for(clock, last, 0.6, &HOLD)
 }
 
-pub(crate) fn clock_held_for(clock: i32, last: i32, secs: f32, hold: &Mutex<Option<(i32, f32)>>) -> bool {
+pub(crate) fn clock_held_for(
+    clock: i32,
+    last: i32,
+    secs: f32,
+    hold: &Mutex<Option<(i32, f32)>>,
+) -> bool {
     let Ok(mut hold) = hold.lock() else {
         return false;
     };
@@ -1291,10 +1796,7 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
         let last = LAST_SESSION_CLOCK.load(Ordering::Relaxed);
         LAST_SESSION_CLOCK.store(clock, Ordering::Relaxed);
         let counting_up = last > 0 && clock > last + 400;
-        let counting_down = last > 0
-            && clock < last
-            && last - clock < 5_000
-            && clock <= 180_000;
+        let counting_down = last > 0 && clock < last && last - clock < 5_000 && clock <= 180_000;
         if LAP_GREEN.load(Ordering::Relaxed) == 1 {
             IN_GATE.store(0, Ordering::Relaxed);
             return None;
@@ -1355,12 +1857,7 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
         raw
     };
     // Game republishes the 8s/10s board during a live race; keep the real remaining clock.
-    if armed
-        && last > 60_000
-        && clock >= 8_000
-        && clock <= 15_000
-        && clock + 20_000 < last
-    {
+    if armed && last > 60_000 && clock >= 8_000 && clock <= 15_000 && clock + 20_000 < last {
         clock = last;
     }
     // A start board can land anywhere, not just the 8–15s window: 04:43 → 00:05 → 04:42
@@ -1402,13 +1899,16 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
             return Some(0);
         }
     }
+    // Once armed and counting down, a republish of session length must not snap
+    // the dash back to full race time (07:59 → 08:00). Near-full is a 30 s band, so
+    // the opening minute of an 8:00 race is still "near full" on every tick.
     if !board_dip
-        && saw
         && armed
+        && !in_gate_now
         && last > 0
-        && last + 30_000 < total
+        && last + 1_000 < total
         && near_full
-        && clock > last + 20_000
+        && clock > last
     {
         clock = last;
     }
@@ -1433,13 +1933,21 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
         POST_GATE.store(1, Ordering::Relaxed);
         post = true;
     }
-    let short_clock = clock > 0 && clock <= 35_000 && (total <= 0 || clock * 3 < total) && total > 180_000;
-    let enter_gate =
-        is_gate_clock(clock, total) && !moving(s) && !post && !armed && s.session_laps > 0;
+    let short_clock =
+        clock > 0 && clock <= 35_000 && (total <= 0 || clock * 3 < total) && total > 180_000;
+    let warmup = is_warmup(s);
+    // Kind 5 with leaked extras must not pin a frozen start board as a live gate.
+    let enter_gate = is_gate_clock(clock, total)
+        && !moving(s)
+        && !post
+        && !armed
+        && s.session_laps > 0
+        && !warmup;
     let gate_clock = enter_gate
         || (!post && in_gate && clock > 0 && clock <= 180_000 && (total <= 0 || clock * 3 < total));
     // Frozen 00:30 wait is a race board. Practice remaining that hitch-pauses is not.
-    let held_board = short_clock && board_held(clock, last) && !armed && s.session_laps > 0;
+    let held_board =
+        !warmup && short_clock && board_held(clock, last) && !armed && s.session_laps > 0;
     if held_board {
         IN_GATE.store(0, Ordering::Relaxed);
         POST_GATE.store(1, Ordering::Relaxed);
@@ -1452,24 +1960,16 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
     let leave_gate = in_gate && !gate_clock && !near_full && clock > 180_000;
     let wait_off_gate = in_gate && !gate_clock && near_full;
     let board_restart = in_gate && !post && last > 0 && clock > last + 2_000 && clock <= 180_000;
-    // A later 45s/30s board after 00:10 must stay a countdown. Don't swap in leftover 08:00
-    // until we've actually seen the race clock tick (Maryland 4-lap / 8:00 leftover).
-    let hold_gate_board = gate_clock
-        && !moving(s)
-        && !armed
-        && SAW_SESSION_TIME.load(Ordering::Relaxed) == 0;
-    let gate = gate_clock && !drop_off_gate && !armed && (!board_restart || hold_gate_board);
+    // Timed: first gate board only. After it runs down or jumps up (45s/30s),
+    // show race length — do not re-enter a short countdown.
+    let gate = gate_clock && !drop_off_gate && !armed && !board_restart;
     let race_ticking = !gate_clock
         && last > 180_000
         && clock > 5_000
         && clock < last
         && last - clock >= 50
         && last - clock < 5_000;
-    let waiting_for_race = (post || board_restart)
-        && !armed
-        && !race_ticking
-        && clock <= 180_000
-        && !hold_gate_board;
+    let waiting_for_race = (post || board_restart) && !armed && !race_ticking && clock <= 180_000;
 
     if drop_off_gate {
         IN_GATE.store(0, Ordering::Relaxed);
@@ -1608,8 +2108,7 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
         return Some(0);
     }
 
-    let timed_out = remain <= 800
-        || (clock_stuck(clock, last) && remain > 0 && remain <= 2_000);
+    let timed_out = remain <= 800 || (clock_stuck(clock, last) && remain > 0 && remain <= 2_000);
     let raced = RACE_ARMED.load(Ordering::Relaxed) == 1
         || (SAW_SESSION_TIME.load(Ordering::Relaxed) == 1 && last > 60_000);
     if !gate
@@ -1624,12 +2123,22 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
         let _ = overtime_base(s);
         return Some(0);
     }
-    // Warmup / practice: once the countdown hits zero, stay blank (ignore 00:30 junk).
-    if s.session_laps <= 0
+    // Warmup / practice: blank after zero, or when the game jumps to / freezes a
+    // start board (~00:30) without ever counting down through zero. Near-zero
+    // frames (00:02) are not boards — those still show until the zero path.
+    let snap_to_board =
+        last > 60_000 && clock >= 8_000 && clock <= 35_000 && last - clock > 30_000;
+    let stuck_board = clock >= 8_000
+        && clock <= 35_000
+        && (total <= 0 || clock * 3 < total)
+        && (board_held(clock, last) || clock_stuck(clock, last));
+    let junk_board = snap_to_board || stuck_board;
+    if (s.session_laps <= 0 || warmup)
         && !gate
         && SAW_SESSION_TIME.load(Ordering::Relaxed) == 1
-        && (remain <= 800 || (started && timed_out))
+        && (remain <= 800 || (started && timed_out) || junk_board)
     {
+        IN_GATE.store(0, Ordering::Relaxed);
         SESSION_EXPIRED.store(1, Ordering::Relaxed);
         let _ = overtime_base(s);
         return Some(0);
@@ -1952,10 +2461,11 @@ fn format_session_banner(s: &Snapshot, remain: Option<i32>) -> (char, String) {
             return ('\u{f11e}', overtime_lap_text(s));
         }
         // Timed race over, extras not published yet. Don't look like warmup ended.
-        if s.session_laps <= 0
+        // Kind 5 with leaked extras still blanks — that is not a race awaiting +N.
+        if (s.session_laps <= 0 || is_warmup(s))
             && (remain <= 0 || SESSION_EXPIRED.load(Ordering::Relaxed) == 1)
         {
-            if timed_race_awaiting_extras(s) {
+            if !is_warmup(s) && timed_race_awaiting_extras(s) {
                 let _ = overtime_base(s);
                 return ('\u{f2f2}', "00:00".into());
             }
@@ -2077,7 +2587,11 @@ pub(crate) fn class_position(s: &Snapshot) -> i32 {
 }
 
 pub(crate) fn focus_standing(s: &Snapshot) -> Option<&Standing> {
-    let focus = if s.focus_race_num > 0 { s.focus_race_num } else { s.local_race_num };
+    let focus = if s.focus_race_num > 0 {
+        s.focus_race_num
+    } else {
+        s.local_race_num
+    };
     standing_of(s, focus)
 }
 
@@ -2101,7 +2615,6 @@ pub(crate) fn lapped(s: &Snapshot) -> bool {
     // out on the last lap the leader just took.
     leader_finished(s) && leader_lap_lead(s) >= 2
 }
-
 
 pub(crate) fn interval_text_from_row(row: &RaceRow) -> String {
     if row.standing.position <= 1 {
@@ -2176,6 +2689,22 @@ fn classified_neighbor<'a>(s: &'a Snapshot, position: i32) -> Option<&'a Standin
     s.standings[..n].iter().find(|st| st.position == position)
 }
 
+/// Gap to the live-order leader (P1). Time is a live running gap.
+pub(crate) fn gap_leader_text(s: &Snapshot, field: &RaceField, row: &Standing) -> String {
+    if let Some(leader) = field.rows.first() {
+        if leader.standing.race_num == row.race_num {
+            return "---".into();
+        }
+        return gap_to_num(s, field, row.race_num, leader.standing.race_num, false);
+    }
+    if row.position <= 1 {
+        return "---".into();
+    }
+    format_gap(row.gap_ms, row.gap_laps)
+        .trim_start_matches('+')
+        .to_string()
+}
+
 /// Gap to the rider one live-order place ahead (P−1). Time is a live running gap.
 pub(crate) fn gap_ahead_text(s: &Snapshot, field: &RaceField, row: &Standing) -> String {
     if let Some(i) = field
@@ -2186,7 +2715,13 @@ pub(crate) fn gap_ahead_text(s: &Snapshot, field: &RaceField, row: &Standing) ->
         if i == 0 {
             return "---".into();
         }
-        return gap_to_num(s, field, row.race_num, field.rows[i - 1].standing.race_num, false);
+        return gap_to_num(
+            s,
+            field,
+            row.race_num,
+            field.rows[i - 1].standing.race_num,
+            false,
+        );
     }
     if row.position <= 1 {
         return "---".into();

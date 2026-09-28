@@ -8,11 +8,10 @@ Streaming (OBS Browser Source, stream-only layout) is not a widget — see [stre
 
 | Widget | Closest we have | Data |
 | --- | --- | --- |
-| [Holeshot / Start](#holeshot--start) | — | Overlay gate (`IN_GATE` / `session_state` 256) + live `track_pos`. `RaceHoleshot` Unused |
+| [Holeshot / Start](#holeshot--start) | — | Overlay gate (`IN_GATE` / `session_state` 256) + live `track_pos`. `RaceHoleshot` on SHM v16 (Profile count; live plaque not shipped) |
 | [Battle card](#battle-card) | [Relative](relative.md) | Overlay gaps. Rival speed Need SHM (`RaceVehicleData`) |
 | [Spectate nameplate](#spectate-nameplate) | Dash / Standings | Overlay (`focus_race_num`, live order, last lap) |
 | [Line](#line) | [Map](map.md) centerline | Overlay `poly[]` + XZ. **Needs in-game dumps** |
-| [Radar lappers](#radar-lappers) | [Radar](radar.md) + map `lap_rel` | Overlay — not a new widget |
 | [G-Force](#g-force) | — | Need SHM (`m_fAccelerationX/Y/Z`) |
 | [Fuel calculator](#fuel-calculator) | Dash / table **Fuel** and **Fuel %** | Overlay (`fuel` / `maxFuel`) |
 | [Ideal Lap](#ideal-lap) | [Sectors](sector.md) — shipped as IDEAL | Overlay splits + `track_pb` |
@@ -28,8 +27,8 @@ Gate lineup, live chase into turn 1, then the official holeshot call.
 
 - **Gate** — `IN_GATE` / `session_state == 256`. Compact live order, you highlighted. Hide in practice / warmup.
 - **Drop** — live chase from `riders[].track_pos` (same as Relative / live order) until the callback or a short track-pos threshold.
-- **Call** — unused `RaceHoleshot` (`m_iRaceNum` + `m_iTime`) in `src/plugin.cpp`. Winner plaque; your gap if you lost. Hold a few seconds, then hide.
-- Plugin stub today. Publish winner + time on SHM (bump `MXBO_SHM_VERSION`).
+- **Call** — `RaceHoleshot` on SHM v16 (`holeshotRaceNum` + `holeshotTime`). Winner plaque; your gap if you lost. Hold a few seconds, then hide. Profile already counts it; this widget is the live call.
+- Plugin publishes winner + time. Overlay Profile stores it on compact at visit close.
 - Glanceable plaque, not a second standings table. `RaceHoleshot` is no longer only an Event Log leftover.
 
 ## Battle card
@@ -62,16 +61,6 @@ Unknown (log before a widget page):
 - Off-track, crash, pits, remount teleports.
 - Height is on the segment (`m_fHeight`) but unused — plan-view only unless we decide otherwise.
 - Units, update rate, numeric plaque vs a L\|R bar.
-
-## Radar lappers
-
-Not a new widget. Map and minimap already color with `lap_rel` / `rider_dot_col`: **blue** = they are a lap up and closing from behind, **red** = you are a lap up and closing on them. Off in warmup. `gap_laps` wins.
-
-Radar blips are heat only (orange → cream). A lapper looks like anyone else.
-
-Future Radar pane toggle (**Lappers**, default on): when `lap_rel` is set, paint that blip blue or red; keep heat for size. Same-lap blips stay the heat gradient. Same warmup / `gap_laps` rules as the map. When it ships, log it on [radar.md](radar.md) and drop this section.
-
----
 
 ## G-Force
 
@@ -117,9 +106,11 @@ Timestamped race-event feed.
 ## Change log
 
 - 2026-09-11 — Pit Board shipped. Moved to [pitboard.md](pitboard.md).
+- 2026-09-22 — Radar lappers shipped as blue/red rings on [radar.md](radar.md); dropped from this page.
 - 2026-09-10 — Dropped unapproved ideas (ahead plate, interval bar, hunt, remount, finish projection, bike health, and the parked list).
 - 2026-09-10 — Added Holeshot / Start, Battle card, Spectate nameplate, Line (needs dumps), Radar lappers. Streaming moved to [streaming.md](../streaming.md). Event Log no longer owns holeshot.
 - 2026-09-09 — Telemetry shipped (traces + bars + gear/speed). Suspension graphs stay here.
+- 2026-09-25 — Controller left Labs. See [gamepad.md](gamepad.md).
 - 2026-09-04 — Controller (was Gamepad) is Labs-only. See [gamepad.md](gamepad.md).
 - 2026-09-02 — Gamepad shipped. Moved to [gamepad.md](gamepad.md).
 - 2026-09-01 — Lean shipped. Moved to [lean.md](lean.md).

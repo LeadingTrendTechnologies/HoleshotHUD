@@ -21,10 +21,19 @@ fn setup_label_strips_path_and_extension() {
     assert_eq!(format_setup_name("Washougal Soft.xml"), "Washougal Soft");
     assert_eq!(format_setup_name("Washougal Soft.XML"), "Washougal Soft");
     assert_eq!(format_setup_name("Main.mxb"), "Main");
-    assert_eq!(format_setup_name(r"C:\Setups\Washougal Soft.xml"), "Washougal Soft");
-    assert_eq!(format_setup_name("/home/user/setups/factory.mxb"), "factory");
+    assert_eq!(
+        format_setup_name(r"C:\Setups\Washougal Soft.xml"),
+        "Washougal Soft"
+    );
+    assert_eq!(
+        format_setup_name("/home/user/setups/factory.mxb"),
+        "factory"
+    );
     let mut s = Snapshot::default();
-    write_name(&mut s.setup_name, r"docs\PiBoSo\MX Bikes\setups\450 Main.xml");
+    write_name(
+        &mut s.setup_name,
+        r"docs\PiBoSo\MX Bikes\setups\450 Main.xml",
+    );
     assert_eq!(s.setup_label(), "450 Main");
 }
 
@@ -121,14 +130,22 @@ fn snapshot_abi_is_prefix_of_checked_in_layout() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .join("src/shm/abi.txt");
-    let file = std::fs::read_to_string(&path).unwrap_or_default().replace("\r\n", "\n");
+    let file = std::fs::read_to_string(&path)
+        .unwrap_or_default()
+        .replace("\r\n", "\n");
     assert!(
         file.contains("MxboShmSnapshot.localClutch"),
         "src/shm/abi.txt missing snapshot fields at {}",
         path.display()
     );
     for line in snap.lines() {
-        if line.starts_with("MAGIC=") || line.starts_with("VERSION=") || line.starts_with("MAX_") || line.starts_with("NAME=") || line.starts_with("TRACK_NAME=") {
+        if line.starts_with("MAGIC=")
+            || line.starts_with("VERSION=")
+            || line.starts_with("MAX_")
+            || line.starts_with("NAME=")
+            || line.starts_with("TRACK_NAME=")
+            || line.starts_with("GUID=")
+        {
             assert!(
                 file.lines().any(|l| l == line),
                 "src/shm/abi.txt missing {line}"

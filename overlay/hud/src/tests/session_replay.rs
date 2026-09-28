@@ -201,11 +201,7 @@ fn flag_name(f: RaceFlag) -> &'static str {
 
 fn assert_expect(store: &RaceStore, expect: &str, file: &str, line_no: usize) {
     if let Some(want) = json_str(expect, "mode") {
-        assert_eq!(
-            mode_name(store.clock.mode),
-            want,
-            "{file}:{line_no} mode"
-        );
+        assert_eq!(mode_name(store.clock.mode), want, "{file}:{line_no} mode");
     }
     if let Some(want) = json_str(expect, "banner") {
         assert_eq!(store.clock.banner.1, want, "{file}:{line_no} banner");
@@ -234,7 +230,8 @@ fn replay_file(name: &str) {
     LAST_SESSION_SIG.store(0, Ordering::Relaxed);
     LAST_CUR_LAP.store(0, Ordering::Relaxed);
     let path = sessions_dir().join(name);
-    let raw = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let raw =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     let mut snap = base_snap();
     for (i, line) in raw.lines().enumerate() {
         let line = line.trim();

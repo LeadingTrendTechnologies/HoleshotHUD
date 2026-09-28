@@ -1,6 +1,6 @@
 # MXBO web preview
 
-Static page that runs the same HUD renderer in the browser.
+Static page that runs the same HUD renderer in the browser. Use **Motos** in the mode bar for an interactive Analyze demo (fake Hangtown data).
 
 ```bat
 build-web.bat

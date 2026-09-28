@@ -26,7 +26,14 @@ pub(crate) fn stance_glyph(sitting: bool) -> Option<&'static Pixmap> {
     .as_ref()
 }
 
-pub(crate) fn draw_stance_icon(px: &mut Pixmap, cfg: &HudConfig, x: f32, y: f32, w: f32, h: f32) -> bool {
+pub(crate) fn draw_stance_icon(
+    px: &mut Pixmap,
+    cfg: &HudConfig,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+) -> bool {
     let sitting = stance_sitting();
     let Some(src) = stance_glyph(sitting) else {
         return false;
@@ -78,7 +85,7 @@ pub(crate) fn draw_stance(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f
     let a = bg_a(cfg[WidgetId::Stance].bg);
     let stand = !sitting;
     let fill = if stand {
-        Color::from_rgba8(255, 148, 48, a.max(220))
+        accent_a(a.max(220))
     } else {
         Color::from_rgba8(10, 10, 12, a)
     };
@@ -86,10 +93,19 @@ pub(crate) fn draw_stance(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f
     fill_skew(px, x, y, w, h, skew, fill);
     let word = if sitting { "SIT" } else { "STAND" };
     let ink = if stand {
-        Color::from_rgba8(12, 12, 14, 255)
+        ink_on(fill)
     } else {
         Color::from_rgba8(228, 228, 230, 255)
     };
     let size = (h * 0.42).clamp(12.0, 28.0);
-    text(px, fonts, word, size, x + w * 0.5, y + (h - size) * 0.42, ink, true);
+    text(
+        px,
+        fonts,
+        word,
+        size,
+        x + w * 0.5,
+        y + (h - size) * 0.42,
+        ink,
+        true,
+    );
 }

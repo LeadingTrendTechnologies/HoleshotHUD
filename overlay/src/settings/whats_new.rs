@@ -17,7 +17,7 @@ pub(crate) fn draw_whats_new(
     scroll: f32,
     hits: &mut Vec<HitBox>,
 ) -> f32 {
-    let scrim = Color::from_rgba8(8, 8, 10, 204);
+    let scrim = scrim();
     if let Some(r) = Rect::from_xywh(0.0, 0.0, win_w, win_h) {
         fill_rect(px, r, scrim);
     }
@@ -42,7 +42,12 @@ pub(crate) fn draw_whats_new(
 
     let warn = crate::plugin::needs_restart();
     let warn_lines = if warn {
-        wrap_fb(fonts, crate::plugin::RESTART_PLUGIN_STILL_RUNNING, inner_w, body_size)
+        wrap_fb(
+            fonts,
+            crate::plugin::RESTART_PLUGIN_STILL_RUNNING,
+            inner_w,
+            body_size,
+        )
     } else {
         Vec::new()
     };
@@ -73,11 +78,7 @@ pub(crate) fn draw_whats_new(
     let panel_h = want.min(win_h - 48.0).max(header_h + footer_h + 24.0);
     let panel_x = ((win_w - panel_w) * 0.5).max(16.0);
     let panel_y = ((win_h - panel_h) * 0.5).max(16.0);
-    let board = if high_contrast_on() {
-        panel()
-    } else {
-        Color::from_rgba8(20, 20, 22, 255)
-    };
+    let board = menu_fill();
     fill_round(px, panel_x, panel_y, panel_w, panel_h, 10.0, board);
     hits.push(HitBox {
         id: Hit::WhatsNewPanel,
@@ -92,7 +93,15 @@ pub(crate) fn draw_whats_new(
     let ver_sz = 18.0;
     let ver_w = measure(fonts, &notes.version, ver_sz);
     let plaque_w = (ver_w + 36.0).min(inner_w).max(72.0);
-    fill_skew(px, plaque_x, plaque_y, (plaque_w - skew).max(48.0), plaque_h, skew, accent());
+    fill_skew(
+        px,
+        plaque_x,
+        plaque_y,
+        (plaque_w - skew).max(48.0),
+        plaque_h,
+        skew,
+        accent(),
+    );
     text(
         px,
         fonts,
@@ -154,7 +163,16 @@ pub(crate) fn draw_whats_new(
                         fill_circle(&mut body, 4.0, y + 8.0, 2.2, accent());
                         let mut ly = y;
                         for line in lines {
-                            text(&mut body, fonts, line, body_size, 14.0, ly, text_col(), false);
+                            text(
+                                &mut body,
+                                fonts,
+                                line,
+                                body_size,
+                                14.0,
+                                ly,
+                                text_col(),
+                                false,
+                            );
                             ly += line_h;
                         }
                     }
@@ -181,24 +199,8 @@ pub(crate) fn draw_whats_new(
             } else {
                 0.0
             };
-        fill_round(
-            px,
-            track_x,
-            body_top,
-            3.0,
-            view_h,
-            1.5,
-            Color::from_rgba8(255, 255, 255, 18),
-        );
-        fill_round(
-            px,
-            track_x,
-            thumb_y,
-            3.0,
-            thumb_h,
-            1.5,
-            Color::from_rgba8(255, 255, 255, 48),
-        );
+        fill_round(px, track_x, body_top, 3.0, view_h, 1.5, menu_edge());
+        fill_round(px, track_x, thumb_y, 3.0, thumb_h, 1.5, menu_edge_strong());
     }
 
     let btn_w = panel_w - pad * 2.0;

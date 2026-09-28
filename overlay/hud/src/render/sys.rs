@@ -22,11 +22,30 @@ pub struct SysProc {
 }
 
 pub fn set_sys_stats(cpu: f32, mem: f32, fps: f32, gpu: f32, ping_ms: i32) {
-    SYS_CPU.store((cpu.clamp(0.0, 100.0) * 10.0).round() as i32, Ordering::Relaxed);
-    SYS_MEM.store((mem.clamp(0.0, 100.0) * 10.0).round() as i32, Ordering::Relaxed);
-    SYS_FPS.store((fps.clamp(0.0, 999.0) * 10.0).round() as i32, Ordering::Relaxed);
-    SYS_GPU.store((gpu.clamp(0.0, 100.0) * 10.0).round() as i32, Ordering::Relaxed);
-    SYS_PING.store(if ping_ms < 0 { -1 } else { ping_ms.clamp(0, 9999) }, Ordering::Relaxed);
+    SYS_CPU.store(
+        (cpu.clamp(0.0, 100.0) * 10.0).round() as i32,
+        Ordering::Relaxed,
+    );
+    SYS_MEM.store(
+        (mem.clamp(0.0, 100.0) * 10.0).round() as i32,
+        Ordering::Relaxed,
+    );
+    SYS_FPS.store(
+        (fps.clamp(0.0, 999.0) * 10.0).round() as i32,
+        Ordering::Relaxed,
+    );
+    SYS_GPU.store(
+        (gpu.clamp(0.0, 100.0) * 10.0).round() as i32,
+        Ordering::Relaxed,
+    );
+    SYS_PING.store(
+        if ping_ms < 0 {
+            -1
+        } else {
+            ping_ms.clamp(0, 9999)
+        },
+        Ordering::Relaxed,
+    );
 }
 
 pub fn set_sys_procs(procs: Vec<SysProc>) {
@@ -94,7 +113,15 @@ pub(crate) fn sys_heat(hot: f32) -> Color {
     }
 }
 
-pub(crate) fn draw_sys_track(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, fill: f32, col: Color) {
+pub(crate) fn draw_sys_track(
+    px: &mut Pixmap,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    fill: f32,
+    col: Color,
+) {
     let w = w.max(8.0);
     let h = h.clamp(2.0, 6.0);
     fill_round(px, x, y, w, h, 1.5, Color::from_rgba8(42, 42, 46, 160));
@@ -120,7 +147,16 @@ pub(crate) fn draw_sys_meter(
 ) -> f32 {
     text(px, fonts, label, label_fs, x, y, text_dim(), false);
     let vy = y + label_fs * 1.12;
-    text(px, fonts, value, value_fs, x, vy, Color::from_rgba8(248, 248, 252, 255), false);
+    text(
+        px,
+        fonts,
+        value,
+        value_fs,
+        x,
+        vy,
+        Color::from_rgba8(248, 248, 252, 255),
+        false,
+    );
     let ty = vy + value_fs * 1.08;
     if track_h > 0.5 {
         draw_sys_track(px, x, ty, w, track_h, fill, col);
@@ -158,7 +194,11 @@ pub(crate) fn draw_sys_procs(
         let (value, fill, dim) = match kind {
             SysProcKind::Mem => {
                 if p.on {
-                    (fmt_sys_mem(p.mem_mb), (p.mem_mb / mem_scale * 100.0).clamp(0.0, 100.0), false)
+                    (
+                        fmt_sys_mem(p.mem_mb),
+                        (p.mem_mb / mem_scale * 100.0).clamp(0.0, 100.0),
+                        false,
+                    )
                 } else {
                     ("—".into(), 0.0, true)
                 }
@@ -170,21 +210,47 @@ pub(crate) fn draw_sys_procs(
                 };
                 let known = p.on && load >= 0.0;
                 if known {
-                    (format!("{:.0}%", load.round()), load.clamp(0.0, 100.0), false)
+                    (
+                        format!("{:.0}%", load.round()),
+                        load.clamp(0.0, 100.0),
+                        false,
+                    )
                 } else {
                     ("—".into(), 0.0, true)
                 }
             }
         };
-        let ink = if dim { Color::from_rgba8(108, 108, 114, 220) } else { mute };
-        text(px, fonts, &p.label, fs, x, ry + (row_h - fs) * 0.22, ink, false);
+        let ink = if dim {
+            Color::from_rgba8(108, 108, 114, 220)
+        } else {
+            mute
+        };
+        text(
+            px,
+            fonts,
+            &p.label,
+            fs,
+            x,
+            ry + (row_h - fs) * 0.22,
+            ink,
+            false,
+        );
         let val_w = measure(fonts, &value, fs);
         let bx = x + label_w + 4.0;
         let bw = (x + w - val_w - 5.0 - bx).max(12.0);
         let bh = (row_h * 0.28).clamp(2.0, 4.0);
         let by = ry + (row_h - bh) * 0.42;
         draw_sys_track(px, bx, by, bw, bh, fill, if dim { bar_dim } else { bar });
-        text(px, fonts, &value, fs, x + w - val_w, ry + (row_h - fs) * 0.22, ink, false);
+        text(
+            px,
+            fonts,
+            &value,
+            fs,
+            x + w - val_w,
+            ry + (row_h - fs) * 0.22,
+            ink,
+            false,
+        );
     }
 }
 
@@ -298,10 +364,30 @@ pub(crate) fn draw_sys(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f32,
         + 4.0;
     if !procs.is_empty() {
         draw_sys_procs(
-            px, fonts, left_x, proc_top, left_w, row_h, proc_fs, label_w, &procs, SysProcKind::Cpu, 1.0,
+            px,
+            fonts,
+            left_x,
+            proc_top,
+            left_w,
+            row_h,
+            proc_fs,
+            label_w,
+            &procs,
+            SysProcKind::Cpu,
+            1.0,
         );
         draw_sys_procs(
-            px, fonts, right_x, proc_top, right_w, row_h, proc_fs, label_w, &procs, SysProcKind::Mem, mem_scale,
+            px,
+            fonts,
+            right_x,
+            proc_top,
+            right_w,
+            row_h,
+            proc_fs,
+            label_w,
+            &procs,
+            SysProcKind::Mem,
+            mem_scale,
         );
     }
 

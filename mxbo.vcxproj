@@ -56,7 +56,7 @@
       <EnableCOMDATFolding>false</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>gdi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>gdi32.lib;dbghelp.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <ModuleDefinitionFile>mxbo.def</ModuleDefinitionFile>
       <ImportLibrary>$(OutDir)Holeshot-HUD.lib</ImportLibrary>
     </Link>
@@ -75,13 +75,14 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>gdi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>gdi32.lib;dbghelp.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <ModuleDefinitionFile>mxbo.def</ModuleDefinitionFile>
       <ImportLibrary>$(OutDir)Holeshot-HUD.lib</ImportLibrary>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\plugin.cpp" />
+    <ClCompile Include="src\crash_log.cpp" />
     <ClCompile Include="src\state.cpp" />
     <ClCompile Include="src\config.cpp" />
     <ClCompile Include="src\shm_writer.cpp" />
@@ -96,6 +97,7 @@
     <ClInclude Include="src\vendor\piboso\mxb_api.h" />
     <ClInclude Include="src\color.h" />
     <ClInclude Include="src\config.h" />
+    <ClInclude Include="src\crash_log.h" />
     <ClInclude Include="src\state.h" />
     <ClInclude Include="src\str_util.h" />
     <ClInclude Include="src\track_geom.h" />

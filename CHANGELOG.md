@@ -18,16 +18,313 @@
 - Pit Board F8 row titles come from each slot’s `name` in `board.json`.
 - Every Pit Board slot menu uses the same stats as Standings header and footer.
 - Pit Board Always stays live. Sector and lap flash a snapshot of the sector or lap that just finished.
-
-## 0.11.0
-
-A pit board you fill from F8. Tick stats, drag them, or drop your own plate picture.
-
-### Overlay
-
 - New **Pit Board** widget. Hidden until Show on overlay. Factory look is the usual glass plaque with last lap and delta as the big numbers.
 - F8, Pit Board: Browse a PNG, tick stats by name, White or Black text, Set a sponsor. While that page is open, drag the numbers on the overlay to place them.
 - **Open folder** writes a board.json next to your plate so you can share a design.
+
+## 0.20.1
+
+- Connection Timeout, password, data mismatch, server info, and export popups use the same light ink and centered plaques as the other menus.
+
+## 0.20.0
+
+Map follows you, Radar can show arrows, and boards can show last lap diff.
+
+### Map
+
+- **Follow me** (default off) keeps you centered with your nose up and rotates the whole track around you so it still fits.
+- North stays the direction you are traveling along the track. A scrub or whip no longer spins the map. The scale stays put, and whatever a turn pushes outside the widget is clipped.
+- Nearest ahead / behind rings stay off in warmup and practice. Race motos keep them.
+
+### Minimap
+
+- Track outline is smoothed (thinned + cubic stroke with anti-aliasing).
+- Ahead / behind rings match Map: off in warmup and practice.
+
+### Radar
+
+- **Look** chooses **Plaque** (range arcs + blips, default) or **Arrows** (edge indicators that slide with bike-frame bearing). Same side/rear range and stretch filters. Switching to Arrows expands the default plaque rect once so arrows sit on the screen frame.
+- Arrow tips are larger (28–56 px) with a night-ink border. Nearby crashes flash on the arrow with the crash icon for ~1.75 s, then stay hidden (Plaque still shows downed riders).
+
+### Standings
+
+- **Status** column paints the same mark icons as Relative / H-Standings (finish, crash, DNS, OUT, DSQ, pit).
+- **Last lap diff** is a header, footer, and column option. It is the last completed lap minus the previous one, not Delta versus your best. Faster is green, slower is red, and the same time reads `0.000`. The column stays off until you turn it on.
+
+### Relative
+
+- Same **Last lap diff** column, off by default. Each row is that rider's own previous lap.
+
+### Dash
+
+- **Last lap diff** is a footer option.
+- Warmup/practice no longer sticks on a frozen `00:30` after the session ends. The clock clears when the game jumps to or holds a start board without counting through zero, including kind-5 warmup with leaked extras.
+
+### Horizontal Standings
+
+- **Last lap diff** is a side-slot option.
+
+### Live order
+
+- First lap after the start: places update when you pass riders who went down, even if the HUD missed the gate or a rider briefly dropped out of the position list. Boards no longer keep the gate order until someone hits the line.
+
+### MX Bikes menus
+
+- Opening splash PiBoSo logo plaque hugs the wordmark, with a little more pad and a translucent black plate so the photo shows through.
+- Live multiplayer replay: Settings, Save, and Done sit on the same chrome row as Chat so they no longer overlap.
+
+### Diagnostics
+
+- Settings → Diagnostics shows the latest crash minidump: exception, module, and the instructions at RIP. Copy puts that full text on the clipboard.
+- Crash minidumps include code segments so the next game-EXE access violation can be disassembled from the `.dmp`.
+
+## 0.19.0
+
+Profile Tracks shows your best Motos lap vs a living ideal line; Controller leaves Labs; board fields expand.
+
+### Profile → Tracks
+
+- New Profile sub-nav **Tracks**: fastest Motos lap per track, plus a detail map of your best full lap vs a living **ideal** line.
+- Ideal line is a persistent bank (`track_bank` in Motos SQLite). Clean you-laps merge in faster stretches (hysteresis, edge blend, spatial smooth) and survive the 14-day Motos prune. Motos Clear also clears the bank.
+- Tracks is behind Settings → Labs → **Experimental features**.
+- Ideal bank skips gate-start L1 (standing start); only warmup and flying laps merge.
+- Ideal geometry: on-track snap to the dirt ribbon, draw breaks on large jumps, continuous strokes across short hitch gaps. Ideal is never slower than Best (PB segments fold in). Existing banks rebuild on open (`track_bank_seeded` v4).
+- Detail map: scroll to zoom, drag to pan (same as Motos Analyze).
+
+### Profile → Motos
+
+- List subtitle and Clear confirm show on-disk size of the Motos store (`reviews.sqlite` + WAL/SHM).
+
+### Controller
+
+- Turn it on with **Show on overlay**. It no longer needs Experimental features. Lives under Cockpit.
+
+### Labs
+
+- Toggle renamed to **Experimental features** (was Experimental widgets). Still unlocks Profile → Tracks.
+
+### Horizontal Standings
+
+- **Row highlight** opacity slider (`ticker_hl`, default 50 — same as Standings / Relative).
+- **Slide on pass** toggle (`ticker_slide`, default on). Off snaps cards to new slots instead of easing through `HS_SLIDE`.
+
+### Standings / Relative / boards
+
+- Header/footer **BoardField** options: **Delta**, **Last lap**, **Current lap**, **Gap to leader** (live-order P1), **Engine temp**, **Penalty**, **Server** (`--` offline).
+- Optional **Category** column on Standings and Relative (`st_category` / `rel_category`, default off).
+- Optional **Speed** column on Relative (`rel_speed`, default off) — rival speed, or your speed on your row.
+
+## 0.18.0
+
+The Controller gets a Light/Dark Theme for both pads, including a new light PlayStation pad, and every pad draws smooth outlines and press fills.
+
+### Controller
+
+- DualShock outlines are smooth at widget size: the dark pad art no longer has transparent pinholes along its lines, its body edge is anti-aliased, and the pad is area-averaged down instead of resampled, so thin outlines stop breaking into dashes. The stick's primary ring is a solid circle.
+- DualShock press fills (triggers, bumpers, d-pad, face buttons) have smooth edges, and pressed Cross/Circle/Triangle/Square symbols stay crisp cream on the fill. The L1/L2/R1/R2 labels are removed from the pad.
+- Xbox press fills (LT/RT, LB/RB, d-pad, ABXY, View/Menu, guide) have smooth edges, and ABXY keep their colored letter on the fill.
+- New **Theme** setting (Light / Dark) for both pads, default Light. Xbox Dark is a DualShock-style schematic: charcoal body, thin grey outlines, and outlined ABXY that turn cream when pressed; its bumpers light the same band as the light pad.
+- New light PlayStation pad: cream body with black outlines, black d-pad, face and touchpad panels, slate d-pad keys and shoulders, and cream symbols. PlayStation users see it after updating; pick Dark under Theme to keep the charcoal pad.
+
+### Overlay
+
+- Live race order no longer sticks behind riders who went down: on the start, or any time a rider scored ahead of you is more than 250 m back, your place updates right away instead of waiting for the next gate. Riders missing from the rider list keep their scored slot without blocking passes around them.
+- Time penalties move the live order during the race (the game only applies them to the results). Every rider is ranked by where they are on track minus their own penalty, so a 10 s penalty and a 5 s penalty both count no matter which place the game still has them in.
+- When live place and on-track place disagree because of those penalties, Dash / Standings / Relative / H-Standings (and board Position fields) show a trailing `*`: green when you are ahead of your on-track place, red when you are behind.
+- Yellow flag holds ~1.75 s after a nearby crash clears so blue/red cannot flash during the same incident. Blue and red ignore crashed riders.
+- Live place no longer jumps to P1 when the progress tracker rides more than a lap without a `num_laps` bump (missed line publish); armed lap metres stay within one lap.
+- Map and minimap rider dots follow live `track_pos` on the centerline (world XZ is fallback only), so icons move with standings and dash when game world coords lag.
+- Map and minimap keep starting-gate dots on world XZ so stalls do not pile onto one centerline point; once the race is live, dots still follow `track_pos`.
+- Live place no longer drops a true leader to mid-pack when lap travel wraps before `num_laps` bumps: small overshoot only clamps; larger runaway pins to the game place (no S/F fallback to ~0 m).
+
+## 0.17.0
+
+Profile Motos nests under Overview with a Ranked filter; steadier lapping colors and timed Dash clocks.
+
+### Overlay
+
+- Red lapping color is pairwise only: the leader lapping someone behind you no longer paints them red until you lap them (`gap_laps` only forces blue when they are ahead of you).
+- Same-race start/finish straddles no longer flash blue/red on map, minimap, relative, or radar (`other_laps_ahead` uses continuous lap progress when `gap_laps` match).
+
+### Relative
+
+- Optional **Status** column (`rel_status`, default off) with the same crash / finish / DNS / OUT / DSQ / pit icons as Standings. Finished riders show only the finish flag.
+- Blue/red lapping row tints hold through a pass while still within catch span (either side).
+
+### Dash
+
+- Timed +2: `~Lapped` latches mid-track when the finished leader passes you on `1/2` (no longer waits for your line). Same last extra still needs a two-lap lead.
+- Timed race: after the first gate board (~50 s) ends, show race length instead of another short countdown (ignore later 45 s / 30 s boards).
+- Armed timed countdown holds the last remain when `session_time_ms` republishes near session length (does not snap back to full length).
+- `~Lapped` pass latch ignores centerline projection spikes and discontinuous leader teleports (over/under tabletop).
+- Latched checkered clears when `laps_left > 0` again so a glitched finish does not leave Extra looking done while place still moves.
+
+### Profile
+
+- Motos list chips are **All** / **Ranked** / **Saved** (Race chip removed; Ranked filters lobby-allowlist visits).
+- Hover **Record** on Overview explains Motos recording (saves race visits; practice and spectate skipped).
+- Profile **Overview** | **Motos** is a horizontal sub-nav under the top bar (no left rail).
+- Motos no longer records practice / Testing Setup; old practice rows are removed. Profile still ignores practice.
+- Motos stores the online server name with each race visit (trophy + Ranked chip when lobby id is in `ranked_servers`).
+
+### Plugin
+
+- Shared memory is `Local\MXBOHudV18`. `serverName` and `eventGuid` are published for Motos Ranked. Restart MX Bikes after the plugin update.
+
+## 0.16.0
+
+Custom MX Bikes opening and loading screens, Standings plaque controls, and steadier Delta and flags.
+
+### Overlay
+
+- With **MX Bikes menus** on, **Opening screen** and **Loading screen** under In game HUD ship photo defaults (male + female riders on opening; a male rider on loading). Browse a PNG or JPG, or Use default. Opening centers a PiBoSo mark. Fully quit MX Bikes after changing so the art reloads.
+- Open practice / Testing Setup keeps the **Practice** preset. A live clock alone no longer switches you to Race.
+
+### Standings
+
+- **Plaque text** (Black / White) and **Show plaques** for the orange rider-count and track-name skews. Separate from row **Text color**.
+- Penalty shows whole seconds as `5s`, not `5.000`.
+- Dragging columns in Settings eases neighbors into place instead of snapping.
+
+### Relative
+
+- Same **Plaque text** / **Show plaques**, penalty `#s`, and column-drag ease as Standings.
+
+### Delta Bar
+
+- Live delta no longer flashes a huge positive gap in practice when the game keeps the finished-lap clock up.
+
+### Dash
+
+- Penalty shows whole seconds as `5s`.
+- Yellow wrap still waves in practice and warmup when someone crashes ahead (blue/red stay race-only).
+
+### Flags
+
+- Yellow waves in practice and warmup when someone crashes ahead; blue and red stay race-only.
+
+### Systems
+
+- FPS is the game **Draw** rate from the plugin, not overlay paints.
+
+### Plugin
+
+- Shared memory is `Local\MXBOHudV17`. `drawCount` is published for Systems FPS. Restart MX Bikes after the plugin update.
+
+## 0.15.0
+
+Optional MX Bikes menu pack, its own accent, and a Settings left rail.
+
+### Overlay
+
+- Settings uses a left rail: **HUD** (Look: font, primary, units, settings key) separate from **App** (In game HUD, Install, Startup, Labs, Updates).
+- **In game HUD** holds **MX Bikes menus**, **Match app accent**, and **Menu color**.
+- **MX Bikes menus** (default off) installs a generated `ui/` pack — floating dest card, server browser board, Options form + tabs, Practice / Host / Race setup chrome, Profiles, Replays, pits, and shared accent chrome. Off restores the previous folder. Fully quit MX Bikes after changing so menus reload.
+- **Match app accent** (default on). Off shows **Menu color** with the same picker as Primary; Look changes no longer rewrite menus until you match again.
+
+## 0.14.1
+
+Uninstall no longer deletes MX Bikes if the overlay was installed into the game folder.
+
+### Installer
+
+- Setup refuses the MX Bikes folder (and Steam `steamapps\common`) as the destination. The overlay goes in its own folder; Setup still copies the plugin into the game.
+- Uninstall only removes HUD leftovers from the install folder. It never wipes a folder that looks like the game.
+
+## 0.14.0
+
+See how you race on Profile: an eight-spoke spider from eligible motos.
+
+### Overlay
+
+- F8 **Profile** (always): left rail Overview / Motos. Overview is in-game name over spider flank cards (Wins / Podium rate / Avg finish; Crashes per lap / Holeshot rate / Avg Penalty Seconds; Did not start·Did not finish·Disqualified when present) plus the eight-spoke spider. Eligible races only (field of 2+, no practice/warmup). All time or last 14 days. Banner until five races. Motos list + Analyze live under Profile → Motos. **Record** toggle is on Profile Overview (Motos empty gate still Enable). Hover a spoke for what it scores. Fill uses your accent.
+- After 14 days Motos still drops Analyze tapes; Profile keeps compact scores so all-time still draws.
+- **Clear** on Profile wipes the graph only (Motos stays). **Clear** on the Motos list wipes stored tapes only (Profile stays; a live moto is kept). Both sit far right and ask first.
+
+### Plugin
+
+- Shared memory is `Local\MXBOHudV16`. `RaceHoleshot` (who + time) is published. Restart MX Bikes after the plugin update.
+
+## 0.13.0
+
+Pick a primary color in Settings. Default stays Holeshot orange.
+
+### Overlay
+
+- Settings → Look → **Primary color** opens a swatch and hue picker. You, plaques, and Motos follow it live. Default is Holeshot orange.
+
+### Dash
+
+- **P#** uses the Look primary color.
+
+### Controller
+
+- Button, trigger, and bumper presses use the Look primary color.
+
+## 0.12.0
+
+**Controller** gets a traced Xbox One pad; PlayStation stays dark schematic and Xbox stays light filled.
+
+### Overlay
+
+- Controller skin follows **Pad** platform: PlayStation dark schematic, Xbox light filled. The Theme setting is hidden for now; `gamepad_theme` is no longer written to config.
+- Dark **Xbox** schematic art (`gen_gamepad_xbox_dark.py`): neutral ABXY outlines, Share/vent cluster, and L1/R1/L2/R2 shoulder labels (embedded for future Theme control).
+- Xbox One pad traced 1:1 from reference art in Holeshot colors: cream body, night-ink controls, colored ABXY. A press covers the whole control; triggers snap to full fill past 80%. DualShock drawing unchanged.
+
+## 0.11.1
+
+Practice and warmup on Motos; Analyze Compare starts at None.
+
+### Motos
+
+- List chips **All** / **Race** / **Practice** / **Saved**. Practice sessions are stored. Warmup clean laps sit on the race visit as **Warmup L#**, then race **L#** (no Race/Warmup switch). A clean warmup is that rider’s fastest time and Compare line until a race lap beats it. Spectate / replay does not record.
+- Analyze Compare defaults to **None** (you only). Other riders sit below it, fastest first.
+- Live Analyze Follow keeps the dirt still; it no longer rebakes on sub-cm pan jitter.
+- Analyze Back / Delete / Save tips stay on top of the lap row. At this spot still shows your speed, gear, throttle, height, and RPM when Compare is None. S1–S3 sit under Your laps.
+
+### Internals
+
+- Analyze Compare defaults to **None** (you only). Other riders sit below it, fastest first.
+- Analyze map dots hold the last recorded sample across a connection gap instead of snapping through missing data.
+- Plugin last-callback.txt is only written on a plugin exception or Shutdown, not every race tick.
+- Analyze says **Connection** (same red as Cut) when your stored line jumped; that is not a cut.
+- Analyze Compare does not draw infield cuts after a hitch; those gaps stay broken. A session where riders vanish is that hitch, not everyone cutting.
+- Settings remembers where you left it, including a second monitor. The HUD overlay still follows MX Bikes on the game screen.
+- Analyze L1 is violet from the gate until the finish; after that crossing it is orange.
+- At this spot shows Compare speed, gear, and throttle next to yours. Old motos estimate Compare speed, throttle, and gear from the line and your gearbox; RPM is — unless the game stored it. New motos keep every bike's RaceVehicleData.
+- Analyze puts the map beside SPEED / HEIGHT / THR tapes. At this spot sits under them. Compare sits next to Your laps. Results stay below.
+- Analyze dirt stays ~32 m wide when you zoom. Tight tracks thin only enough that lanes stay separate, so stored lines stay on the dirt.
+- Motos Analyze lap, Compare, and Race/Warmup menus open again.
+- A truncated or empty layout file no longer turns every widget off. First install still writes a new file.
+- A race win (P1 with a field) shows a gold crown on the Motos list and Analyze.
+- Analyze S/F matches the dirt width. S1–S3 marks sit on the track’s sector gates, same on every lap.
+- Analyze track is wider so stored lines sit on the dirt.
+- F8 Settings paints during a race. A long HUD frame no longer leaves a white Settings window.
+
+## 0.11.0
+
+**NEW: Motos.** After a race, compare your line against the field.
+
+### Motos
+
+- NEW tab next to Widgets. Experimental. Starts off — Enable on the page (you see Analyze first).
+- NEW Analyze: map beside SPEED / HEIGHT / throttle tapes. Zoom a corner. Compare another rider at the same spot.
+- NEW Results of the field, lap stepper, gold crown on a win. Keep two weeks unless you Save.
+- During a race, Motos opens that visit live.
+
+### Internals
+
+- Shared memory is `Local\MXBOHudV15`. Restart MX Bikes after the update so rider height, speed, and inputs reach the overlay.
+- F8 Settings paints during a race (was a white window when the HUD frame ran long).
+- **Motos** (next to Widgets, experimental) starts off. Enable shows an Analyze preview, then records motos. It lists races on this PC as a timing sheet (when, track, pos as place/field, you, fastest) with trash and bookmark icons (hover says Delete / Save / Saved). Open one for a zoomable map, scrubber, and speed / height compare. F8 Motos during a moto opens that visit live (new bests and lines show on the next paint); Back stays on the list until you open Motos again. Analyze shows a dim **Live** label on the current moto. Live Analyze does not reload the session when the field is written every two seconds. The Analyze map clips to the well; the track and rider lines are smoothed. The Analyze track follows zoom with the lines. **Save** (bookmark) keeps that moto after two weeks. **Delete** (trash on the list, or Delete on Analyze) removes it, including Saved. After a week, other riders keep name, best lap, and finish — only you and the fastest keep a line. Lines stay in Motos, not on the live map. The stored line covers the whole lap at about 0.6 m spacing up to ~10 km. The Analyze track is wider so stored lines sit on the dirt. SPEED / HEIGHT tapes share one scale with Compare. Analyze dirt stays ~16 m wide when you zoom. Opening Analyze does not hitch on those dense lines. The Analyze track ribbon is cached so open stays smooth. **Your laps** is a stepper (`<` / time / `>`) plus a Race / Warmup menu for that visit, above the map, and opens on L1. Analyze L1 is violet from the gate until the finish; after that crossing it is orange. After you zoom, **Follow** pans the map with the scrubber, keeps your zoom, and zooms **At this spot** around that corner. The lap chip opens a menu over the map instead of pushing it down. The map sits beside **At this spot**; Compare is a rider menu of stored lines (name | class | time, wide enough to read); a cut tape still compares, a crash is skipped; times without a line stay in Results. Compare is each other rider’s fastest. Their map dot is at the same elapsed time as you, so a faster lap sits ahead on the dirt. Changing lap or compare puts the scrubber back at the start (L1 still draws from the gate; the you-dot starts on the finish line). Compare names include class (250 / 350 / 450). **At this spot** is the same place on the lap, not the map dots: speed, height, throttle, and brake (throttle and brake 0–1 so their line still draws) and fills to the map. At this spot shows Compare speed, gear, and throttle next to yours. At this spot uses | between yours and Compare. S1–S3 are yours only. A race win (P1 with a field) shows a gold crown on the list and Analyze. Analyze S/F matches the dirt width. S1–S3 marks sit on the track’s sector gates, same on every lap. Analyze Back, Delete, and Save are icons. Analyze puts the map beside SPEED / HEIGHT / THR tapes. At this spot sits under them. Compare sits next to Your laps. Results stay below. Old motos estimate Compare speed, throttle, and gear from the line and your gearbox; RPM is — unless the game stored it. New motos keep every bike's RaceVehicleData. SPD is you minus them in MPH or KPH (Settings units); green is faster. HT is meters, + is up (red). RPM is uncolored. Results reads as a table (P / name / best / last / class). Zoomed traces stay inside each well. The map draws the stored finish line. A cut or reset (a jump across the dirt) is kept as `cut`, never becomes fastest, and shows **Cut** above the map. Recording writes the field at most every two seconds so the overlay does not hitch the game. Warmup and race on the same visit are one row. Warmup is not stored; only races. Analyze Race / Warmup only if an older moto already has a warmup. A race starts the tape when the gate drops. A crash on your lap gets a mark; if someone was within about 4 m we show their name (a guess — the game does not say who hit you). Close crashes share one triangle and one name.
+
+## 0.10.3
+
+Quit overlay unlocks the HUD exe, and the next MX Bikes start still opens the overlay.
+
+### Overlay
+
+- **Quit overlay** exits and unlocks `Holeshot-HUD.exe`. If **Open when MX Bikes opens** is on, a temp helper starts the HUD again the next time MX Bikes launches (after this session of the game ends). If MX Bikes is still open, another temp helper keeps the taskbar hidden on the game screen until you tab out or close the game.
 
 ## 0.10.2
 
@@ -167,7 +464,7 @@ Controller is a new Labs widget for live pad inputs. Delta Bar and Sectors snap 
 
 ### Controller
 
-- Turn on **Experimental widgets** in Settings → Labs, then **Show on overlay**. It starts hidden. This is your local pad, not plugin telemetry.
+- Turn on **Experimental features** in Settings → Labs, then **Show on overlay**. It starts hidden. This is your local pad, not plugin telemetry.
 - DualShock / DualSense HID draws the PlayStation pad. Steam Xbox mapping draws an Xbox Series pad (A/B/X/Y, offset sticks), not DualShock with Xbox labels.
 - Analog sticks leave their wells. Triggers (L2/R2 or LT/RT) fill from the curved bottom lip. Bumpers (L1/R1 or LB/RB) light orange while held.
 - Face buttons and D-pad fill out to that pad’s outline. Bumpers fill the rounded shoulder. Pressed labels stay the drawing’s cream strokes. No pad shows **No controller**.
@@ -240,7 +537,7 @@ Delta Bar and Sectors are regular widgets — time vs your best on this track, w
 
 ### Delta Bar
 
-- Turn it on with **Show on overlay**. It no longer needs Experimental widgets.
+- Turn it on with **Show on overlay**. It no longer needs Experimental features.
 - Replay leftover telemetry is not recorded. Sitting in the pits near the start/finish does not become the first tape.
 - A hitch that skips the line still saves a decent lap.
 - A cut or shortcut does not become your best. Skipping a stretch of track faster than a bike can ride it is ignored; a hitch that still covers the ground still counts.
@@ -254,7 +551,7 @@ Delta Bar and Sectors are regular widgets — time vs your best on this track, w
 
 ### Sectors
 
-- Turn it on with **Show on overlay**. Same tape as Delta Bar. It no longer needs Experimental widgets.
+- Turn it on with **Show on overlay**. Same tape as Delta Bar. It no longer needs Experimental features.
 - Live S3 keeps ticking when the centerline origin is not the start/finish line.
 - **Compare to session best** uses this visit's fastest splits instead of the saved tape.
 - LAST, -2, and further laps sit under the live strip when **Lap log** is on (default). **Laps back** is 1–5. A short box stays live-only. You-row gold is only on the fastest lap in that log.

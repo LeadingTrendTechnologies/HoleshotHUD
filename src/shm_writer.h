@@ -13,7 +13,7 @@ class ShmWriter
 public:
     bool open();
     void close();
-    void publish(const PluginState& state, const PluginConfig& config);
+    void publish(const PluginState& state, const PluginConfig& config, bool drawFrame = false);
     void noteSpectating();
     int takeSpectateRequest();
 
@@ -30,4 +30,5 @@ private:
     int32_t m_polyCount = 0;
     uint32_t m_polyRev = 0xFFFFFFFFu;
     size_t m_polyTrail = static_cast<size_t>(-1);
+    uint32_t m_drawCount = 0;
 };

@@ -11,7 +11,7 @@ pub(crate) fn draw_reply(
     scroll: f32,
     hits: &mut Vec<HitBox>,
 ) -> f32 {
-    let scrim = Color::from_rgba8(8, 8, 10, 204);
+    let scrim = scrim();
     if let Some(r) = Rect::from_xywh(0.0, 0.0, win_w, win_h) {
         fill_rect(px, r, scrim);
     }
@@ -63,11 +63,7 @@ pub(crate) fn draw_reply(
     let panel_h = want.min(win_h - 48.0).max(header_h + footer_h + 24.0);
     let panel_x = ((win_w - panel_w) * 0.5).max(16.0);
     let panel_y = ((win_h - panel_h) * 0.5).max(16.0);
-    let board = if high_contrast_on() {
-        panel()
-    } else {
-        Color::from_rgba8(20, 20, 22, 255)
-    };
+    let board = menu_fill();
     fill_round(px, panel_x, panel_y, panel_w, panel_h, 10.0, board);
     hits.push(HitBox {
         id: Hit::ReplyPanel,
@@ -82,7 +78,15 @@ pub(crate) fn draw_reply(
     let kind_sz = 18.0;
     let kind_w = measure(fonts, view.kind_label, kind_sz);
     let plaque_w = (kind_w + 36.0).min(inner_w).max(72.0);
-    fill_skew(px, plaque_x, plaque_y, (plaque_w - skew).max(48.0), plaque_h, skew, accent());
+    fill_skew(
+        px,
+        plaque_x,
+        plaque_y,
+        (plaque_w - skew).max(48.0),
+        plaque_h,
+        skew,
+        accent(),
+    );
     text(
         px,
         fonts,
@@ -113,7 +117,16 @@ pub(crate) fn draw_reply(
             y += 10.0;
             for (who, from_dev, lines) in &wrapped {
                 if y + 16.0 > 0.0 && y < view_h {
-                    text(&mut body, fonts, &who.to_ascii_uppercase(), 10.0, 0.0, y, dim(), false);
+                    text(
+                        &mut body,
+                        fonts,
+                        &who.to_ascii_uppercase(),
+                        10.0,
+                        0.0,
+                        y,
+                        dim(),
+                        false,
+                    );
                 }
                 y += 16.0;
                 let col = if *from_dev { text_col() } else { muted() };
@@ -145,24 +158,8 @@ pub(crate) fn draw_reply(
             } else {
                 0.0
             };
-        fill_round(
-            px,
-            track_x,
-            body_top,
-            3.0,
-            view_h,
-            1.5,
-            Color::from_rgba8(255, 255, 255, 18),
-        );
-        fill_round(
-            px,
-            track_x,
-            thumb_y,
-            3.0,
-            thumb_h,
-            1.5,
-            Color::from_rgba8(255, 255, 255, 48),
-        );
+        fill_round(px, track_x, body_top, 3.0, view_h, 1.5, menu_edge());
+        fill_round(px, track_x, thumb_y, 3.0, thumb_h, 1.5, menu_edge_strong());
     }
 
     let box_x = panel_x + pad;
@@ -176,7 +173,7 @@ pub(crate) fn draw_reply(
         h: box_h,
     });
     let box_fill = if compose.focused {
-        Color::from_rgba8(20, 20, 24, 255)
+        menu_fill()
     } else {
         btn_bg()
     };
@@ -188,7 +185,16 @@ pub(crate) fn draw_reply(
         text(px, fonts, "Write a reply", 12.0, tx, ty + 2.0, dim(), false);
         crate::feedback::set_caret_layout(tx, ty, 16.0, vec![vec![(0, 0.0)]]);
     } else {
-        draw_fb_text(px, fonts, &compose.message, compose.cursor, tx, ty, tw, box_h - 16.0);
+        draw_fb_text(
+            px,
+            fonts,
+            &compose.message,
+            compose.cursor,
+            tx,
+            ty,
+            tw,
+            box_h - 16.0,
+        );
     }
 
     let status_y = box_y + box_h + 8.0;
@@ -196,7 +202,9 @@ pub(crate) fn draw_reply(
         crate::feedback::Status::Idle => ("", muted()),
         crate::feedback::Status::Sending => ("Sending…", muted()),
         crate::feedback::Status::Sent => ("Sent.", accent()),
-        crate::feedback::Status::Error(msg) => (msg.as_str(), Color::from_rgba8(255, 120, 100, 255)),
+        crate::feedback::Status::Error(msg) => {
+            (msg.as_str(), Color::from_rgba8(255, 120, 100, 255))
+        }
     };
     if !status.is_empty() {
         text(px, fonts, status, 11.0, box_x, status_y, status_c, false);
@@ -204,7 +212,19 @@ pub(crate) fn draw_reply(
 
     let btn_y = panel_y + panel_h - 16.0 - btn_h;
     let got_w = 120.0;
-    action_btn(px, fonts, box_x, btn_y, got_w, btn_h, "Got it", Hit::ReplyDismiss, hover, hits, false);
+    action_btn(
+        px,
+        fonts,
+        box_x,
+        btn_y,
+        got_w,
+        btn_h,
+        "Got it",
+        Hit::ReplyDismiss,
+        hover,
+        hits,
+        false,
+    );
     let sending = matches!(compose.status, crate::feedback::Status::Sending);
     action_btn(
         px,

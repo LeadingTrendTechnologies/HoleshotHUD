@@ -209,10 +209,7 @@ fn engine_key(name: &str) -> Option<String> {
         return None;
     }
     let rest = if let Some(after) = lower.strip_prefix("pid_") {
-        after
-            .find('_')
-            .map(|i| &after[i + 1..])
-            .unwrap_or(after)
+        after.find('_').map(|i| &after[i + 1..]).unwrap_or(after)
     } else {
         lower.as_str()
     };
@@ -254,16 +251,12 @@ impl Nvml {
     fn open() -> Option<Self> {
         let lib = try_load(w!("nvml.dll"))
             .or_else(|| try_load(w!("C:\\Windows\\System32\\nvml.dll")))
-            .or_else(|| {
-                try_load(w!(
-                    "C:\\Program Files\\NVIDIA Corporation\\NVSMI\\nvml.dll"
-                ))
-            })?;
+            .or_else(|| try_load(w!("C:\\Program Files\\NVIDIA Corporation\\NVSMI\\nvml.dll")))?;
         let close = |lib: HMODULE| unsafe {
             let _ = FreeLibrary(lib);
         };
-        let Some(init) = load_proc::<NvmlInit>(lib, b"nvmlInit_v2\0")
-            .or_else(|| load_proc(lib, b"nvmlInit\0"))
+        let Some(init) =
+            load_proc::<NvmlInit>(lib, b"nvmlInit_v2\0").or_else(|| load_proc(lib, b"nvmlInit\0"))
         else {
             close(lib);
             return None;

@@ -246,9 +246,8 @@ pub fn row_vs(s: &Snapshot, i: usize, live_on: bool, session: bool) -> SectorRow
     let clock = s.current_lap_ms > CLOCK_ON;
     let cur = s.sector_cur.get(i).copied().unwrap_or(0);
     let mut g = live();
-    let frozen = !g.track.is_empty()
-        && cstr(&s.track_name) == g.track
-        && (g.freeze_ok & (1 << i)) != 0;
+    let frozen =
+        !g.track.is_empty() && cstr(&s.track_name) == g.track && (g.freeze_ok & (1 << i)) != 0;
     let cur_all = [
         s.sector_cur.first().copied().unwrap_or(0),
         s.sector_cur.get(1).copied().unwrap_or(0),

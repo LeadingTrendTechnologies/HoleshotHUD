@@ -94,6 +94,7 @@ public:
     void setLocalSplit(int split, int timeMs, int bestDiff);
     void setRaceLap(int raceNum, int lapNum, int lapMs, int split0, int split1);
     void setRaceSplit(int raceNum, int split, int timeMs);
+    void setRaceHoleshot(int raceNum, int timeMs);
     void finishLapSectors(int lapNum, int lapMs, int split0, int split1);
     void addEntry(const SPluginsRaceAddEntry_t& e);
     void removeEntry(int raceNum);
@@ -114,6 +115,8 @@ public:
 
     float trackLength() const { return m_trackLength; }
     const std::string& trackName() const { return m_trackName; }
+    const std::string& serverName() const { return m_serverName; }
+    const std::string& eventGuid() const { return m_eventGuid; }
     const std::string& setupName() const { return m_setupName; }
     float startFinishMeters() const { return m_sfMeters; }
     bool hasCenterline() const { return !m_centerline.empty(); }
@@ -137,6 +140,7 @@ public:
     float localTrackPos() const { return m_localTrackPos; }
     float localX() const { return m_localX; }
     float localZ() const { return m_localZ; }
+    float localY() const { return m_localY; }
     float localVelX() const { return m_localVelX; }
     float localVelZ() const { return m_localVelZ; }
     float localYaw() const { return m_localYaw; }
@@ -167,6 +171,8 @@ public:
     int shiftRpm() const { return m_shiftRpm; }
     int sessionTimeMs() const;
     int sessionLength() const { return m_sessionLength; }
+    int holeshotRaceNum() const { return m_holeshotRaceNum; }
+    int holeshotTime() const { return m_holeshotTime; }
 
     int sectorCount() const { return 3; }
     int sectorLast() const { return m_sectorLast; }
@@ -206,6 +212,8 @@ private:
 
     std::string m_localName;
     std::string m_trackName;
+    std::string m_serverName;
+    std::string m_eventGuid;
     std::string m_setupName;
     float m_trackLength = 0.0f;
     float m_sfMeters = 0.0f;
@@ -219,6 +227,7 @@ private:
     float m_localTrackPos = 0.0f;
     float m_localX = 0.0f;
     float m_localZ = 0.0f;
+    float m_localY = 0.0f;
     float m_localVelX = 0.0f;
     float m_localVelZ = 0.0f;
     float m_localYaw = 0.0f;
@@ -264,4 +273,7 @@ private:
 
     bool m_centerlineDirty = false;
     uint32_t m_mapRev = 0;
+
+    int m_holeshotRaceNum = 0;
+    int m_holeshotTime = 0;
 };
