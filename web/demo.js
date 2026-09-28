@@ -20,6 +20,7 @@ const BOARD = [
   ["setup", "Setup"],
   ["gapahead", "Gap ahead"],
   ["gapbehind", "Gap behind"],
+  ["lapdiff", "Last lap diff"],
 ];
 
 const DASH = [
@@ -32,6 +33,7 @@ const DASH = [
   ["laps", "Lap count"],
   ["left", "Laps left"],
   ["last", "Last lap"],
+  ["lapdiff", "Last lap diff"],
   ["best", "Best lap"],
   ["cur", "Current lap"],
   ["delta", "Delta"],
@@ -60,6 +62,7 @@ const ST_COLS = [
   ["st_current", "Current lap"],
   ["st_best", "Fastest"],
   ["st_last", "Last lap"],
+  ["st_lapdiff", "Last lap diff"],
   ["st_status", "Status"],
   ["st_bike", "Bike"],
   ["st_penalty", "Penalty"],
@@ -76,9 +79,9 @@ const REL_COLS = [
   ["rel_bike", "Bike"],
   ["rel_penalty", "Penalty"],
   ["rel_interval", "Interval"],
-  ["rel_crashed", "Crashed"],
   ["rel_best", "Fastest"],
   ["rel_last", "Last lap"],
+  ["rel_lapdiff", "Last lap diff"],
 ];
 
 const MAP_TOGGLES = [
@@ -131,7 +134,7 @@ stageStatus.hidden = false;
 
 let preview;
 try {
-  await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=0.11.7", import.meta.url) });
+  await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=0.20.0", import.meta.url) });
   preview = new Preview();
   stageStatus.hidden = true;
 } catch (err) {
@@ -257,10 +260,16 @@ function renderSettings() {
   } else if (w === "radar") {
     html += styleControls("radar", "Panel opacity");
     html += `<div class="section">On the radar</div>`;
+    html += fieldRow("radar_style", "Look", [
+      ["plaque", "Plaque"],
+      ["arrows", "Arrows"],
+    ]);
     html += sliderRow("radar_range", "Range", 6, 30, "m");
     html += toggleRow("radar_sides", "Riders beside you");
     html += toggleRow("radar_rear", "Riders behind you");
-    html += toggleRow("radar_rings", "Range rings");
+    if (preview.get_field("radar_style") !== "arrows") {
+      html += toggleRow("radar_rings", "Range rings");
+    }
   } else if (w === "dash") {
     html += styleControls("dash", "Panel opacity");
     html += toggleRow("dash_simple", "Simple dash");
@@ -346,6 +355,10 @@ function renderSettings() {
       ["playstation", "PlayStation"],
       ["xbox", "Xbox"],
     ]);
+    html += fieldRow("gamepad_theme", "Theme", [
+      ["light", "Light"],
+      ["dark", "Dark"],
+    ]);
     html += styleControls("gamepad", "Panel opacity");
   }
   html += snapGrid();
@@ -399,7 +412,8 @@ settings.addEventListener("change", (e) => {
     t.dataset.bool === "rel_plaque" ||
     t.dataset.bool === "map_numbers" ||
     t.dataset.bool === "mini_numbers" ||
-    t.dataset.bool === "sector_hist"
+    t.dataset.bool === "sector_hist" ||
+    t.dataset.field === "radar_style"
   ) {
     renderSettings();
   }

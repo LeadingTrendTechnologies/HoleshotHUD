@@ -16,8 +16,8 @@
          <li><strong>Free.</strong> No account. No admin install. Setup finds Steam MX Bikes and drops the plugin in.</li>
          <li><strong>Try before you install.</strong> The site has the same widgets as the app. Turn things on, drag them, change columns and fonts, then download if you like it. <a href="https://holeshot-hud.vercel.app/">Holeshot HUD — live widget editor</a></li>
          <li><strong>Fits how you play.</strong> Launch with MX Bikes, close with the game, remap the settings key if Medal already uses F8.</li>
-         <li><strong>Replay your line vs the field.</strong> **Motos** (F8, experimental) stores recent races on this PC so you can open Analyze and compare your line, speed, and throttle to another rider at the same spot.</li>
-         <li><strong>See how you race.</strong> **Profile** (F8, while Motos recording is on) draws an eight-spoke spider from eligible races. All time or last 14 days. **Clear** on Profile or Motos wipes that store only, after you confirm.</li>
+         <li><strong>Replay your line vs the field.</strong> **Motos** (F8 → Profile) stores recent races on this PC so you can open Analyze and compare your line, speed, and throttle to another rider at the same spot.</li>
+         <li><strong>See how you race.</strong> **Profile** (F8 → Profile → Overview, while Motos recording is on) draws an eight-spoke spider from eligible races. All time or last 14 days. **Tracks** shows your best lap against a living ideal line (Settings → Labs → Experimental features). **Clear** on Profile or Motos wipes that store only, after you confirm.</li>
          <li><strong>Updated constantly.</strong> New builds land often. Enable **Update automatically on launch** in Settings (recommended) so you pick them up when the overlay starts.</li>
     </ul>
     <hr />
@@ -28,26 +28,26 @@
          <li><strong>Layout</strong> — Hold **Ctrl** and drag to move or resize. Snap any widget to a corner, edge, or center of the monitor.</li>
          <li><strong>Look</strong> — Font family (Exo 2, Teko, Goldman, Montserrat, Segoe, Arial, Tahoma, Roboto), per-widget font size, bold, and panel opacity.</li>
          <li><strong>Units</strong> — Metric or imperial for the whole HUD.</li>
-         <li><strong>Columns</strong> — Standings and Relative: turn columns on/off, drag to reorder, slide widths. Position, number, name, gap, interval, laps, best/last, bike, status, penalty, and more.</li>
-         <li><strong>Headers and footers</strong> — Three slots each on Standings / Relative (session time, riders, track, fuel, fuel %, gap ahead, gap behind, etc.). Dash footer is three slots you pick (temps, laps, gap, interval, gap behind, bike, class, fuel, …). Optional rev bar.</li>
-         <li><strong>Maps</strong> — Toggle other riders, start/finish, sector lines (S1 at the line), direction arrows, leader crown, nearest ahead/behind, and numbers or position in the dots.</li>
-         <li><strong>Horizontal Standings</strong> — Broadcast-style bar: how many riders, track name, autoscroll, side info.</li>
-         <li><strong>Radar</strong> — Side and/or rear proximity, with optional 3 / 6 / 12 m range rings.</li>
+         <li><strong>Columns</strong> — Standings and Relative: turn columns on/off, drag to reorder, slide widths. Position, number, name, gap, interval, laps, best/last, last lap diff, bike, status, penalty, and more.</li>
+         <li><strong>Headers and footers</strong> — Three slots each on Standings / Relative (session time, riders, track, fuel, fuel %, gap ahead, gap behind, last lap diff, etc.). Dash footer is three slots you pick (temps, laps, gap, interval, gap behind, last lap diff, bike, class, fuel, …). Optional rev bar.</li>
+         <li><strong>Maps</strong> — Toggle other riders, start/finish, sector lines (S1 at the line), direction arrows, leader crown, nearest ahead/behind, Follow me, and numbers or position in the dots. Ahead/behind rings stay off in warmup and practice.</li>
+         <li><strong>Horizontal Standings</strong> — Broadcast-style bar: how many riders, track name, autoscroll, side info (including last lap diff).</li>
+         <li><strong>Radar</strong> — <strong>Look</strong> is <strong>Plaque</strong> (default) or <strong>Arrows</strong>. Side and/or rear proximity, with optional 3 / 6 / 12 m range rings on Plaque.</li>
     </ul>
-    <div>Press <strong>F8</strong> for the overlay menu (or pick another key): <strong>Widgets</strong>, <strong>Motos</strong>, <strong>Profile</strong>, <strong>Settings</strong>, and <strong>Feedback</strong>. Layout is saved. Want a different look next session? Change it in a few clicks — you are not stuck with a default HUD.</div>
+    <div>Press <strong>F8</strong> for the overlay menu (or pick another key): <strong>Widgets</strong>, <strong>Profile</strong>, <strong>Settings</strong>, and <strong>Feedback</strong>. Profile has <strong>Overview</strong>, <strong>Motos</strong>, and <strong>Tracks</strong>. Layout is saved. Want a different look next session? Change it in a few clicks — you are not stuck with a default HUD.</div>
     <hr />
     <h3>🧩 Widgets</h3>
     <ul>
-         <li><strong>Standings</strong> — Who is ahead and by how much. Place, number, name, gap (time or laps), best/last lap, fuel, and more. Header and footer can show live gap to the rider one place ahead or behind. Your row is highlighted. In replay, click a name to follow that rider.</li>
-         <li><strong>Relative</strong> — Riders just ahead and behind you, so you can see the battle you’re actually in without scanning the full board. Fuel, gap ahead, and gap behind can sit in the header or footer (those gaps use race place, not the riders in the table).</li>
-         <li><strong>Horizontal Standings</strong> — Broadcast-style bar: leader on the left, your name highlighted. Optional track name, autoscroll, and fuel / gap ahead / gap behind in a side slot. Card gaps stay vs you. In replay, click a card to follow that rider.</li>
-         <li><strong>Map</strong> — Full track outline with you and other riders, start/finish, optional S1/S2/S3 sector lines (S1 at the line), direction arrows, leader crown, and optional numbers or position in the dots. Blue if they’re a lap ahead and closing, red if you’re a lap up and closing.</li>
-         <li><strong>Minimap</strong> — Zoomed circular view of the track around you, same rider markers and sector lines.</li>
-         <li><strong>Radar</strong> — Who is beside and behind you, with optional range rings so close vs far is a glance.</li>
-         <li><strong>Dash</strong> — Gear, speed, RPM, position, and a footer you can set (including fuel, gap, interval, and gap behind). Optional rev bar, or Simple dash (gear and speed only). Optional Shift color flushes the gear faint red at the shift light or limiter (off by default). Session clock and race flags (white / checkered) sit with the dash.</li>
+         <li><strong>Standings</strong> — Who is ahead and by how much. Place, number, name, gap (time or laps), best/last lap, fuel, and more. <strong>Status</strong> shows finish, crash, DNS, OUT, DSQ, and pit icons. Optional <strong>Last lap diff</strong> (last lap minus the one before: faster green, slower red, same <code>0.000</code>) stays off until you turn it on, as a column or a header/footer slot. Header and footer can also show live gap to the rider one place ahead or behind. Your row is highlighted. In replay, click a name to follow that rider.</li>
+         <li><strong>Relative</strong> — Riders just ahead and behind you, so you can see the battle you’re actually in without scanning the full board. Fuel, gap ahead, gap behind, and last lap diff can sit in the header or footer (those gaps use race place, not the riders in the table). Last lap diff is that rider’s own previous lap, and it stays off until you turn it on.</li>
+         <li><strong>Horizontal Standings</strong> — Broadcast-style bar: leader on the left, your name highlighted. Optional track name, autoscroll, and fuel / gap ahead / gap behind / last lap diff in a side slot. Card gaps stay vs you. Last lap diff stays off until you turn it on. In replay, click a card to follow that rider.</li>
+         <li><strong>Map</strong> — Full track outline with you and other riders, start/finish, optional S1/S2/S3 sector lines (S1 at the line), direction arrows, leader crown, and optional numbers or position in the dots. <strong>Follow me</strong> (off by default) keeps you centered, nose up, and rotates the track around you; north stays the direction you are traveling. Ahead/behind rings stay off in warmup and practice. Blue if they’re a lap ahead and closing, red if you’re a lap up and closing.</li>
+         <li><strong>Minimap</strong> — Zoomed circular view of the track around you, same rider markers and sector lines. The outline is smoothed. Ahead/behind rings match Map: off in warmup and practice.</li>
+         <li><strong>Radar</strong> — Who is beside and behind you. <strong>Look</strong> is <strong>Plaque</strong> (range rings and blips, default) or <strong>Arrows</strong> (larger tips on the screen edge that slide with the bike). A nearby crash flashes on the arrow for about 1.75 s, then stays hidden. Plaque still shows downed riders.</li>
+         <li><strong>Dash</strong> — Gear, speed, RPM, position, and a footer you can set (including fuel, gap, interval, gap behind, and last lap diff). Last lap diff stays off until you turn it on. Optional rev bar, or Simple dash (gear and speed only). Optional Shift color flushes the gear faint red at the shift light or limiter (off by default). Session clock and race flags (white / checkered) sit with the dash.</li>
          <li><strong>Telemetry</strong> — Throttle (green) and brake (red) traces, clutch / brake / throttle bars, and a gear/speed dial with an orange RPM arc. Turn sections or channels off; hidden parts reflow. Optional steer is off until you turn it on. Riding uses your bike inputs. Spectate follows that rider’s throttle and front brake. Restart MX Bikes after install so the plugin can publish those inputs.</li>
          <li><strong>Lean</strong> — Bike roll, pitch, and steering for the rider the camera is on. Figure (rear-view rider) or Minimal (numbers). Not sit / stand.</li>
-         <li><strong>Controller</strong> — Live DualShock or Xbox on the overlay (Labs). Sticks follow your hands. Triggers fill with squeeze. Bumpers light when held.</li>
+         <li><strong>Controller</strong> — Live DualShock or Xbox under Cockpit. Turn it on with <strong>Show on overlay</strong>. <strong>Theme</strong> is Light or Dark. Sticks follow your hands. Triggers fill with squeeze. Bumpers light when held.</li>
          <li><strong>Delta Bar</strong> — Time vs your best at this point on the lap, per class on that track. Not the in-game ghost.</li>
          <li><strong>Sectors</strong> — Split times (S1–S3) and live delta vs your best at this point in the sector. Best times are per class on that track (all 250s together, all 450s together).</li>
          <li><strong>Flags</strong> — White or checkered as its own plaque (same timing as the Dash wrap). Optional yellow (crash ahead) and blue (being lapped). Draws nothing when no flag is up.</li>
@@ -56,11 +56,11 @@
     </ul>
     <hr />
     <h3>🏍️ Motos</h3>
-    <div><strong>Experimental.</strong> Recording starts <strong>off</strong> until you <strong>Enable</strong> on the Motos page. The empty page shows what Analyze looks like, then Enable. Turn <strong>Record</strong> off anytime to stop saving new motos; ones already on the list stay until you delete them.</div>
+    <div>Under <strong>F8 → Profile → Motos</strong>. Recording starts <strong>off</strong> until you <strong>Enable</strong> on the Motos page. The empty page shows what Analyze looks like, then Enable. Turn <strong>Record</strong> off anytime to stop saving new motos; ones already on the list stay until you delete them.</div>
     <ul>
-         <li><strong>List</strong> — Recent races on this PC as a timing sheet (when, track, riders, you, fastest). Trash and bookmark icons (Delete / Save / Saved). A race win shows a gold crown. <strong>Record</strong> switch in the heading. <strong>Clear</strong> on the far right wipes stored motos after you confirm (Profile stays; a live moto is kept).</li>
+         <li><strong>List</strong> — Recent races on this PC as a timing sheet (when, track, riders, you, fastest). Chips are <strong>All</strong> / <strong>Ranked</strong> / <strong>Saved</strong>. Trash and bookmark icons (Delete / Save / Saved). A race win shows a gold crown. <strong>Record</strong> switch in the heading. <strong>Clear</strong> on the far right wipes stored motos after you confirm (Profile stays; a live moto is kept).</li>
          <li><strong>Analyze</strong> — Map beside SPEED / HEIGHT / throttle tapes. Zoom a corner, scrub the lap, pick <strong>Compare</strong> to read another rider at the same spot. <strong>At this spot</strong> under the map; <strong>Results</strong> below. Motos last about two weeks unless you <strong>Save</strong>.</li>
-         <li><strong>Live</strong> — During a moto, F8 → Motos opens that visit while recording is on (new lines show on the next paint).</li>
+         <li><strong>Live</strong> — During a moto, F8 → Profile → Motos opens that visit while recording is on (new lines show on the next paint).</li>
     </ul>
     <hr />
     <h3>📈 Profile</h3>
@@ -68,6 +68,7 @@
     <ul>
          <li><strong>Axes</strong> — Pace, Smooth, Clean, Clutch, Attack, Air, Results, Opening. Hover a spoke for what it scores. Fill uses your Settings accent.</li>
          <li><strong>Windows</strong> — All time or last 14 days. Compact scores stay after Motos drops old Analyze tapes. Banner until five races. Holeshot count sits under the moto line.</li>
+         <li><strong>Tracks</strong> — Best Motos lap per track, plus a map of that lap against a living ideal line. Behind Settings → Labs → <strong>Experimental features</strong>.</li>
          <li><strong>Clear</strong> — Far right on Profile and the Motos list. Confirm first. Profile wipe leaves Motos; Motos wipe leaves Profile (a live moto stays).</li>
     </ul>
     <hr />
@@ -105,38 +106,77 @@
     </div>
     <hr />
     <h3>📷 Screenshots</h3>
+    <h4 style="text-align:center">Motos list</h4>
     <a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/motos-list.png"><img class="aligncenter size-large" src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/motos-list.png?raw=true" alt="Motos list" width="600" height="432" /></a>
 
+    <h4 style="text-align:center">Motos Analyze</h4>
     <a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/motos-analyze.png"><img class="aligncenter size-large" src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/motos-analyze.png?raw=true" alt="Motos Analyze" width="600" height="552" /></a>
 
-    <a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/dash.png"><img class="aligncenter size-large wp-image-189690" src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/dash.png?raw=true" alt="" width="600" height="338" /></a>
-    
+    <h4 style="text-align:center">Dash</h4>
+    <table border="0" cellspacing="0" cellpadding="8" width="600" align="center" style="border:none;border-collapse:collapse">
+        <tr>
+            <td width="300" style="border:none;vertical-align:top;text-align:center"><div>Dash</div><a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/dash.png"><img src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/dash.png?raw=true" alt="Dash" width="290" height="110" /></a></td>
+            <td width="300" style="border:none;vertical-align:top;text-align:center"><div>Simple</div><a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/dash-simple.png"><img src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/dash-simple.png?raw=true" alt="Simple dash" width="290" height="110" /></a></td>
+        </tr>
+    </table>
+
+    <h4 style="text-align:center">Flags</h4>
     <a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/flag.png"><img class="aligncenter size-large" src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/flag.png?raw=true" alt="Flags" width="600" height="338" /></a>
-    
-    <a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/map.png"><img class="aligncenter size-large wp-image-189692" src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/map.png?raw=true" alt="" width="600" height="338" /></a>
-    
-    <a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/minimap.png"><img class="aligncenter size-large wp-image-189693" src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/minimap.png?raw=true" alt="" width="600" height="338" /></a>
-    
-    <a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/radar.png"><img class="aligncenter size-large wp-image-189694" src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/radar.png?raw=true" alt="" width="600" height="338" /></a>
-    
-    <a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/relative.png"><img class="aligncenter size-large wp-image-189695" src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/relative.png?raw=true" alt="" width="600" height="338" /></a>
-    
-    <a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/standings.png"><img class="aligncenter size-large wp-image-189696" src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/standings.png?raw=true" alt="" width="600" height="338" /></a>
-    
-    <a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/sys.png"><img class="aligncenter size-large wp-image-189697" src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/sys.png?raw=true" alt="" width="600" height="338" /></a>
-    
-    <a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/ticker.png"><img class="aligncenter size-large wp-image-189698" src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/ticker.png?raw=true" alt="" width="600" height="338" /></a>
-    
+
+    <h4 style="text-align:center">Map</h4>
+    <table border="0" cellspacing="0" cellpadding="8" width="600" align="center" style="border:none;border-collapse:collapse">
+        <tr>
+            <td width="300" style="border:none;vertical-align:top;text-align:center"><div>Map</div><a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/map.png"><img src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/map.png?raw=true" alt="Map" width="290" height="246" /></a></td>
+            <td width="300" style="border:none;vertical-align:top;text-align:center"><div>Follow me</div><a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/map-follow.png"><img src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/map-follow.png?raw=true" alt="Map follow me" width="290" height="246" /></a></td>
+        </tr>
+    </table>
+
+    <h4 style="text-align:center">Minimap</h4>
+    <a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/minimap.png"><img class="aligncenter size-large wp-image-189693" src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/minimap.png?raw=true" alt="Minimap" width="600" height="338" /></a>
+
+    <h4 style="text-align:center">Radar</h4>
+    <table border="0" cellspacing="0" cellpadding="8" width="600" align="center" style="border:none;border-collapse:collapse">
+        <tr>
+            <td width="300" style="border:none;vertical-align:top;text-align:center"><div>Plaque</div><a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/radar.png"><img src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/radar.png?raw=true" alt="Radar plaque" width="290" height="286" /></a></td>
+            <td width="300" style="border:none;vertical-align:top;text-align:center"><div>Arrows</div><a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/radar-arrows.png"><img src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/radar-arrows.png?raw=true" alt="Radar arrows" width="290" height="286" /></a></td>
+        </tr>
+    </table>
+
+    <h4 style="text-align:center">Relative</h4>
+    <a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/relative.png"><img class="aligncenter size-large wp-image-189695" src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/relative.png?raw=true" alt="Relative" width="600" height="338" /></a>
+
+    <h4 style="text-align:center">Standings</h4>
+    <a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/standings.png"><img class="aligncenter size-large wp-image-189696" src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/standings.png?raw=true" alt="Standings" width="600" height="338" /></a>
+
+    <h4 style="text-align:center">Systems</h4>
+    <a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/sys.png"><img class="aligncenter size-large wp-image-189697" src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/sys.png?raw=true" alt="Systems" width="600" height="338" /></a>
+
+    <h4 style="text-align:center">Horizontal Standings</h4>
+    <a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/ticker.png"><img class="aligncenter size-large wp-image-189698" src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/ticker.png?raw=true" alt="Horizontal Standings" width="600" height="338" /></a>
+
+    <h4 style="text-align:center">Delta Bar</h4>
     <a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/delta.png"><img class="aligncenter size-large" src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/delta.png?raw=true" alt="Delta Bar" width="600" height="338" /></a>
-    
+
+    <h4 style="text-align:center">Sectors</h4>
     <a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/sector.png"><img class="aligncenter size-large" src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/sector.png?raw=true" alt="Sectors" width="600" height="338" /></a>
-    
-    <a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/lean.png"><img class="aligncenter size-large" src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/lean.png?raw=true" alt="Lean" width="600" height="338" /></a>
-    
-    <a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/lean-min.png"><img class="aligncenter size-large" src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/lean-min.png?raw=true" alt="Lean Minimal" width="600" height="338" /></a>
-    
-    <a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/gamepad.png"><img class="aligncenter size-large" src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/gamepad.png?raw=true" alt="Controller" width="600" height="338" /></a>
-    
+
+    <h4 style="text-align:center">Lean</h4>
+    <table border="0" cellspacing="0" cellpadding="8" width="600" align="center" style="border:none;border-collapse:collapse">
+        <tr>
+            <td width="300" style="border:none;vertical-align:top;text-align:center"><div>Figure</div><a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/lean.png"><img src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/lean.png?raw=true" alt="Lean" width="290" height="324" /></a></td>
+            <td width="300" style="border:none;vertical-align:top;text-align:center"><div>Minimal</div><a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/lean-min.png"><img src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/lean-min.png?raw=true" alt="Lean Minimal" width="290" height="324" /></a></td>
+        </tr>
+    </table>
+
+    <h4 style="text-align:center">Controller</h4>
+    <table border="0" cellspacing="0" cellpadding="8" width="600" align="center" style="border:none;border-collapse:collapse">
+        <tr>
+            <td width="300" style="border:none;vertical-align:top;text-align:center"><div>Light</div><a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/gamepad.png"><img src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/gamepad.png?raw=true" alt="Controller light" width="290" height="133" /></a></td>
+            <td width="300" style="border:none;vertical-align:top;text-align:center"><div>Dark</div><a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/gamepad-dark.png"><img src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/gamepad-dark.png?raw=true" alt="Controller dark" width="290" height="133" /></a></td>
+        </tr>
+    </table>
+
+    <h4 style="text-align:center">Telemetry</h4>
     <a href="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/telemetry.png"><img class="aligncenter size-large" src="https://github.com/LeadingTrendTechnologies/HoleshotHUD/blob/main/announce-shots/telemetry.png?raw=true" alt="Telemetry" width="600" height="338" /></a>
     
     <hr />
