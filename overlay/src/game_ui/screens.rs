@@ -27,6 +27,22 @@ const DEFAULT_H: u32 = 1080;
 pub(crate) const SPLASH_TGA: &str = "splash.tga";
 pub(crate) const LOADING_TGA: &str = "bkgrnd.tga";
 
+/// Announce-post size. The game install still gets the 4K TGA.
+const ANNOUNCE_W: u32 = 1600;
+const ANNOUNCE_H: u32 = 900;
+
+/// Opening splash (photo, edge fade, PiBoSo plaque) and loading screen at announce size.
+pub(crate) fn render_announce_screens() -> Result<(Pixmap, Pixmap), String> {
+    let splash_src = Pixmap::decode_png(SPLASH_PNG).map_err(|e| e.to_string())?;
+    let loading_src = Pixmap::decode_png(LOADING_PNG).map_err(|e| e.to_string())?;
+    let mut splash = cover_scale(&splash_src, ANNOUNCE_W, ANNOUNCE_H)?;
+    soft_edge_fade(&mut splash);
+    composite_piboso_logo(&mut splash);
+    let mut loading = cover_scale(&loading_src, ANNOUNCE_W, ANNOUNCE_H)?;
+    soft_edge_fade(&mut loading);
+    Ok((splash, loading))
+}
+
 /// Write opening + loading TGAs from optional user PNG paths (empty = bundled default).
 pub(crate) fn write_screen_images(
     ui: &Path,

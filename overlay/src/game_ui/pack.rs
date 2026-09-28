@@ -6,9 +6,9 @@ use crate::config::format_primary_color;
 
 use super::io::{write_english_labels, write_text};
 use super::mnu::{
-    main_mnu, splice_connection, splice_garage, splice_hostsetup, splice_multiclient,
-    splice_multijoin, splice_options, splice_profiles, splice_replay, splice_test,
-    splice_testsetup, splice_viewreplays, ui_ui,
+    main_mnu, splice_connection, splice_export, splice_garage, splice_hostsetup,
+    splice_multiclient, splice_multijoin, splice_options, splice_profiles, splice_replay,
+    splice_test, splice_testsetup, splice_viewreplays, ui_ui,
 };
 use super::screens::{write_screen_images, LOADING_TGA, SPLASH_TGA};
 use super::sprites::{
@@ -17,7 +17,7 @@ use super::sprites::{
 use super::{BAK_DIR, MANIFEST};
 
 /// Bump when MNU splice / sprite pack logic changes so accent-matched sync still rewrites.
-pub(crate) const PACK_REV: u32 = 5;
+pub(crate) const PACK_REV: u32 = 6;
 
 pub(crate) static NEED_GAME_RESTART: AtomicBool = AtomicBool::new(false);
 
@@ -272,6 +272,10 @@ pub(crate) const MENU_SPLICES: &[MenuSplice] = &[
     MenuSplice {
         file: "connection.mnu",
         run: splice_connection,
+    },
+    MenuSplice {
+        file: "export.mnu",
+        run: splice_export,
     },
     MenuSplice {
         file: "testsetup.mnu",

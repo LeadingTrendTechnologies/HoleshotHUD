@@ -249,18 +249,17 @@ pub(crate) fn splice_multijoin(
     let Some(stock) = stock_multijoin(ui, bak) else {
         return Ok(false);
     };
-    let rest: Vec<String> = split_mnu_dialogs(&stock)
+    let rest: Vec<(String, String)> = split_mnu_dialogs(&stock)
         .into_iter()
-        .filter(|(n, _)| !BROWSER_DIALOGS.contains(&n.as_str()))
-        .map(|(_, b)| b)
+        .filter(|(n, _)| !BROWSER_DIALOGS.iter().any(|b| n.eq_ignore_ascii_case(b)))
         .collect();
     let mut out = String::new();
     out.push_str(&browser_list("idd_multi_lan", "host_local", false, accent));
     out.push_str(&browser_list("idd_multi_world", "host_world", true, accent));
     out.push_str(&browser_chrome(accent));
-    for d in rest {
+    for (name, body) in rest {
         out.push('\n');
-        out.push_str(&d);
+        out.push_str(&restyle_multijoin_extra(&name, &body, accent));
         out.push('\n');
     }
     write_text(&ui.join("multijoin.mnu"), &out)?;
@@ -307,6 +306,10 @@ pub(crate) fn splice_connection(
         out.push('\n');
         if name.eq_ignore_ascii_case("connection_dialog") {
             out.push_str(&restyle_connection_dialog(&body, accent));
+        } else if name.eq_ignore_ascii_case("idd_password") {
+            out.push_str(&restyle_password_dialog(&body, accent));
+        } else if name.eq_ignore_ascii_case("idd_datamismatch") {
+            out.push_str(&restyle_datamismatch_dialog(&body, accent));
         } else {
             out.push_str(&body);
         }
@@ -329,6 +332,152 @@ pub(crate) fn restyle_connection_dialog(body: &str, accent: [u8; 3]) -> String {
     s = s.replace("\tcolor 255 40 40 40\n", &format!("\tcolor 255 {text}\n"));
     s = center_bike_chrome_button(&s, "id_cancel", tip_y);
     s = paint_bike_chrome_button(&s, "id_cancel", &idle, &hot, &hot);
+    s
+}
+
+fn restyle_multijoin_extra(name: &str, body: &str, accent: [u8; 3]) -> String {
+    if name.eq_ignore_ascii_case("idd_worldconnection") {
+        restyle_message_modal(body, accent, "id_cancel")
+    } else if name.eq_ignore_ascii_case("idd_trackerror")
+        || name.eq_ignore_ascii_case("idd_bikeserror")
+    {
+        restyle_message_modal(body, accent, "ID_CLOSE")
+    } else if name.eq_ignore_ascii_case("idd_serverinfo")
+        || name.eq_ignore_ascii_case("idd_serverinfo2")
+        || name.eq_ignore_ascii_case("idd_serverinfo3")
+        || name.eq_ignore_ascii_case("idd_serverinfo4")
+    {
+        restyle_serverinfo_dialog(body, accent)
+    } else {
+        body.to_string()
+    }
+}
+
+/// 600×200 one-button message (Connection Timeout, missing track/bikes).
+fn restyle_message_modal(body: &str, accent: [u8; 3], button_name: &str) -> String {
+    let idle = argb(255, TEXT);
+    let hot = argb(255, accent);
+    let tip_y = (0.600000 - 0.566667 - 0.022222) * 0.5;
+    let mut s = recolor_menu_ink(body, accent);
+    s = s.replace("sprite dialog600x200.tga", "sprite profiledeleteboard.tga");
+    s = s.replace("color 127 0 0 0", "color 160 0 0 0");
+    s = center_bike_chrome_button(&s, button_name, tip_y);
+    s = paint_bike_chrome_button(&s, button_name, &idle, &hot, &hot);
+    s
+}
+
+/// Server info popup — light labels on the night 600×600 board, centered plaques.
+fn restyle_serverinfo_dialog(body: &str, accent: [u8; 3]) -> String {
+    let idle = argb(255, TEXT);
+    let hot = argb(255, accent);
+    let tip_y = (0.822222 - 0.788889 - 0.022222) * 0.5;
+    let mut s = recolor_menu_ink(body, accent);
+    s = s.replace("color 127 0 0 0", "color 160 0 0 0");
+    s = s.replace(
+        "rect 0.318750 0.788889 0.681250 0.822222\n\t\tcolor 160 0 0 0",
+        "rect 0.318750 0.788889 0.681250 0.822222\n\t\tcolor 0 0 0 0",
+    );
+    s = s.replace(
+        "sprite2 b_button2.tga\n\t\t\tsprite3 b_button3.tga",
+        "sprite1 button1.tga\n\t\t\tsprite2 button2.tga\n\t\t\tsprite3 button3.tga",
+    );
+    for name in ["ID_CLOSE", "ID_JOIN", "ID_SPECTATE"] {
+        s = center_bike_chrome_button(&s, name, tip_y);
+        s = paint_bike_chrome_button(&s, name, &idle, &hot, &hot);
+    }
+    s
+}
+
+/// Password prompt — same glass 600×300 as profile modify.
+fn restyle_password_dialog(body: &str, accent: [u8; 3]) -> String {
+    let tip_y = (0.655556 - 0.622222 - 0.022222) * 0.5;
+    let mut s = recolor_menu_ink(body, accent);
+    s = s.replace("sprite dialog600x300.tga", "sprite profilemodifyboard.tga");
+    s = s.replace("color 127 0 0 0", "color 160 0 0 0");
+    s = s.replace(
+        "rect 0.318750 0.622222 0.681250 0.655556\n\t\tcolor 160 0 0 0",
+        "rect 0.318750 0.622222 0.681250 0.655556\n\t\tcolor 0 0 0 0",
+    );
+    s = clear_row_field_fills(&s);
+    s = inject_editbox_fieldboxes(&s);
+    s = s.replace(
+        "sprite2 b_button2.tga\n\t\t\tsprite3 b_button3.tga",
+        "sprite1 button1.tga\n\t\t\tsprite2 button2.tga\n\t\t\tsprite3 button3.tga",
+    );
+    let idle = argb(255, TEXT);
+    let hot = argb(255, accent);
+    for name in ["ID_OK", "ID_CANCEL"] {
+        s = center_bike_chrome_button(&s, name, tip_y);
+        s = paint_bike_chrome_button(&s, name, &idle, &hot, &hot);
+    }
+    s
+}
+
+/// Data mismatch — light title, glass list, centered Close on the night 800×500 board.
+fn restyle_datamismatch_dialog(body: &str, accent: [u8; 3]) -> String {
+    let idle = argb(255, TEXT);
+    let hot = argb(255, accent);
+    let tip_y = (0.766667 - 0.733333 - 0.022222) * 0.5;
+    let mut s = recolor_menu_ink(body, accent);
+    s = glass_race_list_colors(&s, accent);
+    s = center_bike_chrome_button(&s, "ID_CLOSE", tip_y);
+    s = paint_bike_chrome_button(&s, "ID_CLOSE", &idle, &hot, &hot);
+    s
+}
+
+pub(crate) fn splice_export(
+    ui: &Path,
+    bak: Option<&Path>,
+    accent: [u8; 3],
+) -> Result<bool, String> {
+    let Some(stock) = stock_mnu(ui, bak, "export.mnu") else {
+        return Ok(false);
+    };
+    let mut out = String::new();
+    for (name, body) in split_mnu_dialogs(&stock) {
+        out.push('\n');
+        if name.eq_ignore_ascii_case("idd_export_overwrite")
+            || name.eq_ignore_ascii_case("idd_setup_export_overwrite")
+        {
+            out.push_str(&restyle_yes_no_glass_confirm(
+                &body, accent, "ID_YES", "ID_NO",
+            ));
+        } else if name.eq_ignore_ascii_case("idd_export_save")
+            || name.eq_ignore_ascii_case("idd_setup_export")
+        {
+            out.push_str(&restyle_export_save(&body, accent));
+        } else {
+            out.push_str(&body);
+        }
+        out.push('\n');
+    }
+    write_text(&ui.join("export.mnu"), &out)?;
+    Ok(true)
+}
+
+/// Export / setup-export save — glass 600×600, light title, centered Ok/Cancel.
+fn restyle_export_save(body: &str, accent: [u8; 3]) -> String {
+    let idle = argb(255, TEXT);
+    let hot = argb(255, accent);
+    let tip_y = (0.822222 - 0.788889 - 0.022222) * 0.5;
+    let mut s = recolor_menu_ink(body, accent);
+    s = s.replace("sprite dialog600x600.tga", "sprite replayboard.tga");
+    s = s.replace("color 127 0 0 0", "color 160 0 0 0");
+    s = s.replace(
+        "rect 0.318750 0.788889 0.681250 0.822222\n\t\tcolor 160 0 0 0",
+        "rect 0.318750 0.788889 0.681250 0.822222\n\t\tcolor 0 0 0 0",
+    );
+    s = s.replace("color2 255 45 45 180", &format!("color2 {hot}"));
+    s = clear_row_field_fills(&s);
+    s = inject_editbox_fieldboxes(&s);
+    s = s.replace(
+        "sprite2 b_button2.tga\n\t\t\tsprite3 b_button3.tga",
+        "sprite1 button1.tga\n\t\t\tsprite2 button2.tga\n\t\t\tsprite3 button3.tga",
+    );
+    for name in ["id_ok", "id_cancel"] {
+        s = center_bike_chrome_button(&s, name, tip_y);
+        s = paint_bike_chrome_button(&s, name, &idle, &hot, &hot);
+    }
     s
 }
 

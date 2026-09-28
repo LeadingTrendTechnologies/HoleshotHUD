@@ -191,6 +191,34 @@ fn dump_motos_shots_path() -> Option<std::path::PathBuf> {
     None
 }
 
+fn dump_menu_shots_path() -> Option<std::path::PathBuf> {
+    let mut args = std::env::args();
+    while let Some(arg) = args.next() {
+        if arg == "--dump-menu-shots" {
+            return Some(
+                args.next()
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| std::path::PathBuf::from("announce-shots")),
+            );
+        }
+    }
+    None
+}
+
+fn dump_menu_shots_and_exit(dir: &std::path::Path) -> ! {
+    match crate::game_ui::dump_menu_shots(dir) {
+        Ok((splash, loading)) => {
+            eprintln!("Wrote {}", splash.display());
+            eprintln!("Wrote {}", loading.display());
+            std::process::exit(0);
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
+    }
+}
+
 fn dump_motos_shots_and_exit(dir: &std::path::Path) -> ! {
     match crate::settings::dump_motos_shots(dir) {
         Ok((list, analyze)) => {
@@ -221,6 +249,9 @@ fn main() {
     }
     if let Some(dir) = dump_motos_shots_path() {
         dump_motos_shots_and_exit(&dir);
+    }
+    if let Some(dir) = dump_menu_shots_path() {
+        dump_menu_shots_and_exit(&dir);
     }
     if std::env::args().any(|a| a == "--apply-update") {
         match crate::update::apply_staged_from_args() {

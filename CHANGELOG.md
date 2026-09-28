@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.20.1
+
+- Connection Timeout, password, data mismatch, server info, and export popups use the same light ink and centered plaques as the other menus.
+
 ## 0.20.0
 
 Map follows you, Radar can show arrows, and boards can show last lap diff.

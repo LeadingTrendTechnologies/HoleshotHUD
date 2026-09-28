@@ -358,6 +358,7 @@ pub(crate) fn center_bike_chrome_button(dialog: &str, button_name: &str, tip_y: 
         .replace("align right", "align center")
         .replace("align left", "align center")
         .replace("pos 0.006250 0.005556", &format!("pos 0.000000 {tip_y:.6}"))
+        .replace("pos 0.008125 0.005556", &format!("pos 0.000000 {tip_y:.6}"))
         .replace("pos 0.000000 0.005556", &format!("pos 0.000000 {tip_y:.6}"));
     format!("{head}{btn}{tail}")
 }

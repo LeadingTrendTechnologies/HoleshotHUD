@@ -17,6 +17,27 @@ pub const MANIFEST: &str = "holeshot-ui.manifest";
 pub const BAK_DIR: &str = "ui.holeshot-bak";
 pub const RESTART_MENUS: &str = "Fully quit MX Bikes and start it again so the menus reload.";
 
+/// Write `splash.png` and `loading.png` into `dir`. Does not touch an MX Bikes install.
+pub fn dump_menu_shots(
+    dir: &std::path::Path,
+) -> Result<(std::path::PathBuf, std::path::PathBuf), String> {
+    let (splash, loading) = screens::render_announce_screens()?;
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let splash_path = dir.join("splash.png");
+    let loading_path = dir.join("loading.png");
+    std::fs::write(
+        &splash_path,
+        splash.encode_png().map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    std::fs::write(
+        &loading_path,
+        loading.encode_png().map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    Ok((splash_path, loading_path))
+}
+
 #[cfg(test)]
 mod tests {
     use super::io::*;
@@ -623,7 +644,7 @@ mod tests {
     fn splice_connection_centers_loading_cancel() {
         let game = temp_game();
         let ui = game.join("ui");
-        let stock = "dialog\r\n{\r\n\tname connection_dialog\r\n\titem_bitmap\r\n\t{\r\n\t\tname ID_BITMAP\r\n\t\tsprite dialog600x200.tga\r\n\t}\r\n\titem_text\r\n\t{\r\n\t\tname id_message\r\n\t\tcolor 255 0 0 0\r\n\t\tbackcolor 0 0 0 0\r\n\t}\r\n\titem_text\r\n\t{\r\n\t\tname ID_INFO\r\n\t\tcolor 255 40 40 40\r\n\t\tbackcolor 0 0 0 0\r\n\t}\r\n\titem_button\r\n\t{\r\n\t\tname id_cancel\r\n\t\tbutton\r\n\t\t{\r\n\t\t\trect 0.437500 0.566667 0.562500 0.600000\r\n\t\t\tsprite1 button1.tga\r\n\t\t}\r\n\t\ttextid cancel\r\n\t\ttext\r\n\t\t{\r\n\t\t\tfont main.fnt\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\tfontsize 0.022222\r\n\t\t\talign right\r\n\t\t}\r\n\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 240 240 240\r\n\t\tcolor3 255 240 240 240\r\n\t}\r\n}\r\n\r\ndialog\r\n{\r\n\tname idd_password\r\n\titem_button\r\n\t{\r\n\t\tname ID_CANCEL\r\n\t\ttextid cancel\r\n\t\ttext\r\n\t\t{\r\n\t\t\tfont main.fnt\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\tfontsize 0.022222\r\n\t\t\talign right\r\n\t\t}\r\n\t}\r\n}\r\n";
+        let stock = "dialog\r\n{\r\n\tname connection_dialog\r\n\titem_bitmap\r\n\t{\r\n\t\tname ID_BITMAP\r\n\t\tsprite dialog600x200.tga\r\n\t}\r\n\titem_text\r\n\t{\r\n\t\tname id_message\r\n\t\tcolor 255 0 0 0\r\n\t\tbackcolor 0 0 0 0\r\n\t}\r\n\titem_text\r\n\t{\r\n\t\tname ID_INFO\r\n\t\tcolor 255 40 40 40\r\n\t\tbackcolor 0 0 0 0\r\n\t}\r\n\titem_button\r\n\t{\r\n\t\tname id_cancel\r\n\t\tbutton\r\n\t\t{\r\n\t\t\trect 0.437500 0.566667 0.562500 0.600000\r\n\t\t\tsprite1 button1.tga\r\n\t\t}\r\n\t\ttextid cancel\r\n\t\ttext\r\n\t\t{\r\n\t\t\tfont main.fnt\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\tfontsize 0.022222\r\n\t\t\talign right\r\n\t\t}\r\n\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 240 240 240\r\n\t\tcolor3 255 240 240 240\r\n\t}\r\n}\r\n\r\ndialog\r\n{\r\n\tname idd_password\r\n\titem_bitmap\r\n\t{\r\n\t\tname ID_BITMAP2\r\n\t\tsprite dialog600x300.tga\r\n\t}\r\n\titem_text\r\n\t{\r\n\t\tname ID_TEXT\r\n\t\tcolor 255 0 0 0\r\n\t\tbackcolor 0 0 0 0\r\n\t}\r\n\titem_button\r\n\t{\r\n\t\tname ID_CANCEL\r\n\t\ttextid cancel\r\n\t\ttext\r\n\t\t{\r\n\t\t\tfont main.fnt\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\tfontsize 0.022222\r\n\t\t\talign right\r\n\t\t}\r\n\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 240 240 240\r\n\t\tcolor3 255 240 240 240\r\n\t}\r\n}\r\n\r\ndialog\r\n{\r\n\tname idd_datamismatch\r\n\titem_text\r\n\t{\r\n\t\tname ID_TEXT\r\n\t\tcolor 255 0 0 0\r\n\t}\r\n\titem_list\r\n\t{\r\n\t\tname ID_LIST\r\n\t\tlist\r\n\t\t{\r\n\t\t\tcolor1 255 80 80 80\r\n\t\t\tcolor2 255 0 0 255\r\n\t\t\tbackcolor 255 220 220 220\r\n\t\t}\r\n\t}\r\n\titem_button\r\n\t{\r\n\t\tname ID_CLOSE\r\n\t\ttext\r\n\t\t{\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\talign right\r\n\t\t}\r\n\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 240 240 240\r\n\t\tcolor3 255 240 240 240\r\n\t}\r\n}\r\n";
         fs::write(ui.join("connection.mnu"), stock).unwrap();
         apply(&game, DEFAULT_PRIMARY).unwrap();
         let conn = fs::read_to_string(ui.join("connection.mnu")).unwrap();
@@ -642,13 +663,85 @@ mod tests {
         assert!(loading.contains("align center"));
         let cancel = loading.split("name id_cancel").nth(1).unwrap();
         assert!(cancel.contains(&format!("color1 {}", argb(255, TEXT))));
-        let password = conn.split("name idd_password").nth(1).unwrap();
-        assert!(
-            password.contains("align right"),
-            "password Cancel stays stock-aligned"
-        );
+        let password = conn
+            .split("name idd_password")
+            .nth(1)
+            .unwrap()
+            .split("name idd_datamismatch")
+            .next()
+            .unwrap();
+        assert!(password.contains("sprite profilemodifyboard.tga"));
+        assert!(!password.contains("\tcolor 255 0 0 0\n"));
+        assert!(password.contains("align center"));
+        let mismatch = conn.split("name idd_datamismatch").nth(1).unwrap();
+        assert!(!mismatch.contains("\tcolor 255 0 0 0\n"));
+        assert!(mismatch.contains("align center"));
+        assert!(mismatch.contains("backcolor 160 0 0 0"));
         let man = fs::read_to_string(ui.join(MANIFEST)).unwrap();
         assert!(man.contains("connection.mnu"));
+        let _ = fs::remove_dir_all(&game);
+    }
+
+    #[test]
+    fn splice_multijoin_restyles_timeout_and_serverinfo() {
+        let game = temp_game();
+        let ui = game.join("ui");
+        let stock = "dialog\r\n{\r\n\tname idd_worldconnection\r\n\titem_bitmap\r\n\t{\r\n\t\tname ID_BITMAP\r\n\t\tsprite dialog600x200.tga\r\n\t}\r\n\titem_text\r\n\t{\r\n\t\tname id_message\r\n\t\tcolor 255 0 0 0\r\n\t\tbackcolor 0 0 0 0\r\n\t}\r\n\titem_button\r\n\t{\r\n\t\tname id_cancel\r\n\t\ttext\r\n\t\t{\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\talign right\r\n\t\t}\r\n\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 240 240 240\r\n\t\tcolor3 255 240 240 240\r\n\t}\r\n}\r\n\r\ndialog\r\n{\r\n\tname idd_trackerror\r\n\titem_text\r\n\t{\r\n\t\tname id_text\r\n\t\tcolor 255 0 0 0\r\n\t}\r\n\titem_text\r\n\t{\r\n\t\tname ID_MESSAGE\r\n\t\tcolor 255 40 40 40\r\n\t}\r\n\titem_button\r\n\t{\r\n\t\tname ID_CLOSE\r\n\t\ttext\r\n\t\t{\r\n\t\t\tpos 0.008125 0.005556\r\n\t\t\talign right\r\n\t\t}\r\n\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 240 240 240\r\n\t\tcolor3 255 240 240 240\r\n\t}\r\n}\r\n\r\ndialog\r\n{\r\n\tname idd_serverinfo\r\n\titem_text\r\n\t{\r\n\t\tname ID_TEXT\r\n\t\tcolor 255 0 0 0\r\n\t}\r\n\titem_button\r\n\t{\r\n\t\tname ID_CLOSE\r\n\t\ttext\r\n\t\t{\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\talign left\r\n\t\t}\r\n\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 240 240 240\r\n\t\tcolor3 255 240 240 240\r\n\t}\r\n}\r\n";
+        fs::write(ui.join("multijoin.mnu"), stock).unwrap();
+        apply(&game, DEFAULT_PRIMARY).unwrap();
+        let join = fs::read_to_string(ui.join("multijoin.mnu")).unwrap();
+        let timeout = join
+            .split("name idd_worldconnection")
+            .nth(1)
+            .unwrap()
+            .split("name idd_trackerror")
+            .next()
+            .unwrap();
+        assert!(timeout.contains("sprite profiledeleteboard.tga"));
+        assert!(!timeout.contains("\tcolor 255 0 0 0\n"));
+        assert!(timeout.contains("align center"));
+        let track = join
+            .split("name idd_trackerror")
+            .nth(1)
+            .unwrap()
+            .split("name idd_serverinfo")
+            .next()
+            .unwrap();
+        assert!(!track.contains("\tcolor 255 0 0 0\n"));
+        assert!(!track.contains("\tcolor 255 40 40 40\n"));
+        assert!(track.contains("align center"));
+        assert!(track.contains("pos 0.000000 0.005556"));
+        let info = join.split("name idd_serverinfo").nth(1).unwrap();
+        assert!(!info.contains("\tcolor 255 0 0 0\n"));
+        assert!(info.contains("align center"));
+        let _ = fs::remove_dir_all(&game);
+    }
+
+    #[test]
+    fn splice_export_restyles_save_and_overwrite() {
+        let game = temp_game();
+        let ui = game.join("ui");
+        let stock = "dialog\r\n{\r\n\tname idd_export_save\r\n\titem_bitmap\r\n\t{\r\n\t\tname ID_BITMAP\r\n\t\tsprite dialog600x600.tga\r\n\t}\r\n\titem_text\r\n\t{\r\n\t\tname ID_TEXT\r\n\t\tcolor 255 0 0 0\r\n\t}\r\n\titem_button\r\n\t{\r\n\t\tname id_ok\r\n\t\tbutton\r\n\t\t{\r\n\t\t\tsprite2 b_button2.tga\r\n\t\t\tsprite3 b_button3.tga\r\n\t\t}\r\n\t\ttext\r\n\t\t{\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\talign left\r\n\t\t}\r\n\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 240 240 240\r\n\t\tcolor3 255 240 240 240\r\n\t}\r\n}\r\n\r\ndialog\r\n{\r\n\tname idd_export_overwrite\r\n\titem_bitmap\r\n\t{\r\n\t\tname ID_BITMAP\r\n\t\tsprite dialog600x200.tga\r\n\t}\r\n\titem_text\r\n\t{\r\n\t\tname ID_TEXT\r\n\t\tcolor 255 0 0 0\r\n\t}\r\n\titem_button\r\n\t{\r\n\t\tname ID_YES\r\n\t\ttext\r\n\t\t{\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\talign left\r\n\t\t}\r\n\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 240 240 240\r\n\t\tcolor3 255 240 240 240\r\n\t}\r\n}\r\n";
+        fs::write(ui.join("export.mnu"), stock).unwrap();
+        apply(&game, DEFAULT_PRIMARY).unwrap();
+        let exported = fs::read_to_string(ui.join("export.mnu")).unwrap();
+        let save = exported
+            .split("name idd_export_save")
+            .nth(1)
+            .unwrap()
+            .split("name idd_export_overwrite")
+            .next()
+            .unwrap();
+        assert!(save.contains("sprite replayboard.tga"));
+        assert!(!save.contains("\tcolor 255 0 0 0\n"));
+        assert!(save.contains("align center"));
+        assert!(save.contains("sprite1 button1.tga"));
+        let overwrite = exported.split("name idd_export_overwrite").nth(1).unwrap();
+        assert!(overwrite.contains("sprite profiledeleteboard.tga"));
+        assert!(!overwrite.contains("\tcolor 255 0 0 0\n"));
+        assert!(overwrite.contains("align center"));
+        let man = fs::read_to_string(ui.join(MANIFEST)).unwrap();
+        assert!(man.contains("export.mnu"));
         let _ = fs::remove_dir_all(&game);
     }
 
