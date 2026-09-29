@@ -122,34 +122,21 @@ pub(crate) fn draw_minimap(
     } else {
         (16.0 * scale).clamp(12.0, 28.0)
     };
-    let mut pb = PathBuilder::new();
-    if north_up {
-        append_visible_track(
-            &mut pb,
-            s,
-            n,
-            origin_x,
-            origin_z,
-            mini_view_radius(cfg.mini_zoom) * 2.25,
-            &to_px,
-        );
+    let visible_radius = if north_up {
+        Some(mini_view_radius(cfg.mini_zoom) * 2.25)
     } else {
-        let (sx, sy) = to_px(s.poly[0].x, s.poly[0].z);
-        pb.move_to(sx, sy);
-        for p in s.poly.iter().take(n).skip(1) {
-            let (px_, py_) = to_px(p.x, p.z);
-            pb.line_to(px_, py_);
-        }
-    }
-    if let Some(path) = pb.finish() {
-        stroke_path_fast(
-            mini,
-            &path,
-            Color::from_rgba8(8, 8, 10, 220),
-            track_px + 5.0,
-        );
-        stroke_path_fast(mini, &path, Color::from_rgba8(248, 248, 252, 255), track_px);
-    }
+        None
+    };
+    stroke_smooth_minimap_track(
+        mini,
+        s,
+        n,
+        origin_x,
+        origin_z,
+        visible_radius,
+        track_px,
+        &to_px,
+    );
 
     if n >= 2 && s.sf_meters >= 0.0 && cfg.mini_sf {
         draw_sf(mini, s, n, to_px, track_px);

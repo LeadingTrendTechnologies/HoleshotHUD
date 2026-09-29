@@ -29,7 +29,7 @@ A decent lap: ~20 s–15 min, coverage across most of 0..1. A dab does not throw
 
 ## Do not regress
 
-- Keep the widget off until **Show on overlay** is on. Experimental widgets does not gate it.
+- Keep the widget off until **Show on overlay** is on. Experimental features does not gate it.
 - **Compare to session best** (`delta_session`) is this visit only. Do not load the saved tape as the session reference. Keep recording the all-time file even when this is on.
 - Do not treat this as the in-game ghost. We only compare to a lap we recorded.
 - Do not record the out-lap. The tape starts when they cross S/F to begin a flying lap: a new last-lap time, a lap-number bump, a pos wrap, or a clock drop away from the pits (`pos >= 0.18`, new clock under 4 s, old clock under 3 min). Do not arm on a lap-clock start near pos 0 (pits often sit there). Do not arm on a 3:20 `_fTime` collapse. Do not require the line to sit at `track_pos` 0 — MX Bikes origin is not always S/F. A reset to pits is another out-lap (clock drop, last-lap unchanged). A crash that crosses the line with the old clock still up is a finish, not an out-lap — keep LAST and start the next tape from that sample (`held_clock`). A remount teleport is not a cut.

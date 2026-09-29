@@ -3,9 +3,8 @@ mod edit;
 mod motos;
 
 use mxbo_hud::config::{
-    BoardField, DashField, DotLabel, FontFamily, GamepadStyle, HudConfig, LeanStyle,
-    SnapAlign, StanceMode,
-    StanceStyle, TableText, UnitPrefs, Units, WidgetId,
+    BoardField, DashField, DotLabel, FontFamily, GamepadStyle, GamepadTheme, HudConfig, LeanStyle,
+    RadarStyle, SnapAlign, StanceMode, StanceStyle, TableText, UnitPrefs, Units, WidgetId,
 };
 use mxbo_hud::render::{draw, Fonts};
 use mxbo_hud::snapshot::{
@@ -49,6 +48,8 @@ pub struct Preview {
     layout_edit: bool,
     mode_motos: bool,
     motos: motos::MotosDemo,
+    /// First painted frame uses a faster last lap so the next refresh can show last lap diff.
+    lap_pace_frames: u8,
 }
 
 #[wasm_bindgen]
@@ -76,6 +77,7 @@ impl Preview {
             layout_edit: false,
             mode_motos: false,
             motos: motos::MotosDemo::new(),
+            lap_pace_frames: 0,
         })
     }
 
@@ -288,6 +290,10 @@ impl Preview {
             },
         );
         sync_gamepad_preview(&self.active, self.t);
+        if self.lap_pace_frames == 0 {
+            nudge_last_laps_faster(&mut self.snap, 400);
+        }
+        self.lap_pace_frames = self.lap_pace_frames.saturating_add(1);
     }
 
     pub fn frame(&mut self, width: u32, height: u32) -> Vec<u8> {
@@ -383,10 +389,11 @@ fn center_widget(cfg: &mut HudConfig, name: &str) {
     } else if name == "lean" {
         size_demo_lean(cfg);
     } else if name == "gamepad" {
-        cfg.experimental = true;
         size_demo_gamepad(cfg);
     } else if name == "telemetry" {
         size_demo_telemetry(cfg);
+    } else if name == "pitboard" {
+        size_demo_pitboard(cfg);
     } else if let Some(id) = widget_id(name) {
         cfg.snap(id, SnapAlign::Center);
     }
@@ -423,6 +430,13 @@ fn size_demo_telemetry(cfg: &mut HudConfig) {
     cfg.snap(WidgetId::Telemetry, SnapAlign::Center);
 }
 
+fn size_demo_pitboard(cfg: &mut HudConfig) {
+    cfg[WidgetId::Pitboard].rect.w = 0.32;
+    cfg[WidgetId::Pitboard].rect.h = 0.22;
+    cfg.pit_sponsor = "HOLESHOT".into();
+    cfg.snap(WidgetId::Pitboard, SnapAlign::Center);
+}
+
 fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg[WidgetId::Standings].show = name == "standings";
     cfg[WidgetId::Relative].show = name == "relative";
@@ -439,7 +453,7 @@ fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg[WidgetId::Lean].show = name == "lean";
     cfg[WidgetId::Gamepad].show = name == "gamepad";
     cfg[WidgetId::Telemetry].show = name == "telemetry";
-    cfg.experimental = name == "gamepad";
+    cfg[WidgetId::Pitboard].show = name == "pitboard";
 }
 
 fn widget_id(name: &str) -> Option<WidgetId> {
@@ -532,6 +546,7 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "st_current" => cfg.st_current,
         "st_best" => cfg.st_best,
         "st_last" => cfg.st_last,
+        "st_lapdiff" => cfg.st_lapdiff,
         "st_status" => cfg.st_status,
         "st_bike" => cfg.st_bike,
         "st_penalty" => cfg.st_penalty,
@@ -545,13 +560,14 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "rel_bike" => cfg.rel_bike,
         "rel_penalty" => cfg.rel_penalty,
         "rel_interval" => cfg.rel_interval,
-        "rel_crashed" => cfg.rel_crashed,
         "rel_best" => cfg.rel_best,
         "rel_last" => cfg.rel_last,
+        "rel_lapdiff" => cfg.rel_lapdiff,
         "map_others" => cfg.map_others,
         "map_sf" => cfg.map_sf,
         "map_sectors" => cfg.map_sectors,
         "map_arrows" => cfg.map_arrows,
+        "map_follow" => cfg.map_follow,
         "map_crown" => cfg.map_crown,
         "map_place" => cfg.map_place,
         "map_numbers" => cfg.map_numbers,
@@ -595,6 +611,7 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "lean_bold" => cfg[WidgetId::Lean].bold,
         "gamepad_bold" => cfg[WidgetId::Gamepad].bold,
         "telemetry_bold" => cfg[WidgetId::Telemetry].bold,
+        "pit_bold" => cfg[WidgetId::Pitboard].bold,
         "telemetry_traces" => cfg.telemetry_traces,
         "telemetry_trace_throttle" => cfg.telemetry_trace_throttle,
         "telemetry_trace_brake" => cfg.telemetry_trace_brake,
@@ -611,6 +628,7 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "flag_text" => cfg.flag_text,
         "ticker_title" => cfg.ticker_title,
         "ticker_autoscroll" => cfg.ticker_autoscroll,
+        "ticker_slide" => cfg.ticker_slide,
         _ => return None,
     })
 }
@@ -626,6 +644,7 @@ fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
         "st_current" => cfg.st_current = on,
         "st_best" => cfg.st_best = on,
         "st_last" => cfg.st_last = on,
+        "st_lapdiff" => cfg.st_lapdiff = on,
         "st_status" => cfg.st_status = on,
         "st_bike" => cfg.st_bike = on,
         "st_penalty" => cfg.st_penalty = on,
@@ -639,13 +658,14 @@ fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
         "rel_bike" => cfg.rel_bike = on,
         "rel_penalty" => cfg.rel_penalty = on,
         "rel_interval" => cfg.rel_interval = on,
-        "rel_crashed" => cfg.rel_crashed = on,
         "rel_best" => cfg.rel_best = on,
         "rel_last" => cfg.rel_last = on,
+        "rel_lapdiff" => cfg.rel_lapdiff = on,
         "map_others" => cfg.map_others = on,
         "map_sf" => cfg.map_sf = on,
         "map_sectors" => cfg.map_sectors = on,
         "map_arrows" => cfg.map_arrows = on,
+        "map_follow" => cfg.map_follow = on,
         "map_crown" => cfg.map_crown = on,
         "map_place" => cfg.map_place = on,
         "map_numbers" => cfg.map_numbers = on,
@@ -699,12 +719,14 @@ fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
         "telemetry_bar_throttle" => cfg.telemetry_bar_throttle = on,
         "telemetry_bar_steer" => cfg.telemetry_bar_steer = on,
         "telemetry_dial" => cfg.telemetry_dial = on,
+        "pit_bold" => cfg[WidgetId::Pitboard].bold = on,
         "flag_yellow" => cfg.flag_yellow = on,
         "flag_blue" => cfg.flag_blue = on,
         "flag_red" => cfg.flag_red = on,
         "flag_text" => cfg.flag_text = on,
         "ticker_title" => cfg.ticker_title = on,
         "ticker_autoscroll" => cfg.ticker_autoscroll = on,
+        "ticker_slide" => cfg.ticker_slide = on,
         _ => {}
     }
 }
@@ -717,6 +739,7 @@ fn int_val(cfg: &HudConfig, key: &str) -> Option<i32> {
         "st_hl" => cfg.st_hl,
         "rel_bg" => cfg[WidgetId::Relative].bg,
         "rel_hl" => cfg.rel_hl,
+        "ticker_hl" => cfg.ticker_hl,
         "map_bg" => cfg[WidgetId::Map].bg,
         "mini_bg" => cfg[WidgetId::Minimap].bg,
         "mini_zoom" => cfg.mini_zoom,
@@ -749,6 +772,8 @@ fn int_val(cfg: &HudConfig, key: &str) -> Option<i32> {
         "gamepad_bg" => cfg[WidgetId::Gamepad].bg,
         "telemetry_font" => cfg[WidgetId::Telemetry].font,
         "telemetry_bg" => cfg[WidgetId::Telemetry].bg,
+        "pit_font" => cfg[WidgetId::Pitboard].font,
+        "pit_bg" => cfg[WidgetId::Pitboard].bg,
         _ => return None,
     })
 }
@@ -761,6 +786,7 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "st_hl" => cfg.st_hl = value.clamp(0, 100),
         "rel_bg" => cfg[WidgetId::Relative].bg = value.clamp(0, 100),
         "rel_hl" => cfg.rel_hl = value.clamp(0, 100),
+        "ticker_hl" => cfg.ticker_hl = value.clamp(0, 100),
         "map_bg" => cfg[WidgetId::Map].bg = value.clamp(0, 100),
         "mini_bg" => cfg[WidgetId::Minimap].bg = value.clamp(0, 100),
         "mini_zoom" => cfg.mini_zoom = value.clamp(0, 100),
@@ -776,6 +802,7 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "lean_bg" => cfg[WidgetId::Lean].bg = value.clamp(0, 100),
         "gamepad_bg" => cfg[WidgetId::Gamepad].bg = value.clamp(0, 100),
         "telemetry_bg" => cfg[WidgetId::Telemetry].bg = value.clamp(0, 100),
+        "pit_bg" => cfg[WidgetId::Pitboard].bg = value.clamp(0, 100),
         "ticker_count" => cfg.ticker_count = value.clamp(3, 15),
         "sector_hist_laps" => cfg.sector_hist_laps = value.clamp(1, 5),
         "st_font" => cfg.set_font_pct(WidgetId::Standings, value),
@@ -793,6 +820,7 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "lean_font" => cfg.set_font_pct(WidgetId::Lean, value),
         "gamepad_font" => cfg.set_font_pct(WidgetId::Gamepad, value),
         "telemetry_font" => cfg.set_font_pct(WidgetId::Telemetry, value),
+        "pit_font" => cfg.set_font_pct(WidgetId::Pitboard, value),
         _ => {}
     }
 }
@@ -820,12 +848,15 @@ fn field_val(cfg: &HudConfig, key: &str) -> Option<String> {
         "mini_dot" => cfg.mini_dot.key().into(),
         "st_text" => cfg.st_text.key().into(),
         "rel_text" => cfg.rel_text.key().into(),
+        "pit_text" => cfg.pit_text.key().into(),
         "st_plaque_text" => cfg.st_plaque_text.key().into(),
         "rel_plaque_text" => cfg.rel_plaque_text.key().into(),
         "stance_mode" => cfg.stance_mode.key().into(),
         "stance_style" => cfg.stance_style.key().into(),
         "lean_style" => cfg.lean_style.key().into(),
         "gamepad_style" => cfg.gamepad_style.key().into(),
+        "gamepad_theme" => cfg.gamepad_theme.key().into(),
+        "radar_style" => cfg.radar_style.key().into(),
         _ => return None,
     })
 }
@@ -853,12 +884,18 @@ fn set_field(cfg: &mut HudConfig, key: &str, value: &str) {
         "mini_dot" => cfg.mini_dot = DotLabel::parse(value),
         "st_text" => cfg.st_text = TableText::parse(value),
         "rel_text" => cfg.rel_text = TableText::parse(value),
+        "pit_text" => cfg.pit_text = TableText::parse(value),
         "st_plaque_text" => cfg.st_plaque_text = TableText::parse(value),
         "rel_plaque_text" => cfg.rel_plaque_text = TableText::parse(value),
         "stance_mode" => cfg.stance_mode = StanceMode::parse(value),
         "stance_style" => cfg.stance_style = StanceStyle::parse(value),
         "lean_style" => cfg.lean_style = LeanStyle::parse(value),
         "gamepad_style" => cfg.gamepad_style = GamepadStyle::parse(value),
+        "gamepad_theme" => cfg.gamepad_theme = GamepadTheme::parse(value),
+        "radar_style" => {
+            cfg.radar_style = RadarStyle::parse(value);
+            mxbo_hud::config::maybe_expand_radar_for_arrows(cfg);
+        }
         _ => {}
     }
 }
@@ -1105,6 +1142,16 @@ fn sample_track(s: &Snapshot, t: f32) -> (f32, f32, f32) {
     let z = s.poly[i].z + (s.poly[j].z - s.poly[i].z) * f;
     let yaw = (s.poly[j].x - s.poly[i].x).atan2(s.poly[j].z - s.poly[i].z);
     (x, z, yaw)
+}
+
+fn nudge_last_laps_faster(s: &mut Snapshot, faster_ms: i32) {
+    s.last_lap_ms = (s.last_lap_ms - faster_ms).max(1);
+    let n = s.standing_count.max(0) as usize;
+    for standing in &mut s.standings[..n] {
+        if standing.last_lap_ms > faster_ms {
+            standing.last_lap_ms -= faster_ms;
+        }
+    }
 }
 
 fn animate(s: &mut Snapshot, t: f32, dt: f32) {

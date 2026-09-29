@@ -15,18 +15,19 @@ use crate::shm::{cstr, Rider, Snapshot, MAX_STANDINGS};
 pub(crate) use crate::race_store::{
     class_position, extra_laps, extras_started, finish_earned, focus_num_laps, focus_standing,
     format_countdown, format_gap, format_lap, format_session_clock, gap_ahead_text,
-    gap_behind_text, i_finished, interval_text, interval_text_from_row, is_lap_race, is_warmup,
-    lapped, laps_done, laps_left, leader_finished, leader_num_laps, live_leader, live_position,
-    local_overtime_done, local_overtime_taken, moving, norm_lap_pos as norm_track_pos,
-    note_laps_to_run, overtime_active, penalty_class_place_delta, penalty_place_delta, prestart,
-    race_lap, race_laps_left_text, race_over_for_me, race_progress_text, reset_session_clock_track,
-    rider_current_lap, session_banner, session_best_ms, session_len_ms, session_remain_ms,
-    skip_last_lap_white, standing_num_laps, standing_of, ticker_delta_from_row, timed_clock_live,
-    timed_race_flag, track_position, RaceFlag, RaceStore, CHECKERED_LATCH, CLOSING_ON_LINE, IN_GATE,
-    LAPS_TO_RUN_AT, LAP_GREEN, LAP_MID_SEEN,
-    LAST_CUR_LAP, LAST_SESSION_SIG, LAST_SF_METERS, LEADER_FIN_LOCAL_BASE, OVERTIME_LOCAL_BASE,
-    POST_GATE, RUN_IN_FLAG, SESSION_EXPIRED, SF_FRAC_CAND, SF_FRAC_LEARNED, SF_LEARN_LAPS,
-    WHITE_WAVE_AT, WHITE_WAVE_LAP,
+    gap_behind_text, gap_leader_text, i_finished, interval_text, interval_text_from_row,
+    is_lap_race, is_practice_session, is_warmup, lap_diff_ms, lapped, laps_done, laps_left,
+    leader_finished,
+    leader_num_laps, live_leader, live_position, local_overtime_done, local_overtime_taken, moving,
+    norm_lap_pos as norm_track_pos, note_laps_to_run, overtime_active, penalty_class_place_delta,
+    penalty_place_delta, prestart, race_lap, race_laps_left_text, race_over_for_me,
+    race_progress_text, reset_session_clock_track, rider_current_lap, session_banner,
+    session_best_ms, session_len_ms, session_remain_ms, skip_last_lap_white, standing_num_laps,
+    standing_of, ticker_delta_from_row, timed_clock_live, timed_race_flag, track_position,
+    RaceFlag, RaceStore, CHECKERED_LATCH, CLOSING_ON_LINE, IN_GATE, LAPS_TO_RUN_AT, LAP_GREEN,
+    LAP_MID_SEEN, LAST_CUR_LAP, LAST_SESSION_SIG, LAST_SF_METERS, LEADER_FIN_LOCAL_BASE,
+    OVERTIME_LOCAL_BASE, POST_GATE, RUN_IN_FLAG, SESSION_EXPIRED, SF_FRAC_CAND, SF_FRAC_LEARNED,
+    SF_LEARN_LAPS, WHITE_WAVE_AT, WHITE_WAVE_LAP,
 };
 use fontdue::Font;
 use tiny_skia::{
@@ -50,6 +51,7 @@ mod standings;
 mod sys;
 mod telemetry;
 mod ticker;
+mod pitboard;
 pub(crate) use dash::*;
 pub(crate) use delta::*;
 pub(crate) use flag::*;
@@ -67,6 +69,11 @@ pub(crate) use sys::*;
 pub use sys::{set_sys_procs, set_sys_stats, SysProc};
 pub(crate) use telemetry::*;
 pub(crate) use ticker::*;
+pub(crate) use pitboard::*;
+
+pub fn painted_factory_plate(art: &str, main: [u8; 3], secondary: [u8; 3]) -> Option<Pixmap> {
+    pitboard::factory_plate_image(art, main, secondary)
+}
 
 fn accent() -> Color {
     let [r, g, b] = accent_rgb();
@@ -120,6 +127,22 @@ fn ahead_col() -> Color {
 
 fn behind_col() -> Color {
     Color::from_rgba8(255, 64, 72, 255)
+}
+
+fn lap_diff_text(race_num: i32) -> String {
+    match lap_diff_ms(race_num) {
+        Some(ms) => format_delta_ms(ms),
+        None => "--".into(),
+    }
+}
+
+/// Green when the last lap was faster than the one before it, red when slower.
+fn lap_diff_ink(race_num: i32, neutral: Color) -> Color {
+    match lap_diff_ms(race_num) {
+        Some(ms) if ms < 0 => ahead_col(),
+        Some(ms) if ms > 0 => behind_col(),
+        _ => neutral,
+    }
 }
 
 /// Green `*` when live place is ahead of on-track, red when behind.
@@ -210,7 +233,17 @@ fn col_place_text(
     };
     let tw = place_width(fonts, &digits_draw, size, star_draw);
     let tx = if right { x + w - tw } else { x };
-    paint_place_at(px, fonts, &digits_draw, size, tx, y, digit_col, star_draw, false);
+    paint_place_at(
+        px,
+        fonts,
+        &digits_draw,
+        size,
+        tx,
+        y,
+        digit_col,
+        star_draw,
+        false,
+    );
 }
 
 fn telemetry_steer_col() -> Color {
@@ -224,11 +257,23 @@ pub struct Fonts {
     bold_is_fake: bool,
 }
 
+#[derive(Clone, Copy)]
+struct MapFollowEase {
+    angle: f32,
+    subject: i32,
+    live: bool,
+}
+
 thread_local! {
     static FACE: Cell<*const Font> = Cell::new(std::ptr::null());
     static SCALE: Cell<f32> = Cell::new(1.0);
     static FAKE_BOLD: Cell<bool> = Cell::new(false);
     static MAP_LAYER: RefCell<Option<(u64, Pixmap)>> = RefCell::new(None);
+    static MAP_FOLLOW: Cell<MapFollowEase> = Cell::new(MapFollowEase {
+        angle: 0.0,
+        subject: 0,
+        live: false,
+    });
     static MINI_PX: RefCell<Option<Pixmap>> = RefCell::new(None);
     static ST_SLIDE: RefCell<TableSlides> = RefCell::new(TableSlides { rows: Vec::new() });
     static REL_SLIDE: RefCell<TableSlides> = RefCell::new(TableSlides { rows: Vec::new() });
@@ -743,6 +788,10 @@ fn draw_widgets(
         );
         draw_telemetry(px, fonts, s, cfg, sw, sh);
     }
+    if crate::pitboard::drawing(cfg[WidgetId::Pitboard].show, cfg.pit_when) {
+        let _g = push_style(fonts, false, 100);
+        draw_pitboard(px, fonts, s, cfg, sw, sh);
+    }
 }
 
 fn rr(x: f32, y: f32, w: f32, h: f32) -> Option<Rect> {
@@ -926,6 +975,9 @@ fn draw_layout(px: &mut Pixmap, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32)
             false,
         );
     }
+    if cfg[WidgetId::Pitboard].show {
+        layout_box(px, cfg[WidgetId::Pitboard].rect.x * sw, cfg[WidgetId::Pitboard].rect.y * sh, cfg[WidgetId::Pitboard].rect.w * sw, cfg[WidgetId::Pitboard].rect.h * sh, false);
+    }
     if cfg[WidgetId::Flag].show {
         layout_box(
             px,
@@ -1055,7 +1107,7 @@ fn text_halo(
     text(px, fonts, s, size, x, y, color, center);
 }
 
-fn text_bold(
+pub fn text_bold(
     px: &mut Pixmap,
     fonts: &Fonts,
     s: &str,
@@ -1632,11 +1684,14 @@ impl BoardCol for StField {
             Self::Current => "Current Lap",
             Self::Best => "Fastest",
             Self::Last => "Last",
+            Self::LapDiff => "DIFF",
             Self::Status => "",
             Self::Gap => "GAP",
             Self::Interval => "INT",
             Self::Bike => "BIKE",
             Self::Penalty => "PEN",
+            Self::Crashed => "CR",
+            Self::Category => "CLASS",
         }
     }
 
@@ -1676,6 +1731,9 @@ impl BoardCol for RelField {
             Self::Status => "",
             Self::Best => "Fastest",
             Self::Last => "Last",
+            Self::LapDiff => "DIFF",
+            Self::Category => "CLASS",
+            Self::Speed => "SPD",
         }
     }
 
@@ -2507,7 +2565,7 @@ fn format_fuel_pct(fuel: f32, max_fuel: f32) -> String {
     }
 }
 
-fn board_item(s: &Snapshot, cfg: &HudConfig, field: BoardField) -> Option<(char, String)> {
+pub(crate) fn board_item(s: &Snapshot, cfg: &HudConfig, field: BoardField) -> Option<(char, String)> {
     if field == BoardField::None {
         return None;
     }
@@ -2577,6 +2635,50 @@ fn board_item(s: &Snapshot, cfg: &HudConfig, field: BoardField) -> Option<(char,
             BoardField::GapBehind => st
                 .map(|r| gap_behind_text(s, &race.field, r))
                 .unwrap_or_else(|| "---".into()),
+            BoardField::Delta => {
+                let best = dash_best_ms(s);
+                let src = if s.current_lap_ms > 0 {
+                    s.current_lap_ms
+                } else {
+                    s.last_lap_ms
+                };
+                if best <= 0 || src <= 0 {
+                    "--".into()
+                } else {
+                    format_delta_ms(src - best)
+                }
+            }
+            BoardField::Last => {
+                let ms = st
+                    .map(|r| r.last_lap_ms)
+                    .filter(|ms| *ms > 0)
+                    .unwrap_or(s.last_lap_ms);
+                format_clock(ms)
+            }
+            BoardField::LapDiff => {
+                let num = st.map(|r| r.race_num).unwrap_or_else(|| {
+                    if s.focus_race_num > 0 {
+                        s.focus_race_num
+                    } else {
+                        s.local_race_num
+                    }
+                });
+                lap_diff_text(num)
+            }
+            BoardField::Current => format_clock(s.current_lap_ms),
+            BoardField::Gap => st
+                .map(|r| gap_leader_text(s, &race.field, r))
+                .unwrap_or_else(|| "---".into()),
+            BoardField::Engine => cfg.units.format_temp(s.engine_temp),
+            BoardField::Penalty => format_penalty(st.map(|r| r.penalty_ms).unwrap_or(0)),
+            BoardField::Server => {
+                let name = cstr(&s.server_name);
+                if name.is_empty() {
+                    "--".into()
+                } else {
+                    name
+                }
+            }
         };
         Some((field.icon(), text))
     })
@@ -2612,6 +2714,11 @@ fn draw_board_bar(
             BoardField::ClassPos => place_star_col(penalty_class_place_delta(s, focus_num)),
             _ => None,
         };
+        let ink = if *field == BoardField::LapDiff {
+            lap_diff_ink(focus_num, text_col())
+        } else {
+            text_col()
+        };
         let max_tw = (slot_w - 16.0).max(12.0);
         let label = ellipsize(fonts, &label, fsz, max_tw);
         let iw = if ch != '\0' {
@@ -2624,17 +2731,7 @@ fn draw_board_bar(
         if ch != '\0' {
             icon(px, fonts, ch, icon_s, sx, ty + 0.5, text_col(), false);
         }
-        paint_place_at(
-            px,
-            fonts,
-            &label,
-            fsz,
-            sx + iw,
-            ty,
-            text_col(),
-            star,
-            false,
-        );
+        paint_place_at(px, fonts, &label, fsz, sx + iw, ty, ink, star, false);
     }
 }
 
@@ -3304,7 +3401,7 @@ fn push_chamfer_tb(
     pb.close();
 }
 
-fn format_clock(ms: i32) -> String {
+pub(crate) fn format_clock(ms: i32) -> String {
     if ms <= 0 {
         return "--:--.---".into();
     }
@@ -3873,6 +3970,10 @@ fn crown_over_dot(px: &mut Pixmap, fonts: &Fonts, x: f32, y: f32, r: f32) {
     );
 }
 
+fn place_rings_for_session(s: &Snapshot) -> bool {
+    !is_warmup(s) && !is_practice_session(s)
+}
+
 fn draw_rider_overhead(
     px: &mut Pixmap,
     fonts: &Fonts,
@@ -3894,7 +3995,7 @@ fn draw_rider_overhead(
         }
         return;
     }
-    if !show_place || mine <= 0 || theirs <= 0 {
+    if !show_place || !place_rings_for_session(s) || mine <= 0 || theirs <= 0 {
         return;
     }
     if theirs == mine - 1 {
@@ -4634,19 +4735,6 @@ fn stroke_path_clip(px: &mut Pixmap, path: &Path, color: Color, width: f32, clip
     px.stroke_path(path, &paint, &stroke, Transform::identity(), clip);
 }
 
-fn stroke_path_fast(px: &mut Pixmap, path: &Path, color: Color, width: f32) {
-    let mut paint = Paint::default();
-    paint.set_color(color);
-    paint.anti_alias = false;
-    let stroke = Stroke {
-        width,
-        line_cap: LineCap::Butt,
-        line_join: LineJoin::Miter,
-        ..Stroke::default()
-    };
-    px.stroke_path(path, &paint, &stroke, Transform::identity(), None);
-}
-
 fn track_layer_key(s: &Snapshot, n: usize, w: u32, h: u32, sf: bool, arrows: bool) -> u64 {
     let mut hasher = DefaultHasher::new();
     n.hash(&mut hasher);
@@ -4663,59 +4751,179 @@ fn track_layer_key(s: &Snapshot, n: usize, w: u32, h: u32, sf: bool, arrows: boo
     hasher.finish()
 }
 
-fn append_visible_track(
-    pb: &mut PathBuilder,
+fn thin_poly_pts(pts: &[(f32, f32)], min_d2: f32) -> Vec<(f32, f32)> {
+    if pts.len() <= 2 {
+        return pts.to_vec();
+    }
+    let mut out = Vec::with_capacity(64);
+    out.push(pts[0]);
+    let last = pts[pts.len() - 1];
+    for &p in &pts[1..pts.len() - 1] {
+        let prev = out[out.len() - 1];
+        let dx = p.0 - prev.0;
+        let dy = p.1 - prev.1;
+        if dx * dx + dy * dy >= min_d2 {
+            out.push(p);
+        }
+    }
+    if out.last() != Some(&last) {
+        out.push(last);
+    }
+    out
+}
+
+fn smooth_poly_pts(pts: &[(f32, f32)], close: bool) -> Vec<(f32, f32)> {
+    if pts.len() < 3 {
+        return pts.to_vec();
+    }
+    let n = pts.len();
+    let at = |j: i32| -> (f32, f32) {
+        if close {
+            pts[j.rem_euclid(n as i32) as usize]
+        } else {
+            pts[j.clamp(0, n as i32 - 1) as usize]
+        }
+    };
+    let mut out = Vec::with_capacity(n);
+    for i in 0..n {
+        if !close && (i == 0 || i == n - 1) {
+            out.push(pts[i]);
+            continue;
+        }
+        let t = i as i32;
+        let a = at(t - 2);
+        let b = at(t - 1);
+        let c = at(t);
+        let d = at(t + 1);
+        let e = at(t + 2);
+        out.push((
+            (a.0 + b.0 * 2.0 + c.0 * 3.0 + d.0 * 2.0 + e.0) / 9.0,
+            (a.1 + b.1 * 2.0 + c.1 * 3.0 + d.1 * 2.0 + e.1) / 9.0,
+        ));
+    }
+    out
+}
+
+fn cubic_poly_path(pts: &[(f32, f32)], close: bool) -> Option<Path> {
+    if pts.len() < 2 {
+        return None;
+    }
+    let n = pts.len();
+    let at = |i: isize| -> (f32, f32) {
+        if close {
+            pts[i.rem_euclid(n as isize) as usize]
+        } else {
+            pts[i.clamp(0, n as isize - 1) as usize]
+        }
+    };
+    let mut pb = PathBuilder::new();
+    pb.move_to(pts[0].0, pts[0].1);
+    if n == 2 {
+        pb.line_to(pts[1].0, pts[1].1);
+        if close {
+            pb.close();
+        }
+        return pb.finish();
+    }
+    let last = if close { n } else { n - 1 };
+    for i in 0..last {
+        let p0 = at(i as isize - 1);
+        let p1 = at(i as isize);
+        let p2 = at(i as isize + 1);
+        let p3 = at(i as isize + 2);
+        let c1x = p1.0 + (p2.0 - p0.0) / 6.0;
+        let c1y = p1.1 + (p2.1 - p0.1) / 6.0;
+        let c2x = p2.0 - (p3.0 - p1.0) / 6.0;
+        let c2y = p2.1 - (p3.1 - p1.1) / 6.0;
+        pb.cubic_to(c1x, c1y, c2x, c2y, p2.0, p2.1);
+    }
+    if close {
+        pb.close();
+    }
+    pb.finish()
+}
+
+fn poly_is_looped(s: &Snapshot, n: usize) -> bool {
+    if n < 2 {
+        return false;
+    }
+    let dx = s.poly[0].x - s.poly[n - 1].x;
+    let dz = s.poly[0].z - s.poly[n - 1].z;
+    dx * dx + dz * dz < 400.0
+}
+
+fn stroke_smooth_track_run(px: &mut Pixmap, pts: &[(f32, f32)], close: bool, width: f32) {
+    let thinned = thin_poly_pts(pts, 16.0);
+    let smoothed = smooth_poly_pts(&thinned, close);
+    if let Some(path) = cubic_poly_path(&smoothed, close) {
+        stroke_path(px, &path, Color::from_rgba8(8, 8, 10, 220), width + 5.0);
+        stroke_path(px, &path, Color::from_rgba8(248, 248, 252, 255), width);
+    }
+}
+
+fn stroke_smooth_minimap_track(
+    px: &mut Pixmap,
     s: &Snapshot,
     n: usize,
     origin_x: f32,
     origin_z: f32,
-    radius_m: f32,
+    radius_m: Option<f32>,
+    track_px: f32,
     to_px: &impl Fn(f32, f32) -> (f32, f32),
 ) {
     if n < 2 {
         return;
     }
-    let r2 = radius_m * radius_m;
-    let near_pt = |x: f32, z: f32| {
-        let dx = x - origin_x;
-        let dz = z - origin_z;
-        dx * dx + dz * dz <= r2
-    };
-    let near_seg = |ax: f32, az: f32, bx: f32, bz: f32| {
-        if near_pt(ax, az) || near_pt(bx, bz) {
-            return true;
-        }
-        let sx = bx - ax;
-        let sz = bz - az;
-        let len2 = sx * sx + sz * sz;
-        if len2 < 1e-6 {
-            return false;
-        }
-        let t = ((origin_x - ax) * sx + (origin_z - az) * sz) / len2;
-        let t = t.clamp(0.0, 1.0);
-        near_pt(ax + sx * t, az + sz * t)
-    };
-    let looped = {
-        let dx = s.poly[0].x - s.poly[n - 1].x;
-        let dz = s.poly[0].z - s.poly[n - 1].z;
-        dx * dx + dz * dz < 400.0
-    };
-    let seg_count = if looped { n } else { n - 1 };
-    let mut drawing = false;
-    for i in 0..seg_count {
-        let a = &s.poly[i];
-        let b = &s.poly[(i + 1) % n];
-        if near_seg(a.x, a.z, b.x, b.z) {
-            let (x0, y0) = to_px(a.x, a.z);
-            let (x1, y1) = to_px(b.x, b.z);
-            if !drawing {
-                pb.move_to(x0, y0);
-                drawing = true;
+    let looped = poly_is_looped(s, n);
+    if let Some(radius_m) = radius_m {
+        let r2 = radius_m * radius_m;
+        let near_pt = |x: f32, z: f32| {
+            let dx = x - origin_x;
+            let dz = z - origin_z;
+            dx * dx + dz * dz <= r2
+        };
+        let near_seg = |ax: f32, az: f32, bx: f32, bz: f32| {
+            if near_pt(ax, az) || near_pt(bx, bz) {
+                return true;
             }
-            pb.line_to(x1, y1);
-        } else {
-            drawing = false;
+            let sx = bx - ax;
+            let sz = bz - az;
+            let len2 = sx * sx + sz * sz;
+            if len2 < 1e-6 {
+                return false;
+            }
+            let t = ((origin_x - ax) * sx + (origin_z - az) * sz) / len2;
+            let t = t.clamp(0.0, 1.0);
+            near_pt(ax + sx * t, az + sz * t)
+        };
+        let seg_count = if looped { n } else { n - 1 };
+        let mut run: Vec<(f32, f32)> = Vec::new();
+        for i in 0..seg_count {
+            let a = &s.poly[i];
+            let b = &s.poly[(i + 1) % n];
+            if near_seg(a.x, a.z, b.x, b.z) {
+                let (x0, y0) = to_px(a.x, a.z);
+                let (x1, y1) = to_px(b.x, b.z);
+                if run.is_empty() {
+                    run.push((x0, y0));
+                }
+                run.push((x1, y1));
+            } else if run.len() >= 2 {
+                stroke_smooth_track_run(px, &run, false, track_px);
+                run.clear();
+            } else {
+                run.clear();
+            }
         }
+        if run.len() >= 2 {
+            stroke_smooth_track_run(px, &run, false, track_px);
+        }
+    } else {
+        let mut pts = Vec::with_capacity(n);
+        for p in s.poly.iter().take(n) {
+            pts.push(to_px(p.x, p.z));
+        }
+        stroke_smooth_track_run(px, &pts, looped, track_px);
     }
 }
 

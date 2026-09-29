@@ -345,7 +345,10 @@ fn supersampled_resample(src: &Pixmap, tw: u32, th: u32) -> Option<Pixmap> {
         0,
         src.as_ref(),
         &paint,
-        Transform::from_scale(sw as f32 / src.width() as f32, sh as f32 / src.height() as f32),
+        Transform::from_scale(
+            sw as f32 / src.width() as f32,
+            sh as f32 / src.height() as f32,
+        ),
         None,
     );
     let mut lo = Pixmap::new(tw, th)?;
@@ -401,7 +404,9 @@ pub(crate) fn area_downscale_into(src: &Pixmap, dst: &mut Pixmap, rect: [u32; 4]
     let cols = &box_taps(src.width(), tw)[x0 as usize..x1 as usize];
     let rows = &box_taps(src.height(), th)[y0 as usize..y1 as usize];
     let row_lo = rows[0].0;
-    let row_hi = rows.last().map_or(row_lo, |(first, weights)| first + weights.len());
+    let row_hi = rows
+        .last()
+        .map_or(row_lo, |(first, weights)| first + weights.len());
     let span_w = cols.len();
     let pixels = src.pixels();
     let mut horizontal = vec![[0.0f32; 4]; (row_hi - row_lo) * span_w];
@@ -605,7 +610,10 @@ pub(crate) fn pad_pressed_frame(
         }
         state.dirty = apply_presses(art, &mut state.pressed, sony, filled, pad, layout, dh);
         let (tw, th) = key.size;
-        let (sx, sy) = (tw as f32 / art.width() as f32, th as f32 / art.height() as f32);
+        let (sx, sy) = (
+            tw as f32 / art.width() as f32,
+            th as f32 / art.height() as f32,
+        );
         for rect in previous.iter().chain(state.dirty.iter()) {
             let dest = [
                 (rect[0] as f32 * sx).floor() as u32,
@@ -730,12 +738,16 @@ fn apply_presses(
         }
     }
     for mask in &floods {
-        paint([mask.ax0, mask.ay0, mask.ax1, mask.ay1], PressFill::Keep, &|x, y| {
-            if !mask.fill[(y - mask.ay0) as usize * mask.bw + (x - mask.ax0) as usize] {
-                return 0.0;
-            }
-            ((y as f32 + 0.5 - mask.cut) / fade).clamp(0.0, 1.0)
-        });
+        paint(
+            [mask.ax0, mask.ay0, mask.ax1, mask.ay1],
+            PressFill::Keep,
+            &|x, y| {
+                if !mask.fill[(y - mask.ay0) as usize * mask.bw + (x - mask.ax0) as usize] {
+                    return 0.0;
+                }
+                ((y as f32 + 0.5 - mask.cut) / fade).clamp(0.0, 1.0)
+            },
+        );
     }
 
     if let Some(touch) = layout.touch {
@@ -763,7 +775,12 @@ fn apply_presses(
     let mut disc = |[u, v]: [f32; 2], r: f32, fill: PressFill| {
         let (cx, cy) = (u * iw, v * ih);
         let side = r * 2.0 + 4.0;
-        let rect = art_rect([(cx - r - 2.0) / iw, (cy - r - 2.0) / ih, side / iw, side / ih]);
+        let rect = art_rect([
+            (cx - r - 2.0) / iw,
+            (cy - r - 2.0) / ih,
+            side / iw,
+            side / ih,
+        ]);
         paint(rect, fill, &|x, y| {
             let ddx = x as f32 + 0.5 - cx;
             let ddy = y as f32 + 0.5 - cy;
@@ -824,7 +841,11 @@ fn paint_art_region(
                 continue;
             }
             let a = alpha as f32 / 255.0;
-            let rgb = [p.red() as f32 / a, p.green() as f32 / a, p.blue() as f32 / a];
+            let rgb = [
+                p.red() as f32 / a,
+                p.green() as f32 / a,
+                p.blue() as f32 / a,
+            ];
             let coverage = palette.coverage(rgb);
             let out: [f32; 3] = std::array::from_fn(|c| {
                 let lit = match fill {
@@ -843,9 +864,12 @@ fn paint_art_region(
                 (rgb[c] * (1.0 - t) + lit * t) * a
             });
             let channel = |v: f32| (v.round().clamp(0.0, 255.0) as u8).min(alpha);
-            if let Some(q) =
-                PremultipliedColorU8::from_rgba(channel(out[0]), channel(out[1]), channel(out[2]), alpha)
-            {
+            if let Some(q) = PremultipliedColorU8::from_rgba(
+                channel(out[0]),
+                channel(out[1]),
+                channel(out[2]),
+                alpha,
+            ) {
                 dest[i] = q;
             }
         }
@@ -1230,18 +1254,7 @@ pub(crate) fn draw_stick_live(
     }
     let cap_r = layout.cap_r / ih * dh;
     let travel = 0.048 * dh;
-    shade_disc(
-        px,
-        art,
-        dx,
-        dy,
-        dw,
-        dh,
-        cu,
-        cv,
-        layout.cap_r,
-        well,
-    );
+    shade_disc(px, art, dx, dy, dw, dh, cu, cv, layout.cap_r, well);
     let (ox, oy) = if mag < 0.08 {
         (0.0, 0.0)
     } else {

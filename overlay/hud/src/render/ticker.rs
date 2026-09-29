@@ -25,6 +25,13 @@ pub(crate) fn ticker_meta_label(field: BoardField, val: &str) -> &'static str {
         BoardField::Setup => "SETUP",
         BoardField::GapAhead => "AHEAD",
         BoardField::GapBehind => "BEHIND",
+        BoardField::Gap => "GAP",
+        BoardField::Delta => "DELTA",
+        BoardField::Last | BoardField::Current => "LAP",
+        BoardField::LapDiff => "DIFF",
+        BoardField::Engine => "TEMP",
+        BoardField::Penalty => "PEN",
+        BoardField::Server => "SERVER",
         BoardField::None => "",
     }
 }
@@ -189,7 +196,11 @@ pub(crate) fn draw_ticker(
         let stride = card_w + gap;
         let now = anim_now();
         let ids = row_ids(board.iter().take(n).map(|card| card.race_num));
-        let slots = HS_SLIDE.with(|a| a.borrow_mut().indices(&ids, now));
+        let slots = if cfg.ticker_slide {
+            HS_SLIDE.with(|a| a.borrow_mut().indices(&ids, now))
+        } else {
+            (0..n).map(|i| i as f32).collect()
+        };
         let scroll = if cfg.ticker_autoscroll && n > vis {
             (now * HS_AUTO_SPEED).rem_euclid(n as f32)
         } else {
@@ -214,18 +225,7 @@ pub(crate) fn draw_ticker(
                     x
                 };
                 draw_ticker_card(
-                    &mut layer,
-                    fonts,
-                    s,
-                    cfg,
-                    card,
-                    focus_row,
-                    best_ms,
-                    x,
-                    0.0,
-                    card_w,
-                    card_h,
-                    k,
+                    &mut layer, fonts, s, cfg, card, focus_row, best_ms, x, 0.0, card_w, card_h, k,
                 );
                 push_click_rider(card.race_num, cards_x + x, card_y, card_w, card_h);
             }
@@ -404,7 +404,7 @@ pub(crate) fn draw_ticker_card(
     let is_focus = row.race_num == focus.race_num;
     let out = standing_status(row).is_some() && standing_status(row) != Some("PIT");
     if is_focus {
-        fill_round(px, x, y, w, h, 3.0, you_row_bg(100));
+        fill_round(px, x, y, w, h, 3.0, you_row_bg(cfg.ticker_hl));
     }
     let pos_s = (h * 0.38).clamp(14.0, 20.0);
     let pos_y = y + (h - pos_s) * 0.5;
@@ -507,7 +507,14 @@ pub(crate) fn draw_ticker_card(
     text(px, fonts, &gap, gap_sz, text_x, y + h * 0.52, gap_c, false);
     if !matches!(mark, RiderMark::None) {
         let r = (h * 0.22).clamp(7.0, 10.0);
-        draw_state_mark(px, fonts, x + w - r * 2.0 - 6.0, y + (h - r * 2.0) * 0.5, r, mark);
+        draw_state_mark(
+            px,
+            fonts,
+            x + w - r * 2.0 - 6.0,
+            y + (h - r * 2.0) * 0.5,
+            r,
+            mark,
+        );
     }
     if best_ms > 0 && row.best_lap_ms == best_ms && !out {
         let tag = "FASTEST LAP";

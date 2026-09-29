@@ -34,10 +34,7 @@ fn tick_sync(eng: &mut DeltaEngine, s: &Snapshot) -> DeltaView {
     if !was_armed && eng.armed && s.current_lap_ms >= 8_000 {
         return eng.last_view;
     }
-    let want = s
-        .current_lap_ms
-        .saturating_sub(eng.anchor.accum_ms)
-        .max(0) as u64;
+    let want = s.current_lap_ms.saturating_sub(eng.anchor.accum_ms).max(0) as u64;
     let wall = eng.anchor.wall.unwrap_or(bootstrap);
     let now = wall + Duration::from_millis(want.max(1));
     eng.tick_at(s, now)
@@ -80,10 +77,7 @@ fn run_lap(eng: &mut DeltaEngine, track: &str, lap_ms: i32, lap_num: i32, crashe
     }
     let finish = arm + Duration::from_millis(lap_ms as u64);
     eng.tick_at(&snap(track, 0.999, lap_ms, 0, lap_num), finish);
-    eng.tick_at(
-        &snap(track, 0.01, 180, 0, lap_num + 1),
-        finish + step,
-    );
+    eng.tick_at(&snap(track, 0.01, 180, 0, lap_num + 1), finish + step);
 }
 
 #[test]
@@ -122,7 +116,10 @@ fn recording_starts_after_sf_cross() {
 fn last_lap_at_sf_starts_recording() {
     let mut eng = DeltaEngine::new();
     for i in 0..12 {
-        tick_sync(&mut eng, &snap("A", 0.40 + i as f32 * 0.01, 8_000 + i * 200, 0, 1));
+        tick_sync(
+            &mut eng,
+            &snap("A", 0.40 + i as f32 * 0.01, 8_000 + i * 200, 0, 1),
+        );
     }
     assert!(!eng.armed);
     assert_eq!(eng.current.filled, 0);
@@ -140,7 +137,10 @@ fn outlap_clock_drop_at_sf_starts_first_flying_lap() {
     let mut eng = DeltaEngine::new();
     let sf = 0.28;
     for i in 0..12 {
-        tick_sync(&mut eng, &snap("A", 0.10 + i as f32 * 0.01, 8_000 + i * 200, 0, 1));
+        tick_sync(
+            &mut eng,
+            &snap("A", 0.10 + i as f32 * 0.01, 8_000 + i * 200, 0, 1),
+        );
     }
     assert!(!eng.armed);
     tick_sync(&mut eng, &snap("A", sf, 120, 0, 1));
@@ -252,7 +252,10 @@ fn reset_to_pits_waits_for_sf() {
     assert!(!eng.armed, "reset is an out-lap");
     assert_eq!(eng.current.filled, 0);
     for i in 0..15 {
-        tick_sync(&mut eng, &snap("A", 0.45 + i as f32 * 0.02, 1_000 + i * 200, 0, 2));
+        tick_sync(
+            &mut eng,
+            &snap("A", 0.45 + i as f32 * 0.02, 1_000 + i * 200, 0, 2),
+        );
     }
     assert_eq!(eng.current.filled, 0);
     tick_sync(&mut eng, &snap("A", 0.02, 16_000, 0, 2));
@@ -539,11 +542,7 @@ fn next_lap_keeps_recording_after_wrap() {
         let t = i as f32 / 200.0;
         tick_sync(&mut eng, &snap("A", t, 200 + i * 400, 0, 2));
     }
-    assert!(
-        eng.current.filled >= 40,
-        "filled {}",
-        eng.current.filled
-    );
+    assert!(eng.current.filled >= 40, "filled {}", eng.current.filled);
     let v = tick_sync(&mut eng, &snap("A", 0.20, 18_000, 0, 2));
     assert!(v.ready);
 }
@@ -884,7 +883,10 @@ fn leftover_replay_telemetry_does_not_record() {
 fn pits_spawn_near_sf_is_not_recording() {
     let mut eng = DeltaEngine::new();
     for i in 0..30 {
-        let v = tick_sync(&mut eng, &snap("A", 0.05 + i as f32 * 0.002, 200 + i * 400, 0, 1));
+        let v = tick_sync(
+            &mut eng,
+            &snap("A", 0.05 + i as f32 * 0.002, 200 + i * 400, 0, 1),
+        );
         assert!(!v.recording, "spawn in pits at pos 0.05 must stay SET LAP");
         assert_eq!(eng.current.filled, 0);
     }
@@ -903,7 +905,10 @@ fn reset_to_pits_near_sf_waits_for_wrap() {
     assert!(!eng.armed, "reset into pits near S/F is an out-lap");
     assert_eq!(eng.current.filled, 0);
     for i in 0..20 {
-        tick_sync(&mut eng, &snap("A", 0.10 + i as f32 * 0.004, 300 + i * 200, 0, 2));
+        tick_sync(
+            &mut eng,
+            &snap("A", 0.10 + i as f32 * 0.004, 300 + i * 200, 0, 2),
+        );
         assert!(!eng.armed);
         assert_eq!(eng.current.filled, 0);
     }
@@ -1182,7 +1187,10 @@ fn rec_lap_clock_drop_at_sf_not_origin_commits() {
     let mut eng = DeltaEngine::new();
     let sf = 0.28;
     for i in 0..12 {
-        tick_sync(&mut eng, &snap("A", 0.10 + i as f32 * 0.01, 8_000 + i * 200, 0, 1));
+        tick_sync(
+            &mut eng,
+            &snap("A", 0.10 + i as f32 * 0.01, 8_000 + i * 200, 0, 1),
+        );
     }
     tick_sync(&mut eng, &snap("A", sf, 120, 14_800, 2));
     let mut ms = 400;
@@ -1296,7 +1304,10 @@ fn clock_collapse_then_flying_lap_commits() {
     assert_eq!(eng.current.filled, 0);
     for i in 1..40 {
         let t = i as f32 / 50.0;
-        tick_sync(&mut eng, &snap("Ezkutu", t.min(0.95), 59_028 + i * 3_500, 0, 0));
+        tick_sync(
+            &mut eng,
+            &snap("Ezkutu", t.min(0.95), 59_028 + i * 3_500, 0, 0),
+        );
     }
     // dt > 200s: current_lap_ms jumps to ~200.
     tick_sync(&mut eng, &snap("Ezkutu", 0.957, 200, 0, 0));

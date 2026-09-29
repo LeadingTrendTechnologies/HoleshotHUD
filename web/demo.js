@@ -20,6 +20,7 @@ const BOARD = [
   ["setup", "Setup"],
   ["gapahead", "Gap ahead"],
   ["gapbehind", "Gap behind"],
+  ["lapdiff", "Last lap diff"],
 ];
 
 const DASH = [
@@ -32,6 +33,7 @@ const DASH = [
   ["laps", "Lap count"],
   ["left", "Laps left"],
   ["last", "Last lap"],
+  ["lapdiff", "Last lap diff"],
   ["best", "Best lap"],
   ["cur", "Current lap"],
   ["delta", "Delta"],
@@ -60,6 +62,7 @@ const ST_COLS = [
   ["st_current", "Current lap"],
   ["st_best", "Fastest"],
   ["st_last", "Last lap"],
+  ["st_lapdiff", "Last lap diff"],
   ["st_status", "Status"],
   ["st_bike", "Bike"],
   ["st_penalty", "Penalty"],
@@ -76,12 +79,13 @@ const REL_COLS = [
   ["rel_bike", "Bike"],
   ["rel_penalty", "Penalty"],
   ["rel_interval", "Interval"],
-  ["rel_crashed", "Crashed"],
   ["rel_best", "Fastest"],
   ["rel_last", "Last lap"],
+  ["rel_lapdiff", "Last lap diff"],
 ];
 
 const MAP_TOGGLES = [
+  ["map_follow", "Follow me"],
   ["map_others", "Other riders"],
   ["map_sf", "Start / finish"],
   ["map_sectors", "Sector lines"],
@@ -117,6 +121,7 @@ const NAMES = {
   lean: "Lean",
   telemetry: "Telemetry",
   gamepad: "Controller",
+  pitboard: "Pit Board",
 };
 
 const pit = document.querySelector(".pit");
@@ -130,7 +135,7 @@ stageStatus.hidden = false;
 
 let preview;
 try {
-  await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=0.11.7", import.meta.url) });
+  await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=0.20.0", import.meta.url) });
   preview = new Preview();
   stageStatus.hidden = true;
 } catch (err) {
@@ -190,11 +195,13 @@ function styleControls(prefix, opacityLabel = "Background") {
       ["black", "Black"],
     ]);
     html += toggleRow(`${prefix}_stripe`, "Alternating rows");
-    html += fieldRow(`${prefix}_plaque_text`, "Plaque text", [
-      ["white", "White"],
-      ["black", "Black"],
-    ]);
     html += toggleRow(`${prefix}_plaque`, "Show plaques");
+    if (preview.get_bool(`${prefix}_plaque`)) {
+      html += fieldRow(`${prefix}_plaque_text`, "Plaque text", [
+        ["white", "White"],
+        ["black", "Black"],
+      ]);
+    }
   }
   html += toggleRow(`${prefix}_bold`, "Bold text");
   return html;
@@ -240,20 +247,30 @@ function renderSettings() {
     html += styleControls("map");
     html += `<div class="section">On the map</div>`;
     html += MAP_TOGGLES.map(([k, l]) => toggleRow(k, l)).join("");
-    html += fieldRow("map_dot", "Dot number", [["num", "Number"], ["pos", "Position"]]);
+    if (preview.get_bool("map_numbers")) {
+      html += fieldRow("map_dot", "Dot number", [["num", "Number"], ["pos", "Position"]]);
+    }
   } else if (w === "minimap") {
     html += styleControls("mini");
     html += `<div class="section">On the minimap</div>`;
     html += MINI_TOGGLES.map(([k, l]) => toggleRow(k, l)).join("");
-    html += fieldRow("mini_dot", "Dot number", [["num", "Number"], ["pos", "Position"]]);
+    if (preview.get_bool("mini_numbers")) {
+      html += fieldRow("mini_dot", "Dot number", [["num", "Number"], ["pos", "Position"]]);
+    }
     html += sliderRow("mini_zoom", "Zoom", 0, 100, "%");
   } else if (w === "radar") {
     html += styleControls("radar", "Panel opacity");
     html += `<div class="section">On the radar</div>`;
+    html += fieldRow("radar_style", "Look", [
+      ["plaque", "Plaque"],
+      ["arrows", "Arrows"],
+    ]);
     html += sliderRow("radar_range", "Range", 6, 30, "m");
     html += toggleRow("radar_sides", "Riders beside you");
     html += toggleRow("radar_rear", "Riders behind you");
-    html += toggleRow("radar_rings", "Range rings");
+    if (preview.get_field("radar_style") !== "arrows") {
+      html += toggleRow("radar_rings", "Range rings");
+    }
   } else if (w === "dash") {
     html += styleControls("dash", "Panel opacity");
     html += toggleRow("dash_simple", "Simple dash");
@@ -270,8 +287,10 @@ function renderSettings() {
     }
   } else if (w === "ticker") {
     html += styleControls("ticker", "Panel opacity");
+    html += sliderRow("ticker_hl", "Row highlight", 0, 100, "%");
     html += toggleRow("ticker_title", "Track name");
     html += toggleRow("ticker_autoscroll", "Autoscroll");
+    html += toggleRow("ticker_slide", "Slide on pass");
     html += `<div class="section">Side info</div>`;
     html += fieldRow("ticker_left", "Left", BOARD);
     html += fieldRow("ticker_right", "Right", BOARD);
@@ -282,7 +301,9 @@ function renderSettings() {
     html += toggleRow("sector_live", "Live sector");
     html += toggleRow("sector_session", "Compare to session best");
     html += toggleRow("sector_hist", "Lap log");
-    html += stepperRow("sector_hist_laps", "Laps back", 1, 5);
+    if (preview.get_bool("sector_hist")) {
+      html += stepperRow("sector_hist_laps", "Laps back", 1, 5);
+    }
     html += styleControls("sector", "Panel opacity");
   } else if (w === "delta") {
     html += toggleRow("delta_session", "Compare to session best");
@@ -312,6 +333,12 @@ function renderSettings() {
       html += toggleRow("telemetry_bar_steer", "Steer", true);
     }
     html += styleControls("telemetry", "Panel opacity");
+  } else if (w === "pitboard") {
+    html += fieldRow("pit_text", "Text color", [
+      ["white", "White"],
+      ["black", "Black"],
+    ]);
+    html += styleControls("pit", "Panel opacity");
   } else if (w === "stance") {
     html += fieldRow("stance_mode", "Sit", [
       ["toggle", "Toggle"],
@@ -334,6 +361,10 @@ function renderSettings() {
       ["auto", "Auto"],
       ["playstation", "PlayStation"],
       ["xbox", "Xbox"],
+    ]);
+    html += fieldRow("gamepad_theme", "Theme", [
+      ["light", "Light"],
+      ["dark", "Dark"],
     ]);
     html += styleControls("gamepad", "Panel opacity");
   }
@@ -380,7 +411,17 @@ settings.addEventListener("change", (e) => {
       label.textContent = `${t.value}${t.dataset.suffix || ""}`;
     }
   }
-  if (t.dataset.bool === "dash_simple" || t.dataset.bool === "telemetry_traces" || t.dataset.bool === "telemetry_bars") {
+  if (
+    t.dataset.bool === "dash_simple" ||
+    t.dataset.bool === "telemetry_traces" ||
+    t.dataset.bool === "telemetry_bars" ||
+    t.dataset.bool === "st_plaque" ||
+    t.dataset.bool === "rel_plaque" ||
+    t.dataset.bool === "map_numbers" ||
+    t.dataset.bool === "mini_numbers" ||
+    t.dataset.bool === "sector_hist" ||
+    t.dataset.field === "radar_style"
+  ) {
     renderSettings();
   }
 });

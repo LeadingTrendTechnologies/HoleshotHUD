@@ -485,11 +485,13 @@ namespace
         mei.ThreadId = GetCurrentThreadId();
         mei.ExceptionPointers = info;
         mei.ClientPointers = FALSE;
+        // Code segments so a game-EXE AV can be disassembled from the .dmp
+        // (MiniDumpNormal omits .text; Steam DRM still encrypts on-disk EXE).
         g_dbg.miniDump(
             GetCurrentProcess(),
             GetCurrentProcessId(),
             file,
-            MiniDumpNormal,
+            MiniDumpWithCodeSegs,
             info ? &mei : nullptr,
             nullptr,
             nullptr);

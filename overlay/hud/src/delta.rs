@@ -318,7 +318,7 @@ pub(crate) struct DeltaEngine {
     pub(crate) anchor: LapAnchor,
     last_s1: i32,
     last_s2: i32,
-    pub(crate)     last_wall_ms: i32,
+    pub(crate) last_wall_ms: i32,
     freeze_at: Option<Instant>,
     frozen_gap: i32,
     new_best_at: Option<Instant>,
@@ -587,9 +587,11 @@ impl DeltaEngine {
                 let _ = best;
                 if DEFAULT_FREEZE_MS > 0 {
                     // Official gap at S1 vs tape at current pos when available.
-                    let gap = if let Some(t) = self.reference.as_ref().and_then(|r| {
-                        r.time_at(lap_pos(s).max(0.0))
-                    }) {
+                    let gap = if let Some(t) = self
+                        .reference
+                        .as_ref()
+                        .and_then(|r| r.time_at(lap_pos(s).max(0.0)))
+                    {
                         s1 - t
                     } else {
                         0
@@ -605,9 +607,11 @@ impl DeltaEngine {
         if s2 > 0 && s2 != self.last_s2 {
             if self.last_s2 <= 0 && to_s2 > 0 {
                 if DEFAULT_FREEZE_MS > 0 {
-                    let gap = if let Some(t) = self.reference.as_ref().and_then(|r| {
-                        r.time_at(lap_pos(s).max(0.0))
-                    }) {
+                    let gap = if let Some(t) = self
+                        .reference
+                        .as_ref()
+                        .and_then(|r| r.time_at(lap_pos(s).max(0.0)))
+                    {
                         to_s2 - t
                     } else {
                         0
@@ -748,7 +752,8 @@ fn lap_ended(st: &DeltaEngine, s: &Snapshot, pos: f32) -> bool {
         return true;
     }
     let new_last = s.last_lap_ms > 0 && s.last_lap_ms != st.last_last_lap_ms;
-    if new_last && (st.last_wall_ms > 8_000 || st.last_cur_ms > 8_000 || s.last_lap_ms >= MIN_LAP_MS)
+    if new_last
+        && (st.last_wall_ms > 8_000 || st.last_cur_ms > 8_000 || s.last_lap_ms >= MIN_LAP_MS)
     {
         return true;
     }
@@ -817,9 +822,9 @@ fn live_view(
         st.new_best_at
     };
 
-    let frozen = st.freeze_at.is_some_and(|t| {
-        t.elapsed().as_millis() < DEFAULT_FREEZE_MS as u128
-    });
+    let frozen = st
+        .freeze_at
+        .is_some_and(|t| t.elapsed().as_millis() < DEFAULT_FREEZE_MS as u128);
     let raw = if frozen && ready {
         Some(st.frozen_gap)
     } else if ready && st.anchor.valid && wall_ms > 200 && pos >= 0.0 && st.armed {
@@ -863,7 +868,8 @@ fn live_view(
         ref_lap_ms,
         last_lap_ms: st.shown_last_ms,
         cover: st.current.cover(),
-        new_best: new_best_at.is_some_and(|t| now.saturating_duration_since(t).as_secs_f32() < NEW_BEST_HOLD_S),
+        new_best: new_best_at
+            .is_some_and(|t| now.saturating_duration_since(t).as_secs_f32() < NEW_BEST_HOLD_S),
     }
 }
 

@@ -1,3 +1,1 @@
-Harder
-- look into more options for headers/footers
-- look into more options for columns in tables
+- add the ability to export and import overlay settings for widgets

@@ -158,24 +158,8 @@ pub(crate) fn draw_reply(
             } else {
                 0.0
             };
-        fill_round(
-            px,
-            track_x,
-            body_top,
-            3.0,
-            view_h,
-            1.5,
-            menu_edge(),
-        );
-        fill_round(
-            px,
-            track_x,
-            thumb_y,
-            3.0,
-            thumb_h,
-            1.5,
-            menu_edge_strong(),
-        );
+        fill_round(px, track_x, body_top, 3.0, view_h, 1.5, menu_edge());
+        fill_round(px, track_x, thumb_y, 3.0, thumb_h, 1.5, menu_edge_strong());
     }
 
     let box_x = panel_x + pad;

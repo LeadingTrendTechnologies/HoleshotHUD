@@ -9,9 +9,7 @@ pub(crate) fn write_text(path: &Path, body: &str) -> Result<(), String> {
 
 /// Stock dest textids (`Testing` / `Single_race`) keep main.fnt; remap their english.str values.
 pub(crate) fn write_english_labels(ui: &Path, bak: Option<&Path>) -> Result<(), String> {
-    let from_bak = bak
-        .map(|b| b.join("english.str"))
-        .filter(|p| p.is_file());
+    let from_bak = bak.map(|b| b.join("english.str")).filter(|p| p.is_file());
     let from_ui = Some(ui.join("english.str")).filter(|p| p.is_file());
     let raw = if let Some(src) = from_bak.as_ref().or(from_ui.as_ref()) {
         fs::read_to_string(src).map_err(|e| e.to_string())?

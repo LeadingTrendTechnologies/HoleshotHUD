@@ -5,7 +5,8 @@ use crate::config::ink_on_rgb;
 use super::io::{stock_mnu, stock_multijoin, stock_options, write_text};
 use super::shell::*;
 
-pub(crate) const BROWSER_DIALOGS: &[&str] = &["idd_multi_lan", "idd_multi_world", "idd_server_browser"];
+pub(crate) const BROWSER_DIALOGS: &[&str] =
+    &["idd_multi_lan", "idd_multi_world", "idd_server_browser"];
 
 pub(crate) const OPTIONS_CHROME: &str = "idd_options";
 
@@ -240,29 +241,36 @@ pub(crate) fn dest_sprites() -> &'static str {
     "sprite1 button1.tga\n\t\t\tsprite2 button2.tga\n\t\t\tsprite3 button3.tga"
 }
 
-pub(crate) fn splice_multijoin(ui: &Path, bak: Option<&Path>, accent: [u8; 3]) -> Result<bool, String> {
+pub(crate) fn splice_multijoin(
+    ui: &Path,
+    bak: Option<&Path>,
+    accent: [u8; 3],
+) -> Result<bool, String> {
     let Some(stock) = stock_multijoin(ui, bak) else {
         return Ok(false);
     };
-    let rest: Vec<String> = split_mnu_dialogs(&stock)
+    let rest: Vec<(String, String)> = split_mnu_dialogs(&stock)
         .into_iter()
-        .filter(|(n, _)| !BROWSER_DIALOGS.contains(&n.as_str()))
-        .map(|(_, b)| b)
+        .filter(|(n, _)| !BROWSER_DIALOGS.iter().any(|b| n.eq_ignore_ascii_case(b)))
         .collect();
     let mut out = String::new();
     out.push_str(&browser_list("idd_multi_lan", "host_local", false, accent));
     out.push_str(&browser_list("idd_multi_world", "host_world", true, accent));
     out.push_str(&browser_chrome(accent));
-    for d in rest {
+    for (name, body) in rest {
         out.push('\n');
-        out.push_str(&d);
+        out.push_str(&restyle_multijoin_extra(&name, &body, accent));
         out.push('\n');
     }
     write_text(&ui.join("multijoin.mnu"), &out)?;
     Ok(true)
 }
 
-pub(crate) fn splice_options(ui: &Path, bak: Option<&Path>, accent: [u8; 3]) -> Result<bool, String> {
+pub(crate) fn splice_options(
+    ui: &Path,
+    bak: Option<&Path>,
+    accent: [u8; 3],
+) -> Result<bool, String> {
     let Some(stock) = stock_options(ui, bak) else {
         return Ok(false);
     };
@@ -274,9 +282,7 @@ pub(crate) fn splice_options(ui: &Path, bak: Option<&Path>, accent: [u8; 3]) -> 
             continue;
         }
         out.push('\n');
-        let pane = OPTIONS_PANES
-            .iter()
-            .any(|p| name.eq_ignore_ascii_case(p));
+        let pane = OPTIONS_PANES.iter().any(|p| name.eq_ignore_ascii_case(p));
         out.push_str(&recolor_options_dialog(&body, accent, pane));
         out.push('\n');
     }
@@ -287,7 +293,11 @@ pub(crate) fn splice_options(ui: &Path, bak: Option<&Path>, accent: [u8; 3]) -> 
 /// Loading / connection wait: center Cancel on the night-ink button sprite.
 
 /// Loading / connection wait: center Cancel on the night-ink button sprite.
-pub(crate) fn splice_connection(ui: &Path, bak: Option<&Path>, accent: [u8; 3]) -> Result<bool, String> {
+pub(crate) fn splice_connection(
+    ui: &Path,
+    bak: Option<&Path>,
+    accent: [u8; 3],
+) -> Result<bool, String> {
     let Some(stock) = stock_mnu(ui, bak, "connection.mnu") else {
         return Ok(false);
     };
@@ -296,6 +306,10 @@ pub(crate) fn splice_connection(ui: &Path, bak: Option<&Path>, accent: [u8; 3]) 
         out.push('\n');
         if name.eq_ignore_ascii_case("connection_dialog") {
             out.push_str(&restyle_connection_dialog(&body, accent));
+        } else if name.eq_ignore_ascii_case("idd_password") {
+            out.push_str(&restyle_password_dialog(&body, accent));
+        } else if name.eq_ignore_ascii_case("idd_datamismatch") {
+            out.push_str(&restyle_datamismatch_dialog(&body, accent));
         } else {
             out.push_str(&body);
         }
@@ -321,9 +335,159 @@ pub(crate) fn restyle_connection_dialog(body: &str, accent: [u8; 3]) -> String {
     s
 }
 
+fn restyle_multijoin_extra(name: &str, body: &str, accent: [u8; 3]) -> String {
+    if name.eq_ignore_ascii_case("idd_worldconnection") {
+        restyle_message_modal(body, accent, "id_cancel")
+    } else if name.eq_ignore_ascii_case("idd_trackerror")
+        || name.eq_ignore_ascii_case("idd_bikeserror")
+    {
+        restyle_message_modal(body, accent, "ID_CLOSE")
+    } else if name.eq_ignore_ascii_case("idd_serverinfo")
+        || name.eq_ignore_ascii_case("idd_serverinfo2")
+        || name.eq_ignore_ascii_case("idd_serverinfo3")
+        || name.eq_ignore_ascii_case("idd_serverinfo4")
+    {
+        restyle_serverinfo_dialog(body, accent)
+    } else {
+        body.to_string()
+    }
+}
+
+/// 600×200 one-button message (Connection Timeout, missing track/bikes).
+fn restyle_message_modal(body: &str, accent: [u8; 3], button_name: &str) -> String {
+    let idle = argb(255, TEXT);
+    let hot = argb(255, accent);
+    let tip_y = (0.600000 - 0.566667 - 0.022222) * 0.5;
+    let mut s = recolor_menu_ink(body, accent);
+    s = s.replace("sprite dialog600x200.tga", "sprite profiledeleteboard.tga");
+    s = s.replace("color 127 0 0 0", "color 160 0 0 0");
+    s = center_bike_chrome_button(&s, button_name, tip_y);
+    s = paint_bike_chrome_button(&s, button_name, &idle, &hot, &hot);
+    s
+}
+
+/// Server info popup — light labels on the night 600×600 board, centered plaques.
+fn restyle_serverinfo_dialog(body: &str, accent: [u8; 3]) -> String {
+    let idle = argb(255, TEXT);
+    let hot = argb(255, accent);
+    let tip_y = (0.822222 - 0.788889 - 0.022222) * 0.5;
+    let mut s = recolor_menu_ink(body, accent);
+    s = s.replace("color 127 0 0 0", "color 160 0 0 0");
+    s = s.replace(
+        "rect 0.318750 0.788889 0.681250 0.822222\n\t\tcolor 160 0 0 0",
+        "rect 0.318750 0.788889 0.681250 0.822222\n\t\tcolor 0 0 0 0",
+    );
+    s = s.replace(
+        "sprite2 b_button2.tga\n\t\t\tsprite3 b_button3.tga",
+        "sprite1 button1.tga\n\t\t\tsprite2 button2.tga\n\t\t\tsprite3 button3.tga",
+    );
+    for name in ["ID_CLOSE", "ID_JOIN", "ID_SPECTATE"] {
+        s = center_bike_chrome_button(&s, name, tip_y);
+        s = paint_bike_chrome_button(&s, name, &idle, &hot, &hot);
+    }
+    s
+}
+
+/// Password prompt — same glass 600×300 as profile modify.
+fn restyle_password_dialog(body: &str, accent: [u8; 3]) -> String {
+    let tip_y = (0.655556 - 0.622222 - 0.022222) * 0.5;
+    let mut s = recolor_menu_ink(body, accent);
+    s = s.replace("sprite dialog600x300.tga", "sprite profilemodifyboard.tga");
+    s = s.replace("color 127 0 0 0", "color 160 0 0 0");
+    s = s.replace(
+        "rect 0.318750 0.622222 0.681250 0.655556\n\t\tcolor 160 0 0 0",
+        "rect 0.318750 0.622222 0.681250 0.655556\n\t\tcolor 0 0 0 0",
+    );
+    s = clear_row_field_fills(&s);
+    s = inject_editbox_fieldboxes(&s);
+    s = s.replace(
+        "sprite2 b_button2.tga\n\t\t\tsprite3 b_button3.tga",
+        "sprite1 button1.tga\n\t\t\tsprite2 button2.tga\n\t\t\tsprite3 button3.tga",
+    );
+    let idle = argb(255, TEXT);
+    let hot = argb(255, accent);
+    for name in ["ID_OK", "ID_CANCEL"] {
+        s = center_bike_chrome_button(&s, name, tip_y);
+        s = paint_bike_chrome_button(&s, name, &idle, &hot, &hot);
+    }
+    s
+}
+
+/// Data mismatch — light title, glass list, centered Close on the night 800×500 board.
+fn restyle_datamismatch_dialog(body: &str, accent: [u8; 3]) -> String {
+    let idle = argb(255, TEXT);
+    let hot = argb(255, accent);
+    let tip_y = (0.766667 - 0.733333 - 0.022222) * 0.5;
+    let mut s = recolor_menu_ink(body, accent);
+    s = glass_race_list_colors(&s, accent);
+    s = center_bike_chrome_button(&s, "ID_CLOSE", tip_y);
+    s = paint_bike_chrome_button(&s, "ID_CLOSE", &idle, &hot, &hot);
+    s
+}
+
+pub(crate) fn splice_export(
+    ui: &Path,
+    bak: Option<&Path>,
+    accent: [u8; 3],
+) -> Result<bool, String> {
+    let Some(stock) = stock_mnu(ui, bak, "export.mnu") else {
+        return Ok(false);
+    };
+    let mut out = String::new();
+    for (name, body) in split_mnu_dialogs(&stock) {
+        out.push('\n');
+        if name.eq_ignore_ascii_case("idd_export_overwrite")
+            || name.eq_ignore_ascii_case("idd_setup_export_overwrite")
+        {
+            out.push_str(&restyle_yes_no_glass_confirm(
+                &body, accent, "ID_YES", "ID_NO",
+            ));
+        } else if name.eq_ignore_ascii_case("idd_export_save")
+            || name.eq_ignore_ascii_case("idd_setup_export")
+        {
+            out.push_str(&restyle_export_save(&body, accent));
+        } else {
+            out.push_str(&body);
+        }
+        out.push('\n');
+    }
+    write_text(&ui.join("export.mnu"), &out)?;
+    Ok(true)
+}
+
+/// Export / setup-export save — glass 600×600, light title, centered Ok/Cancel.
+fn restyle_export_save(body: &str, accent: [u8; 3]) -> String {
+    let idle = argb(255, TEXT);
+    let hot = argb(255, accent);
+    let tip_y = (0.822222 - 0.788889 - 0.022222) * 0.5;
+    let mut s = recolor_menu_ink(body, accent);
+    s = s.replace("sprite dialog600x600.tga", "sprite replayboard.tga");
+    s = s.replace("color 127 0 0 0", "color 160 0 0 0");
+    s = s.replace(
+        "rect 0.318750 0.788889 0.681250 0.822222\n\t\tcolor 160 0 0 0",
+        "rect 0.318750 0.788889 0.681250 0.822222\n\t\tcolor 0 0 0 0",
+    );
+    s = s.replace("color2 255 45 45 180", &format!("color2 {hot}"));
+    s = clear_row_field_fills(&s);
+    s = inject_editbox_fieldboxes(&s);
+    s = s.replace(
+        "sprite2 b_button2.tga\n\t\t\tsprite3 b_button3.tga",
+        "sprite1 button1.tga\n\t\t\tsprite2 button2.tga\n\t\t\tsprite3 button3.tga",
+    );
+    for name in ["id_ok", "id_cancel"] {
+        s = center_bike_chrome_button(&s, name, tip_y);
+        s = paint_bike_chrome_button(&s, name, &idle, &hot, &hot);
+    }
+    s
+}
+
 /// Horizontally center a button label (`align right` + inset pos → `align center`).
 
-pub(crate) fn splice_testsetup(ui: &Path, bak: Option<&Path>, accent: [u8; 3]) -> Result<bool, String> {
+pub(crate) fn splice_testsetup(
+    ui: &Path,
+    bak: Option<&Path>,
+    accent: [u8; 3],
+) -> Result<bool, String> {
     let Some(stock) = stock_mnu(ui, bak, "testsetup.mnu") else {
         return Ok(false);
     };
@@ -337,8 +501,7 @@ pub(crate) fn splice_testsetup(ui: &Path, bak: Option<&Path>, accent: [u8; 3]) -
         out.push('\n');
         if name.eq_ignore_ascii_case(TRACK_INFO_DIALOG) {
             out.push_str(&track_info_dialog(accent));
-        } else if name.eq_ignore_ascii_case(BIKE_CHOOSE)
-            || name.eq_ignore_ascii_case(BIKE_CHOOSE2)
+        } else if name.eq_ignore_ascii_case(BIKE_CHOOSE) || name.eq_ignore_ascii_case(BIKE_CHOOSE2)
         {
             out.push_str(&restyle_bikechoose_dialog(&body, accent));
         } else if name.eq_ignore_ascii_case(BIKE_INFO) {
@@ -352,7 +515,11 @@ pub(crate) fn splice_testsetup(ui: &Path, bak: Option<&Path>, accent: [u8; 3]) -
     Ok(true)
 }
 
-pub(crate) fn splice_profiles(ui: &Path, bak: Option<&Path>, accent: [u8; 3]) -> Result<bool, String> {
+pub(crate) fn splice_profiles(
+    ui: &Path,
+    bak: Option<&Path>,
+    accent: [u8; 3],
+) -> Result<bool, String> {
     let Some(stock) = stock_mnu(ui, bak, "profiles.mnu") else {
         return Ok(false);
     };
@@ -392,7 +559,12 @@ pub(crate) fn restyle_profiles_dialog(body: &str, accent: [u8; 3]) -> String {
     s = inject_editbox_fieldboxes(&s);
     s = clear_footer_bar(&s);
     s = force_idle_plaques(&s);
-    s = lift_chrome_rect(&s, "rect 0.875000 0.966667 1.000000 1.000000", 0.800000, 0.970000);
+    s = lift_chrome_rect(
+        &s,
+        "rect 0.875000 0.966667 1.000000 1.000000",
+        0.800000,
+        0.970000,
+    );
     // New/Modify/Delete stay TEXT/accent; Done is CTA.
     let tip_y = (SETUP_CHROME_Y1 - SETUP_CHROME_Y0 - 0.022222) * 0.5;
     let idle = argb(255, TEXT);
@@ -494,9 +666,19 @@ pub(crate) fn restyle_bestlaps_dialog(body: &str, accent: [u8; 3]) -> String {
     s = clear_title_wash(&s);
     s = clear_footer_bar(&s);
     s = force_idle_plaques(&s);
-    s = lift_chrome_rect(&s, "rect 0.000000 0.966667 0.100000 1.000000", 0.030000, 0.140000);
+    s = lift_chrome_rect(
+        &s,
+        "rect 0.000000 0.966667 0.100000 1.000000",
+        0.030000,
+        0.140000,
+    );
     // Export beside Back (same slot as Bike Selection Info).
-    s = lift_chrome_rect(&s, "rect 0.012500 0.900000 0.137500 0.933333", 0.160000, 0.300000);
+    s = lift_chrome_rect(
+        &s,
+        "rect 0.012500 0.900000 0.137500 0.933333",
+        0.160000,
+        0.300000,
+    );
     paint_chrome_row(&s, accent, &["id_back", "id_export"], &[])
 }
 
@@ -510,15 +692,25 @@ pub(crate) fn restyle_bestlaps_list(body: &str, accent: [u8; 3]) -> String {
     s = s.replace("backcolor 255 220 220 220", "backcolor 160 0 0 0");
     // Sort bar: same frosted black as the list body (no darker ROW band).
     s = s.replace("sortbackcolor 255 180 180 180", "sortbackcolor 160 0 0 0");
-    s = s.replace(&format!("sortbackcolor {}", argb(160, ROW)), "sortbackcolor 160 0 0 0");
-    s = s.replace("sortbartextcolor 255 0 0 0", &format!("sortbartextcolor {text}"));
+    s = s.replace(
+        &format!("sortbackcolor {}", argb(160, ROW)),
+        "sortbackcolor 160 0 0 0",
+    );
+    s = s.replace(
+        "sortbartextcolor 255 0 0 0",
+        &format!("sortbartextcolor {text}"),
+    );
     // Force remaining stock list blues → accent.
     s = s.replace("color2 255 0 0 255", &format!("color2 {hot}"));
     s = s.replace("color3 255 0 255 255", &format!("color3 {hot}"));
     s
 }
 
-pub(crate) fn splice_viewreplays(ui: &Path, bak: Option<&Path>, accent: [u8; 3]) -> Result<bool, String> {
+pub(crate) fn splice_viewreplays(
+    ui: &Path,
+    bak: Option<&Path>,
+    accent: [u8; 3],
+) -> Result<bool, String> {
     let Some(stock) = stock_mnu(ui, bak, "viewreplays.mnu") else {
         return Ok(false);
     };
@@ -551,7 +743,10 @@ pub(crate) fn restyle_viewreplays_dialog(body: &str, accent: [u8; 3]) -> String 
     s = s.replace("backcolor 255 220 220 220", "backcolor 160 0 0 0");
     s = s.replace("sortbackcolor 255 200 200 200", "sortbackcolor 160 0 0 0");
     s = s.replace("sortbackcolor 255 180 180 180", "sortbackcolor 160 0 0 0");
-    s = s.replace("sortbartextcolor 255 0 0 0", &format!("sortbartextcolor {idle}"));
+    s = s.replace(
+        "sortbartextcolor 255 0 0 0",
+        &format!("sortbartextcolor {idle}"),
+    );
     s = s.replace(
         "sortbartextcolor2 255 80 80 80",
         &format!("sortbartextcolor2 {idle}"),
@@ -563,10 +758,25 @@ pub(crate) fn restyle_viewreplays_dialog(body: &str, accent: [u8; 3]) -> String 
     s = s.replace("color2 255 40 60 240", &format!("color2 {hot}"));
     s = clear_footer_bar(&s);
     s = force_idle_plaques(&s);
-    s = lift_chrome_rect(&s, "rect 0.000000 0.966667 0.100000 1.000000", 0.030000, 0.140000);
-    s = lift_chrome_rect(&s, "rect 0.875000 0.966667 1.000000 1.000000", 0.800000, 0.970000);
+    s = lift_chrome_rect(
+        &s,
+        "rect 0.000000 0.966667 0.100000 1.000000",
+        0.030000,
+        0.140000,
+    );
+    s = lift_chrome_rect(
+        &s,
+        "rect 0.875000 0.966667 1.000000 1.000000",
+        0.800000,
+        0.970000,
+    );
     // Delete beside Back (same slot as Best Laps Export).
-    s = lift_chrome_rect(&s, "rect 0.012500 0.900000 0.137500 0.933333", 0.160000, 0.300000);
+    s = lift_chrome_rect(
+        &s,
+        "rect 0.012500 0.900000 0.137500 0.933333",
+        0.160000,
+        0.300000,
+    );
     paint_chrome_row(&s, accent, &["id_back", "id_delete"], &["id_view"])
 }
 
@@ -575,7 +785,11 @@ pub(crate) fn restyle_viewreplays_delete_dialog(body: &str, accent: [u8; 3]) -> 
     restyle_profiledelete_dialog(body, accent)
 }
 
-pub(crate) fn splice_hostsetup(ui: &Path, bak: Option<&Path>, accent: [u8; 3]) -> Result<bool, String> {
+pub(crate) fn splice_hostsetup(
+    ui: &Path,
+    bak: Option<&Path>,
+    accent: [u8; 3],
+) -> Result<bool, String> {
     let Some(stock) = stock_mnu(ui, bak, "hostsetup.mnu") else {
         return Ok(false);
     };
@@ -610,8 +824,18 @@ pub(crate) fn restyle_host_setup(body: &str, accent: [u8; 3]) -> String {
     s = inject_pull_fieldboxes(&s);
     s = clear_footer_bar(&s);
     s = force_idle_plaques(&s);
-    s = lift_chrome_rect(&s, "rect 0.000000 0.966667 0.100000 1.000000", 0.030000, 0.140000);
-    s = lift_chrome_rect(&s, "rect 0.875000 0.966667 1.000000 1.000000", 0.800000, 0.970000);
+    s = lift_chrome_rect(
+        &s,
+        "rect 0.000000 0.966667 0.100000 1.000000",
+        0.030000,
+        0.140000,
+    );
+    s = lift_chrome_rect(
+        &s,
+        "rect 0.875000 0.966667 1.000000 1.000000",
+        0.800000,
+        0.970000,
+    );
     paint_chrome_row(&s, accent, &["id_back"], &["id_continue"])
 }
 
@@ -626,9 +850,24 @@ pub(crate) fn restyle_race_setup(body: &str, accent: [u8; 3]) -> String {
     s = inject_pull_fieldboxes(&s);
     s = clear_footer_bar(&s);
     s = force_idle_plaques(&s);
-    s = lift_chrome_rect(&s, "rect 0.000000 0.966667 0.100000 1.000000", 0.030000, 0.140000);
-    s = lift_chrome_rect(&s, "rect 0.718750 0.966667 0.843750 1.000000", 0.440000, 0.560000);
-    s = lift_chrome_rect(&s, "rect 0.875000 0.966667 1.000000 1.000000", 0.800000, 0.970000);
+    s = lift_chrome_rect(
+        &s,
+        "rect 0.000000 0.966667 0.100000 1.000000",
+        0.030000,
+        0.140000,
+    );
+    s = lift_chrome_rect(
+        &s,
+        "rect 0.718750 0.966667 0.843750 1.000000",
+        0.440000,
+        0.560000,
+    );
+    s = lift_chrome_rect(
+        &s,
+        "rect 0.875000 0.966667 1.000000 1.000000",
+        0.800000,
+        0.970000,
+    );
     // Bike Selection: charcoal plaque (not the orange Start skew).
     s = set_button_sprites(
         &s,
@@ -651,7 +890,11 @@ pub(crate) fn restyle_host_racesetup(body: &str, accent: [u8; 3]) -> String {
     s
 }
 
-pub(crate) fn splice_replay(ui: &Path, bak: Option<&Path>, accent: [u8; 3]) -> Result<bool, String> {
+pub(crate) fn splice_replay(
+    ui: &Path,
+    bak: Option<&Path>,
+    accent: [u8; 3],
+) -> Result<bool, String> {
     let Some(stock) = stock_mnu(ui, bak, "replay.mnu") else {
         return Ok(false);
     };
@@ -670,7 +913,9 @@ pub(crate) fn splice_replay(ui: &Path, bak: Option<&Path>, accent: [u8; 3]) -> R
         } else if name.eq_ignore_ascii_case(REPLAY_SAVE) {
             out.push_str(&restyle_replay_save(&body, accent));
         } else if name.eq_ignore_ascii_case(REPLAY_OVERWRITE) {
-            out.push_str(&restyle_yes_no_glass_confirm(&body, accent, "ID_YES", "ID_NO"));
+            out.push_str(&restyle_yes_no_glass_confirm(
+                &body, accent, "ID_YES", "ID_NO",
+            ));
         } else {
             out.push_str(&recolor_profiles_dialog(&body, accent));
         }
@@ -687,9 +932,8 @@ pub(crate) fn restyle_replay_chrome(body: &str, accent: [u8; 3]) -> String {
     let idle = argb(255, TEXT);
     let hot = argb(255, accent);
     let ink = argb(255, ink_on_rgb(accent));
-    // Transport / Save row height; Settings/Done sit on the row below.
-    let tip_transport = (0.955556 - 0.922222 - 0.022222) * 0.5;
-    let tip_footer = (1.000000 - 0.966667 - 0.022222) * 0.5;
+    // Settings | Chat | Save | Done share the pit chrome row (Chat via idd_chatswitch).
+    let tip_y = (SETUP_CHROME_Y1 - SETUP_CHROME_Y0 - 0.022222) * 0.5;
     let mut s = recolor_profiles_dialog(body, accent);
     // Top-right rider/camera panel + bottom bar → frosted glass bitmaps.
     s = s.replace(
@@ -709,14 +953,18 @@ pub(crate) fn restyle_replay_chrome(body: &str, accent: [u8; 3]) -> String {
         "rect 0.012500 0.877778 0.987500 0.897778\n\t\tcolor 160 0 0 0",
         "rect 0.012500 0.877778 0.987500 0.897778\n\t\tcolor 0 0 0 0",
     );
-    // Save: cream r_button → solid charcoal plaque + light ink.
+    // Save: cream r_button → solid charcoal; lift off transport row clear of Chat.
     s = s.replace(
         "sprite1 r_button1.tga\n\t\t\tsprite2 r_button2.tga\n\t\t\tsprite3 r_button3.tga",
         "sprite1 button1.tga\n\t\t\tsprite2 button2.tga\n\t\t\tsprite3 button3.tga",
     );
-    s = center_bike_chrome_button(&s, "id_save", tip_transport);
+    s = s.replace(
+        "rect 0.656250 0.922222 0.781250 0.955556",
+        &format!("rect 0.690000 {SETUP_CHROME_Y0:.6} 0.790000 {SETUP_CHROME_Y1:.6}"),
+    );
+    s = center_bike_chrome_button(&s, "id_save", tip_y);
     s = paint_bike_chrome_button(&s, "id_save", &idle, &hot, &hot);
-    // Settings / Done — keep stock Y (below transport); solid plaques.
+    // Settings / Done — same chrome Y as Chat (CHAT_SLOT) and Save.
     s = s.replace(
         "sprite2 b_button2.tga\n\t\t\tsprite3 b_button3.tga",
         "sprite1 button1.tga\n\t\t\tsprite2 button2.tga\n\t\t\tsprite3 button3.tga",
@@ -726,12 +974,16 @@ pub(crate) fn restyle_replay_chrome(body: &str, accent: [u8; 3]) -> String {
         "sprite1 done1.tga\n\t\t\tsprite2 done1.tga\n\t\t\tsprite3 done2.tga",
     );
     s = s.replace(
-        "rect 0.875000 0.966667 1.000000 1.000000",
-        "rect 0.800000 0.966667 0.970000 1.000000",
+        "rect 0.406250 0.966667 0.531250 1.000000",
+        &format!("rect 0.406250 {SETUP_CHROME_Y0:.6} 0.531250 {SETUP_CHROME_Y1:.6}"),
     );
-    s = center_bike_chrome_button(&s, "ID_SETTINGS", tip_footer);
+    s = s.replace(
+        "rect 0.875000 0.966667 1.000000 1.000000",
+        &format!("rect 0.800000 {SETUP_CHROME_Y0:.6} 0.970000 {SETUP_CHROME_Y1:.6}"),
+    );
+    s = center_bike_chrome_button(&s, "ID_SETTINGS", tip_y);
     s = paint_bike_chrome_button(&s, "ID_SETTINGS", &idle, &hot, &hot);
-    s = center_bike_chrome_button(&s, "id_done", tip_footer);
+    s = center_bike_chrome_button(&s, "id_done", tip_y);
     s = paint_bike_chrome_button(&s, "id_done", &ink, &ink, &ink);
     s
 }
@@ -779,7 +1031,11 @@ pub(crate) fn restyle_replay_save(body: &str, accent: [u8; 3]) -> String {
     s
 }
 
-pub(crate) fn splice_multiclient(ui: &Path, bak: Option<&Path>, accent: [u8; 3]) -> Result<bool, String> {
+pub(crate) fn splice_multiclient(
+    ui: &Path,
+    bak: Option<&Path>,
+    accent: [u8; 3],
+) -> Result<bool, String> {
     let Some(stock) = stock_mnu(ui, bak, "multiclient.mnu") else {
         return Ok(false);
     };
@@ -796,17 +1052,16 @@ pub(crate) fn splice_multiclient(ui: &Path, bak: Option<&Path>, accent: [u8; 3])
             || name.eq_ignore_ascii_case(RACE_RESULTS)
         {
             out.push_str(&restyle_race_info_board(&body, accent));
-        } else if RACE_STANDINGS
-            .iter()
-            .any(|n| name.eq_ignore_ascii_case(n))
-        {
+        } else if RACE_STANDINGS.iter().any(|n| name.eq_ignore_ascii_case(n)) {
             out.push_str(&restyle_race_standings_list(&body, accent));
         } else if name.eq_ignore_ascii_case(CHAT_SWITCH) {
             out.push_str(&restyle_chatswitch(&body, accent));
         } else if name.eq_ignore_ascii_case(GATE_CHOOSE) {
             out.push_str(&restyle_gatechoose(&body, accent));
         } else if name.eq_ignore_ascii_case(RACE_EXIT) {
-            out.push_str(&restyle_yes_no_solid_confirm(&body, accent, "ID_YES", "ID_NO"));
+            out.push_str(&restyle_yes_no_solid_confirm(
+                &body, accent, "ID_YES", "ID_NO",
+            ));
         } else {
             out.push_str(&recolor_profiles_dialog(&body, accent));
         }
@@ -1008,10 +1263,7 @@ pub(crate) fn restyle_pit_side_tabs(
             .find("group 0\n")
             .map(|i| i + "group 0\n".len())
             .unwrap_or(kept.find('\n').map(|i| i + 1).unwrap_or(0));
-        kept.insert_str(
-            insert_at,
-            &format!("\t\tsprite1 {s1}\n\t\tsprite2 {s2}\n"),
-        );
+        kept.insert_str(insert_at, &format!("\t\tsprite1 {s1}\n\t\tsprite2 {s2}\n"));
         let kept = kept.trim_end().trim_end_matches('}').trim_end().to_string();
         let kept = format!("{kept}\n\t\tcolor1 {idle}\n\t\tcolor2 {hot}\n\t}}\n");
         s.replace_range(at..end, &kept);
@@ -1081,8 +1333,14 @@ pub(crate) fn restyle_race_entries(body: &str, accent: [u8; 3]) -> String {
     s = s.replace(&format!("backcolor 255 {row}"), "backcolor 160 0 0 0");
     s = s.replace("backcolor 255 220 220 220", "backcolor 160 0 0 0");
     s = s.replace("sortbackcolor 255 180 180 180", "sortbackcolor 160 0 0 0");
-    s = s.replace(&format!("sortbackcolor {}", argb(160, ROW)), "sortbackcolor 160 0 0 0");
-    s = s.replace("sortbartextcolor 255 0 0 0", &format!("sortbartextcolor {text}"));
+    s = s.replace(
+        &format!("sortbackcolor {}", argb(160, ROW)),
+        "sortbackcolor 160 0 0 0",
+    );
+    s = s.replace(
+        "sortbartextcolor 255 0 0 0",
+        &format!("sortbartextcolor {text}"),
+    );
     s = s.replace("color1 255 80 80 80", &format!("color1 {text}"));
     s = s.replace("color2 255 127 127 127", &format!("color2 {text}"));
     s = s.replace("color3 255 0 255 255", &format!("color3 {hot}"));
@@ -1231,8 +1489,14 @@ pub(crate) fn glass_race_list_colors(body: &str, accent: [u8; 3]) -> String {
     // Header bar was light grey with dark ink — unreadable once body is glass.
     s = s.replace("sortbackcolor 255 200 200 200", "sortbackcolor 160 0 0 0");
     s = s.replace("sortbackcolor 255 180 180 180", "sortbackcolor 160 0 0 0");
-    s = s.replace(&format!("sortbackcolor {}", argb(160, ROW)), "sortbackcolor 160 0 0 0");
-    s = s.replace("sortbartextcolor 255 0 0 0", &format!("sortbartextcolor {text}"));
+    s = s.replace(
+        &format!("sortbackcolor {}", argb(160, ROW)),
+        "sortbackcolor 160 0 0 0",
+    );
+    s = s.replace(
+        "sortbartextcolor 255 0 0 0",
+        &format!("sortbartextcolor {text}"),
+    );
     s = s.replace("color1 255 80 80 80", &format!("color1 {text}"));
     s = s.replace("color2 255 127 127 127", &format!("color2 {text}"));
     s = s.replace("color2 255 0 0 255", &format!("color2 {hot}"));
@@ -1259,7 +1523,9 @@ pub(crate) fn splice_test(ui: &Path, bak: Option<&Path>, accent: [u8; 3]) -> Res
         } else if name.eq_ignore_ascii_case(TEST_PANEL) {
             out.push_str(&restyle_test_panel(&body, accent));
         } else if name.eq_ignore_ascii_case(TESTING_EXIT) {
-            out.push_str(&restyle_yes_no_solid_confirm(&body, accent, "ID_YES", "ID_NO"));
+            out.push_str(&restyle_yes_no_solid_confirm(
+                &body, accent, "ID_YES", "ID_NO",
+            ));
         } else {
             out.push_str(&recolor_profiles_dialog(&body, accent));
         }
@@ -1304,7 +1570,11 @@ pub(crate) fn inject_trackmap_mask(body: &str, rect: &str) -> String {
     )
 }
 
-pub(crate) fn splice_garage(ui: &Path, bak: Option<&Path>, accent: [u8; 3]) -> Result<bool, String> {
+pub(crate) fn splice_garage(
+    ui: &Path,
+    bak: Option<&Path>,
+    accent: [u8; 3],
+) -> Result<bool, String> {
     let Some(stock) = stock_mnu(ui, bak, "garage.mnu") else {
         return Ok(false);
     };
@@ -2092,28 +2362,48 @@ pub(crate) fn lift_bikechoose_chrome(dialog: &str, accent: [u8; 3]) -> String {
     s = clear_footer_bar(&s);
     s = force_idle_plaques(&s);
     // Same chrome slots as Practice Setup (also lift already-chrome Y variants).
-    s = lift_chrome_rect(&s, "rect 0.000000 0.966667 0.100000 1.000000", 0.030000, 0.140000);
+    s = lift_chrome_rect(
+        &s,
+        "rect 0.000000 0.966667 0.100000 1.000000",
+        0.030000,
+        0.140000,
+    );
     s = lift_chrome_rect(
         &s,
         &format!("rect 0.000000 {SETUP_CHROME_Y0:.6} 0.100000 {SETUP_CHROME_Y1:.6}"),
         0.030000,
         0.140000,
     );
-    s = lift_chrome_rect(&s, "rect 0.875000 0.966667 1.000000 1.000000", 0.800000, 0.970000);
+    s = lift_chrome_rect(
+        &s,
+        "rect 0.875000 0.966667 1.000000 1.000000",
+        0.800000,
+        0.970000,
+    );
     s = lift_chrome_rect(
         &s,
         &format!("rect 0.875000 {SETUP_CHROME_Y0:.6} 1.000000 {SETUP_CHROME_Y1:.6}"),
         0.800000,
         0.970000,
     );
-    s = lift_chrome_rect(&s, "rect 0.562500 0.966667 0.687500 1.000000", 0.440000, 0.560000);
+    s = lift_chrome_rect(
+        &s,
+        "rect 0.562500 0.966667 0.687500 1.000000",
+        0.440000,
+        0.560000,
+    );
     s = lift_chrome_rect(
         &s,
         &format!("rect 0.562500 {SETUP_CHROME_Y0:.6} 0.687500 {SETUP_CHROME_Y1:.6}"),
         0.440000,
         0.560000,
     );
-    paint_chrome_row(&s, accent, &["id_back", "ID_INFO"], &["id_start", "id_done"])
+    paint_chrome_row(
+        &s,
+        accent,
+        &["id_back", "ID_INFO"],
+        &["id_start", "id_done"],
+    )
 }
 
 pub(crate) fn recolor_testsetup_dialog(body: &str, accent: [u8; 3]) -> String {
@@ -2142,14 +2432,8 @@ pub(crate) fn recolor_testsetup_dialog(body: &str, accent: [u8; 3]) -> String {
     let mut s = center_button_label(&s, "ID_TRACK_INFO");
     // Vertically center on the chrome row (center_button_label only fixes X / align).
     if let Some(at) = s.find("name ID_TRACK_INFO\n") {
-        let end = s[at..]
-            .find("\n\titem_")
-            .map(|i| at + i)
-            .unwrap_or(s.len());
-        let btn = s[at..end].replace(
-            "pos 0.000000 0.005556",
-            &format!("pos 0.000000 {tip_y:.6}"),
-        );
+        let end = s[at..].find("\n\titem_").map(|i| at + i).unwrap_or(s.len());
+        let btn = s[at..end].replace("pos 0.000000 0.005556", &format!("pos 0.000000 {tip_y:.6}"));
         s = format!("{}{}{}", &s[..at], btn, &s[end..]);
     }
     s
@@ -2412,7 +2696,12 @@ pub(crate) fn remap_options_point(x0: f32, y0: f32, x1: f32, y1: f32) -> (f32, f
     (map_x(x0), map_y(y0), map_x(x1), map_y(y1))
 }
 
-pub(crate) fn browser_list(name: &str, host_id: &str, world_filter: bool, accent: [u8; 3]) -> String {
+pub(crate) fn browser_list(
+    name: &str,
+    host_id: &str,
+    world_filter: bool,
+    accent: [u8; 3],
+) -> String {
     // ExtraBold italic needs more Name + Track than stock; pull from Status / Cat / Length.
     // `sort` is only an on/off flag in PiBoSo lists (stock uses 0/1) — not a column index.
     let (c0, c4, c5, c6, c9) = if world_filter {
@@ -3434,4 +3723,3 @@ dialog
         hot = argb(255, accent),
     )
 }
-

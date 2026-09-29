@@ -10,6 +10,110 @@
 - Stream layout editor at `http://127.0.0.1:<port>/edit`: Show on stream, drag/resize, basic prefs. OBS keeps paint-only `/`.
 - F8 Widgets is game-only (Game | Stream surface removed). Settings → Stream copies OBS `/` and Edit `/edit` URLs; **Copy game → stream** seeds the open chip.
 
+## 0.21.0
+
+Make your own pit board from a PNG, or use it as a custom dash.
+
+### Pit Board
+
+- Design the plate however you want with your own PNG. Place up to 12 slots, pick what each one shows, and set the size and text color.
+- Save a named design, then export or import it as a PNG plus its layout so you can share it.
+- Show it the whole time, or flash it for a few seconds at the end of a sector or a lap.
+- Turning it on hides MX Bikes' flat pit board. The board on the track stays.
+- If you are not a fan of the Dash widget, the pit board can stand in as a custom dash.
+
+## 0.20.1
+
+- Connection Timeout, password, data mismatch, server info, and export popups use the same light ink and centered plaques as the other menus.
+
+## 0.20.0
+
+Map follows you, Radar can show arrows, and boards can show last lap diff.
+
+### Map
+
+- **Follow me** (default off) keeps you centered with your nose up and rotates the whole track around you so it still fits.
+- North stays the direction you are traveling along the track. A scrub or whip no longer spins the map. The scale stays put, and whatever a turn pushes outside the widget is clipped.
+- Nearest ahead / behind rings stay off in warmup and practice. Race motos keep them.
+
+### Minimap
+
+- Track outline is smoothed (thinned + cubic stroke with anti-aliasing).
+- Ahead / behind rings match Map: off in warmup and practice.
+
+### Radar
+
+- **Look** chooses **Plaque** (range arcs + blips, default) or **Arrows** (edge indicators that slide with bike-frame bearing). Same side/rear range and stretch filters. Switching to Arrows expands the default plaque rect once so arrows sit on the screen frame.
+- Arrow tips are larger (28–56 px) with a night-ink border. Nearby crashes flash on the arrow with the crash icon for ~1.75 s, then stay hidden (Plaque still shows downed riders).
+
+### Standings
+
+- **Status** column paints the same mark icons as Relative / H-Standings (finish, crash, DNS, OUT, DSQ, pit).
+- **Last lap diff** is a header, footer, and column option. It is the last completed lap minus the previous one, not Delta versus your best. Faster is green, slower is red, and the same time reads `0.000`. The column stays off until you turn it on.
+
+### Relative
+
+- Same **Last lap diff** column, off by default. Each row is that rider's own previous lap.
+
+### Dash
+
+- **Last lap diff** is a footer option.
+- Warmup/practice no longer sticks on a frozen `00:30` after the session ends. The clock clears when the game jumps to or holds a start board without counting through zero, including kind-5 warmup with leaked extras.
+
+### Horizontal Standings
+
+- **Last lap diff** is a side-slot option.
+
+### Live order
+
+- First lap after the start: places update when you pass riders who went down, even if the HUD missed the gate or a rider briefly dropped out of the position list. Boards no longer keep the gate order until someone hits the line.
+
+### MX Bikes menus
+
+- Opening splash PiBoSo logo plaque hugs the wordmark, with a little more pad and a translucent black plate so the photo shows through.
+- Live multiplayer replay: Settings, Save, and Done sit on the same chrome row as Chat so they no longer overlap.
+
+### Diagnostics
+
+- Settings → Diagnostics shows the latest crash minidump: exception, module, and the instructions at RIP. Copy puts that full text on the clipboard.
+- Crash minidumps include code segments so the next game-EXE access violation can be disassembled from the `.dmp`.
+
+## 0.19.0
+
+Profile Tracks shows your best Motos lap vs a living ideal line; Controller leaves Labs; board fields expand.
+
+### Profile → Tracks
+
+- New Profile sub-nav **Tracks**: fastest Motos lap per track, plus a detail map of your best full lap vs a living **ideal** line.
+- Ideal line is a persistent bank (`track_bank` in Motos SQLite). Clean you-laps merge in faster stretches (hysteresis, edge blend, spatial smooth) and survive the 14-day Motos prune. Motos Clear also clears the bank.
+- Tracks is behind Settings → Labs → **Experimental features**.
+- Ideal bank skips gate-start L1 (standing start); only warmup and flying laps merge.
+- Ideal geometry: on-track snap to the dirt ribbon, draw breaks on large jumps, continuous strokes across short hitch gaps. Ideal is never slower than Best (PB segments fold in). Existing banks rebuild on open (`track_bank_seeded` v4).
+- Detail map: scroll to zoom, drag to pan (same as Motos Analyze).
+
+### Profile → Motos
+
+- List subtitle and Clear confirm show on-disk size of the Motos store (`reviews.sqlite` + WAL/SHM).
+
+### Controller
+
+- Turn it on with **Show on overlay**. It no longer needs Experimental features. Lives under Cockpit.
+
+### Labs
+
+- Toggle renamed to **Experimental features** (was Experimental widgets). Still unlocks Profile → Tracks.
+
+### Horizontal Standings
+
+- **Row highlight** opacity slider (`ticker_hl`, default 50 — same as Standings / Relative).
+- **Slide on pass** toggle (`ticker_slide`, default on). Off snaps cards to new slots instead of easing through `HS_SLIDE`.
+
+### Standings / Relative / boards
+
+- Header/footer **BoardField** options: **Delta**, **Last lap**, **Current lap**, **Gap to leader** (live-order P1), **Engine temp**, **Penalty**, **Server** (`--` offline).
+- Optional **Category** column on Standings and Relative (`st_category` / `rel_category`, default off).
+- Optional **Speed** column on Relative (`rel_speed`, default off) — rival speed, or your speed on your row.
+
 ## 0.18.0
 
 The Controller gets a Light/Dark Theme for both pads, including a new light PlayStation pad, and every pad draws smooth outlines and press fills.
@@ -360,7 +464,7 @@ Controller is a new Labs widget for live pad inputs. Delta Bar and Sectors snap 
 
 ### Controller
 
-- Turn on **Experimental widgets** in Settings → Labs, then **Show on overlay**. It starts hidden. This is your local pad, not plugin telemetry.
+- Turn on **Experimental features** in Settings → Labs, then **Show on overlay**. It starts hidden. This is your local pad, not plugin telemetry.
 - DualShock / DualSense HID draws the PlayStation pad. Steam Xbox mapping draws an Xbox Series pad (A/B/X/Y, offset sticks), not DualShock with Xbox labels.
 - Analog sticks leave their wells. Triggers (L2/R2 or LT/RT) fill from the curved bottom lip. Bumpers (L1/R1 or LB/RB) light orange while held.
 - Face buttons and D-pad fill out to that pad’s outline. Bumpers fill the rounded shoulder. Pressed labels stay the drawing’s cream strokes. No pad shows **No controller**.
@@ -433,7 +537,7 @@ Delta Bar and Sectors are regular widgets — time vs your best on this track, w
 
 ### Delta Bar
 
-- Turn it on with **Show on overlay**. It no longer needs Experimental widgets.
+- Turn it on with **Show on overlay**. It no longer needs Experimental features.
 - Replay leftover telemetry is not recorded. Sitting in the pits near the start/finish does not become the first tape.
 - A hitch that skips the line still saves a decent lap.
 - A cut or shortcut does not become your best. Skipping a stretch of track faster than a bike can ride it is ignored; a hitch that still covers the ground still counts.
@@ -447,7 +551,7 @@ Delta Bar and Sectors are regular widgets — time vs your best on this track, w
 
 ### Sectors
 
-- Turn it on with **Show on overlay**. Same tape as Delta Bar. It no longer needs Experimental widgets.
+- Turn it on with **Show on overlay**. Same tape as Delta Bar. It no longer needs Experimental features.
 - Live S3 keeps ticking when the centerline origin is not the start/finish line.
 - **Compare to session best** uses this visit's fastest splits instead of the saved tape.
 - LAST, -2, and further laps sit under the live strip when **Lap log** is on (default). **Laps back** is 1–5. A short box stays live-only. You-row gold is only on the fastest lap in that log.

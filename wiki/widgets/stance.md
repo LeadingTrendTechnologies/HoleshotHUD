@@ -41,6 +41,6 @@ Starts **hidden**. Turn on **Show on overlay**. Lives under Cockpit with Dash an
 - 2026-08-26 — **Sit button** is press-to-set (click, then press the pad button) instead of a dropdown.
 - 2026-08-26 — Added. Pad-button mirror (toggle or hold) after API extra bytes and shock-length probes found no posture field.
 - 2026-08-26 — DualSense HID used Square (byte 0 bit 4) as L1. L1/R1 are byte 1. Skip HID when XInput already has the pad.
-- 2026-08-26 — Behind **Experimental widgets** with Sectors.
+- 2026-08-26 — Behind **Experimental features** with Sectors.
 - 2026-08-26 — Look toggle: Text plaque or rider icon (`Rider-Standing.png` / `Rider-Sitting.png`).
 - 2026-08-26 — **Show sitting** off by default; sitting hides the widget.

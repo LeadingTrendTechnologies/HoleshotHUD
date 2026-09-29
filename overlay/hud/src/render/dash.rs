@@ -51,7 +51,7 @@ pub(crate) struct DashLay {
     pub(crate) lapped: bool,
     pub(crate) lead: bool,
     pub(crate) tag_sz: f32,
-    pub(crate) foot: Vec<(char, String, Option<Color>)>,
+    pub(crate) foot: Vec<(char, String, Option<Color>, Option<Color>)>,
 }
 
 /// Shown beside the lap/clock text when you are a lap or more down.
@@ -96,10 +96,23 @@ pub(crate) fn dash_layout(
     let pstar = place_star_col(penalty_place_delta(focus_num));
     let lap_txt = race_progress_text(s);
     let lapped = lapped(s);
-    let foot: Vec<(char, String, Option<Color>)> = [cfg.dash_left, cfg.dash_mid, cfg.dash_right]
-        .into_iter()
-        .filter_map(|field| dash_foot_item(s, cfg, field))
-        .collect();
+    let foot: Vec<(char, String, Option<Color>, Option<Color>)> =
+        [cfg.dash_left, cfg.dash_mid, cfg.dash_right]
+            .into_iter()
+            .filter_map(|field| {
+                let (icon_ch, label, star) = dash_foot_item(s, cfg, field)?;
+                let ink = if field == DashField::LapDiff {
+                    match lap_diff_ms(focus_num) {
+                        Some(ms) if ms < 0 => Some(ahead_col()),
+                        Some(ms) if ms > 0 => Some(behind_col()),
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+                Some((icon_ch, label, star, ink))
+            })
+            .collect();
 
     const NAT_H: f32 = 147.0;
     const NAT_W: f32 = 280.0;
@@ -495,6 +508,7 @@ pub(crate) fn dash_foot_item(
                     .unwrap_or(s.last_lap_ms);
                 format_clock(ms)
             }
+            DashField::LapDiff => lap_diff_text(focus_num),
             DashField::Best => format_clock(dash_best_ms(s)),
             DashField::Current => format_clock(s.current_lap_ms),
             DashField::Delta => {
@@ -947,7 +961,7 @@ pub(crate) fn draw_dash(
         let foot_used: f32 = d
             .foot
             .iter()
-            .map(|(ch, label, star)| {
+            .map(|(ch, label, star, _)| {
                 fonts.icons.metrics(*ch, d.icon_s).advance_width
                     + 5.0
                     + place_width(fonts, label, d.fsz, *star)
@@ -955,10 +969,20 @@ pub(crate) fn draw_dash(
             .sum();
         let foot_gap = ((foot_inner - foot_used) / (d.foot.len() as f32 + 1.0)).max(8.0);
         let mut fx = d.x + d.pad + foot_gap;
-        for (ch, label, star) in &d.foot {
+        for (ch, label, star, ink) in &d.foot {
             icon(px, fonts, *ch, d.icon_s, fx, fy, white, false);
             fx += fonts.icons.metrics(*ch, d.icon_s).advance_width + 5.0;
-            paint_place_at(px, fonts, label, d.fsz, fx, fy + 1.0, white, *star, false);
+            paint_place_at(
+                px,
+                fonts,
+                label,
+                d.fsz,
+                fx,
+                fy + 1.0,
+                ink.unwrap_or(white),
+                *star,
+                false,
+            );
             fx += place_width(fonts, label, d.fsz, *star) + foot_gap;
         }
     }

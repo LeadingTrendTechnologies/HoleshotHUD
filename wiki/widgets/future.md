@@ -17,7 +17,6 @@ Streaming (OBS Browser Source, stream-only layout) is not a widget — see [stre
 | [Ideal Lap](#ideal-lap) | [Sectors](sector.md) — shipped as IDEAL | Overlay splits + `track_pb` |
 | [Lap consistency](#lap-consistency) | [Delta Bar](delta-bar.md) | Overlay last/best lap; need a lap ring |
 | [Telemetry](#telemetry) | [Telemetry](telemetry.md) — traces + bars + gear/speed | Overlay inputs. Suspension still Need SHM |
-| [Pitboard](#pitboard) | [Dash](dash.md) + [Sectors](sector.md) | Overlay (lap / split / gap) |
 | [Event Log](#event-log) | — | Cached / unused (`RaceCommunication`, laps, penalties) |
 
 ---
@@ -95,14 +94,6 @@ Lap-time trend across the session (sparkline / rolling delta vs average or best)
 
 Shipped as [Telemetry](telemetry.md): throttle / brake traces, clutch / brake / throttle bars, gear and speed. Suspension graphs are still future (`m_afSuspLength` / `m_afSuspVelocity` — Need SHM).
 
-## Pitboard
-
-Pitboard-style lap / split board.
-
-- A crew-style plaque: last lap, delta vs PB, maybe position and a split flash. Not a new data source — Dash + Sectors already know this.
-- Overlay today: last/best lap, live place, sector freeze. Gap vs PB is the Delta Bar tape / sector freeze, not the in-game ghost.
-- Worth it when the layout is a **board** (large last-lap + delta), not another Dash footer.
-
 ## Event Log
 
 Timestamped race-event feed.
@@ -114,10 +105,12 @@ Timestamped race-event feed.
 
 ## Change log
 
+- 2026-09-11 — Pit Board shipped. Moved to [pitboard.md](pitboard.md).
 - 2026-09-22 — Radar lappers shipped as blue/red rings on [radar.md](radar.md); dropped from this page.
 - 2026-09-10 — Dropped unapproved ideas (ahead plate, interval bar, hunt, remount, finish projection, bike health, and the parked list).
 - 2026-09-10 — Added Holeshot / Start, Battle card, Spectate nameplate, Line (needs dumps), Radar lappers. Streaming moved to [streaming.md](../streaming.md). Event Log no longer owns holeshot.
 - 2026-09-09 — Telemetry shipped (traces + bars + gear/speed). Suspension graphs stay here.
+- 2026-09-25 — Controller left Labs. See [gamepad.md](gamepad.md).
 - 2026-09-04 — Controller (was Gamepad) is Labs-only. See [gamepad.md](gamepad.md).
 - 2026-09-02 — Gamepad shipped. Moved to [gamepad.md](gamepad.md).
 - 2026-09-01 — Lean shipped. Moved to [lean.md](lean.md).

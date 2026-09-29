@@ -1,6 +1,6 @@
 [package]
 name = "mxbo-overlay"
-version = "0.18.0"
+version = "0.21.0"
 edition = "2021"
 
 [[bin]]
@@ -23,6 +23,7 @@ mxbo-review = { path = "../review", features = ["sqlite"] }
 mxbo-motos-ui = { path = "../motos-ui" }
 tiny-skia = { version = "0.11", features = ["png-format"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+iced-x86 = { version = "1.21", default-features = false, features = ["std", "decoder", "instr_info", "nasm"] }
 fontdue = "0.9"
 ureq = "2.12"
 sha1 = "0.10"

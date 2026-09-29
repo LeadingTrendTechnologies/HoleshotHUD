@@ -18,7 +18,6 @@ pub(crate) fn row_card(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, hot: boo
     fill_round(px, x, y, w, h, 10.0, fill);
 }
 
-
 pub(crate) fn toggle_row(
     px: &mut Pixmap,
     fonts: &Fonts,
@@ -54,7 +53,6 @@ pub(crate) fn toggle_row(
     y + h + ROW_GAP
 }
 
-
 pub(crate) fn toggle_nested(
     px: &mut Pixmap,
     fonts: &Fonts,
@@ -80,7 +78,6 @@ pub(crate) fn toggle_nested(
         hits,
     )
 }
-
 
 pub(crate) fn slider_row(
     px: &mut Pixmap,
@@ -147,7 +144,6 @@ pub(crate) fn slider_row(
     y + h + ROW_GAP
 }
 
-
 pub(crate) fn draw_slider(
     px: &mut Pixmap,
     x: f32,
@@ -180,7 +176,6 @@ pub(crate) fn draw_slider(
     fill_circle(px, kx, cy + 1.0, kr + 1.0, Color::from_rgba8(0, 0, 0, 70));
     fill_circle(px, kx, cy, kr, knob());
 }
-
 
 pub(crate) fn stepper_row(
     px: &mut Pixmap,
@@ -226,7 +221,6 @@ pub(crate) fn stepper_row(
     btn_icon(px, fonts, ix, by, bw, bh, '\u{f067}', inc, hover, hits);
     y + h + ROW_GAP
 }
-
 
 pub(crate) fn dropdown_row(
     px: &mut Pixmap,
@@ -296,6 +290,120 @@ pub(crate) fn dropdown_row(
     chevron(px, bx + bw - 14.0, by + bh * 0.5, open, muted());
     if open {
         let options = sorted_drop_options(options);
+        let item_h = 28.0;
+        let pad = 5.0;
+        let content_h = pad * 2.0 + item_h * options.len() as f32;
+        DROP_MENUS.with(|menus| {
+            menus.borrow_mut().push(PendingDrop {
+                mx: bx,
+                my: by + bh + 6.0,
+                bw,
+                content_h,
+                open_hit,
+                options,
+            });
+        });
+    }
+    y + h + ROW_GAP
+}
+
+pub(crate) fn name_row(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    x: f32,
+    y: f32,
+    w: f32,
+    value: &str,
+    focused: bool,
+    hit: Hit,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+) -> f32 {
+    let h = ROW_H;
+    hits.push(HitBox {
+        id: hit,
+        x,
+        y,
+        w,
+        h,
+    });
+    let hot = focused || hover == Some(hit);
+    row_card(px, x, y, w, h, hot);
+    text(px, fonts, "Name", 13.0, x + 16.0, y + 16.0, text_col(), false);
+    let label_w = measure(fonts, "Name", 13.0);
+    let bw = (w - 30.0 - label_w - 16.0).clamp(120.0, 280.0);
+    let bh = 28.0;
+    let bx = x + w - bw - 14.0;
+    let by = y + 10.0;
+    outlined(
+        px,
+        bx,
+        by,
+        bw,
+        bh,
+        7.0,
+        if hot { chip_hover() } else { bg() },
+    );
+    let shown = if value.is_empty() { "Name this board" } else { value };
+    let ink = if value.is_empty() { muted() } else { text_col() };
+    text(px, fonts, shown, 12.0, bx + 10.0, by + 6.0, ink, false);
+    let caret_text = if value.is_empty() { "" } else { shown };
+    if focused {
+        let caret_x = bx + 10.0 + measure(fonts, caret_text, 12.0) + 2.0;
+        fill_round(px, caret_x.min(bx + bw - 8.0), by + 6.0, 1.5, 14.0, 0.0, accent());
+    }
+    y + h + ROW_GAP
+}
+
+pub(crate) fn ordered_menu_row(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    x: f32,
+    y: f32,
+    w: f32,
+    label: &str,
+    value: &str,
+    open: bool,
+    open_hit: Hit,
+    options: Vec<(Hit, String, bool)>,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+) -> f32 {
+    let h = ROW_H;
+    hits.push(HitBox {
+        id: open_hit,
+        x,
+        y,
+        w,
+        h,
+    });
+    row_card(px, x, y, w, h, open || hover == Some(open_hit));
+    text(px, fonts, label, 13.0, x + 16.0, y + 16.0, text_col(), false);
+    let label_w = measure(fonts, label, 13.0);
+    let bw = (w - 30.0 - label_w - 16.0).clamp(88.0, 220.0);
+    let bh = 28.0;
+    let bx = x + w - bw - 14.0;
+    let by = y + 10.0;
+    hits.push(HitBox {
+        id: open_hit,
+        x: bx,
+        y: by,
+        w: bw,
+        h: bh,
+    });
+    let hot = open || hover == Some(open_hit);
+    outlined(
+        px,
+        bx,
+        by,
+        bw,
+        bh,
+        7.0,
+        if hot { chip_hover() } else { bg() },
+    );
+    text(px, fonts, value, 12.0, bx + 10.0, by + 6.0, text_col(), false);
+    chevron(px, bx + bw - 14.0, by + bh * 0.5, open, muted());
+    if open {
         let item_h = 28.0;
         let pad = 5.0;
         let content_h = pad * 2.0 + item_h * options.len() as f32;
@@ -453,8 +561,9 @@ pub(crate) fn color_row(
     y + h + ROW_GAP
 }
 
-
-pub(crate) fn sorted_drop_options(options: &[(Hit, &'static str, bool)]) -> Vec<(Hit, String, bool)> {
+pub(crate) fn sorted_drop_options(
+    options: &[(Hit, &'static str, bool)],
+) -> Vec<(Hit, String, bool)> {
     let mut options: Vec<(Hit, String, bool)> = options
         .iter()
         .map(|(hit, name, on)| (*hit, (*name).to_string(), *on))
@@ -471,7 +580,6 @@ pub(crate) fn sorted_drop_options(options: &[(Hit, &'static str, bool)]) -> Vec<
     });
     options
 }
-
 
 pub(crate) fn chevron(px: &mut Pixmap, cx: f32, cy: f32, open: bool, c: Color) {
     let mut pb = PathBuilder::new();
@@ -493,7 +601,6 @@ pub(crate) fn chevron(px: &mut Pixmap, cx: f32, cy: f32, open: bool, c: Color) {
     p.anti_alias = true;
     px.fill_path(&path, &p, FillRule::Winding, Transform::identity(), None);
 }
-
 
 pub(crate) fn switch_lg(
     px: &mut Pixmap,
@@ -529,7 +636,6 @@ pub(crate) fn switch_lg(
     fill_circle(px, kx, y + h * 0.5, 8.5, knob());
 }
 
-
 pub(crate) fn switch(
     px: &mut Pixmap,
     x: f32,
@@ -564,7 +670,6 @@ pub(crate) fn switch(
     fill_circle(px, kx, y + h * 0.5, 7.0, knob());
 }
 
-
 pub(crate) fn btn_icon(
     px: &mut Pixmap,
     fonts: &Fonts,
@@ -593,7 +698,6 @@ pub(crate) fn btn_icon(
     icon(px, fonts, ch, 13.0, x + w * 0.5, y + 5.5, text_col(), true);
 }
 
-
 pub(crate) fn outlined(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, r: f32, fill: Color) {
     fill_round(px, x, y, w, h, r, btn_border());
     fill_round(
@@ -607,7 +711,6 @@ pub(crate) fn outlined(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, r: f32, 
     );
 }
 
-
 pub(crate) fn fill_round(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, r: f32, c: Color) {
     let Some(path) = round_path(x, y, w, h, r) else {
         return;
@@ -617,7 +720,6 @@ pub(crate) fn fill_round(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, r: f32
     p.anti_alias = true;
     px.fill_path(&path, &p, FillRule::Winding, Transform::identity(), None);
 }
-
 
 pub(crate) fn fill_circle(px: &mut Pixmap, cx: f32, cy: f32, r: f32, c: Color) {
     let mut pb = PathBuilder::new();
@@ -630,7 +732,6 @@ pub(crate) fn fill_circle(px: &mut Pixmap, cx: f32, cy: f32, r: f32, c: Color) {
     p.anti_alias = true;
     px.fill_path(&path, &p, FillRule::Winding, Transform::identity(), None);
 }
-
 
 pub(crate) fn round_path(x: f32, y: f32, w: f32, h: f32, r: f32) -> Option<Path> {
     let r = r.min(w * 0.5).min(h * 0.5);
@@ -647,4 +748,3 @@ pub(crate) fn round_path(x: f32, y: f32, w: f32, h: f32, r: f32) -> Option<Path>
     pb.close();
     pb.finish()
 }
-

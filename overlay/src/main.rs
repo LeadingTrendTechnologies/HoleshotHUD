@@ -3,6 +3,7 @@
 mod changelog;
 mod compat;
 mod config;
+mod crash_dump;
 mod feedback;
 mod game_ui;
 mod gpu;
@@ -16,6 +17,7 @@ mod settings;
 mod shm;
 mod stance;
 mod startup;
+mod stock_pitboard;
 mod stream;
 mod sys;
 mod tray;
@@ -192,6 +194,34 @@ fn dump_motos_shots_path() -> Option<std::path::PathBuf> {
     None
 }
 
+fn dump_menu_shots_path() -> Option<std::path::PathBuf> {
+    let mut args = std::env::args();
+    while let Some(arg) = args.next() {
+        if arg == "--dump-menu-shots" {
+            return Some(
+                args.next()
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| std::path::PathBuf::from("announce-shots")),
+            );
+        }
+    }
+    None
+}
+
+fn dump_menu_shots_and_exit(dir: &std::path::Path) -> ! {
+    match crate::game_ui::dump_menu_shots(dir) {
+        Ok((splash, loading)) => {
+            eprintln!("Wrote {}", splash.display());
+            eprintln!("Wrote {}", loading.display());
+            std::process::exit(0);
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
+    }
+}
+
 fn dump_motos_shots_and_exit(dir: &std::path::Path) -> ! {
     match crate::settings::dump_motos_shots(dir) {
         Ok((list, analyze)) => {
@@ -222,6 +252,9 @@ fn main() {
     }
     if let Some(dir) = dump_motos_shots_path() {
         dump_motos_shots_and_exit(&dir);
+    }
+    if let Some(dir) = dump_menu_shots_path() {
+        dump_menu_shots_and_exit(&dir);
     }
     if std::env::args().any(|a| a == "--apply-update") {
         match crate::update::apply_staged_from_args() {
@@ -273,6 +306,7 @@ fn main() {
         .lock()
         .unwrap_or_else(|e| e.into_inner()) = loaded;
     crate::game_ui::sync_from_config();
+    crate::stock_pitboard::sync_from_config();
     let fonts = Fonts::for_family(family)
         .or_else(Fonts::load)
         .expect("need a HUD font (bundled or Windows\\Fonts)");
@@ -317,6 +351,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
     set_host(host);
     crate::settings::attach(host);
     crate::startup::sync_from_config();
+    mxbo_hud::pitboard::ensure_factory_pack();
     crate::startup::ensure_game_waiter();
     if crate::config::with_config(|c| c.stream_enabled) {
         let port = crate::stream::set_enabled(true);
@@ -445,7 +480,9 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
             if !game_on {
                 crate::plugin::retry_if_needed();
                 crate::game_ui::retry_if_needed();
+                crate::stock_pitboard::retry_if_needed();
                 crate::plugin::clear_game_restart();
+                crate::stock_pitboard::clear_game_restart();
             }
             if game_on {
                 if !saw_game && crate::config::with_config(|c| c.minimize_on_close) {
@@ -673,10 +710,12 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         // still hide if SHM stops. Do not tape that frozen snapshot — the first
         // live tick after is a teleport, not a driven chord.
         let hitch_hold = in_session && raw_age < 15.0;
+        mxbo_hud::pitboard::set_preview(settings_open || layout_on);
         if live {
             if let Some(s) = last_snap.as_ref() {
                 mxbo_hud::delta::tick(s);
                 mxbo_hud::sector::tick(s);
+                mxbo_hud::pitboard::tick(s);
                 let record = crate::config::with_config(|c| c.review);
                 crate::review::tick(s, record && !spectating);
             }
@@ -684,6 +723,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
             if let Some(s) = last_snap.as_ref() {
                 mxbo_hud::delta::tick(s);
                 mxbo_hud::sector::tick(s);
+                mxbo_hud::pitboard::tick(s);
             }
         } else {
             crate::review::tick(&mxbo_hud::shm::Snapshot::default(), false);

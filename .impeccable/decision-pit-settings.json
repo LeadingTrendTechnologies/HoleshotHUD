@@ -1,0 +1,42 @@
+{
+  "title": "Pit Board settings",
+  "question": "Type bar, with the Text color picker open. It colors the letters, not a slot background. Lock it, or pick another.",
+  "options": [
+    {
+      "id": "sample",
+      "label": "Live sample",
+      "kicker": "THE ROLL",
+      "thesis": "The selected slot’s text is drawn large, at the size and color you are setting, beside the plate.",
+      "palette": ["#0A0A0A", "#141416", "#FF9430", "#E4E4E6", "#84848A"],
+      "materials": ["night-ink settings window", "huge live slot sample", "size slider and color chips"],
+      "viewport": "Plate on the left with P2 selected. Beside it, a large P2 in the current ink, a Size slider reading 14, and a Color row. Slot menus sit underneath.",
+      "risk": "The sample can crowd the plate if both try to be the hero.",
+      "comp": ".impeccable/mocks/decision/pit-settings-sample.png"
+    },
+    {
+      "id": "typebar",
+      "label": "Type bar",
+      "kicker": "ONE BAR",
+      "thesis": "One bar sets the slot, the size, and the text color. The picker colors the letters on the plate.",
+      "palette": ["#0A0A0A", "#141416", "#FF9430", "#E4E4E6", "#84848A"],
+      "materials": ["night-ink settings window", "full-width type bar", "open text color picker"],
+      "viewport": "Bar: Slot 2, Size 14, and a Text swatch. The picker is open: saturation square and hue bar. P2 on the white plate is orange. No fill behind the letters.",
+      "risk": "An open picker covers part of the plate until you dismiss it.",
+      "comp": ".impeccable/mocks/decision/pit-settings-typebar.png"
+    },
+    {
+      "id": "ink",
+      "label": "Ink well",
+      "kicker": "COLOR FIRST",
+      "thesis": "Color is a field of swatches. Size is a big number with plus and minus. Both sit next to the plate.",
+      "palette": ["#0A0A0A", "#141416", "#FF9430", "#E4E4E6", "#101012"],
+      "materials": ["night-ink settings window", "large color swatches", "numeric size stepper"],
+      "viewport": "Plate on the left, P2 selected. On the right, Color as large swatches with black selected, and Size as 14 with minus and plus. Slot menus along the bottom.",
+      "risk": "A big swatch field can look like a theme picker instead of one slot’s ink.",
+      "comp": ".impeccable/mocks/decision/pit-settings-ink.png"
+    }
+  ],
+  "reroll": true,
+  "steer": true,
+  "buildPath": { "value": "comp", "toggle": true }
+}

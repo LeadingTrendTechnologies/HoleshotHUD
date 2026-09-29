@@ -82,8 +82,14 @@ pub(crate) fn recolor_menu_ink(body: &str, accent: [u8; 3]) -> String {
     s = s.replace("\tcolor 255 60 60 60\n", &format!("\tcolor 255 {text}\n"));
     s = s.replace("\tcolor 255 80 80 80\n", &format!("\tcolor 255 {text}\n"));
     s = s.replace("\tcolor 255 40 40 40\n", &format!("\tcolor 255 {text}\n"));
-    s = s.replace("\tcolor 255 240 240 240\n", &format!("\tcolor 255 {text}\n"));
-    s = s.replace("\tcolor 255 255 255 255\n", &format!("\tcolor 255 {text}\n"));
+    s = s.replace(
+        "\tcolor 255 240 240 240\n",
+        &format!("\tcolor 255 {text}\n"),
+    );
+    s = s.replace(
+        "\tcolor 255 255 255 255\n",
+        &format!("\tcolor 255 {text}\n"),
+    );
     s = s.replace("textcolor 255 60 60 60", &format!("textcolor 255 {text}"));
     s = s.replace("color1 255 60 60 60", &format!("color1 255 {text}"));
     s = s.replace("color1 255 80 80 80", &format!("color1 255 {text}"));
@@ -352,6 +358,7 @@ pub(crate) fn center_bike_chrome_button(dialog: &str, button_name: &str, tip_y: 
         .replace("align right", "align center")
         .replace("align left", "align center")
         .replace("pos 0.006250 0.005556", &format!("pos 0.000000 {tip_y:.6}"))
+        .replace("pos 0.008125 0.005556", &format!("pos 0.000000 {tip_y:.6}"))
         .replace("pos 0.000000 0.005556", &format!("pos 0.000000 {tip_y:.6}"));
     format!("{head}{btn}{tail}")
 }
@@ -424,11 +431,7 @@ pub(crate) fn split_mnu_dialogs(src: &str) -> Vec<(String, String)> {
         let body = src[start..end].trim().to_string();
         let name = body
             .lines()
-            .find_map(|l| {
-                l.trim()
-                    .strip_prefix("name ")
-                    .map(|s| s.trim().to_string())
-            })
+            .find_map(|l| l.trim().strip_prefix("name ").map(|s| s.trim().to_string()))
             .unwrap_or_default();
         if !name.is_empty() {
             out.push((name, body));
@@ -436,4 +439,3 @@ pub(crate) fn split_mnu_dialogs(src: &str) -> Vec<(String, String)> {
     }
     out
 }
-

@@ -225,21 +225,9 @@ fn assert_golden(name: &str, px: &Pixmap) {
 }
 
 fn hide_widgets(cfg: &mut HudConfig) {
-    cfg[WidgetId::Standings].show = false;
-    cfg[WidgetId::Relative].show = false;
-    cfg[WidgetId::Map].show = false;
-    cfg[WidgetId::Minimap].show = false;
-    cfg[WidgetId::Radar].show = false;
-    cfg[WidgetId::Dash].show = false;
-    cfg[WidgetId::Ticker].show = false;
-    cfg[WidgetId::Sys].show = false;
-    cfg[WidgetId::Sector].show = false;
-    cfg[WidgetId::Delta].show = false;
-    cfg[WidgetId::Stance].show = false;
-    cfg[WidgetId::Flag].show = false;
-    cfg[WidgetId::Lean].show = false;
-    cfg[WidgetId::Gamepad].show = false;
-    cfg[WidgetId::Telemetry].show = false;
+    for id in WidgetId::ALL {
+        cfg[id].show = false;
+    }
 }
 
 fn golden_snap(s: &Snapshot, cfg: &HudConfig) -> Snapshot {
@@ -572,11 +560,91 @@ fn standings_and_relative_board_fields() {
     }
     assert_eq!(board_item(&s, &cfg, BoardField::GapAhead).unwrap().1, "10.000");
     assert_eq!(board_item(&s, &cfg, BoardField::GapBehind).unwrap().1, "---");
+    assert_eq!(ticker_meta_label(BoardField::LapDiff, "+0.400"), "DIFF");
     assert_eq!(ticker_meta_label(BoardField::GapAhead, "10.000"), "AHEAD");
     assert_eq!(ticker_meta_label(BoardField::GapBehind, "---"), "BEHIND");
     assert!(!cfg.standings_cols().is_empty());
     assert!(cfg.standings_cols().contains(&StField::Name));
     assert!(cfg.relative_cols().contains(&RelField::Name));
+}
+
+fn set_completed_lap(s: &mut Snapshot, slot: usize, ms: i32, laps: i32) {
+    s.standings[slot].last_lap_ms = ms;
+    s.standings[slot].num_laps = laps;
+    if s.standings[slot].race_num == s.focus_race_num {
+        s.last_lap_ms = ms;
+        s.current_lap = laps + 1;
+    }
+}
+
+#[test]
+fn last_lap_diff_is_against_the_previous_lap() {
+    let _g = session_lock();
+    reset_session();
+    let cfg = HudConfig::new();
+    assert!(!cfg.st_lapdiff);
+    assert!(!cfg.rel_lapdiff);
+    let mut s = live_snap();
+    s.session_kind = 7;
+    s.session_laps = 10;
+    set_completed_lap(&mut s, 1, 72_000, 1);
+    RaceStore::refresh(&s);
+    assert_eq!(board_item(&s, &cfg, BoardField::LapDiff).unwrap().1, "--");
+    assert_eq!(dash_foot_item(&s, &cfg, DashField::LapDiff).unwrap().1, "--");
+    assert_eq!(lap_diff_ms(12), None);
+
+    set_completed_lap(&mut s, 1, 72_400, 2);
+    RaceStore::refresh(&s);
+    assert_eq!(board_item(&s, &cfg, BoardField::LapDiff).unwrap().1, "+0.400");
+    assert_eq!(dash_foot_item(&s, &cfg, DashField::LapDiff).unwrap().1, "+0.400");
+    assert_eq!(lap_diff_ms(12), Some(400));
+
+    set_completed_lap(&mut s, 1, 71_900, 3);
+    RaceStore::refresh(&s);
+    assert_eq!(board_item(&s, &cfg, BoardField::LapDiff).unwrap().1, "-0.500");
+    assert_eq!(lap_diff_ms(12), Some(-500));
+
+    s.standings[1].last_lap_ms = 0;
+    s.last_lap_ms = 0;
+    RaceStore::refresh(&s);
+    assert_eq!(
+        board_item(&s, &cfg, BoardField::LapDiff).unwrap().1,
+        "-0.500",
+        "a zeroed last lap must not replace the stored time"
+    );
+
+    reset_session();
+    set_completed_lap(&mut s, 1, 72_000, 1);
+    RaceStore::refresh(&s);
+    assert_eq!(lap_diff_ms(12), None, "a new session starts with no previous lap");
+
+    set_completed_lap(&mut s, 1, 72_000, 2);
+    RaceStore::refresh(&s);
+    RaceStore::refresh(&s);
+    assert_eq!(board_item(&s, &cfg, BoardField::LapDiff).unwrap().1, "0.000");
+
+    reset_session();
+    s.standings[1].last_lap_ms = 0;
+    s.last_lap_ms = 72_000;
+    s.standings[1].num_laps = 1;
+    s.current_lap = 2;
+    RaceStore::refresh(&s);
+    s.last_lap_ms = 72_400;
+    s.standings[1].num_laps = 2;
+    s.current_lap = 3;
+    RaceStore::refresh(&s);
+    assert_eq!(
+        lap_diff_ms(12),
+        Some(400),
+        "your row falls back to last_lap_ms when the classification row is empty"
+    );
+
+    set_completed_lap(&mut s, 0, 70_000, 1);
+    RaceStore::refresh(&s);
+    set_completed_lap(&mut s, 0, 71_200, 2);
+    RaceStore::refresh(&s);
+    assert_eq!(lap_diff_ms(1), Some(1_200));
+    assert_eq!(lap_diff_ms(12), Some(400));
 }
 
 #[test]
@@ -3544,6 +3612,44 @@ fn warmup_expired_hides_clock() {
 }
 
 #[test]
+fn warmup_mid_clock_snap_to_thirty_hides_clock() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_length = 10;
+    s.session_laps = 0;
+    s.session_time_ms = 2 * 60 * 1000;
+    s.current_lap = 2;
+    s.local_speed = 14.0;
+    assert_eq!(session_banner(&s).1, "02:00");
+    // Some servers jump straight to a frozen start board without counting to zero.
+    s.session_time_ms = 30_000;
+    assert_eq!(session_banner(&s).1, "", "no sticky 00:30 after warmup ends mid-clock");
+}
+
+#[test]
+fn warmup_kind_with_leaked_laps_frozen_thirty_hides_clock() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_kind = 5;
+    s.session_length = 10;
+    s.session_laps = 2;
+    s.session_time_ms = 2 * 60 * 1000;
+    s.current_lap = 2;
+    s.local_speed = 14.0;
+    assert!(is_warmup(&s));
+    assert_eq!(session_banner(&s).1, "02:00");
+    s.session_time_ms = 30_000;
+    s.local_speed = 0.0;
+    assert_eq!(
+        session_banner(&s).1,
+        "",
+        "kind 5 must not pin leaked extras as a frozen gate board"
+    );
+}
+
+#[test]
 fn lap_race_holds_laps_between_prestart_and_green() {
     let _g = session_lock();
     reset_session();
@@ -4158,6 +4264,101 @@ fn radar_far_blips_sit_outside_the_12m_ring() {
 }
 
 #[test]
+fn radar_arrow_on_edge_puts_rear_on_the_bottom() {
+    let (x, y, ux, uy) = radar_arrow_on_edge(0.0, 0.0, 200.0, 100.0, -4.0, 0.0, 8.0).unwrap();
+    assert!((x - 100.0).abs() < 0.5);
+    assert!((y - (100.0 - 8.0)).abs() < 0.5);
+    assert!(uy > 0.9);
+    assert!(ux.abs() < 0.05);
+}
+
+#[test]
+fn radar_arrow_on_edge_puts_back_left_on_the_bottom_left() {
+    let (x, y, ux, uy) = radar_arrow_on_edge(0.0, 0.0, 200.0, 100.0, -3.0, -2.0, 8.0).unwrap();
+    assert!(x < 100.0);
+    assert!(y > 50.0);
+    assert!(ux < 0.0);
+    assert!(uy > 0.0);
+}
+
+#[test]
+fn radar_arrow_on_edge_puts_right_beside_on_the_right() {
+    let (x, y, ux, uy) = radar_arrow_on_edge(0.0, 0.0, 200.0, 100.0, 0.0, 4.0, 8.0).unwrap();
+    assert!((x - (200.0 - 8.0)).abs() < 0.5);
+    assert!((y - 50.0).abs() < 0.5);
+    assert!(ux > 0.9);
+    assert!(uy.abs() < 0.05);
+}
+
+#[test]
+fn radar_bearing_zero_is_ahead() {
+    assert!(radar_bearing(4.0, 0.0).abs() < 1e-4);
+    assert!((radar_bearing(0.0, 4.0) - std::f32::consts::FRAC_PI_2).abs() < 1e-4);
+    assert!(radar_bearing(-4.0, 0.0).abs() > 3.0);
+}
+
+#[test]
+fn radar_arrow_size_stays_glanceable() {
+    let far = radar_arrow_size(0.0, 960.0);
+    let close = radar_arrow_size(1.0, 960.0);
+    assert!(far >= 28.0);
+    assert!(close <= 56.0);
+    assert!(close > far);
+    assert!((radar_arrow_size(0.0, 80.0) - 28.0).abs() < 1e-3);
+    assert!((radar_arrow_size(1.0, 2000.0) - 56.0).abs() < 1e-3);
+}
+
+fn radar_arrow_snap_behind() -> (Snapshot, HudConfig) {
+    let mut s = live_snap();
+    s.local_x = 0.0;
+    s.local_z = 0.0;
+    s.local_vel_x = 0.0;
+    s.local_vel_z = 0.0;
+    s.local_yaw = 0.0;
+    s.local_track_pos = 0.40;
+    s.track_length = 1000.0;
+    s.focus_race_num = 12;
+    s.local_race_num = 12;
+    s.riders[0].race_num = 1;
+    s.riders[0].x = 0.0;
+    s.riders[0].z = -5.0;
+    s.riders[0].track_pos = 0.395;
+    s.riders[0].crashed = 0;
+    s.riders[1].race_num = 12;
+    s.riders[1].x = 0.0;
+    s.riders[1].z = 0.0;
+    s.riders[1].track_pos = 0.40;
+    let mut cfg = HudConfig::new();
+    cfg.radar_sides = true;
+    cfg.radar_rear = true;
+    cfg.radar_range = 12;
+    (s, cfg)
+}
+
+#[test]
+fn radar_arrows_flash_on_nearby_crash_then_hide() {
+    reset_arrow_crash_flash();
+    let (mut s, cfg) = radar_arrow_snap_behind();
+    let upright = collect_radar_arrow_blips(&s, &cfg, 0.0);
+    assert_eq!(upright.len(), 1);
+    assert!(!upright[0].crashed);
+    s.riders[0].crashed = 1;
+    let flash = collect_radar_arrow_blips(&s, &cfg, 0.0);
+    assert_eq!(flash.len(), 1, "rising crash nearby arms a flash");
+    assert!(flash[0].crashed);
+    force_arrow_crash_flash(1, now_ms() - ARROW_CRASH_HOLD_MS - 1, -5.0, 0.0);
+    let gone = collect_radar_arrow_blips(&s, &cfg, 0.0);
+    assert!(
+        gone.is_empty(),
+        "after the hold, sustained crashed riders stay off Arrows"
+    );
+    let plaque = collect_radar_blips(&s, &cfg, 0.0);
+    assert_eq!(plaque.len(), 1, "Plaque still shows crashed riders");
+    assert!(plaque[0].crashed);
+    reset_arrow_crash_flash();
+}
+
+#[test]
 fn minimap_keeps_sparse_track_segments_near_the_rider() {
     let mut s = live_snap();
     s.poly_count = 4;
@@ -4165,9 +4366,29 @@ fn minimap_keeps_sparse_track_segments_near_the_rider() {
     s.poly[1] = Point { x: 200.0, z: 0.0 };
     s.poly[2] = Point { x: 200.0, z: 40.0 };
     s.poly[3] = Point { x: -200.0, z: 40.0 };
-    let mut pb = PathBuilder::new();
-    append_visible_track(&mut pb, &s, 4, 0.0, 0.0, 90.0, &|x, z| (x, z));
-    assert!(pb.finish().is_some(), "segment through the rider should stay visible");
+    let mut px = Pixmap::new(256, 256).expect("pixmap");
+    let center = 128.5;
+    stroke_smooth_minimap_track(
+        &mut px,
+        &s,
+        4,
+        0.0,
+        0.0,
+        Some(90.0),
+        4.0,
+        &|x, z| (center + x, center + z),
+    );
+    let on_track = px.pixel(128, 128).expect("center");
+    assert!(
+        on_track.alpha() > 20,
+        "segment through the rider should stay visible"
+    );
+    let outside = px.pixel(128, 240).expect("outside radius");
+    assert_eq!(
+        outside.alpha(),
+        0,
+        "pixels well outside the 90 m radius stay clear"
+    );
 }
 
 #[test]
@@ -4591,6 +4812,64 @@ fn riders_down_on_the_start_do_not_hold_you_back() {
     assert_eq!(live_position(4), 4, "the clean riders ahead keep their places");
 }
 
+/// Same start pile-up, but the HUD never saw the gate (`IN_GATE` never latched). Cold-arm
+/// on race go must still score far pairs before anyone crosses the line.
+#[test]
+fn missed_gate_still_passes_riders_down_on_the_start() {
+    let _g = session_lock();
+    reset_session();
+    let nums = [1, 2, 3, 4, 5, 6, 7, 12];
+    let mut s = live_snap();
+    s.standing_count = nums.len() as i32;
+    s.rider_count = nums.len() as i32;
+    s.current_lap = 1;
+    s.sf_meters = 0.0;
+    for (i, &num) in nums.iter().enumerate() {
+        s.standings[i] = standing(num, i as i32 + 1, 0);
+        s.riders[i] = rider(num, i as f32, 0.0, 0.10);
+    }
+    s.local_track_pos = 0.10;
+    assert_eq!(IN_GATE.load(Ordering::Relaxed), 0);
+    let mut targets: Vec<(i32, f32)> = [1, 2, 3, 4].iter().map(|&n| (n, 0.70)).collect();
+    targets.extend([5, 6, 7].iter().map(|&n| (n, 0.12)));
+    targets.push((12, 0.65));
+    ride_field_to(&mut s, &targets);
+    assert_eq!(live_position(12), 5);
+    assert_eq!(live_position(5), 6);
+    assert_eq!(live_position(4), 4, "the clean riders ahead keep their places");
+}
+
+/// A brief drop from `riders[]` after the gate must not disarm the tracker for the rest
+/// of lap 1: once they reappear stalled, a pass still shows.
+#[test]
+fn track_pos_flicker_after_gate_does_not_block_a_start_pass() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = gate_field(&[1, 2, 3, 4, 5, 6, 7, 12]);
+    let count = s.rider_count as usize;
+    if let Some(r) = s.riders[..count].iter_mut().find(|r| r.race_num == 5) {
+        r.track_pos = -1.0;
+        r.crashed = 1;
+    }
+    s.standings
+        .iter_mut()
+        .find(|st| st.race_num == 5)
+        .unwrap()
+        .crashed = 1;
+    let _ = RaceStore::tick(&s);
+    // Reappear where they left so resume does not invent metres they never rode.
+    if let Some(r) = s.riders[..count].iter_mut().find(|r| r.race_num == 5) {
+        r.track_pos = 0.10;
+    }
+    let _ = RaceStore::tick(&s);
+    let mut targets: Vec<(i32, f32)> = [1, 2, 3, 4].iter().map(|&n| (n, 0.70)).collect();
+    targets.extend([5, 6, 7].iter().map(|&n| (n, 0.12)));
+    targets.push((12, 0.65));
+    ride_field_to(&mut s, &targets);
+    assert_eq!(live_position(12), 5);
+    assert_eq!(live_position(5), 6);
+}
+
 /// A rider missing from `riders[]` keeps their scored slot, but the pass above them still
 /// shows.
 #[test]
@@ -4924,12 +5203,56 @@ fn map_marks_follow_the_live_order() {
     s.riders[1].track_pos = 0.500;
     s.local_track_pos = 0.500;
     s.riders[2].track_pos = 0.506;
+    s.session_kind = 7;
+    s.session_laps = 2;
+    s.session_length = 8;
     let _ = RaceStore::tick(&s);
     assert_eq!(leader_num(&s), 1);
     assert_eq!(standing_pos(&s, 7), 2);
     assert_eq!(standing_pos(&s, 12), 3);
     // The ring on #7 is now the green "ahead" mark, not the red one behind you.
     assert_eq!(standing_pos(&s, 7), standing_pos(&s, 12) - 1);
+    assert!(
+        place_rings_for_session(&s),
+        "live race moto still shows ahead/behind rings"
+    );
+}
+
+#[test]
+fn place_rings_skip_warmup_and_practice() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_kind = 5;
+    s.session_laps = 0;
+    s.session_length = 10;
+    assert!(is_warmup(&s));
+    assert!(!place_rings_for_session(&s), "warmup hides place rings");
+
+    reset_session();
+    s = live_snap();
+    s.session_kind = -1;
+    s.session_laps = 0;
+    s.session_length = 0;
+    assert!(is_practice_session(&s));
+    assert!(!place_rings_for_session(&s), "practice hides place rings");
+
+    reset_session();
+    s = live_snap();
+    s.session_kind = -1;
+    s.session_laps = 0;
+    s.session_length = 40;
+    assert!(is_practice_session(&s));
+    assert!(!place_rings_for_session(&s), "open practice hides place rings");
+
+    reset_session();
+    s = live_snap();
+    s.session_kind = 7;
+    s.session_laps = 2;
+    s.session_length = 8;
+    assert!(!is_warmup(&s));
+    assert!(!is_practice_session(&s));
+    assert!(place_rings_for_session(&s), "race moto keeps place rings");
 }
 
 /// Walk a session and record what the dash would show each frame. `extra` replays what the
@@ -5762,6 +6085,26 @@ fn telemetry_golden() {
 }
 
 #[test]
+fn pitboard_golden() {
+    let _g = session_lock();
+    reset_session();
+    crate::delta::set_preview(None);
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg[WidgetId::Pitboard].show = true;
+    cfg.pit_sponsor = "HOLESHOT".into();
+    let mut s = live_snap();
+    write_name(&mut s.standings[1].name, "You");
+    s.standings[1].num_laps = 4;
+    s.standings[1].last_lap_ms = 0;
+    s.last_lap_ms = 0;
+    s.session_time_ms = 8 * 60 * 1000;
+    let s = golden_snap(&s, &cfg);
+    draw_widget_golden("pitboard", &s, &cfg, cfg[WidgetId::Pitboard].rect);
+    crate::delta::set_preview(None);
+}
+
+#[test]
 fn telemetry_can_hide_each_section() {
     let _g = session_lock();
     reset_session();
@@ -5802,7 +6145,6 @@ fn gamepad_goldens() {
     let base = live_snap();
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
-    cfg.experimental = true;
     cfg[WidgetId::Gamepad].show = true;
     crate::gamepad::set(crate::gamepad::demo_sony());
     let s = golden_snap(&base, &cfg);
@@ -5825,7 +6167,6 @@ fn xbox_press_covers_the_whole_control() {
     reset_session();
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
-    cfg.experimental = true;
     cfg[WidgetId::Gamepad].show = true;
     let s = golden_snap(&live_snap(), &cfg);
     let idle = crate::gamepad::PadState {
@@ -5937,7 +6278,6 @@ fn xbox_press_edges_are_antialiased() {
     reset_session();
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
-    cfg.experimental = true;
     cfg[WidgetId::Gamepad].show = true;
     let s = golden_snap(&live_snap(), &cfg);
     let idle = crate::gamepad::PadState {
@@ -6004,7 +6344,6 @@ fn ds4_press_edges_are_antialiased() {
     reset_session();
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
-    cfg.experimental = true;
     cfg[WidgetId::Gamepad].show = true;
     cfg.gamepad_theme = crate::config::GamepadTheme::Dark;
     let s = golden_snap(&live_snap(), &cfg);
@@ -6070,7 +6409,6 @@ fn xbox_dark_press_fills_stay_inside_their_outlines() {
     reset_session();
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
-    cfg.experimental = true;
     cfg[WidgetId::Gamepad].show = true;
     cfg.gamepad_theme = crate::config::GamepadTheme::Dark;
     let s = golden_snap(&live_snap(), &cfg);
@@ -6215,7 +6553,6 @@ fn gamepad_theme_switches_playstation() {
     reset_session();
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
-    cfg.experimental = true;
     cfg[WidgetId::Gamepad].show = true;
     let s = golden_snap(&live_snap(), &cfg);
     crate::gamepad::set(crate::gamepad::demo_sony());
@@ -6237,7 +6574,6 @@ fn ds4_light_press_fills_stay_inside_their_outlines() {
     reset_session();
     let mut cfg = HudConfig::new();
     hide_widgets(&mut cfg);
-    cfg.experimental = true;
     cfg[WidgetId::Gamepad].show = true;
     cfg.gamepad_theme = crate::config::GamepadTheme::Light;
     let s = golden_snap(&live_snap(), &cfg);

@@ -503,6 +503,7 @@ fn widget_key(id: WidgetId) -> &'static str {
         WidgetId::Lean => "lean",
         WidgetId::Gamepad => "gamepad",
         WidgetId::Telemetry => "telemetry",
+        WidgetId::Pitboard => "pitboard",
     }
 }
 
@@ -523,6 +524,7 @@ fn widget_label(id: WidgetId) -> &'static str {
         WidgetId::Lean => "Lean",
         WidgetId::Gamepad => "Controller",
         WidgetId::Telemetry => "Telemetry",
+        WidgetId::Pitboard => "Pit Board",
     }
 }
 

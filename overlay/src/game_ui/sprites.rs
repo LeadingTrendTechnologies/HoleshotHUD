@@ -3,8 +3,8 @@ use std::path::Path;
 
 use tiny_skia::{BlendMode, Color, FillRule, Paint, PathBuilder, Pixmap, Transform};
 
-use crate::config::ink_on_rgb;
 use super::shell::{CHARCOAL, FIELD, HAIR, NIGHT, TEXT};
+use crate::config::ink_on_rgb;
 
 pub(crate) const SPRITES: &[&str] = &[
     "mainbox.tga",
@@ -92,7 +92,11 @@ pub(crate) const STOCK_CHROME: &[&str] = &[
 ];
 
 /// Stock pointer is hard-blue. Retint to Look primary so chrome matches the menus.
-pub(crate) fn write_accent_pointer(ui: &Path, bak: Option<&Path>, accent: [u8; 3]) -> Result<(), String> {
+pub(crate) fn write_accent_pointer(
+    ui: &Path,
+    bak: Option<&Path>,
+    accent: [u8; 3],
+) -> Result<(), String> {
     let src = bak
         .map(|b| b.join("pointer.tga"))
         .filter(|p| p.is_file())
@@ -123,7 +127,11 @@ pub(crate) fn write_accent_pointer(ui: &Path, bak: Option<&Path>, accent: [u8; 3
 /// Stock spin chevrons are ~RGB 60 — invisible on glass. Keep alpha, paint TEXT / accent.
 
 /// Stock spin chevrons are ~RGB 60 — invisible on glass. Keep alpha, paint TEXT / accent.
-pub(crate) fn write_spin_arrows(ui: &Path, bak: Option<&Path>, accent: [u8; 3]) -> Result<(), String> {
+pub(crate) fn write_spin_arrows(
+    ui: &Path,
+    bak: Option<&Path>,
+    accent: [u8; 3],
+) -> Result<(), String> {
     let bright = [255u8, 255, 255];
     let jobs = [
         ("arrow_lf1.tga", TEXT),
@@ -266,8 +274,6 @@ pub(crate) fn tint_blue_to_accent(px: &mut Pixmap, accent: [u8; 3]) {
     }
 }
 
-
-
 pub(crate) fn write_sprites(ui: &Path, accent: [u8; 3]) -> Result<(), String> {
     let wash = Color::from_rgba8(accent[0], accent[1], accent[2], 28);
     let pip = rgb(accent);
@@ -318,7 +324,13 @@ pub(crate) fn write_sprites(ui: &Path, accent: [u8; 3]) -> Result<(), String> {
     write_round(&ui.join("back1.tga"), 160, 36, charcoal, hair)?;
     write_round(&ui.join("back2.tga"), 160, 36, charcoal, pip)?;
     write_round(&ui.join("fieldbox.tga"), 200, 36, rgb(FIELD), hair)?;
-    write_tab(&ui.join("tabh1.tga"), Some(charcoal), None, None, Some(hair))?;
+    write_tab(
+        &ui.join("tabh1.tga"),
+        Some(charcoal),
+        None,
+        None,
+        Some(hair),
+    )?;
     write_tab(
         &ui.join("tabh2.tga"),
         Some(rgb([24, 25, 29])),
@@ -330,42 +342,12 @@ pub(crate) fn write_sprites(ui: &Path, accent: [u8; 3]) -> Result<(), String> {
     write_round(&ui.join("tabv2.tga"), 200, 36, charcoal, pip)?;
     write_seg_track(&ui.join("segtrack.tga"), charcoal, hair)?;
     write_round(&ui.join("optionstabtrack.tga"), 900, 36, charcoal, hair)?;
-    write_seg(
-        &ui.join("segl1.tga"),
-        SegCap::Left,
-        None,
-        None,
-    )?;
-    write_seg(
-        &ui.join("segl2.tga"),
-        SegCap::Left,
-        Some(wash),
-        Some(pip),
-    )?;
-    write_seg(
-        &ui.join("segr1.tga"),
-        SegCap::Right,
-        None,
-        None,
-    )?;
-    write_seg(
-        &ui.join("segr2.tga"),
-        SegCap::Right,
-        Some(wash),
-        Some(pip),
-    )?;
-    write_seg(
-        &ui.join("segm1.tga"),
-        SegCap::Mid,
-        None,
-        None,
-    )?;
-    write_seg(
-        &ui.join("segm2.tga"),
-        SegCap::Mid,
-        Some(wash),
-        Some(pip),
-    )?;
+    write_seg(&ui.join("segl1.tga"), SegCap::Left, None, None)?;
+    write_seg(&ui.join("segl2.tga"), SegCap::Left, Some(wash), Some(pip))?;
+    write_seg(&ui.join("segr1.tga"), SegCap::Right, None, None)?;
+    write_seg(&ui.join("segr2.tga"), SegCap::Right, Some(wash), Some(pip))?;
+    write_seg(&ui.join("segm1.tga"), SegCap::Mid, None, None)?;
+    write_seg(&ui.join("segm2.tga"), SegCap::Mid, Some(wash), Some(pip))?;
     // Vertical side-tab group (Event Info / Results / Track Info).
     // Idle clear like horizontal segs — vsegtrack is the continuous rail.
     write_round(&ui.join("vsegtrack.tga"), 110, 220, charcoal, hair)?;
@@ -423,7 +405,13 @@ pub(crate) fn rgb(c: [u8; 3]) -> Color {
     Color::from_rgba8(c[0], c[1], c[2], 255)
 }
 
-pub(crate) fn write_frame(path: &Path, w: u32, h: u32, fill: Color, stroke: Color) -> Result<(), String> {
+pub(crate) fn write_frame(
+    path: &Path,
+    w: u32,
+    h: u32,
+    fill: Color,
+    stroke: Color,
+) -> Result<(), String> {
     let mut px = Pixmap::new(w, h).ok_or("pixmap")?;
     let r = 8.0_f32.min(h as f32 * 0.2);
     fill_round(&mut px, 0.0, 0.0, w as f32, h as f32, r, fill);
@@ -449,7 +437,16 @@ pub(crate) fn write_frame(path: &Path, w: u32, h: u32, fill: Color, stroke: Colo
             None,
         );
     }
-    stroke_round(&mut px, 0.5, 0.5, w as f32 - 1.0, h as f32 - 1.0, r, stroke, 1.0);
+    stroke_round(
+        &mut px,
+        0.5,
+        0.5,
+        w as f32 - 1.0,
+        h as f32 - 1.0,
+        r,
+        stroke,
+        1.0,
+    );
     write_tga(path, &px)
 }
 
@@ -463,7 +460,13 @@ pub(crate) fn write_card(path: &Path) -> Result<(), String> {
     write_tga(path, &px)
 }
 
-pub(crate) fn write_glass_alpha(path: &Path, w: u32, h: u32, radius: f32, alpha: u8) -> Result<(), String> {
+pub(crate) fn write_glass_alpha(
+    path: &Path,
+    w: u32,
+    h: u32,
+    radius: f32,
+    alpha: u8,
+) -> Result<(), String> {
     let mut px = Pixmap::new(w, h).ok_or("pixmap")?;
     fill_glass_alpha(&mut px, radius, alpha);
     write_tga(path, &px)
@@ -472,7 +475,13 @@ pub(crate) fn write_glass_alpha(path: &Path, w: u32, h: u32, radius: f32, alpha:
 /// Opaque square with a rounded hole — covers square corners of a track map bitmap.
 
 /// Opaque square with a rounded hole — covers square corners of a track map bitmap.
-pub(crate) fn write_round_mask(path: &Path, w: u32, h: u32, radius: f32, alpha: u8) -> Result<(), String> {
+pub(crate) fn write_round_mask(
+    path: &Path,
+    w: u32,
+    h: u32,
+    radius: f32,
+    alpha: u8,
+) -> Result<(), String> {
     let mut px = Pixmap::new(w, h).ok_or("pixmap")?;
     px.fill(Color::from_rgba8(0, 0, 0, alpha));
     let mut pb = PathBuilder::new();
@@ -529,7 +538,16 @@ pub(crate) fn write_row(
         fill_round(&mut px, 6.0, 10.0, 3.0, 28.0, 1.5, pip);
     }
     if let Some(stroke) = stroke {
-        stroke_round(&mut px, 0.5, 0.5, w as f32 - 1.0, h as f32 - 1.0, 8.0, stroke, 1.0);
+        stroke_round(
+            &mut px,
+            0.5,
+            0.5,
+            w as f32 - 1.0,
+            h as f32 - 1.0,
+            8.0,
+            stroke,
+            1.0,
+        );
     }
     write_tga(path, &px)
 }
@@ -554,7 +572,16 @@ pub(crate) fn write_tab(
         fill_round(&mut px, 4.0, 8.0, 3.0, 20.0, 1.5, pip);
     }
     if let Some(stroke) = stroke {
-        stroke_round(&mut px, 0.5, 0.5, w as f32 - 1.0, h as f32 - 1.0, 6.0, stroke, 1.0);
+        stroke_round(
+            &mut px,
+            0.5,
+            0.5,
+            w as f32 - 1.0,
+            h as f32 - 1.0,
+            6.0,
+            stroke,
+            1.0,
+        );
     }
     write_tga(path, &px)
 }
@@ -595,11 +622,26 @@ pub(crate) fn write_check(
     write_tga(path, &px)
 }
 
-pub(crate) fn write_round(path: &Path, w: u32, h: u32, fill: Color, stroke: Color) -> Result<(), String> {
+pub(crate) fn write_round(
+    path: &Path,
+    w: u32,
+    h: u32,
+    fill: Color,
+    stroke: Color,
+) -> Result<(), String> {
     let mut px = Pixmap::new(w, h).ok_or("pixmap")?;
     let r = 8.0_f32.min(h as f32 * 0.2);
     fill_round(&mut px, 0.0, 0.0, w as f32, h as f32, r, fill);
-    stroke_round(&mut px, 0.5, 0.5, w as f32 - 1.0, h as f32 - 1.0, r, stroke, 1.0);
+    stroke_round(
+        &mut px,
+        0.5,
+        0.5,
+        w as f32 - 1.0,
+        h as f32 - 1.0,
+        r,
+        stroke,
+        1.0,
+    );
     write_tga(path, &px)
 }
 
@@ -630,7 +672,13 @@ pub(crate) fn fill_seg(
     let mut paint = Paint::default();
     paint.set_color(color);
     paint.anti_alias = true;
-    px.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+    px.fill_path(
+        &path,
+        &paint,
+        FillRule::Winding,
+        Transform::identity(),
+        None,
+    );
 }
 
 pub(crate) fn stroke_seg(
@@ -717,7 +765,13 @@ pub(crate) fn fill_round(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, r: f32
     let mut paint = Paint::default();
     paint.set_color(color);
     paint.anti_alias = true;
-    px.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+    px.fill_path(
+        &path,
+        &paint,
+        FillRule::Winding,
+        Transform::identity(),
+        None,
+    );
 }
 
 pub(crate) fn stroke_round(
@@ -771,7 +825,13 @@ pub(crate) fn write_seg(
     write_tga(path, &px)
 }
 
-pub(crate) fn write_skew(path: &Path, w: u32, h: u32, fill: Color, _ink: Color) -> Result<(), String> {
+pub(crate) fn write_skew(
+    path: &Path,
+    w: u32,
+    h: u32,
+    fill: Color,
+    _ink: Color,
+) -> Result<(), String> {
     let mut px = Pixmap::new(w, h).ok_or("pixmap")?;
     let skew = 10.0;
     let mut pb = PathBuilder::new();
@@ -784,7 +844,13 @@ pub(crate) fn write_skew(path: &Path, w: u32, h: u32, fill: Color, _ink: Color) 
         let mut paint = Paint::default();
         paint.set_color(fill);
         paint.anti_alias = true;
-        px.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+        px.fill_path(
+            &path,
+            &paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
     }
     write_tga(path, &px)
 }
@@ -875,7 +941,13 @@ mod tests {
         let stroke = Color::from_rgba8(80, 80, 84, 255);
         write_seg(&ui.join("sevt1.tga"), SegCap::Top, Some(fill), Some(stroke)).unwrap();
         write_seg(&ui.join("sevm1.tga"), SegCap::Mid, Some(fill), Some(stroke)).unwrap();
-        write_seg(&ui.join("sevb1.tga"), SegCap::Bottom, Some(fill), Some(stroke)).unwrap();
+        write_seg(
+            &ui.join("sevb1.tga"),
+            SegCap::Bottom,
+            Some(fill),
+            Some(stroke),
+        )
+        .unwrap();
 
         let w = 110usize;
         let h = 36usize;
@@ -899,7 +971,10 @@ mod tests {
 
         // Top: opaque under rounded top; opaque at flat bottom corners; clear at
         // extreme pixmap top corners (outside the round).
-        assert!(tga_a(&top, w, h, w / 2, inset + 1) > 200, "top center under top edge");
+        assert!(
+            tga_a(&top, w, h, w / 2, inset + 1) > 200,
+            "top center under top edge"
+        );
         assert!(
             tga_a(&top, w, h, inset + 1, h - inset - 2) > 200,
             "top flat bottom-left corner must be filled"
@@ -930,4 +1005,3 @@ mod tests {
         let _ = fs::remove_dir_all(&ui);
     }
 }
-

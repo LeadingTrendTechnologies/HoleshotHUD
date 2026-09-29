@@ -29,7 +29,8 @@ Status labels: `1` DNS, `3` OUT, `4` DSQ, else PIT if `pit != 0`.
 - In replay / spectate, clicking a rider's **name** moves the game camera to them (`SpectateVehicles`). The overlay only captures that click while hovering a name; riding is not affected.
 - Best lap in the field is purple.
 - Bike column is a colored badge (`bike_color` from bike name + category). A skew bar after **Position** uses the same accent.
-- Header / footer are three `BoardField` slots each (session time, riders, fuel, setup, **Gap ahead**, **Gap behind**, etc.). Gap ahead / behind are live-order place neighbors (P−1 / P+1). A pass switches who. Same lap is a live running time along the track toward that rider; a lap or more is `1L` / `-1L` from completed laps, so a crashed rider you keep passing is not a ticking wrap.
+- Header / footer are three `BoardField` slots each (session time, riders, fuel, setup, **Gap ahead**, **Gap behind**, **Delta**, **Last** / **Last lap diff** / **Current**, **Gap to leader**, **Engine**, **Penalty**, **Server**, etc.). **Last lap diff** is the last completed lap minus the one before it (not Delta versus best). Faster is green, slower is red, the same time is `0.000`, and `--` until two laps. Optional **DIFF** column (`st_lapdiff`, default off) is that number per rider. Gap ahead / behind are live-order place neighbors (P−1 / P+1). **Gap to leader** is live-order gap to P1. A pass switches who. Same lap is a live running time along the track toward that rider; a lap or more is `1L` / `-1L` from completed laps, so a crashed rider you keep passing is not a ticking wrap.
+- Optional **Category** column (`st_category`, default off) shows the class string from the entry list.
 - Name column uses its configured width (and only shrinks when the table is too narrow); other columns keep configured widths. The plaque hugs that column pack, so leftover widget width is not empty glass. Ctrl+resize width grows the Name column so the plaque actually gets bigger; height grows **Rows** (3–40).
 - Rows slide when order changes (`ST_SLIDE`).
 
@@ -39,7 +40,11 @@ Default columns on: Position, Number, Name, Gap to leader, Fastest, Last lap.
 
 - Settings labels: **Gap to leader** (`StField::Gap`) uses `gap_ms` / `gap_laps` to P1. **Gap to rider ahead** (`StField::Interval`) is gap to the rider one place ahead, not to the leader. Ini keys stay `gap` / `int`.
 - Header/footer **Gap ahead** / **Gap behind** are live-order P−1 / P+1. A pass switches the rider immediately. Same lap is seconds along the track toward them, not Interval’s line time and not Relative’s shortest wrap. A live lap or more is `1L` / `-1L`.
-- Last lap for you can fall back to `s.last_lap_ms` when the row has no last lap yet.
+- Header/footer **Gap to leader** is live-order gap to P1 (`gap_leader_text`). Distinct from Gap ahead.
+- Header/footer **Server** shows `server_name`; `--` when empty (offline / local).
+- Optional **Category** column is off by default; do not turn it on for existing inis.
+- Last lap for you can fall back to `s.last_lap_ms` when the row has no last lap yet. **Last lap diff** uses that same fallback. A zeroed last-lap does not replace the stored time. A new session clears it.
+- **Last lap diff** is not Delta. Delta is versus best. The column stays off unless `st_lapdiff` is set.
 - Practice / warmup **Laps** for you can follow `current_lap - 1` when classification skipped a crashed crossing. Do not do that in a moto.
 - Empty field shows “Waiting for race data”, not a blank panel.
 - Rows and places come from the live order, not the raw `s.standings` array. The row window and slide animation follow it.
@@ -57,6 +62,8 @@ Default columns on: Position, Number, Name, Gap to leader, Fastest, Last lap.
 
 ## Change log
 
+- 2026-09-25 — **Last lap diff** (`BoardField::LapDiff`, column `st_lapdiff` default off). Last completed lap minus the previous one. Green is faster, red is slower, `0.000` is the same time. Not Delta versus best.
+- 2026-09-25 — Header/footer **BoardField** options: Delta, Last, Current, Gap to leader, Engine, Penalty, Server. Optional **Category** column (`st_category`, default off).
 - 2026-09-24 — Live order ranks the whole field by track progress minus each rider's own penalty, so several penalties stack in one tick. See `wiki/live-order.md`.
 - 2026-09-25 — Trailing green/red `*` on Position when live place ≠ on-track place due to penalties (see [live race order](../live-order.md)).
 - 2026-09-24 — Live order passes riders who crashed far back (start pile-ups) and steps over riders with no track position, instead of waiting for the next gate re-score. See `wiki/live-order.md`.

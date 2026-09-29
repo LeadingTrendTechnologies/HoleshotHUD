@@ -1,7 +1,54 @@
 #![allow(unused_imports)]
 use super::*;
 
+fn use_named_board(
+    board: String,
+    art: String,
+    text: TableText,
+    places: Vec<mxbo_hud::pitboard::PitPlace>,
+) {
+    set_pit_name(&board);
+    set_pit_notice("");
+    update_config(|c| {
+        c.pit_art = art;
+        c.pit_board = board;
+        c.pit_text = text;
+        c.pit_sponsor.clear();
+        c.pit_vars = places;
+        let art = c.pit_art.clone();
+        apply_json_names(&art, &mut c.pit_vars);
+        apply_pack_colors(&art, &mut c.pit_vars);
+        let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+    });
+    set_pit_selected(0);
+    invalidate_plate_preview();
+}
+
+fn show_factory_board() {
+    set_pit_name("");
+    set_pit_notice("");
+    let (text, _, places) = factory_pack();
+    update_config(|c| {
+        c.pit_art = FACTORY_ART.into();
+        c.pit_board.clear();
+        c.pit_text = text;
+        c.pit_sponsor.clear();
+        c.pit_yellow = c.primary;
+        c.pit_blue = [0, 0, 0];
+        c.pit_vars = places;
+        let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+    });
+    set_pit_selected(0);
+    invalidate_plate_preview();
+}
+
 pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
+    if !matches!(id, Hit::PitName) {
+        if pit_name_focused() && !commit_pit_name() {
+            return;
+        }
+        set_pit_name_focus(false);
+    }
     match id {
         Hit::TabWidgets => {
             let last = UI
@@ -10,11 +57,6 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
                 .as_ref()
                 .map(|u| u.last_widget)
                 .unwrap_or(Tab::Standings);
-            let last = if last.is_labs() && !with_config(|c| c.experimental_unlocked()) {
-                Tab::Standings
-            } else {
-                last
-            };
             set_tab(last);
             return;
         }
@@ -50,6 +92,14 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             set_app_section(AppSection::Updates);
             return;
         }
+        Hit::AppDiagnostics => {
+            set_app_section(AppSection::Diagnostics);
+            return;
+        }
+        Hit::DiagCopy => {
+            let _ = crate::crash_dump::copy_latest();
+            return;
+        }
         Hit::TabProfile => {
             set_tab(Tab::Profile);
             return;
@@ -61,6 +111,37 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::ProfileNavMotos => {
             set_profile_section(ProfileSection::Motos);
             open_live_analyze(true);
+            return;
+        }
+        Hit::ProfileNavTracks => {
+            if with_config(|c| c.experimental_unlocked()) {
+                set_profile_section(ProfileSection::Tracks);
+            }
+            return;
+        }
+        Hit::TrackOpen(idx) => {
+            let rows = crate::review::track_bank_rows();
+            if let Some(row) = rows.get(idx as usize) {
+                if let Some(ui) = UI.lock().unwrap().as_mut() {
+                    ui.tracks_selected = Some(row.track.clone());
+                    ui.scroll = 0.0;
+                    ui.tracks_zoom = 1.0;
+                    ui.tracks_pan_x = 0.0;
+                    ui.tracks_pan_z = 0.0;
+                    ui.tracks_map_drag = None;
+                }
+            }
+            return;
+        }
+        Hit::TrackBack => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.tracks_selected = None;
+                ui.scroll = 0.0;
+                ui.tracks_zoom = 1.0;
+                ui.tracks_pan_x = 0.0;
+                ui.tracks_pan_z = 0.0;
+                ui.tracks_map_drag = None;
+            }
             return;
         }
         Hit::TabFeedback => {
@@ -291,6 +372,15 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             set_tab(Tab::Telemetry);
             return;
         }
+        Hit::TabPitboard => {
+            set_tab(Tab::Pitboard);
+            update_config(|c| {
+                normalize_places(&mut c.pit_vars);
+                let art = c.pit_art.clone();
+                apply_json_names(&art, &mut c.pit_vars);
+            });
+            return;
+        }
         Hit::PresetCopyOpen => {
             toggle_drop(Drop::PresetCopy);
             return;
@@ -355,6 +445,36 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             if let Some(&rgb) = PRIMARY_SWATCHES.get(i as usize) {
                 update_config(|c| c.game_ui_primary = rgb);
                 sync_menus_after_menu_accent_change();
+            }
+            return;
+        }
+        Hit::PitYellowOpen => {
+            toggle_drop(Drop::PitYellow);
+            return;
+        }
+        Hit::PitYellowPanel | Hit::PitYellowSv | Hit::PitYellowHue => return,
+        Hit::PitYellowReset => {
+            update_config(|c| c.pit_yellow = c.primary);
+            return;
+        }
+        Hit::PitYellowSwatch(i) => {
+            if let Some(&rgb) = PRIMARY_SWATCHES.get(i as usize) {
+                update_config(|c| c.pit_yellow = rgb);
+            }
+            return;
+        }
+        Hit::PitBlueOpen => {
+            toggle_drop(Drop::PitBlue);
+            return;
+        }
+        Hit::PitBluePanel | Hit::PitBlueSv | Hit::PitBlueHue => return,
+        Hit::PitBlueReset => {
+            update_config(|c| c.pit_blue = [0, 0, 0]);
+            return;
+        }
+        Hit::PitBlueSwatch(i) => {
+            if let Some(&rgb) = PRIMARY_SWATCHES.get(i as usize) {
+                update_config(|c| c.pit_blue = rgb);
             }
             return;
         }
@@ -454,6 +574,10 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             toggle_drop(Drop::LeanStyle);
             return;
         }
+        Hit::RadarStyleOpen => {
+            toggle_drop(Drop::RadarStyle);
+            return;
+        }
         Hit::GamepadStyleOpen => {
             toggle_drop(Drop::GamepadStyle);
             return;
@@ -484,6 +608,93 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         }
         Hit::TickerFootOpen(slot) => {
             toggle_drop(Drop::TickerFoot(slot));
+            return;
+        }
+        Hit::PitSlotOpen(slot) => {
+            set_pit_selected(slot);
+            toggle_drop(Drop::PitSlot(slot));
+            return;
+        }
+        Hit::PitSlotSelect(slot) => {
+            close_drop();
+            set_pit_selected(slot);
+            return;
+        }
+        Hit::PitWhenOpen => {
+            toggle_drop(Drop::PitWhen);
+            return;
+        }
+        Hit::PitSlotAdd => {
+            close_drop();
+            update_config(|c| {
+                if add_design_slot(&mut c.pit_vars) {
+                    let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+                }
+            });
+            let n = with_config(|c| c.pit_vars.len());
+            set_pit_selected(n.saturating_sub(1) as u8);
+            return;
+        }
+        Hit::PitSlotRemove => {
+            close_drop();
+            let index = pit_selected() as usize;
+            update_config(|c| {
+                if remove_design_slot(&mut c.pit_vars, index) {
+                    let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+                }
+            });
+            let n = with_config(|c| c.pit_vars.len());
+            set_pit_selected(pit_selected().min(n.saturating_sub(1) as u8));
+            return;
+        }
+        Hit::PitSlotBold => {
+            close_drop();
+            update_config(|c| {
+                if let Some(place) = c.pit_vars.get_mut(pit_selected() as usize) {
+                    place.bold = !place.bold;
+                }
+                let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+            });
+            return;
+        }
+        Hit::PitSlotCenterX | Hit::PitSlotCenterY => {
+            close_drop();
+            let horizontal = matches!(id, Hit::PitSlotCenterX);
+            update_config(|c| {
+                if let Some(place) = c.pit_vars.get_mut(pit_selected() as usize) {
+                    if horizontal {
+                        place.x = 0.5;
+                    } else {
+                        place.y = 0.5;
+                    }
+                    let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+                }
+            });
+            return;
+        }
+        Hit::PitSlotColorOpen => {
+            toggle_drop(Drop::PitSlotColor);
+            return;
+        }
+        Hit::PitSlotColorPanel | Hit::PitSlotColorSv | Hit::PitSlotColorHue => return,
+        Hit::PitSlotColorReset => {
+            update_config(|c| {
+                if let Some(place) = c.pit_vars.get_mut(pit_selected() as usize) {
+                    place.color = None;
+                }
+                let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+            });
+            return;
+        }
+        Hit::PitSlotColorSwatch(i) => {
+            if let Some(&rgb) = PRIMARY_SWATCHES.get(i as usize) {
+                update_config(|c| {
+                    if let Some(place) = c.pit_vars.get_mut(pit_selected() as usize) {
+                        place.color = Some(rgb);
+                    }
+                    let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+                });
+            }
             return;
         }
         Hit::InfoOpen(bar, slot) => {
@@ -655,6 +866,189 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             }
             return;
         }
+        Hit::PitBrowse => {
+            close_drop();
+            set_pit_name_focus(false);
+            let host = UI.lock().unwrap().as_ref().map(|u| u.host);
+            let Some(host) = host else {
+                return;
+            };
+            if let Some(path) = browse_image(host) {
+                let path = std::path::PathBuf::from(path);
+                match board_name_from_picture(&path) {
+                    Ok(board) => match mxbo_hud::pitboard::save_named_board(&board, &path) {
+                        Ok((art, text, places)) => use_named_board(board, art, text, places),
+                        Err(msg) => set_pit_notice(&msg),
+                    },
+                    Err(msg) => set_pit_notice(&msg),
+                }
+            }
+            return;
+        }
+        Hit::PitExport => {
+            close_drop();
+            set_pit_name_focus(false);
+            let (board, art, places, text) = with_config(|c| {
+                (
+                    c.pit_board.clone(),
+                    c.pit_art.clone(),
+                    c.pit_vars.clone(),
+                    c.pit_text,
+                )
+            });
+            if board.is_empty() {
+                set_pit_notice("Save a named pit board before exporting.");
+                return;
+            }
+            let _ = write_pack(&art, &places, text);
+            let host = UI.lock().unwrap().as_ref().map(|u| u.host);
+            let Some(host) = host else {
+                return;
+            };
+            let Some(path) = pick_export_folder(host) else {
+                return;
+            };
+            match mxbo_hud::pitboard::export_board(
+                &board,
+                &art,
+                &places,
+                text,
+                std::path::Path::new(&path),
+            ) {
+                Ok(()) => set_pit_notice(""),
+                Err(msg) => set_pit_notice(&msg),
+            }
+            return;
+        }
+        Hit::PitDemo => {
+            close_drop();
+            set_pit_name_focus(false);
+            let host = UI.lock().unwrap().as_ref().map(|u| u.host);
+            let Some(host) = host else {
+                return;
+            };
+            let Some(path) = pick_demo_png(host) else {
+                return;
+            };
+            match write_demo_png(&path) {
+                Ok(name) => set_pit_notice(&format!("Saved {name}.")),
+                Err(msg) => set_pit_notice(&msg),
+            }
+            return;
+        }
+        Hit::PitHelpOpen => {
+            close_drop();
+            open_pit_help();
+            return;
+        }
+        Hit::PitHelpDismiss => {
+            close_drop();
+            dismiss_pit_help();
+            return;
+        }
+        Hit::PitHelpScrim | Hit::PitHelpPanel => {
+            close_drop();
+            return;
+        }
+        Hit::PitImport => {
+            close_drop();
+            set_pit_name_focus(false);
+            let host = UI.lock().unwrap().as_ref().map(|u| u.host);
+            let Some(host) = host else {
+                return;
+            };
+            if let Some(path) = browse_json(host) {
+                let path = std::path::PathBuf::from(path);
+                match board_name_from_pack(&path) {
+                    Ok(board) => match mxbo_hud::pitboard::import_pack_json(&board, &path) {
+                        Ok((art, text, places)) => use_named_board(board, art, text, places),
+                        Err(msg) => set_pit_notice(&msg),
+                    },
+                    Err(msg) => set_pit_notice(&msg),
+                }
+            }
+            return;
+        }
+        Hit::PitDelete => {
+            close_drop();
+            set_pit_name_focus(false);
+            let board = with_config(|c| c.pit_board.clone());
+            if board.is_empty() {
+                set_pit_notice("Holeshot cannot be deleted.");
+                return;
+            }
+            let host = UI.lock().unwrap().as_ref().map(|u| u.host);
+            let Some(host) = host else {
+                return;
+            };
+            if !confirm_delete_board(host, &board) {
+                return;
+            }
+            match mxbo_hud::pitboard::delete_saved_board(&board) {
+                Ok(()) => show_factory_board(),
+                Err(msg) => set_pit_notice(&msg),
+            }
+            return;
+        }
+        Hit::PitName => {
+            close_drop();
+            if pit_default_board() {
+                set_pit_name_focus(false);
+                return;
+            }
+            set_pit_name_focus(true);
+            crate::feedback::set_focus(false);
+            return;
+        }
+        Hit::PitBoardOpen => {
+            set_pit_name_focus(false);
+            toggle_drop(Drop::PitBoard);
+            return;
+        }
+        Hit::PitBoardFactory => {
+            close_drop();
+            set_pit_name_focus(false);
+            show_factory_board();
+            return;
+        }
+        Hit::PitBoardPick(index) => {
+            close_drop();
+            set_pit_name_focus(false);
+            let boards = mxbo_hud::pitboard::saved_boards();
+            let Some(name) = boards.get(index as usize).cloned() else {
+                return;
+            };
+            let Some((art, text, places)) = mxbo_hud::pitboard::open_saved_board(&name) else {
+                set_pit_notice("That pit board could not be opened.");
+                return;
+            };
+            set_pit_name(&name);
+            set_pit_notice("");
+            update_config(|c| {
+                c.pit_art = art;
+                c.pit_board = name;
+                c.pit_text = text;
+                c.pit_sponsor.clear();
+                c.pit_vars = places;
+                let art = c.pit_art.clone();
+                apply_json_names(&art, &mut c.pit_vars);
+                apply_pack_colors(&art, &mut c.pit_vars);
+                let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+            });
+            set_pit_selected(0);
+            invalidate_plate_preview();
+            return;
+        }
+        Hit::PitOpenFolder => {
+            close_drop();
+            let (art, places, text) = with_config(|c| {
+                (c.pit_art.clone(), c.pit_vars.clone(), c.pit_text)
+            });
+            let _ = write_pack(&art, &places, text);
+            let dir = pitboards_dir();
+            let _ = std::process::Command::new("explorer").arg(dir).spawn();
+            return;
+        }
         Hit::FbRate => {
             close_drop();
             crate::feedback::set_kind(crate::feedback::Kind::Rate);
@@ -724,6 +1118,35 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::FlagShow => c[WidgetId::Flag].show ^= true,
         Hit::LeanShow => c[WidgetId::Lean].show ^= true,
         Hit::TelemetryShow => c[WidgetId::Telemetry].show ^= true,
+        Hit::PitShow => c[WidgetId::Pitboard].show ^= true,
+        Hit::PitReset => {
+            let (text, _, places) = factory_pack();
+            c.pit_art = FACTORY_ART.into();
+            c.pit_board.clear();
+            c.pit_text = text;
+            c.pit_sponsor.clear();
+            c.pit_vars = places;
+            c.pit_yellow = c.primary;
+            c.pit_blue = [0, 0, 0];
+            let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+            set_pit_selected(0);
+            set_pit_name("");
+            set_pit_notice("");
+            invalidate_plate_preview();
+        }
+        Hit::PitWhenAlways => c.pit_when = PitWhen::Always,
+        Hit::PitWhenSector => c.pit_when = PitWhen::Sector,
+        Hit::PitWhenLap => c.pit_when = PitWhen::Lap,
+        Hit::PitSlotPick(slot, i) => {
+            if let Some(var) = PitVar::from_idx(i) {
+                mxbo_hud::pitboard::set_slot_var(&mut c.pit_vars, slot as usize, Some(var));
+            }
+            let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+        }
+        Hit::PitSlotNone(slot) => {
+            mxbo_hud::pitboard::set_slot_var(&mut c.pit_vars, slot as usize, None);
+            let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+        }
         Hit::TelemetryTraces => c.telemetry_traces = !c.telemetry_traces,
         Hit::TelemetryTraceThrottle => c.telemetry_trace_throttle = !c.telemetry_trace_throttle,
         Hit::TelemetryTraceBrake => c.telemetry_trace_brake = !c.telemetry_trace_brake,
@@ -737,9 +1160,6 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::GamepadShow => c[WidgetId::Gamepad].show ^= true,
         Hit::FeatureSector => {
             c.experimental = !c.experimental;
-            if !c.experimental {
-                c[WidgetId::Gamepad].show = false;
-            }
         }
         Hit::FlagYellow => c.flag_yellow = !c.flag_yellow,
         Hit::FlagBlue => c.flag_blue = !c.flag_blue,
@@ -749,6 +1169,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::TickerTitle => c.ticker_title = !c.ticker_title,
         Hit::TickerAutoscroll => c.ticker_autoscroll = !c.ticker_autoscroll,
         Hit::TickerStatus => c.ticker_status = !c.ticker_status,
+        Hit::TickerSlide => c.ticker_slide = !c.ticker_slide,
         Hit::StStripe => c.st_stripe = !c.st_stripe,
         Hit::RelStripe => c.rel_stripe = !c.rel_stripe,
         Hit::StPlaque => c.st_plaque = !c.st_plaque,
@@ -764,7 +1185,10 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::StStatus => c.st_status = !c.st_status,
         Hit::StBike => c.st_bike = !c.st_bike,
         Hit::StPenalty => c.st_penalty = !c.st_penalty,
+        Hit::StCrashed => c.st_crashed = !c.st_crashed,
         Hit::StInterval => c.st_interval = !c.st_interval,
+        Hit::StCategory => c.st_category = !c.st_category,
+        Hit::StLapDiff => c.st_lapdiff = !c.st_lapdiff,
         Hit::RelNum => c.rel_num = !c.rel_num,
         Hit::RelName => c.rel_name = !c.rel_name,
         Hit::RelGap => c.rel_gap = !c.rel_gap,
@@ -777,10 +1201,14 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::RelStatus => c.rel_status = !c.rel_status,
         Hit::RelBest => c.rel_best = !c.rel_best,
         Hit::RelLast => c.rel_last = !c.rel_last,
+        Hit::RelCategory => c.rel_category = !c.rel_category,
+        Hit::RelSpeed => c.rel_speed = !c.rel_speed,
+        Hit::RelLapDiff => c.rel_lapdiff = !c.rel_lapdiff,
         Hit::MapOthers => c.map_others = !c.map_others,
         Hit::MapSf => c.map_sf = !c.map_sf,
         Hit::MapSectors => c.map_sectors = !c.map_sectors,
         Hit::MapArrows => c.map_arrows = !c.map_arrows,
+        Hit::MapFollow => c.map_follow = !c.map_follow,
         Hit::MapCrown => c.map_crown = !c.map_crown,
         Hit::MapPlace => c.map_place = !c.map_place,
         Hit::MapNumbers => c.map_numbers = !c.map_numbers,
@@ -825,6 +1253,10 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::StanceModePick(mode) => c.stance_mode = mode,
         Hit::StanceStylePick(style) => c.stance_style = style,
         Hit::LeanStylePick(style) => c.lean_style = style,
+        Hit::RadarStylePick(style) => {
+            c.radar_style = style;
+            mxbo_hud::config::maybe_expand_radar_for_arrows(c);
+        }
         Hit::GamepadStylePick(style) => c.gamepad_style = style,
         Hit::GamepadThemePick(theme) => c.gamepad_theme = theme,
         Hit::DashFootPick(slot, field) => match slot {
@@ -862,9 +1294,15 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::AppStream
         | Hit::AppLabs
         | Hit::AppUpdates
+        | Hit::AppDiagnostics
+        | Hit::DiagCopy
         | Hit::TabProfile
         | Hit::ProfileNavOverview
         | Hit::ProfileNavMotos
+        | Hit::ProfileNavTracks
+        | Hit::TrackOpen(_)
+        | Hit::TrackBack
+        | Hit::TrackMap
         | Hit::TabFeedback
         | Hit::ProfileAllTime
         | Hit::ProfileTwoWeeks
@@ -890,6 +1328,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::TabLean
         | Hit::TabGamepad
         | Hit::TabTelemetry
+        | Hit::TabPitboard
         | Hit::MapDotOpen
         | Hit::MiniDotOpen
         | Hit::FontOpen
@@ -906,6 +1345,18 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::GameUiPrimaryHue
         | Hit::GameUiPrimarySwatch(_)
         | Hit::GameUiPrimaryReset
+        | Hit::PitYellowOpen
+        | Hit::PitYellowPanel
+        | Hit::PitYellowSv
+        | Hit::PitYellowHue
+        | Hit::PitYellowSwatch(_)
+        | Hit::PitYellowReset
+        | Hit::PitBlueOpen
+        | Hit::PitBluePanel
+        | Hit::PitBlueSv
+        | Hit::PitBlueHue
+        | Hit::PitBlueSwatch(_)
+        | Hit::PitBlueReset
         | Hit::GameUiSplashBrowse
         | Hit::GameUiSplashDefault
         | Hit::GameUiLoadingBrowse
@@ -921,12 +1372,29 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::StanceModeOpen
         | Hit::StanceStyleOpen
         | Hit::LeanStyleOpen
+        | Hit::RadarStyleOpen
         | Hit::GamepadStyleOpen
         | Hit::GamepadThemeOpen
         | Hit::SysAddOpen
         | Hit::DashFootOpen(_)
         | Hit::TickerFootOpen(_)
         | Hit::InfoOpen(_, _)
+        | Hit::PitSlotOpen(_)
+        | Hit::PitSlotSelect(_)
+        | Hit::PitSlotGrab(_)
+        | Hit::PitSlotAdd
+        | Hit::PitSlotRemove
+        | Hit::PitSlotSize
+        | Hit::PitSlotBold
+        | Hit::PitSlotCenterX
+        | Hit::PitSlotCenterY
+        | Hit::PitSlotColorOpen
+        | Hit::PitSlotColorPanel
+        | Hit::PitSlotColorSv
+        | Hit::PitSlotColorHue
+        | Hit::PitSlotColorSwatch(_)
+        | Hit::PitSlotColorReset
+        | Hit::PitWhenOpen
         | Hit::PresetCopyOpen
         | Hit::UpdateCheck
         | Hit::UpdateInstall
@@ -975,6 +1443,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::RadarBg
         | Hit::DashBg
         | Hit::TickerBg
+        | Hit::TickerHl
         | Hit::SysBg
         | Hit::SectorBg
         | Hit::DeltaBg
@@ -983,6 +1452,21 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::LeanBg
         | Hit::GamepadBg
         | Hit::TelemetryBg
+        | Hit::PitBg
+        | Hit::PitBrowse
+        | Hit::PitName
+        | Hit::PitBoardOpen
+        | Hit::PitBoardFactory
+        | Hit::PitBoardPick(_)
+        | Hit::PitExport
+        | Hit::PitImport
+        | Hit::PitDemo
+        | Hit::PitHelpOpen
+        | Hit::PitHelpDismiss
+        | Hit::PitHelpScrim
+        | Hit::PitHelpPanel
+        | Hit::PitDelete
+        | Hit::PitOpenFolder
         | Hit::StW(_)
         | Hit::RelW(_)
         | Hit::Font(_)
@@ -1004,6 +1488,12 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::AnalyzeMap
         | Hit::AnalyzeFollow => {}
     });
+    if matches!(
+        id,
+        Hit::PitShow | Hit::PresetCopyTo(_) | Hit::PresetCopyAll
+    ) {
+        crate::stock_pitboard::sync_from_config();
+    }
     if matches!(id, Hit::ThemePick(_)) {
         if let Some(host) = UI.lock().unwrap().as_ref().map(|u| u.host) {
             refresh_palette();
@@ -1011,9 +1501,11 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         }
     }
     if id == Hit::FeatureSector && !with_config(|c| c.experimental_unlocked()) {
-        let on_labs = UI.lock().unwrap().as_ref().is_some_and(|u| u.tab.is_labs());
-        if on_labs {
-            set_tab(Tab::App);
+        if let Some(ui) = UI.lock().unwrap().as_mut() {
+            if ui.profile_section == ProfileSection::Tracks {
+                ui.profile_section = ProfileSection::Overview;
+                ui.tracks_selected = None;
+            }
         }
     }
 }

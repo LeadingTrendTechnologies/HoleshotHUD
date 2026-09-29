@@ -34,6 +34,7 @@ pub struct Editor {
     lean: Option<Rect>,
     gamepad: Option<Rect>,
     telemetry: Option<Rect>,
+    pitboard: Option<Rect>,
     st_w_name: Option<i32>,
     rel_w_name: Option<i32>,
     standings_rows: Option<i32>,
@@ -79,6 +80,7 @@ impl Editor {
             || self.lean.is_some()
             || self.gamepad.is_some()
             || self.telemetry.is_some()
+            || self.pitboard.is_some()
             || self.st_w_name.is_some()
             || self.rel_w_name.is_some()
             || self.standings_rows.is_some()
@@ -121,6 +123,9 @@ impl Editor {
         }
         if let Some(s) = self.telemetry {
             cfg[WidgetId::Telemetry].rect = s;
+        }
+        if let Some(s) = self.pitboard {
+            cfg[WidgetId::Pitboard].rect = s;
         }
         if let Some(r) = self.standings {
             cfg[WidgetId::Standings].rect = r;
@@ -214,6 +219,7 @@ impl Editor {
                 WidgetId::Lean => self.lean = Some(r),
                 WidgetId::Gamepad => self.gamepad = Some(r),
                 WidgetId::Telemetry => self.telemetry = Some(r),
+                WidgetId::Pitboard => self.pitboard = Some(r),
             }
             apply_table_resize(self, cfg, d, r, ow, oh);
             let _ = overlay;
@@ -243,6 +249,7 @@ impl Editor {
         self.lean = None;
         self.gamepad = None;
         self.telemetry = None;
+        self.pitboard = None;
         self.st_w_name = None;
         self.rel_w_name = None;
         self.standings_rows = None;
@@ -268,6 +275,7 @@ impl Editor {
         let lean = self.lean;
         let gamepad = self.gamepad;
         let telemetry = self.telemetry;
+        let pitboard = self.pitboard;
         crate::config::update_config(|cfg| {
             let lay = cfg.live_mut();
             lay[WidgetId::Map].rect = map;
@@ -308,6 +316,9 @@ impl Editor {
             }
             if let Some(s) = telemetry {
                 lay[WidgetId::Telemetry].rect = s;
+            }
+            if let Some(s) = pitboard {
+                lay[WidgetId::Pitboard].rect = s;
             }
             if let Some(w) = self.st_w_name {
                 lay.st_w_name = w;
@@ -366,6 +377,7 @@ fn rect_of(s: &Snapshot, ed: &Editor, cfg: &HudConfig, t: WidgetId) -> Rect {
         WidgetId::Lean => ed.lean.unwrap_or(cfg[WidgetId::Lean].rect),
         WidgetId::Gamepad => ed.gamepad.unwrap_or(cfg[WidgetId::Gamepad].rect),
         WidgetId::Telemetry => ed.telemetry.unwrap_or(cfg[WidgetId::Telemetry].rect),
+        WidgetId::Pitboard => ed.pitboard.unwrap_or(cfg[WidgetId::Pitboard].rect),
     }
 }
 
@@ -386,6 +398,7 @@ fn shown(s: &Snapshot, cfg: &HudConfig, t: WidgetId) -> bool {
         WidgetId::Lean => cfg[WidgetId::Lean].show,
         WidgetId::Gamepad => cfg.gamepad_visible(),
         WidgetId::Telemetry => cfg[WidgetId::Telemetry].show,
+        WidgetId::Pitboard => cfg[WidgetId::Pitboard].show,
     }
 }
 
@@ -398,7 +411,7 @@ fn hit(
     ow: i32,
     oh: i32,
 ) -> Option<(WidgetId, Handle)> {
-    const ORDER: [WidgetId; 15] = [
+    const ORDER: [WidgetId; 16] = [
         WidgetId::Dash,
         WidgetId::Ticker,
         WidgetId::Sys,
@@ -409,6 +422,7 @@ fn hit(
         WidgetId::Lean,
         WidgetId::Gamepad,
         WidgetId::Telemetry,
+        WidgetId::Pitboard,
         WidgetId::Minimap,
         WidgetId::Radar,
         WidgetId::Map,

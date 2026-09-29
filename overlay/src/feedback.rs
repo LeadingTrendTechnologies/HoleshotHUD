@@ -804,6 +804,10 @@ fn clipboard_text() -> Option<String> {
     }
 }
 
+pub(crate) fn set_clipboard_text(text: &str) -> Result<(), ()> {
+    set_clipboard(text, None)
+}
+
 fn set_clipboard(text: &str, file: Option<&Path>) -> Result<(), ()> {
     let mut wide: Vec<u16> = text.encode_utf16().collect();
     wide.push(0);

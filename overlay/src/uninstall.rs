@@ -33,6 +33,7 @@ pub fn start(host: HWND) -> bool {
     crate::plugin::remove();
     if let Some(game) = crate::plugin::game_dir() {
         let _ = crate::game_ui::remove(&game);
+        crate::stock_pitboard::remove(&game);
     }
     crate::tray::remove();
     if launch_inno() || launch_sidecar_script() || launch_fallback() {

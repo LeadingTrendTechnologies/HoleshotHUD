@@ -35,7 +35,7 @@ No column picker; show, **Live sector**, **Compare to session best**, **Lap log*
 
 ## Do not regress
 
-- Keep the widget off until **Show on overlay** is on. Experimental widgets does not gate it.
+- Keep the widget off until **Show on overlay** is on. Experimental features does not gate it.
 - **Compare to session best** (`sector_session`) is this visit’s fastest splits, not the saved tape. Independent of Delta Bar’s toggle. Do not use plugin sector delta in that mode.
 - Do not draw off-track unless settings layout boxes are up (same as other race widgets).
 - Hero is the sector you are in, not last completed.

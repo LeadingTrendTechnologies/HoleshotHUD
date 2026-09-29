@@ -140,79 +140,113 @@ pub(crate) fn draw_relative(
                         } else {
                             0
                         };
-                        row.paint(px, fonts, accent_c, Some(rider.race_num), |kind| match kind {
-                            RelField::Pos => (
-                                if pos > 0 {
-                                    format_place_digits(pos, false)
-                                } else {
-                                    String::new()
-                                },
-                                row.ink,
-                                true,
-                            ),
-                            RelField::Num => (format!("{}", rider.race_num), row.ink_dim, true),
-                            RelField::Name => (cstr(&rider.name).to_string(), row.ink, false),
-                            RelField::Bike => (bike_name.to_string(), name_c, false),
-                            RelField::Gap => (
-                                if is_self {
-                                    "0.0".into()
-                                } else {
-                                    format!("{:.1}", ((wrapped * track_len) / speed).abs())
-                                },
-                                dim,
-                                true,
-                            ),
-                            RelField::Laps => (
-                                st.map(|r| {
-                                    format!("{}", standing_num_laps(s, rider.race_num, r.num_laps))
-                                })
-                                .unwrap_or_default(),
-                                dim,
-                                true,
-                            ),
-                            RelField::Current => (
-                                format!(
-                                    "{}",
-                                    race_row.map(|r| r.current_lap).unwrap_or_else(|| {
-                                        rider_current_lap(
-                                            s,
-                                            rider.race_num,
-                                            st.map(|r| r.num_laps).unwrap_or(0),
+                        row.paint(
+                            px,
+                            fonts,
+                            accent_c,
+                            Some(rider.race_num),
+                            |kind| match kind {
+                                RelField::Pos => (
+                                    if pos > 0 {
+                                        format_place_digits(pos, false)
+                                    } else {
+                                        String::new()
+                                    },
+                                    row.ink,
+                                    true,
+                                ),
+                                RelField::Num => (format!("{}", rider.race_num), row.ink_dim, true),
+                                RelField::Name => (cstr(&rider.name).to_string(), row.ink, false),
+                                RelField::Bike => (bike_name.to_string(), name_c, false),
+                                RelField::Gap => (
+                                    if is_self {
+                                        "0.0".into()
+                                    } else {
+                                        format!("{:.1}", ((wrapped * track_len) / speed).abs())
+                                    },
+                                    dim,
+                                    true,
+                                ),
+                                RelField::Laps => (
+                                    st.map(|r| {
+                                        format!(
+                                            "{}",
+                                            standing_num_laps(s, rider.race_num, r.num_laps)
                                         )
                                     })
-                                ),
-                                dim,
-                                true,
-                            ),
-                            RelField::Penalty => (
-                                st.map(|r| format_penalty(r.penalty_ms)).unwrap_or_default(),
-                                dim,
-                                true,
-                            ),
-                            RelField::Interval => (
-                                race_row
-                                    .map(interval_text_from_row)
-                                    .or_else(|| st.map(|r| interval_text(s, r)))
                                     .unwrap_or_default(),
-                                dim,
-                                true,
-                            ),
-                            RelField::Status => (
-                                mark_key(standing_mark(s, rider.race_num, rider.crashed != 0)),
-                                dim,
-                                true,
-                            ),
-                            RelField::Best => (
-                                format_lap(best),
-                                if best_ms > 0 && best == best_ms && !out {
-                                    purple
-                                } else {
-                                    dim
-                                },
-                                true,
-                            ),
-                            RelField::Last => (format_lap(last_ms), dim, true),
-                        });
+                                    dim,
+                                    true,
+                                ),
+                                RelField::Current => (
+                                    format!(
+                                        "{}",
+                                        race_row.map(|r| r.current_lap).unwrap_or_else(|| {
+                                            rider_current_lap(
+                                                s,
+                                                rider.race_num,
+                                                st.map(|r| r.num_laps).unwrap_or(0),
+                                            )
+                                        })
+                                    ),
+                                    dim,
+                                    true,
+                                ),
+                                RelField::Penalty => (
+                                    st.map(|r| format_penalty(r.penalty_ms)).unwrap_or_default(),
+                                    dim,
+                                    true,
+                                ),
+                                RelField::Interval => (
+                                    race_row
+                                        .map(interval_text_from_row)
+                                        .or_else(|| st.map(|r| interval_text(s, r)))
+                                        .unwrap_or_default(),
+                                    dim,
+                                    true,
+                                ),
+                                RelField::Status => (
+                                    mark_key(standing_mark(s, rider.race_num, rider.crashed != 0)),
+                                    dim,
+                                    true,
+                                ),
+                                RelField::Best => (
+                                    format_lap(best),
+                                    if best_ms > 0 && best == best_ms && !out {
+                                        purple
+                                    } else {
+                                        dim
+                                    },
+                                    true,
+                                ),
+                                RelField::Last => (format_lap(last_ms), dim, true),
+                                RelField::LapDiff => (
+                                    lap_diff_text(rider.race_num),
+                                    lap_diff_ink(rider.race_num, dim),
+                                    true,
+                                ),
+                                RelField::Category => (cat.to_string(), dim, false),
+                                RelField::Speed => (
+                                    if rider.speed > 0.05 {
+                                        format!(
+                                            "{} {}",
+                                            cfg.units.format_speed(rider.speed),
+                                            cfg.units.speed_label()
+                                        )
+                                    } else if is_self && s.local_speed > 0.05 {
+                                        format!(
+                                            "{} {}",
+                                            cfg.units.format_speed(s.local_speed),
+                                            cfg.units.speed_label()
+                                        )
+                                    } else {
+                                        "--".into()
+                                    },
+                                    dim,
+                                    true,
+                                ),
+                            },
+                        );
                     });
                 });
             });

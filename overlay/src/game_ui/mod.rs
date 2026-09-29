@@ -17,6 +17,27 @@ pub const MANIFEST: &str = "holeshot-ui.manifest";
 pub const BAK_DIR: &str = "ui.holeshot-bak";
 pub const RESTART_MENUS: &str = "Fully quit MX Bikes and start it again so the menus reload.";
 
+/// Write `splash.png` and `loading.png` into `dir`. Does not touch an MX Bikes install.
+pub fn dump_menu_shots(
+    dir: &std::path::Path,
+) -> Result<(std::path::PathBuf, std::path::PathBuf), String> {
+    let (splash, loading) = screens::render_announce_screens()?;
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let splash_path = dir.join("splash.png");
+    let loading_path = dir.join("loading.png");
+    std::fs::write(
+        &splash_path,
+        splash.encode_png().map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    std::fs::write(
+        &loading_path,
+        loading.encode_png().map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    Ok((splash_path, loading_path))
+}
+
 #[cfg(test)]
 mod tests {
     use super::io::*;
@@ -95,8 +116,7 @@ mod tests {
         assert!(mnu.contains("sprite logo_ui.tga"));
         assert!(mnu.contains("name ID_LOGO"));
         assert!(
-            !mnu
-                .split("name IDD_SPLASH")
+            !mnu.split("name IDD_SPLASH")
                 .nth(1)
                 .unwrap()
                 .split("name idd_")
@@ -123,10 +143,28 @@ mod tests {
             "dest card rect must stay full-size"
         );
         assert!(mnu.contains("align center"));
-        let yes = mnu.split("name id_yes").nth(1).unwrap().split("name ID_TEXT").next().unwrap();
-        let no = mnu.split("name id_no").nth(1).unwrap().split("name id_yes").next().unwrap();
-        assert!(yes.contains("align center"), "Exit YES label must be centered");
-        assert!(no.contains("align center"), "Exit NO label must be centered");
+        let yes = mnu
+            .split("name id_yes")
+            .nth(1)
+            .unwrap()
+            .split("name ID_TEXT")
+            .next()
+            .unwrap();
+        let no = mnu
+            .split("name id_no")
+            .nth(1)
+            .unwrap()
+            .split("name id_yes")
+            .next()
+            .unwrap();
+        assert!(
+            yes.contains("align center"),
+            "Exit YES label must be centered"
+        );
+        assert!(
+            no.contains("align center"),
+            "Exit NO label must be centered"
+        );
         assert!(mnu.contains("48 148 255"));
         let eng = fs::read_to_string(ui.join("english.str")).unwrap();
         assert!(eng.contains("Testing\r\nPractice\r\n"));
@@ -153,9 +191,7 @@ mod tests {
         fs::write(bak.join("main.fnt"), b"fnt").unwrap();
         // Tiny stock splash must not pin TGA size — we floor at 1920×1080.
         let mut tiny = Vec::new();
-        tiny.extend_from_slice(&[
-            0u8, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 2, 0, 32, 8,
-        ]);
+        tiny.extend_from_slice(&[0u8, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 2, 0, 32, 8]);
         tiny.extend(vec![0u8; 4 * 2 * 4]);
         fs::write(bak.join("splash.tga"), &tiny).unwrap();
         fs::write(bak.join("bkgrnd.tga"), &tiny).unwrap();
@@ -165,7 +201,10 @@ mod tests {
         assert!(splash.len() > 18);
         assert!(loading.len() > 18);
         assert_ne!(splash, tiny, "default splash must replace stock bak bytes");
-        assert_ne!(loading, tiny, "default loading must replace stock bak bytes");
+        assert_ne!(
+            loading, tiny,
+            "default loading must replace stock bak bytes"
+        );
         let w = u16::from_le_bytes([splash[12], splash[13]]);
         let h = u16::from_le_bytes([splash[14], splash[15]]);
         assert_eq!((w, h), (1920, 1080));
@@ -215,7 +254,10 @@ mod tests {
         .unwrap();
         let from_jpg = fs::read(ui.join("splash.tga")).unwrap();
         assert_ne!(from_jpg, splash, "JPEG custom splash must replace default");
-        assert_ne!(from_jpg, custom, "JPEG splash should differ from PNG custom");
+        assert_ne!(
+            from_jpg, custom,
+            "JPEG splash should differ from PNG custom"
+        );
         // remove restores bak stock
         remove(&game).unwrap();
         assert_eq!(fs::read(ui.join("splash.tga")).unwrap(), tiny);
@@ -278,10 +320,7 @@ mod tests {
         let raw = "Testing\r\nSingle Player\r\nSingle_race\r\nMulti Player\r\n";
         let out = patch_str_pair(raw, "Testing", "Practice");
         let out = patch_str_pair(&out, "Single_race", "Online");
-        assert_eq!(
-            out,
-            "Testing\r\nPractice\r\nSingle_race\r\nOnline\r\n"
-        );
+        assert_eq!(out, "Testing\r\nPractice\r\nSingle_race\r\nOnline\r\n");
     }
 
     #[test]
@@ -303,9 +342,7 @@ mod tests {
 
     /// Uncompressed 32-bit BGRA TGA (bottom-up), one opaque pixel.
     fn tiny_tga(bgr: [u8; 3]) -> Vec<u8> {
-        let mut out = vec![
-            0u8, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 32, 8,
-        ];
+        let mut out = vec![0u8, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 32, 8];
         out.extend_from_slice(&[bgr[0], bgr[1], bgr[2], 255]);
         out
     }
@@ -401,12 +438,34 @@ mod tests {
         apply(&game, DEFAULT_PRIMARY).unwrap();
         // Complete stock seed so skip considers the pack current.
         fs::write(ui.join("main.fnt"), b"fnt").unwrap();
-        let before = fs::metadata(ui.join("main.mnu")).unwrap().modified().unwrap();
+        let before = fs::metadata(ui.join("main.mnu"))
+            .unwrap()
+            .modified()
+            .unwrap();
         std::thread::sleep(std::time::Duration::from_millis(20));
-        apply_pack_inner(&ui, DEFAULT_PRIMARY, Some(&game.join(BAK_DIR)), "", "", false).unwrap();
-        let after = fs::metadata(ui.join("main.mnu")).unwrap().modified().unwrap();
+        apply_pack_inner(
+            &ui,
+            DEFAULT_PRIMARY,
+            Some(&game.join(BAK_DIR)),
+            "",
+            "",
+            false,
+        )
+        .unwrap();
+        let after = fs::metadata(ui.join("main.mnu"))
+            .unwrap()
+            .modified()
+            .unwrap();
         assert_eq!(before, after, "matching accent must not rewrite");
-        apply_pack_inner(&ui, [59, 130, 246], Some(&game.join(BAK_DIR)), "", "", false).unwrap();
+        apply_pack_inner(
+            &ui,
+            [59, 130, 246],
+            Some(&game.join(BAK_DIR)),
+            "",
+            "",
+            false,
+        )
+        .unwrap();
         let mnu = fs::read_to_string(ui.join("main.mnu")).unwrap();
         assert!(mnu.contains("246 130 59"));
         let _ = fs::remove_dir_all(&game);
@@ -466,11 +525,23 @@ mod tests {
         assert!(join.contains(&format!(
             "rect {CARD_X0:.6} {CARD_Y0:.6} {CARD_X1:.6} {CARD_Y1:.6}"
         )));
-        assert!(join.contains(&format!("rect 0.030000 {CHROME_Y0:.6} 0.140000 {CHROME_Y1:.6}")));
-        assert!(join.contains(&format!("rect 0.160000 {CHROME_Y0:.6} 0.340000 {CHROME_Y1:.6}")));
-        let back = join.split("name id_back").nth(1).unwrap().split("name ID_SPECTATE").next().unwrap();
+        assert!(join.contains(&format!(
+            "rect 0.030000 {CHROME_Y0:.6} 0.140000 {CHROME_Y1:.6}"
+        )));
+        assert!(join.contains(&format!(
+            "rect 0.160000 {CHROME_Y0:.6} 0.340000 {CHROME_Y1:.6}"
+        )));
+        let back = join
+            .split("name id_back")
+            .nth(1)
+            .unwrap()
+            .split("name ID_SPECTATE")
+            .next()
+            .unwrap();
         assert!(
-            back.contains(&format!("rect 0.030000 {CHROME_Y0:.6} 0.140000 {CHROME_Y1:.6}")),
+            back.contains(&format!(
+                "rect 0.030000 {CHROME_Y0:.6} 0.140000 {CHROME_Y1:.6}"
+            )),
             "Back sits left of Local/World"
         );
         let tab_pos = (CHROME_Y1 - CHROME_Y0 - 0.020000) * 0.5;
@@ -514,7 +585,13 @@ mod tests {
         assert!(join.contains("sprite1 segr1.tga"));
         assert!(ui.join("segtrack.tga").is_file());
         assert!(ui.join("segl2.tga").is_file());
-        let host = join.split("name id_host").nth(1).unwrap().split("name id_password").next().unwrap();
+        let host = join
+            .split("name id_host")
+            .nth(1)
+            .unwrap()
+            .split("name id_password")
+            .next()
+            .unwrap();
         assert!(
             host.contains("button1.tga"),
             "Host above the list uses a button plaque"
@@ -567,7 +644,7 @@ mod tests {
     fn splice_connection_centers_loading_cancel() {
         let game = temp_game();
         let ui = game.join("ui");
-        let stock = "dialog\r\n{\r\n\tname connection_dialog\r\n\titem_bitmap\r\n\t{\r\n\t\tname ID_BITMAP\r\n\t\tsprite dialog600x200.tga\r\n\t}\r\n\titem_text\r\n\t{\r\n\t\tname id_message\r\n\t\tcolor 255 0 0 0\r\n\t\tbackcolor 0 0 0 0\r\n\t}\r\n\titem_text\r\n\t{\r\n\t\tname ID_INFO\r\n\t\tcolor 255 40 40 40\r\n\t\tbackcolor 0 0 0 0\r\n\t}\r\n\titem_button\r\n\t{\r\n\t\tname id_cancel\r\n\t\tbutton\r\n\t\t{\r\n\t\t\trect 0.437500 0.566667 0.562500 0.600000\r\n\t\t\tsprite1 button1.tga\r\n\t\t}\r\n\t\ttextid cancel\r\n\t\ttext\r\n\t\t{\r\n\t\t\tfont main.fnt\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\tfontsize 0.022222\r\n\t\t\talign right\r\n\t\t}\r\n\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 240 240 240\r\n\t\tcolor3 255 240 240 240\r\n\t}\r\n}\r\n\r\ndialog\r\n{\r\n\tname idd_password\r\n\titem_button\r\n\t{\r\n\t\tname ID_CANCEL\r\n\t\ttextid cancel\r\n\t\ttext\r\n\t\t{\r\n\t\t\tfont main.fnt\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\tfontsize 0.022222\r\n\t\t\talign right\r\n\t\t}\r\n\t}\r\n}\r\n";
+        let stock = "dialog\r\n{\r\n\tname connection_dialog\r\n\titem_bitmap\r\n\t{\r\n\t\tname ID_BITMAP\r\n\t\tsprite dialog600x200.tga\r\n\t}\r\n\titem_text\r\n\t{\r\n\t\tname id_message\r\n\t\tcolor 255 0 0 0\r\n\t\tbackcolor 0 0 0 0\r\n\t}\r\n\titem_text\r\n\t{\r\n\t\tname ID_INFO\r\n\t\tcolor 255 40 40 40\r\n\t\tbackcolor 0 0 0 0\r\n\t}\r\n\titem_button\r\n\t{\r\n\t\tname id_cancel\r\n\t\tbutton\r\n\t\t{\r\n\t\t\trect 0.437500 0.566667 0.562500 0.600000\r\n\t\t\tsprite1 button1.tga\r\n\t\t}\r\n\t\ttextid cancel\r\n\t\ttext\r\n\t\t{\r\n\t\t\tfont main.fnt\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\tfontsize 0.022222\r\n\t\t\talign right\r\n\t\t}\r\n\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 240 240 240\r\n\t\tcolor3 255 240 240 240\r\n\t}\r\n}\r\n\r\ndialog\r\n{\r\n\tname idd_password\r\n\titem_bitmap\r\n\t{\r\n\t\tname ID_BITMAP2\r\n\t\tsprite dialog600x300.tga\r\n\t}\r\n\titem_text\r\n\t{\r\n\t\tname ID_TEXT\r\n\t\tcolor 255 0 0 0\r\n\t\tbackcolor 0 0 0 0\r\n\t}\r\n\titem_button\r\n\t{\r\n\t\tname ID_CANCEL\r\n\t\ttextid cancel\r\n\t\ttext\r\n\t\t{\r\n\t\t\tfont main.fnt\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\tfontsize 0.022222\r\n\t\t\talign right\r\n\t\t}\r\n\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 240 240 240\r\n\t\tcolor3 255 240 240 240\r\n\t}\r\n}\r\n\r\ndialog\r\n{\r\n\tname idd_datamismatch\r\n\titem_text\r\n\t{\r\n\t\tname ID_TEXT\r\n\t\tcolor 255 0 0 0\r\n\t}\r\n\titem_list\r\n\t{\r\n\t\tname ID_LIST\r\n\t\tlist\r\n\t\t{\r\n\t\t\tcolor1 255 80 80 80\r\n\t\t\tcolor2 255 0 0 255\r\n\t\t\tbackcolor 255 220 220 220\r\n\t\t}\r\n\t}\r\n\titem_button\r\n\t{\r\n\t\tname ID_CLOSE\r\n\t\ttext\r\n\t\t{\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\talign right\r\n\t\t}\r\n\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 240 240 240\r\n\t\tcolor3 255 240 240 240\r\n\t}\r\n}\r\n";
         fs::write(ui.join("connection.mnu"), stock).unwrap();
         apply(&game, DEFAULT_PRIMARY).unwrap();
         let conn = fs::read_to_string(ui.join("connection.mnu")).unwrap();
@@ -586,13 +663,85 @@ mod tests {
         assert!(loading.contains("align center"));
         let cancel = loading.split("name id_cancel").nth(1).unwrap();
         assert!(cancel.contains(&format!("color1 {}", argb(255, TEXT))));
-        let password = conn.split("name idd_password").nth(1).unwrap();
-        assert!(
-            password.contains("align right"),
-            "password Cancel stays stock-aligned"
-        );
+        let password = conn
+            .split("name idd_password")
+            .nth(1)
+            .unwrap()
+            .split("name idd_datamismatch")
+            .next()
+            .unwrap();
+        assert!(password.contains("sprite profilemodifyboard.tga"));
+        assert!(!password.contains("\tcolor 255 0 0 0\n"));
+        assert!(password.contains("align center"));
+        let mismatch = conn.split("name idd_datamismatch").nth(1).unwrap();
+        assert!(!mismatch.contains("\tcolor 255 0 0 0\n"));
+        assert!(mismatch.contains("align center"));
+        assert!(mismatch.contains("backcolor 160 0 0 0"));
         let man = fs::read_to_string(ui.join(MANIFEST)).unwrap();
         assert!(man.contains("connection.mnu"));
+        let _ = fs::remove_dir_all(&game);
+    }
+
+    #[test]
+    fn splice_multijoin_restyles_timeout_and_serverinfo() {
+        let game = temp_game();
+        let ui = game.join("ui");
+        let stock = "dialog\r\n{\r\n\tname idd_worldconnection\r\n\titem_bitmap\r\n\t{\r\n\t\tname ID_BITMAP\r\n\t\tsprite dialog600x200.tga\r\n\t}\r\n\titem_text\r\n\t{\r\n\t\tname id_message\r\n\t\tcolor 255 0 0 0\r\n\t\tbackcolor 0 0 0 0\r\n\t}\r\n\titem_button\r\n\t{\r\n\t\tname id_cancel\r\n\t\ttext\r\n\t\t{\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\talign right\r\n\t\t}\r\n\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 240 240 240\r\n\t\tcolor3 255 240 240 240\r\n\t}\r\n}\r\n\r\ndialog\r\n{\r\n\tname idd_trackerror\r\n\titem_text\r\n\t{\r\n\t\tname id_text\r\n\t\tcolor 255 0 0 0\r\n\t}\r\n\titem_text\r\n\t{\r\n\t\tname ID_MESSAGE\r\n\t\tcolor 255 40 40 40\r\n\t}\r\n\titem_button\r\n\t{\r\n\t\tname ID_CLOSE\r\n\t\ttext\r\n\t\t{\r\n\t\t\tpos 0.008125 0.005556\r\n\t\t\talign right\r\n\t\t}\r\n\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 240 240 240\r\n\t\tcolor3 255 240 240 240\r\n\t}\r\n}\r\n\r\ndialog\r\n{\r\n\tname idd_serverinfo\r\n\titem_text\r\n\t{\r\n\t\tname ID_TEXT\r\n\t\tcolor 255 0 0 0\r\n\t}\r\n\titem_button\r\n\t{\r\n\t\tname ID_CLOSE\r\n\t\ttext\r\n\t\t{\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\talign left\r\n\t\t}\r\n\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 240 240 240\r\n\t\tcolor3 255 240 240 240\r\n\t}\r\n}\r\n";
+        fs::write(ui.join("multijoin.mnu"), stock).unwrap();
+        apply(&game, DEFAULT_PRIMARY).unwrap();
+        let join = fs::read_to_string(ui.join("multijoin.mnu")).unwrap();
+        let timeout = join
+            .split("name idd_worldconnection")
+            .nth(1)
+            .unwrap()
+            .split("name idd_trackerror")
+            .next()
+            .unwrap();
+        assert!(timeout.contains("sprite profiledeleteboard.tga"));
+        assert!(!timeout.contains("\tcolor 255 0 0 0\n"));
+        assert!(timeout.contains("align center"));
+        let track = join
+            .split("name idd_trackerror")
+            .nth(1)
+            .unwrap()
+            .split("name idd_serverinfo")
+            .next()
+            .unwrap();
+        assert!(!track.contains("\tcolor 255 0 0 0\n"));
+        assert!(!track.contains("\tcolor 255 40 40 40\n"));
+        assert!(track.contains("align center"));
+        assert!(track.contains("pos 0.000000 0.005556"));
+        let info = join.split("name idd_serverinfo").nth(1).unwrap();
+        assert!(!info.contains("\tcolor 255 0 0 0\n"));
+        assert!(info.contains("align center"));
+        let _ = fs::remove_dir_all(&game);
+    }
+
+    #[test]
+    fn splice_export_restyles_save_and_overwrite() {
+        let game = temp_game();
+        let ui = game.join("ui");
+        let stock = "dialog\r\n{\r\n\tname idd_export_save\r\n\titem_bitmap\r\n\t{\r\n\t\tname ID_BITMAP\r\n\t\tsprite dialog600x600.tga\r\n\t}\r\n\titem_text\r\n\t{\r\n\t\tname ID_TEXT\r\n\t\tcolor 255 0 0 0\r\n\t}\r\n\titem_button\r\n\t{\r\n\t\tname id_ok\r\n\t\tbutton\r\n\t\t{\r\n\t\t\tsprite2 b_button2.tga\r\n\t\t\tsprite3 b_button3.tga\r\n\t\t}\r\n\t\ttext\r\n\t\t{\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\talign left\r\n\t\t}\r\n\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 240 240 240\r\n\t\tcolor3 255 240 240 240\r\n\t}\r\n}\r\n\r\ndialog\r\n{\r\n\tname idd_export_overwrite\r\n\titem_bitmap\r\n\t{\r\n\t\tname ID_BITMAP\r\n\t\tsprite dialog600x200.tga\r\n\t}\r\n\titem_text\r\n\t{\r\n\t\tname ID_TEXT\r\n\t\tcolor 255 0 0 0\r\n\t}\r\n\titem_button\r\n\t{\r\n\t\tname ID_YES\r\n\t\ttext\r\n\t\t{\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\talign left\r\n\t\t}\r\n\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 240 240 240\r\n\t\tcolor3 255 240 240 240\r\n\t}\r\n}\r\n";
+        fs::write(ui.join("export.mnu"), stock).unwrap();
+        apply(&game, DEFAULT_PRIMARY).unwrap();
+        let exported = fs::read_to_string(ui.join("export.mnu")).unwrap();
+        let save = exported
+            .split("name idd_export_save")
+            .nth(1)
+            .unwrap()
+            .split("name idd_export_overwrite")
+            .next()
+            .unwrap();
+        assert!(save.contains("sprite replayboard.tga"));
+        assert!(!save.contains("\tcolor 255 0 0 0\n"));
+        assert!(save.contains("align center"));
+        assert!(save.contains("sprite1 button1.tga"));
+        let overwrite = exported.split("name idd_export_overwrite").nth(1).unwrap();
+        assert!(overwrite.contains("sprite profiledeleteboard.tga"));
+        assert!(!overwrite.contains("\tcolor 255 0 0 0\n"));
+        assert!(overwrite.contains("align center"));
+        let man = fs::read_to_string(ui.join(MANIFEST)).unwrap();
+        assert!(man.contains("export.mnu"));
         let _ = fs::remove_dir_all(&game);
     }
 
@@ -617,9 +766,7 @@ mod tests {
         assert!(opt.contains("sprite1 segr1.tga"));
         assert!(opt.contains("sprite optionstabtrack.tga"));
         assert!(opt.contains("align center"));
-        assert!(opt.contains(&format!(
-            "rect {OPT_TAB_GROUP_X0:.6} {OPT_TAB_Y0:.6}"
-        )));
+        assert!(opt.contains(&format!("rect {OPT_TAB_GROUP_X0:.6} {OPT_TAB_Y0:.6}")));
         assert!(opt.contains(&format!(
             "rect 0.030000 {OPT_CHROME_Y0:.6} 0.140000 {OPT_CHROME_Y1:.6}"
         )));
@@ -632,7 +779,10 @@ mod tests {
         assert!(opt.contains("sprite1 done1.tga"));
         assert!(opt.contains("sprite1 back1.tga"));
         assert!(opt.contains("48 148 255"));
-        assert!(!opt.contains("40 60 240"), "stock PiBoSo blue must become Look accent");
+        assert!(
+            !opt.contains("40 60 240"),
+            "stock PiBoSo blue must become Look accent"
+        );
         assert!(opt.contains("name idd_graphic_options"));
         assert!(opt.contains("sprite optionsboard.tga"));
         assert!(!opt.contains("dialog1580x700t.tga"));
@@ -763,7 +913,12 @@ mod tests {
         assert_eq!(bar_px[3], 0, "setupbar.tga corners must stay clear");
         let bari = ((bar_h / 2) * bar_w + bar_w / 2) * 4;
         assert_eq!(
-            [bar_px[bari], bar_px[bari + 1], bar_px[bari + 2], bar_px[bari + 3]],
+            [
+                bar_px[bari],
+                bar_px[bari + 1],
+                bar_px[bari + 2],
+                bar_px[bari + 3]
+            ],
             [0, 0, 0, 160],
             "setupbar uses the same glass alpha as boards"
         );
@@ -795,10 +950,7 @@ mod tests {
         assert!(left.contains(&format!(
             "rect 0.160000 {SETUP_CHROME_Y0:.6} 0.300000 {SETUP_CHROME_Y1:.6}"
         )));
-        let track_info = left
-            .split("name ID_TRACK_INFO\n")
-            .nth(1)
-            .unwrap_or(left);
+        let track_info = left.split("name ID_TRACK_INFO\n").nth(1).unwrap_or(left);
         assert!(
             track_info.contains("align center"),
             "Track Info label must be centered"
@@ -817,7 +969,10 @@ mod tests {
             .next()
             .unwrap();
         assert!(start.contains("done1.tga"));
-        assert!(start.contains(&format!("color1 {}", argb(255, ink_on_rgb(DEFAULT_PRIMARY)))));
+        assert!(start.contains(&format!(
+            "color1 {}",
+            argb(255, ink_on_rgb(DEFAULT_PRIMARY))
+        )));
         let info = setup
             .split("name idd_track_info\n")
             .nth(1)
@@ -830,7 +985,10 @@ mod tests {
             "Track Info modal must use glass board"
         );
         assert!(!info.contains("dialog940x700.tga"));
-        assert!(info.contains("color 160 0 0 0"), "scrim should match glass alpha");
+        assert!(
+            info.contains("color 160 0 0 0"),
+            "scrim should match glass alpha"
+        );
         assert!(info.contains("name id_trackmap"));
         assert!(info.contains("name ID_TRACKMAP_MASK\n"));
         assert!(info.contains("sprite trackmapmask.tga"));
@@ -1381,7 +1539,18 @@ mod tests {
         assert!(!main.contains("r_button"));
         assert!(main.contains("sprite1 button1.tga"));
         assert!(main.contains("sprite1 done1.tga"));
-        assert!(main.contains("rect 0.800000 0.966667 0.970000 1.000000"));
+        // Settings | Chat | Save | Done on SETUP_CHROME Y (Chat via chatswitch).
+        assert!(main.contains(&format!(
+            "rect 0.406250 {SETUP_CHROME_Y0:.6} 0.531250 {SETUP_CHROME_Y1:.6}"
+        )));
+        assert!(main.contains(&format!(
+            "rect 0.690000 {SETUP_CHROME_Y0:.6} 0.790000 {SETUP_CHROME_Y1:.6}"
+        )));
+        assert!(main.contains(&format!(
+            "rect 0.800000 {SETUP_CHROME_Y0:.6} 0.970000 {SETUP_CHROME_Y1:.6}"
+        )));
+        assert!(!main.contains("0.656250 0.922222"));
+        assert!(!main.contains("0.406250 0.966667"));
         let save = main.split("name id_save\n").nth(1).unwrap();
         assert!(save.contains("align center"));
         let class = mnu
@@ -1505,8 +1674,16 @@ mod tests {
         assert!(exit.contains("sprite dialog600x200.tga"));
         assert!(!exit.contains("profiledeleteboard.tga"));
         assert!(exit.contains("sprite1 button1.tga"));
-        assert!(exit.split("name ID_YES\n").nth(1).unwrap().contains("align center"));
-        assert!(exit.split("name ID_NO\n").nth(1).unwrap().contains("align center"));
+        assert!(exit
+            .split("name ID_YES\n")
+            .nth(1)
+            .unwrap()
+            .contains("align center"));
+        assert!(exit
+            .split("name ID_NO\n")
+            .nth(1)
+            .unwrap()
+            .contains("align center"));
         let man = fs::read_to_string(ui.join(MANIFEST)).unwrap();
         assert!(man.contains("test.mnu"));
         let _ = fs::remove_dir_all(&game);
@@ -2168,4 +2345,3 @@ mod tests {
         assert!(opt.contains("sprite1 done1.tga"));
     }
 }
-

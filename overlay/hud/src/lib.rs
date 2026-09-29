@@ -4,6 +4,7 @@ pub mod gamepad;
 pub mod layout;
 pub mod lean;
 pub mod location_tape;
+pub mod pitboard;
 pub mod race_store;
 pub mod render;
 pub mod sector;
@@ -12,6 +13,7 @@ pub mod telemetry;
 pub mod track_pb;
 
 pub use gamepad::{set as set_gamepad, PadKind, PadState};
+pub use pitboard::{PitVar, PitWhen};
 pub use race_store::{
     is_practice_session, live_session, session_preset, ClockSample, RaceFlag, RaceStore,
 };
