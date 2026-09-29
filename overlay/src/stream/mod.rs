@@ -3,7 +3,7 @@
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU8, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -15,7 +15,7 @@ const DEFAULT_PORT: u16 = 8765;
 const PORT_LAST: u16 = 8775;
 const STREAM_W: u32 = 1920;
 const STREAM_H: u32 = 1080;
-const MIN_FRAME_GAP: Duration = Duration::from_millis(33);
+const MIN_FRAME_GAP: Duration = Duration::from_millis(16);
 
 static ENABLED: AtomicBool = AtomicBool::new(false);
 static BOUND_PORT: AtomicU16 = AtomicU16::new(0);
@@ -27,14 +27,38 @@ static SERVER: OnceLock<Mutex<Option<ServerState>>> = OnceLock::new();
 
 struct ServerState {
     join: Option<JoinHandle<()>>,
-    clients: Arc<Mutex<Vec<ClientOut>>>,
-    edit_clients: Arc<Mutex<Vec<ClientOut>>>,
-    last_png: Arc<Mutex<Option<Vec<u8>>>>,
-    last_edit_png: Arc<Mutex<Option<Vec<u8>>>>,
+    painter: Option<JoinHandle<()>>,
+    writer: Option<JoinHandle<()>>,
+}
+
+struct PaintJob {
+    snap: Option<crate::shm::Snapshot>,
+    live_cfg: crate::config::HudConfig,
+    freq: i64,
+}
+
+static LATEST: Mutex<Option<PaintJob>> = Mutex::new(None);
+static LATEST_CV: Condvar = Condvar::new();
+static WRITER_CV: Condvar = Condvar::new();
+static WRITER_PING: Mutex<()> = Mutex::new(());
+static WRITER_SEQ: AtomicUsize = AtomicUsize::new(0);
+
+#[derive(Clone)]
+struct SharedFrame {
+    /// Live update. PNG bytes are omitted for widgets that did not change.
+    bytes: Arc<Vec<u8>>,
+    /// Full picture for a client that just connected.
+    keyframe: Arc<Vec<u8>>,
+    generation: u64,
 }
 
 struct ClientOut {
     stream: TcpStream,
+    /// Websocket frame still being written. Empty once the last byte is sent.
+    pending: Vec<u8>,
+    sent: usize,
+    /// Generation of the frame in `pending`, or the last frame fully sent.
+    installed: u64,
 }
 
 pub fn bound_port() -> u16 {
@@ -107,12 +131,20 @@ fn start() -> u16 {
     STOP.store(false, Ordering::SeqCst);
     let clients: Arc<Mutex<Vec<ClientOut>>> = Arc::new(Mutex::new(Vec::new()));
     let edit_clients: Arc<Mutex<Vec<ClientOut>>> = Arc::new(Mutex::new(Vec::new()));
-    let last_png: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(None));
-    let last_edit_png: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(None));
+    let last_png: Arc<Mutex<Option<SharedFrame>>> = Arc::new(Mutex::new(None));
+    let last_edit_png: Arc<Mutex<Option<SharedFrame>>> = Arc::new(Mutex::new(None));
     let clients_thread = Arc::clone(&clients);
     let edit_clients_thread = Arc::clone(&edit_clients);
     let last_png_thread = Arc::clone(&last_png);
     let last_edit_png_thread = Arc::clone(&last_edit_png);
+    let clients_paint = Arc::clone(&clients);
+    let edit_clients_paint = Arc::clone(&edit_clients);
+    let last_png_paint = Arc::clone(&last_png);
+    let last_edit_png_paint = Arc::clone(&last_edit_png);
+    let clients_write = Arc::clone(&clients);
+    let edit_clients_write = Arc::clone(&edit_clients);
+    let last_png_write = Arc::clone(&last_png);
+    let last_edit_png_write = Arc::clone(&last_edit_png);
     let join = thread::Builder::new()
         .name("mxbo-stream".into())
         .spawn(move || {
@@ -124,12 +156,32 @@ fn start() -> u16 {
             )
         })
         .ok();
+    let painter = thread::Builder::new()
+        .name("mxbo-stream-paint".into())
+        .spawn(move || {
+            run_painter(
+                clients_paint,
+                edit_clients_paint,
+                last_png_paint,
+                last_edit_png_paint,
+            )
+        })
+        .ok();
+    let writer = thread::Builder::new()
+        .name("mxbo-stream-write".into())
+        .spawn(move || {
+            run_writer(
+                clients_write,
+                edit_clients_write,
+                last_png_write,
+                last_edit_png_write,
+            )
+        })
+        .ok();
     *slot = Some(ServerState {
         join,
-        clients,
-        edit_clients,
-        last_png,
-        last_edit_png,
+        painter,
+        writer,
     });
     for _ in 0..50 {
         let port = bound_port();
@@ -144,6 +196,8 @@ fn start() -> u16 {
 fn stop() {
     ENABLED.store(false, Ordering::SeqCst);
     STOP.store(true, Ordering::SeqCst);
+    LATEST_CV.notify_all();
+    wake_writer();
     BOUND_PORT.store(0, Ordering::SeqCst);
     CLIENTS.store(0, Ordering::SeqCst);
     EDIT_CLIENTS.store(0, Ordering::SeqCst);
@@ -158,91 +212,202 @@ fn stop() {
         if let Some(join) = state.join {
             let _ = join.join();
         }
+        if let Some(painter) = state.painter {
+            let _ = painter.join();
+        }
+        if let Some(writer) = state.writer {
+            let _ = writer.join();
+        }
     }
+    *LATEST.lock().unwrap_or_else(|e| e.into_inner()) = None;
 }
 
-/// Paint transparent HUD frames for OBS (`/ws`) and the layout editor (`/ws/edit`).
-pub fn publish_frame(
-    fonts: &crate::render::Fonts,
-    snap: Option<&crate::shm::Snapshot>,
-    live_cfg: &HudConfig,
-    age: f32,
-) {
+/// Store the newest HUD sample. The paint thread encodes it off the overlay loop.
+pub fn publish_frame(snap: Option<crate::shm::Snapshot>, live_cfg: HudConfig, freq: i64) {
     if !is_running() || client_count() == 0 {
         return;
     }
-    static LAST: OnceLock<Mutex<Instant>> = OnceLock::new();
-    let last = LAST.get_or_init(|| Mutex::new(Instant::now() - MIN_FRAME_GAP));
-    {
-        let mut guard = last.lock().unwrap_or_else(|e| e.into_inner());
-        if guard.elapsed() < MIN_FRAME_GAP {
-            return;
+    let mut latest = LATEST.lock().unwrap_or_else(|e| e.into_inner());
+    *latest = Some(PaintJob {
+        snap,
+        live_cfg,
+        freq,
+    });
+    drop(latest);
+    LATEST_CV.notify_one();
+}
+
+fn run_painter(
+    clients: Arc<Mutex<Vec<ClientOut>>>,
+    edit_clients: Arc<Mutex<Vec<ClientOut>>>,
+    last_png: Arc<Mutex<Option<SharedFrame>>>,
+    last_edit_png: Arc<Mutex<Option<SharedFrame>>>,
+) {
+    let Some(mut frame_px) = Pixmap::new(STREAM_W, STREAM_H) else {
+        return;
+    };
+    let mut obs_cache = empty_widget_cache();
+    let mut edit_cache = empty_widget_cache();
+    let mut fonts: Option<crate::render::Fonts> = None;
+    let mut font_family = None;
+    let mut next_at = Instant::now();
+    while !STOP.load(Ordering::SeqCst) && ENABLED.load(Ordering::SeqCst) {
+        let job = {
+            let mut latest = LATEST.lock().unwrap_or_else(|e| e.into_inner());
+            while latest.is_none() && !STOP.load(Ordering::SeqCst) && ENABLED.load(Ordering::SeqCst)
+            {
+                let (guard, _) = LATEST_CV
+                    .wait_timeout(latest, Duration::from_millis(50))
+                    .unwrap_or_else(|e| e.into_inner());
+                latest = guard;
+            }
+            let now = Instant::now();
+            if now < next_at && !STOP.load(Ordering::SeqCst) {
+                let (guard, _) = LATEST_CV
+                    .wait_timeout(latest, next_at.saturating_duration_since(now))
+                    .unwrap_or_else(|e| e.into_inner());
+                latest = guard;
+            }
+            latest.take()
+        };
+        if STOP.load(Ordering::SeqCst) || !ENABLED.load(Ordering::SeqCst) {
+            break;
         }
-        *guard = Instant::now();
+        let Some(job) = job else {
+            continue;
+        };
+        next_at = Instant::now() + MIN_FRAME_GAP;
+        paint_job(
+            &job,
+            &clients,
+            &edit_clients,
+            &last_png,
+            &last_edit_png,
+            &mut frame_px,
+            &mut obs_cache,
+            &mut edit_cache,
+            &mut fonts,
+            &mut font_family,
+        );
+    }
+}
+
+fn paint_job(
+    job: &PaintJob,
+    clients: &Arc<Mutex<Vec<ClientOut>>>,
+    edit_clients: &Arc<Mutex<Vec<ClientOut>>>,
+    last_png: &Arc<Mutex<Option<SharedFrame>>>,
+    last_edit_png: &Arc<Mutex<Option<SharedFrame>>>,
+    frame_px: &mut Pixmap,
+    obs_cache: &mut WidgetCache,
+    edit_cache: &mut WidgetCache,
+    fonts: &mut Option<crate::render::Fonts>,
+    font_family: &mut Option<crate::config::FontFamily>,
+) {
+    let obs_n = clients.lock().map(|c| c.len()).unwrap_or(0);
+    let edit_n = edit_clients.lock().map(|c| c.len()).unwrap_or(0);
+    if obs_n == 0 && edit_n == 0 {
+        return;
+    }
+    let age = snapshot_age(job.snap.as_ref().map(|s| s.tick_qpc).unwrap_or(0), job.freq);
+
+    if job.snap.is_none() {
+        return;
     }
 
-    let slot = server_slot().lock().unwrap_or_else(|e| e.into_inner());
-    let Some(state) = slot.as_ref() else {
+    let family = job.live_cfg.font_family;
+    if font_family.is_none_or(|current| current != family) {
+        *fonts = crate::render::Fonts::for_family(family);
+        *font_family = fonts.as_ref().map(|_| family);
+    }
+    let Some(fonts) = fonts.as_ref() else {
         return;
     };
 
-    let obs_n = state.clients.lock().map(|c| c.len()).unwrap_or(0);
-    let edit_n = state.edit_clients.lock().map(|c| c.len()).unwrap_or(0);
-
-    if snap.is_none() {
-        if obs_n > 0 {
-            if let Ok(guard) = state.last_png.lock() {
-                if let Some(png) = guard.as_ref() {
-                    broadcast_png(&state.clients, png, &CLIENTS);
-                }
-            }
-        }
-        if edit_n > 0 {
-            if let Ok(guard) = state.last_edit_png.lock() {
-                if let Some(png) = guard.as_ref() {
-                    broadcast_png(&state.edit_clients, png, &EDIT_CLIENTS);
-                }
-            }
+    let edit = edit_preset();
+    if obs_n > 0 && edit_n > 0 && edit == job.live_cfg.active_preset {
+        if let Some(snap) = job.snap.as_ref() {
+            let (delta, keyframe) = paint_widgets(frame_px, fonts, snap, &job.live_cfg, age, obs_cache);
+            *edit_cache = obs_cache.clone();
+            let delta = Arc::new(delta);
+            let keyframe = Arc::new(keyframe);
+            store_frame(last_png, Arc::clone(&delta), Arc::clone(&keyframe));
+            store_frame(last_edit_png, delta, keyframe);
         }
         return;
     }
 
     if obs_n > 0 {
-        if let Some(png) = paint_png(fonts, snap, live_cfg, age) {
-            if let Ok(mut last) = state.last_png.lock() {
-                *last = Some(png.clone());
-            }
-            broadcast_png(&state.clients, &png, &CLIENTS);
+        if let Some(snap) = job.snap.as_ref() {
+            let (delta, keyframe) = paint_widgets(frame_px, fonts, snap, &job.live_cfg, age, obs_cache);
+            store_frame(last_png, Arc::new(delta), Arc::new(keyframe));
         }
     }
 
     if edit_n > 0 {
-        let preset = edit_preset();
-        let edit_cfg = config::with_config(|c| c.for_stream_preset(preset));
-        let mut edit_snap = snap.copied();
+        let edit_cfg = config::with_config(|c| c.for_stream_preset(edit));
+        let mut edit_snap = job.snap.clone();
         if let Some(s) = edit_snap.as_mut() {
             edit_cfg.apply_stream_live_to_snapshot(s);
         }
-        if let Some(png) = paint_png(fonts, edit_snap.as_ref(), &edit_cfg, age) {
-            if let Ok(mut last) = state.last_edit_png.lock() {
-                *last = Some(png.clone());
-            }
-            broadcast_png(&state.edit_clients, &png, &EDIT_CLIENTS);
+        if let Some(snap) = edit_snap.as_ref() {
+            let (delta, keyframe) =
+                paint_widgets(frame_px, fonts, snap, &edit_cfg, age, edit_cache);
+            store_frame(last_edit_png, Arc::new(delta), Arc::new(keyframe));
         }
     }
 }
 
-fn paint_png(
+fn snapshot_age(tick: u64, freq: i64) -> f32 {
+    if freq <= 0 || tick == 0 {
+        return 0.0;
+    }
+    let mut now = 0i64;
+    unsafe {
+        windows::Win32::System::Performance::QueryPerformanceCounter(&mut now).ok();
+    }
+    let raw = ((now as f64 - tick as f64) / freq as f64) as f32;
+    raw.clamp(0.0, 0.08)
+}
+
+type WidgetCache = [Option<CachedCrop>; WidgetId::COUNT];
+
+#[derive(Clone)]
+struct CachedCrop {
+    hash: u64,
+    width: u32,
+    height: u32,
+    png: Arc<Vec<u8>>,
+    sent: bool,
+}
+
+struct WidgetPiece {
+    id: u8,
+    x: u16,
+    y: u16,
+    width: u16,
+    height: u16,
+    png: Arc<Vec<u8>>,
+    changed: bool,
+}
+
+fn empty_widget_cache() -> WidgetCache {
+    std::array::from_fn(|_| None)
+}
+
+fn paint_widgets(
+    px: &mut Pixmap,
     fonts: &crate::render::Fonts,
-    snap: Option<&crate::shm::Snapshot>,
+    snap: &crate::shm::Snapshot,
     cfg: &HudConfig,
     age: f32,
-) -> Option<Vec<u8>> {
-    let mut px = Pixmap::new(STREAM_W, STREAM_H)?;
+    cache: &mut WidgetCache,
+) -> (Vec<u8>, Vec<u8>) {
+    px.fill(tiny_skia::Color::TRANSPARENT);
     crate::render::draw(
-        &mut px,
+        px,
         fonts,
-        snap,
+        Some(snap),
         cfg,
         STREAM_W,
         STREAM_H,
@@ -251,27 +416,390 @@ fn paint_png(
         false,
         false,
     );
-    px.encode_png().ok()
+    let pieces = widget_pieces(px, snap, cfg, cache);
+    (
+        write_widget_message(&pieces, false),
+        write_widget_message(&pieces, true),
+    )
 }
 
-fn broadcast_png(
-    clients: &Arc<Mutex<Vec<ClientOut>>>,
-    png: &[u8],
-    counter: &AtomicUsize,
-) {
-    let Ok(mut list) = clients.lock() else {
-        return;
+const CROP_PAD: i32 = 8;
+
+struct WidgetCrop {
+    id: u8,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+}
+
+fn widget_crops(snap: &crate::shm::Snapshot, cfg: &HudConfig) -> Vec<WidgetCrop> {
+    let mut crops = Vec::new();
+    let push = |crops: &mut Vec<WidgetCrop>, id: WidgetId, rect: crate::shm::Rect| {
+        let Some(crop) = padded_pixel_rect(rect) else {
+            return;
+        };
+        crops.push(WidgetCrop {
+            id: id.idx() as u8,
+            x: crop.0,
+            y: crop.1,
+            width: crop.2,
+            height: crop.3,
+        });
     };
-    let frame = ws_binary_frame(png);
-    list.retain_mut(|client| client.stream.write_all(&frame).is_ok());
+    if snap.show_standings != 0 {
+        let laid = crate::render::table_layout_rect(
+            snap,
+            cfg,
+            WidgetId::Standings,
+            snap.standings_rect,
+            STREAM_W as f32,
+            STREAM_H as f32,
+        );
+        push(&mut crops, WidgetId::Standings, laid);
+    }
+    if snap.show_relative != 0 {
+        let laid = crate::render::table_layout_rect(
+            snap,
+            cfg,
+            WidgetId::Relative,
+            snap.relative,
+            STREAM_W as f32,
+            STREAM_H as f32,
+        );
+        push(&mut crops, WidgetId::Relative, laid);
+    }
+    if snap.show_map != 0 {
+        push(&mut crops, WidgetId::Map, snap.map);
+    }
+    if cfg[WidgetId::Minimap].show {
+        push(&mut crops, WidgetId::Minimap, cfg[WidgetId::Minimap].rect);
+    }
+    if cfg[WidgetId::Radar].show {
+        push(&mut crops, WidgetId::Radar, cfg[WidgetId::Radar].rect);
+    }
+    if cfg[WidgetId::Dash].show {
+        push(&mut crops, WidgetId::Dash, cfg[WidgetId::Dash].rect);
+    }
+    if cfg[WidgetId::Ticker].show {
+        push(&mut crops, WidgetId::Ticker, cfg[WidgetId::Ticker].rect);
+    }
+    if cfg[WidgetId::Sys].show {
+        push(&mut crops, WidgetId::Sys, cfg[WidgetId::Sys].rect);
+    }
+    if cfg.sector_visible() {
+        push(&mut crops, WidgetId::Sector, cfg[WidgetId::Sector].rect);
+    }
+    if cfg.delta_visible() {
+        push(&mut crops, WidgetId::Delta, cfg[WidgetId::Delta].rect);
+    }
+    if cfg[WidgetId::Flag].show {
+        push(&mut crops, WidgetId::Flag, cfg[WidgetId::Flag].rect);
+    }
+    if cfg.stance_visible() {
+        push(&mut crops, WidgetId::Stance, cfg[WidgetId::Stance].rect);
+    }
+    if cfg[WidgetId::Lean].show {
+        push(&mut crops, WidgetId::Lean, cfg[WidgetId::Lean].rect);
+    }
+    if cfg.gamepad_visible() {
+        push(&mut crops, WidgetId::Gamepad, cfg[WidgetId::Gamepad].rect);
+    }
+    if cfg[WidgetId::Telemetry].show {
+        push(&mut crops, WidgetId::Telemetry, cfg[WidgetId::Telemetry].rect);
+    }
+    if mxbo_hud::pitboard::drawing(cfg[WidgetId::Pitboard].show, cfg.pit_when) {
+        push(&mut crops, WidgetId::Pitboard, cfg[WidgetId::Pitboard].rect);
+    }
+    crops
+}
+
+fn padded_pixel_rect(rect: crate::shm::Rect) -> Option<(u32, u32, u32, u32)> {
+    let left = (rect.x * STREAM_W as f32).floor() as i32 - CROP_PAD;
+    let top = (rect.y * STREAM_H as f32).floor() as i32 - CROP_PAD;
+    let right = ((rect.x + rect.w) * STREAM_W as f32).ceil() as i32 + CROP_PAD;
+    let bottom = ((rect.y + rect.h) * STREAM_H as f32).ceil() as i32 + CROP_PAD;
+    let x0 = left.clamp(0, STREAM_W as i32);
+    let y0 = top.clamp(0, STREAM_H as i32);
+    let x1 = right.clamp(0, STREAM_W as i32);
+    let y1 = bottom.clamp(0, STREAM_H as i32);
+    if x1 <= x0 || y1 <= y0 {
+        return None;
+    }
+    Some((x0 as u32, y0 as u32, (x1 - x0) as u32, (y1 - y0) as u32))
+}
+
+fn hash_rect(px: &Pixmap, x: u32, y: u32, width: u32, height: u32) -> u64 {
+    let stride = px.width() as usize * 4;
+    let data = px.data();
+    let mut hash = 0xcbf29ce484222325u64;
+    for row in 0..height as usize {
+        let start = (y as usize + row) * stride + x as usize * 4;
+        let end = start + width as usize * 4;
+        for byte in &data[start..end] {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+    }
+    hash
+}
+
+fn widget_pieces(
+    px: &Pixmap,
+    snap: &crate::shm::Snapshot,
+    cfg: &HudConfig,
+    cache: &mut WidgetCache,
+) -> Vec<WidgetPiece> {
+    let mut pieces = Vec::new();
+    let mut seen = [false; WidgetId::COUNT];
+    for crop in widget_crops(snap, cfg) {
+        let index = crop.id as usize;
+        if index >= WidgetId::COUNT {
+            continue;
+        }
+        let hash = hash_rect(px, crop.x, crop.y, crop.width, crop.height);
+        let unchanged = cache[index].as_ref().is_some_and(|cached| {
+            cached.sent && cached.hash == hash && cached.width == crop.width && cached.height == crop.height
+        });
+        let png = if unchanged {
+            cache[index].as_ref().unwrap().png.clone()
+        } else {
+            let Some(encoded) = encode_crop(px, crop.x, crop.y, crop.width, crop.height) else {
+                continue;
+            };
+            Arc::new(encoded)
+        };
+        cache[index] = Some(CachedCrop {
+            hash,
+            width: crop.width,
+            height: crop.height,
+            png: Arc::clone(&png),
+            sent: true,
+        });
+        seen[index] = true;
+        pieces.push(WidgetPiece {
+            id: crop.id,
+            x: crop.x as u16,
+            y: crop.y as u16,
+            width: crop.width as u16,
+            height: crop.height as u16,
+            png,
+            changed: !unchanged,
+        });
+    }
+    for (index, slot) in cache.iter_mut().enumerate() {
+        if !seen[index] {
+            if let Some(cached) = slot.as_mut() {
+                cached.sent = false;
+            }
+        }
+    }
+    pieces
+}
+
+fn write_widget_message(pieces: &[WidgetPiece], keyframe: bool) -> Vec<u8> {
+    let mut payload = Vec::from(&b"HSF2"[..]);
+    payload.extend_from_slice(&(pieces.len() as u16).to_le_bytes());
+    for piece in pieces {
+        let include_png = keyframe || piece.changed;
+        payload.push(piece.id);
+        payload.push(u8::from(include_png));
+        payload.extend_from_slice(&piece.x.to_le_bytes());
+        payload.extend_from_slice(&piece.y.to_le_bytes());
+        payload.extend_from_slice(&piece.width.to_le_bytes());
+        payload.extend_from_slice(&piece.height.to_le_bytes());
+        if include_png {
+            payload.extend_from_slice(&(piece.png.len() as u32).to_le_bytes());
+            payload.extend_from_slice(piece.png.as_slice());
+        }
+    }
+    payload
+}
+
+fn encode_crop(px: &Pixmap, x: u32, y: u32, width: u32, height: u32) -> Option<Vec<u8>> {
+    if width == 0 || height == 0 {
+        return None;
+    }
+    let frame_width = px.width() as usize;
+    let pixels = px.pixels();
+    let mut rgba = vec![0u8; (width * height * 4) as usize];
+    for row in 0..height as usize {
+        let source_index = (y as usize + row) * frame_width + x as usize;
+        let dest_row = &mut rgba[row * width as usize * 4..];
+        for (column, pixel) in pixels[source_index..source_index + width as usize]
+            .iter()
+            .enumerate()
+        {
+            let color = pixel.demultiply();
+            let channel = column * 4;
+            dest_row[channel] = color.red();
+            dest_row[channel + 1] = color.green();
+            dest_row[channel + 2] = color.blue();
+            dest_row[channel + 3] = color.alpha();
+        }
+    }
+    let mut data = Vec::new();
+    let mut encoder = png::Encoder::new(&mut data, width, height);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    encoder.set_compression(png::Compression::Fast);
+    let mut writer = encoder.write_header().ok()?;
+    writer.write_image_data(&rgba).ok()?;
+    drop(writer);
+    Some(data)
+}
+
+fn store_frame(slot: &Mutex<Option<SharedFrame>>, bytes: Arc<Vec<u8>>, keyframe: Arc<Vec<u8>>) {
+    let mut guard = slot.lock().unwrap_or_else(|e| e.into_inner());
+    let mut generation = guard
+        .as_ref()
+        .map(|frame| frame.generation)
+        .unwrap_or(0)
+        .wrapping_add(1);
+    if generation == 0 {
+        generation = 1;
+    }
+    *guard = Some(SharedFrame {
+        bytes,
+        keyframe,
+        generation,
+    });
+    drop(guard);
+    wake_writer();
+}
+
+fn wake_writer() {
+    WRITER_SEQ.fetch_add(1, Ordering::SeqCst);
+    let _guard = WRITER_PING.lock().unwrap_or_else(|e| e.into_inner());
+    WRITER_CV.notify_one();
+}
+
+enum FlushPace {
+    Idle,
+    Blocked,
+    Ready,
+}
+
+enum SocketWrite {
+    Open,
+    Blocked,
+    Closed,
+}
+
+fn run_writer(
+    clients: Arc<Mutex<Vec<ClientOut>>>,
+    edit_clients: Arc<Mutex<Vec<ClientOut>>>,
+    last_png: Arc<Mutex<Option<SharedFrame>>>,
+    last_edit_png: Arc<Mutex<Option<SharedFrame>>>,
+) {
+    while !STOP.load(Ordering::SeqCst) && ENABLED.load(Ordering::SeqCst) {
+        let seq = WRITER_SEQ.load(Ordering::SeqCst);
+        let obs = flush_clients(&clients, &last_png, &CLIENTS);
+        let edit = flush_clients(&edit_clients, &last_edit_png, &EDIT_CLIENTS);
+        if STOP.load(Ordering::SeqCst) || !ENABLED.load(Ordering::SeqCst) {
+            break;
+        }
+        let blocked = matches!(obs, FlushPace::Blocked) || matches!(edit, FlushPace::Blocked);
+        let ready = matches!(obs, FlushPace::Ready) || matches!(edit, FlushPace::Ready);
+        if ready && !blocked {
+            continue;
+        }
+        let timeout = if blocked {
+            Duration::from_millis(2)
+        } else {
+            Duration::from_millis(50)
+        };
+        let guard = WRITER_PING.lock().unwrap_or_else(|e| e.into_inner());
+        if STOP.load(Ordering::SeqCst)
+            || !ENABLED.load(Ordering::SeqCst)
+            || WRITER_SEQ.load(Ordering::SeqCst) != seq
+        {
+            continue;
+        }
+        let (_guard, _) = WRITER_CV
+            .wait_timeout(guard, timeout)
+            .unwrap_or_else(|e| e.into_inner());
+    }
+}
+
+/// Finishes the in-flight frame, then installs the newest PNG. One frame at a time.
+fn flush_clients(
+    clients: &Mutex<Vec<ClientOut>>,
+    slot: &Mutex<Option<SharedFrame>>,
+    counter: &AtomicUsize,
+) -> FlushPace {
+    let latest = slot
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    let Ok(mut list) = clients.lock() else {
+        return FlushPace::Idle;
+    };
+    let mut blocked = false;
+    let mut ready = false;
+    list.retain_mut(|client| {
+        if client.sent >= client.pending.len() {
+            client.pending.clear();
+            client.sent = 0;
+            if let Some(frame) = latest.as_ref() {
+                if frame.generation != client.installed {
+                    client.pending = ws_binary_frame(&frame.bytes);
+                    client.sent = 0;
+                    client.installed = frame.generation;
+                }
+            }
+        }
+        if client.sent >= client.pending.len() {
+            return true;
+        }
+        match drive_client_write(client) {
+            SocketWrite::Open => {
+                ready = true;
+                true
+            }
+            SocketWrite::Blocked => {
+                blocked = true;
+                true
+            }
+            SocketWrite::Closed => false,
+        }
+    });
     counter.store(list.len(), Ordering::SeqCst);
+    if blocked {
+        FlushPace::Blocked
+    } else if ready {
+        FlushPace::Ready
+    } else {
+        FlushPace::Idle
+    }
+}
+
+/// Writes the in-flight frame without blocking. A full buffer keeps the client.
+fn drive_client_write(client: &mut ClientOut) -> SocketWrite {
+    while client.sent < client.pending.len() {
+        match client.stream.write(&client.pending[client.sent..]) {
+            Ok(0) => return SocketWrite::Closed,
+            Ok(n) => client.sent += n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e)
+                if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::TimedOut =>
+            {
+                return SocketWrite::Blocked;
+            }
+            Err(_) => return SocketWrite::Closed,
+        }
+    }
+    client.pending.clear();
+    client.sent = 0;
+    SocketWrite::Open
 }
 
 fn run_server(
     clients: Arc<Mutex<Vec<ClientOut>>>,
     edit_clients: Arc<Mutex<Vec<ClientOut>>>,
-    last_png: Arc<Mutex<Option<Vec<u8>>>>,
-    last_edit_png: Arc<Mutex<Option<Vec<u8>>>>,
+    last_png: Arc<Mutex<Option<SharedFrame>>>,
+    last_edit_png: Arc<Mutex<Option<SharedFrame>>>,
 ) {
     let mut listener = None;
     for port in DEFAULT_PORT..=PORT_LAST {
@@ -322,9 +850,10 @@ fn handle_conn(
     mut stream: TcpStream,
     clients: Arc<Mutex<Vec<ClientOut>>>,
     edit_clients: Arc<Mutex<Vec<ClientOut>>>,
-    last_png: Arc<Mutex<Option<Vec<u8>>>>,
-    last_edit_png: Arc<Mutex<Option<Vec<u8>>>>,
+    last_png: Arc<Mutex<Option<SharedFrame>>>,
+    last_edit_png: Arc<Mutex<Option<SharedFrame>>>,
 ) {
+    let _ = stream.set_nodelay(true);
     let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
     let mut buf = vec![0u8; 16384];
@@ -361,17 +890,27 @@ fn handle_conn(
                 let list = if edit { &edit_clients } else { &clients };
                 let counter = if edit { &EDIT_CLIENTS } else { &CLIENTS };
                 let last = if edit { &last_edit_png } else { &last_png };
+                // Copy before the client-list lock. The writer locks the PNG slot, then that list.
+                let first_frame = last.lock().ok().and_then(|guard| guard.clone());
                 if let Ok(mut guard) = list.lock() {
                     if let Ok(clone) = stream.try_clone() {
-                        guard.push(ClientOut { stream: clone });
+                        let _ = clone.set_nonblocking(true);
+                        guard.push(ClientOut {
+                            stream: clone,
+                            pending: first_frame
+                                .as_ref()
+                                .map(|frame| ws_binary_frame(&frame.keyframe))
+                                .unwrap_or_default(),
+                            sent: 0,
+                            installed: first_frame
+                                .as_ref()
+                                .map(|frame| frame.generation)
+                                .unwrap_or(0),
+                        });
                         counter.store(guard.len(), Ordering::SeqCst);
                     }
                 }
-                if let Ok(guard) = last.lock() {
-                    if let Some(png) = guard.as_ref() {
-                        let _ = stream.write_all(&ws_binary_frame(png));
-                    }
-                }
+                wake_writer();
                 let _ = stream.set_read_timeout(Some(Duration::from_secs(3600)));
                 let mut sink = [0u8; 256];
                 loop {
@@ -764,16 +1303,115 @@ const STREAM_HTML: &str = r#"<!DOCTYPE html>
   fit();
   window.addEventListener("resize", fit);
   let ws;
+  let pending = null;
+  let busy = false;
+  let latestEpoch = 0;
+  const widgets = new Map();
+  const stageWidth = 1920;
+  const stageHeight = 1080;
+  const readPieces = (buffer) => {
+    const bytes = new Uint8Array(buffer);
+    if (bytes.length < 6 || bytes[0] !== 72 || bytes[1] !== 83 || bytes[2] !== 70 || bytes[3] !== 50) return null;
+    const view = new DataView(buffer);
+    const count = view.getUint16(4, true);
+    const parts = [];
+    let offset = 6;
+    for (let index = 0; index < count; index++) {
+      if (offset + 10 > buffer.byteLength) break;
+      const id = view.getUint8(offset);
+      const flags = view.getUint8(offset + 1);
+      const x = view.getUint16(offset + 2, true);
+      const y = view.getUint16(offset + 4, true);
+      const w = view.getUint16(offset + 6, true);
+      const h = view.getUint16(offset + 8, true);
+      offset += 10;
+      let png = null;
+      if (flags & 1) {
+        if (offset + 4 > buffer.byteLength) break;
+        const length = view.getUint32(offset, true);
+        offset += 4;
+        if (offset + length > buffer.byteLength) break;
+        png = buffer.slice(offset, offset + length);
+        offset += length;
+      }
+      parts.push({ id: id, x: x, y: y, w: w, h: h, png: png });
+    }
+    return parts;
+  };
+  const redraw = () => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const scaleX = canvas.width / stageWidth;
+    const scaleY = canvas.height / stageHeight;
+    for (const part of widgets.values()) {
+      ctx.drawImage(part.bmp, part.x * scaleX, part.y * scaleY, part.w * scaleX, part.h * scaleY);
+    }
+  };
+  const pump = () => {
+    if (busy || !pending) return;
+    const data = pending;
+    pending = null;
+    const epoch = latestEpoch;
+    busy = true;
+    const parts = readPieces(data);
+    if (!parts) {
+      busy = false;
+      pump();
+      return;
+    }
+    const seen = new Set();
+    const positioned = [];
+    const decodes = [];
+    for (const part of parts) {
+      seen.add(part.id);
+      if (part.png) {
+        decodes.push(createImageBitmap(new Blob([part.png], { type: "image/png" }))
+          .then((bmp) => ({ bmp: bmp, id: part.id, x: part.x, y: part.y, w: part.w, h: part.h }))
+          .catch(() => null));
+      } else {
+        positioned.push(part);
+      }
+    }
+    Promise.all(decodes).then((items) => {
+      const ready = items.filter(Boolean);
+      if (epoch !== latestEpoch) {
+        ready.forEach((part) => part.bmp.close());
+        busy = false;
+        pump();
+        return;
+      }
+      for (const part of positioned) {
+        const existing = widgets.get(part.id);
+        if (existing) {
+          existing.x = part.x;
+          existing.y = part.y;
+          existing.w = part.w;
+          existing.h = part.h;
+        }
+      }
+      for (const part of ready) {
+        const existing = widgets.get(part.id);
+        if (existing) existing.bmp.close();
+        widgets.set(part.id, part);
+      }
+      for (const id of Array.from(widgets.keys())) {
+        if (!seen.has(id)) {
+          widgets.get(id).bmp.close();
+          widgets.delete(id);
+        }
+      }
+      redraw();
+      busy = false;
+      pump();
+    }).catch(() => { busy = false; pump(); });
+  };
   const connect = () => {
     const proto = location.protocol === "https:" ? "wss" : "ws";
     ws = new WebSocket(`${proto}://${location.host}/ws`);
     ws.binaryType = "arraybuffer";
-    ws.onmessage = async (ev) => {
-      const blob = new Blob([ev.data], { type: "image/png" });
-      const bmp = await createImageBitmap(blob);
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
-      bmp.close();
+    ws.onmessage = (ev) => {
+      pending = ev.data;
+      latestEpoch++;
+      pump();
     };
     ws.onclose = () => setTimeout(connect, 1000);
     ws.onerror = () => { try { ws.close(); } catch (_) {} };

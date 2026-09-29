@@ -282,7 +282,7 @@ html, body {
   const GROUPS = [
     { name: "Boards", ids: ["standings", "relative", "ticker"] },
     { name: "Track", ids: ["map", "minimap", "radar"] },
-    { name: "Cockpit", ids: ["dash", "telemetry", "stance", "lean", "delta", "sector", "flag", "sys"] },
+    { name: "Cockpit", ids: ["dash", "telemetry", "stance", "lean", "delta", "sector", "flag", "sys", "pitboard"] },
     { name: "Experimental", ids: ["gamepad"] },
   ];
   const PRESETS = ["practice", "warmup", "race", "spectate"];
@@ -291,6 +291,8 @@ html, body {
   let state = null;
   let selected = "standings";
   let drag = null;
+  let dragFrame = 0;
+  let layoutEpoch = 0;
 
   const canvas = document.getElementById("c");
   const ctx = canvas.getContext("2d");
@@ -303,8 +305,11 @@ html, body {
   const widget = (id) => (state && state.widgets || []).find((w) => w.id === id);
 
   async function apiGet() {
+    const epoch = layoutEpoch;
     const res = await fetch("/api/stream-layout", { cache: "no-store" });
-    state = await res.json();
+    const next = await res.json();
+    if (epoch !== layoutEpoch || drag) return;
+    state = next;
     if (!widget(selected)) {
       const on = (state.widgets || []).find((w) => w.show);
       selected = on ? on.id : (state.widgets[0] && state.widgets[0].id) || "standings";
@@ -313,12 +318,20 @@ html, body {
   }
 
   async function apiPost(body) {
+    const epoch = ++layoutEpoch;
     const res = await fetch("/api/stream-layout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    state = await res.json();
+    const next = await res.json();
+    if (epoch !== layoutEpoch) return;
+    state = next;
+    if (drag) return;
+    if (!widget(selected)) {
+      const on = (state.widgets || []).find((w) => w.show);
+      selected = on ? on.id : (state.widgets[0] && state.widgets[0].id) || "standings";
+    }
     renderAll();
   }
 
@@ -516,9 +529,24 @@ html, body {
       el.style.height = (r.h * 100) + "%";
     }
     drag.next = r;
+    if (!dragFrame) {
+      dragFrame = requestAnimationFrame(() => {
+        dragFrame = 0;
+        if (!drag || !drag.next || !state) return;
+        apiPost({
+          preset: state.edit,
+          widget: drag.id,
+          rect: drag.next,
+        });
+      });
+    }
   }
 
   function onPointerUp() {
+    if (dragFrame) {
+      cancelAnimationFrame(dragFrame);
+      dragFrame = 0;
+    }
     if (!drag || !drag.next) { drag = null; return; }
     const body = {
       preset: state.edit,
@@ -548,19 +576,125 @@ html, body {
     renderUrls();
   }
 
+  let pending = null;
+  let busy = false;
+  let latestEpoch = 0;
+  const widgets = new Map();
+  const stageWidth = 1920;
+  const stageHeight = 1080;
+  function fitStage() {
+    const wr = boxesEl.getBoundingClientRect();
+    const w = Math.max(1, Math.floor(wr.width));
+    const h = Math.max(1, Math.floor(wr.height));
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
+  }
+  function readPieces(buffer) {
+    const bytes = new Uint8Array(buffer);
+    if (bytes.length < 6 || bytes[0] !== 72 || bytes[1] !== 83 || bytes[2] !== 70 || bytes[3] !== 50) return null;
+    const view = new DataView(buffer);
+    const count = view.getUint16(4, true);
+    const parts = [];
+    let offset = 6;
+    for (let index = 0; index < count; index++) {
+      if (offset + 10 > buffer.byteLength) break;
+      const id = view.getUint8(offset);
+      const flags = view.getUint8(offset + 1);
+      const x = view.getUint16(offset + 2, true);
+      const y = view.getUint16(offset + 4, true);
+      const w = view.getUint16(offset + 6, true);
+      const h = view.getUint16(offset + 8, true);
+      offset += 10;
+      let png = null;
+      if (flags & 1) {
+        if (offset + 4 > buffer.byteLength) break;
+        const length = view.getUint32(offset, true);
+        offset += 4;
+        if (offset + length > buffer.byteLength) break;
+        png = buffer.slice(offset, offset + length);
+        offset += length;
+      }
+      parts.push({ id: id, x: x, y: y, w: w, h: h, png: png });
+    }
+    return parts;
+  }
+  function redraw() {
+    fitStage();
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const scaleX = canvas.width / stageWidth;
+    const scaleY = canvas.height / stageHeight;
+    for (const part of widgets.values()) {
+      ctx.drawImage(part.bmp, part.x * scaleX, part.y * scaleY, part.w * scaleX, part.h * scaleY);
+    }
+  }
+  function pumpFrames() {
+    if (busy || !pending) return;
+    const data = pending;
+    pending = null;
+    const epoch = latestEpoch;
+    busy = true;
+    const parts = readPieces(data);
+    if (!parts) {
+      busy = false;
+      pumpFrames();
+      return;
+    }
+    const seen = new Set();
+    const positioned = [];
+    const decodes = [];
+    for (const part of parts) {
+      seen.add(part.id);
+      if (part.png) {
+        decodes.push(createImageBitmap(new Blob([part.png], { type: "image/png" }))
+          .then((bmp) => ({ bmp: bmp, id: part.id, x: part.x, y: part.y, w: part.w, h: part.h }))
+          .catch(() => null));
+      } else {
+        positioned.push(part);
+      }
+    }
+    Promise.all(decodes).then((items) => {
+      const ready = items.filter(Boolean);
+      if (epoch !== latestEpoch) {
+        ready.forEach((part) => part.bmp.close());
+        busy = false;
+        pumpFrames();
+        return;
+      }
+      for (const part of positioned) {
+        const existing = widgets.get(part.id);
+        if (existing) {
+          existing.x = part.x;
+          existing.y = part.y;
+          existing.w = part.w;
+          existing.h = part.h;
+        }
+      }
+      for (const part of ready) {
+        const existing = widgets.get(part.id);
+        if (existing) existing.bmp.close();
+        widgets.set(part.id, part);
+      }
+      for (const id of Array.from(widgets.keys())) {
+        if (!seen.has(id)) {
+          widgets.get(id).bmp.close();
+          widgets.delete(id);
+        }
+      }
+      redraw();
+      busy = false;
+      pumpFrames();
+    }).catch(() => { busy = false; pumpFrames(); });
+  }
   function connectWs() {
     const proto = location.protocol === "https:" ? "wss" : "ws";
     const ws = new WebSocket(`${proto}://${location.host}/ws/edit`);
     ws.binaryType = "arraybuffer";
-    ws.onmessage = async (ev) => {
-      const blob = new Blob([ev.data], { type: "image/png" });
-      const bmp = await createImageBitmap(blob);
-      const wr = boxesEl.getBoundingClientRect();
-      canvas.width = Math.max(1, Math.floor(wr.width));
-      canvas.height = Math.max(1, Math.floor(wr.height));
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
-      bmp.close();
+    ws.onmessage = (ev) => {
+      pending = ev.data;
+      latestEpoch++;
+      pumpFrames();
     };
     ws.onclose = () => setTimeout(connectWs, 1000);
     ws.onerror = () => { try { ws.close(); } catch (_) {} };

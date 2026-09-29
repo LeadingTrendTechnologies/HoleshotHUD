@@ -68,6 +68,12 @@ A second-monitor companion window can come later.
 
 ## Change log
 
+- 2026-09-29 — Unchanged stream widgets are not encoded or decoded again.
+- 2026-09-29 — Stream widgets stay with the bike because only the widget pixels are encoded and decoded.
+- 2026-09-29 — Live frames stay current while you ride. Sending runs on its own thread, so the next picture does not wait on the PNG encode.
+- 2026-09-29 — A slow websocket write no longer drops OBS or `/edit`. One frame finishes before the next starts, so the picture keeps up while you ride.
+- 2026-09-29 — The first stream frame is written on the listed socket under the same lock as later frames, so OBS and `/edit` keep decoding. Dragging a box posts the rect each frame, so the painted widget follows the orange box.
+- 2026-09-29 — Stream frames paint off the overlay thread at 16 ms, one PNG when OBS and `/edit` share a preset, and the browser keeps only the newest frame. Minimap centers on the centerline when the bike is outside the zoom. Pit Board is on the `/edit` Cockpit list.
 - 2026-09-24 — Stream layout editor at `/edit` (Show, drag/resize, basic prefs); OBS stays paint-only `/`; F8 Game|Stream surface removed.
 - 2026-09-24 — Stream surface edit chrome is orange Ctrl-drag boxes only; stream Shows never paint the game HWND (Browser Source / OBS only).
 - 2026-09-24 — Browser Source keeps painting while you alt-tab; it does not follow game-overlay z-order, and holds the last frame across brief SHM gaps.

@@ -811,10 +811,9 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
                 stream_cfg.apply_stream_live_to_snapshot(s);
             }
             // Browser Source must not follow game-overlay z-order (alt-tab blanks OBS).
-            let stream_hud = stream_snap
-                .as_ref()
-                .filter(|s| s.has_session_data() || hitch_hold || live);
-            crate::stream::publish_frame(&fonts, stream_hud, &stream_cfg, age);
+            let stream_hud =
+                stream_snap.filter(|s| s.has_session_data() || hitch_hold || live);
+            crate::stream::publish_frame(stream_hud, stream_cfg, freq);
         }
         dib.blit_premul_bgra(pixmap.data());
         dib.present(hwnd, w, h, x, y);

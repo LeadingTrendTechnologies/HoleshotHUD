@@ -22,6 +22,7 @@ mxbo-hud = { path = "hud" }
 mxbo-review = { path = "../review", features = ["sqlite"] }
 mxbo-motos-ui = { path = "../motos-ui" }
 tiny-skia = { version = "0.11", features = ["png-format"] }
+png = "0.17"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 iced-x86 = { version = "1.21", default-features = false, features = ["std", "decoder", "instr_info", "nasm"] }
 fontdue = "0.9"

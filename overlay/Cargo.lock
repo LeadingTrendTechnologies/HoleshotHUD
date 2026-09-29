@@ -534,6 +534,7 @@ dependencies = [
  "mxbo-hud",
  "mxbo-motos-ui",
  "mxbo-review",
+ "png 0.17.16",
  "rusqlite",
  "sha1",
  "sha2",

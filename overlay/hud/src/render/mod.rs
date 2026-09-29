@@ -4278,7 +4278,16 @@ fn pad_from_size(size: f32) -> f32 {
     (size * 0.10).max(8.0)
 }
 
-fn track_forward(s: &Snapshot, n: usize, px: f32, pz: f32) -> Option<(f32, f32)> {
+struct CenterlineHit {
+    x: f32,
+    z: f32,
+    forward: Option<(f32, f32)>,
+    dist2: f32,
+}
+
+/// Nearest point on the centerline, plus a tangent 22 m ahead. `dist2` is meters squared.
+/// Farther than 300 m still returns a hit so the minimap can fall back to the whole track.
+fn nearest_centerline(s: &Snapshot, n: usize, px: f32, pz: f32) -> Option<CenterlineHit> {
     if n < 2 {
         return None;
     }
@@ -4288,8 +4297,8 @@ fn track_forward(s: &Snapshot, n: usize, px: f32, pz: f32) -> Option<(f32, f32)>
         dx * dx + dz * dz < 400.0
     };
     let mut best = f32::MAX;
-    let mut si = 1usize;
-    let mut st = 0.0f32;
+    let mut segment_end = 1usize;
+    let mut along = 0.0f32;
     let last = if looped { n + 1 } else { n };
     for i in 1..last {
         let a = &s.poly[i - 1];
@@ -4307,21 +4316,38 @@ fn track_forward(s: &Snapshot, n: usize, px: f32, pz: f32) -> Option<(f32, f32)>
         let d = dx * dx + dz * dz;
         if d < best {
             best = d;
-            si = i;
-            st = t;
+            segment_end = i;
+            along = t;
         }
     }
-    if best > 90_000.0 {
+    if best == f32::MAX {
         return None;
     }
-    let a = &s.poly[si - 1];
-    let b = &s.poly[si % n];
-    let mut x = a.x + (b.x - a.x) * st;
-    let mut z = a.z + (b.z - a.z) * st;
-    let ox = x;
-    let oz = z;
+    let a = &s.poly[segment_end - 1];
+    let b = &s.poly[segment_end % n];
+    let x = a.x + (b.x - a.x) * along;
+    let z = a.z + (b.z - a.z) * along;
+    let forward = centerline_forward(s, n, looped, segment_end, x, z);
+    Some(CenterlineHit {
+        x,
+        z,
+        forward,
+        dist2: best,
+    })
+}
+
+fn centerline_forward(
+    s: &Snapshot,
+    n: usize,
+    looped: bool,
+    segment_end: usize,
+    mut x: f32,
+    mut z: f32,
+) -> Option<(f32, f32)> {
+    let origin_x = x;
+    let origin_z = z;
     let mut remain = 22.0;
-    let mut i = si;
+    let mut i = segment_end;
     for _ in 0..n + 2 {
         if remain <= 0.05 {
             break;
@@ -4347,13 +4373,21 @@ fn track_forward(s: &Snapshot, n: usize, px: f32, pz: f32) -> Option<(f32, f32)>
         z = nxt.z;
         i += 1;
     }
-    let fx = x - ox;
-    let fz = z - oz;
+    let fx = x - origin_x;
+    let fz = z - origin_z;
     let len = (fx * fx + fz * fz).sqrt();
     if len < 0.4 {
         return None;
     }
     Some((fx / len, fz / len))
+}
+
+fn track_forward(s: &Snapshot, n: usize, px: f32, pz: f32) -> Option<(f32, f32)> {
+    let hit = nearest_centerline(s, n, px, pz)?;
+    if hit.dist2 > 90_000.0 {
+        return None;
+    }
+    hit.forward
 }
 
 fn draw_track_arrows(

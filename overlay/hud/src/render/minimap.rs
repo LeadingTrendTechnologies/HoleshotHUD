@@ -57,24 +57,40 @@ pub(crate) fn draw_minimap(
 
     let subject = camera_subject(s);
     let you = subject_pose(s, age);
-    let (fx, fz, rx, rz, scale, origin_x, origin_z, north_up) = if let Some(pose) = you.as_ref() {
-        let (fx, fz) = track_forward(s, n, pose.x, pose.z).unwrap_or_else(|| {
+    let radius_m = mini_view_radius(cfg.mini_zoom);
+    // On the line, keep the bike as the origin. Off the line, center the circle on the
+    // nearest centerline so the stroke is in the view. Past 300 m, fit the whole track.
+    let on_track = you.as_ref().and_then(|pose| {
+        let hit = nearest_centerline(s, n, pose.x, pose.z)?;
+        if hit.dist2 > 90_000.0 {
+            return None;
+        }
+        let (fx, fz) = hit.forward.unwrap_or_else(|| {
             if pose.from_local {
-                let (f, z, _, _) = radar_axes(s);
-                (f, z)
+                let (forward_x, forward_z, _, _) = radar_axes(s);
+                (forward_x, forward_z)
             } else {
                 yaw_forward(pose.yaw)
             }
         });
-        let radius_m = mini_view_radius(cfg.mini_zoom);
+        let (origin_x, origin_z) = if hit.dist2 > radius_m * radius_m {
+            (hit.x, hit.z)
+        } else {
+            (pose.x, pose.z)
+        };
+        Some((fx, fz, origin_x, origin_z))
+    });
+    let (fx, fz, rx, rz, scale, origin_x, origin_z, north_up) = if let Some((fx, fz, origin_x, origin_z)) =
+        on_track
+    {
         (
             fx,
             fz,
             fz,
             -fx,
             (sdim * 0.46) / radius_m,
-            pose.x,
-            pose.z,
+            origin_x,
+            origin_z,
             true,
         )
     } else {

@@ -13,9 +13,9 @@ Drawn into a square pixmap (`MINI_PX`, reused) then blitted as a circle. Layout 
 
 ## Behavior
 
-With a camera-subject pose (live telemetry while riding, or the spectated rider via `rider_map_pose` / `track_pos`): **north-up along the track**, origin on them, only the nearby polyline (`stroke_smooth_minimap_track`). Heading comes from `track_forward` (polyline tangent), falling back to radar axes while riding or the rider’s yaw while spectating.
+With a camera-subject pose (live telemetry while riding, or the spectated rider via `rider_map_pose` / `track_pos`): **north-up along the track**. Origin stays on the bike while it is inside the zoom radius. Outside that radius the origin snaps to the nearest centerline point so the stroke is in the circle. Past 300 m there is no nearby line, so the circle uses the whole-track fit. Heading comes from `nearest_centerline` (polyline tangent), falling back to radar axes while riding or the rider’s yaw while spectating.
 
-Without a pose: whole-track fit, world-up, centered on the poly bounds.
+Without a pose, or when the bike is more than 300 m from the centerline: whole-track fit, world-up, centered on the poly bounds.
 
 Other riders use the same `rider_map_pose` placement as Map (centerline from `track_pos`, XZ fallback).
 
@@ -34,11 +34,13 @@ Toggles match Map, plus **Zoom**. Default background 0.
 - Ahead / behind rings stay off in warmup and practice (shared `place_rings_for_session` with Map).
 - When live, keep north-up (along-track forward = up). Do not rotate the circle with bike roll/yaw as a radar.
 - Follow / north-up must use `subject_pose`, not `has_telemetry` alone, or spectate falls back to a whole-track fit with no orange you-dot.
+- If the bike is outside the zoom radius, center on the nearest centerline. Do not leave an empty circle with only the crown. Past 300 m, fit the whole track.
 - After spectate, live telemetry must put the origin back on you. Do not keep following a stale camera target.
 - Sector lines use the same sector-start gates as Map (S1 at S/F, S2 / S3 at learned splits). Do not paint them orange. Skip a gate that is outside the circle.
 
 ## Change log
 
+- 2026-09-29 — North-up stays on the bike when it is inside the zoom radius. Farther out, the circle centers on the nearest centerline so the track is in view. Past 300 m the circle fits the whole track instead of an empty crown.
 - 2026-09-25 — Track outline is thinned, smoothed, and stroked with anti-aliased cubic segments (same idea as Motos Analyze). Sectors / S/F / arrows stay on the raw poly.
 - 2026-09-25 — Shares Map: ahead / behind rings stay off in warmup and practice.
 - 2026-09-25 — Shares Map: gate / prestart dots stay on world XZ; race still uses `track_pos`.
