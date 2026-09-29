@@ -571,7 +571,7 @@ fn pane_app_stream(
         text(
             px,
             fonts,
-            "OBS uses /. Edit stream Show and positions at /edit. Transparent; canvas 1920×1080.",
+            "OBS uses /. Set the Browser Source to the size on /edit, then scale it to the canvas.",
             11.0,
             x + 4.0,
             y + 2.0,

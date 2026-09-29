@@ -786,6 +786,11 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
                     && (crate::plugin::needs_restart()
                         || shm_miss_since.is_some_and(|t| t.elapsed() >= Duration::from_secs(2))),
                 layout_on,
+                &mut |id, pixmap| {
+                    if let Some(snap) = hud {
+                        crate::stream::copy_game_widget(id, pixmap, snap, cfg);
+                    }
+                },
             );
         };
         if let Some(cfg) = preview_cfg.as_ref() {
@@ -793,16 +798,6 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         } else {
             let cfg = crate::config::with_config(|c| c.for_overlay());
             paint(&cfg);
-        }
-        if overlay_on {
-            live_mark = Some(render::draw_live_mark(
-                &mut pixmap,
-                w as u32,
-                h as u32,
-                hover_mark,
-            ));
-        } else {
-            live_mark = None;
         }
         {
             let stream_cfg = crate::config::with_config(|c| c.for_stream());
@@ -813,7 +808,17 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
             // Browser Source must not follow game-overlay z-order (alt-tab blanks OBS).
             let stream_hud =
                 stream_snap.filter(|s| s.has_session_data() || hitch_hold || live);
-            crate::stream::publish_frame(stream_hud, stream_cfg, freq);
+            crate::stream::publish_frame(stream_hud, stream_cfg, age, w as u32, h as u32);
+        }
+        if overlay_on {
+            live_mark = Some(render::draw_live_mark(
+                &mut pixmap,
+                w as u32,
+                h as u32,
+                hover_mark,
+            ));
+        } else {
+            live_mark = None;
         }
         dib.blit_premul_bgra(pixmap.data());
         dib.present(hwnd, w, h, x, y);

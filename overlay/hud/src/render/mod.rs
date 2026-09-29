@@ -585,6 +585,7 @@ pub fn draw(
     restart_hint: bool,
     plugin_hint: bool,
     settings_hint: bool,
+    after_widget: &mut dyn FnMut(WidgetId, &mut Pixmap),
 ) {
     crate::config::set_accent_rgb(cfg.primary);
     clear_click_riders();
@@ -652,7 +653,24 @@ pub fn draw(
             } else {
                 (DashFlag::None, 0.0)
             };
-            draw_widgets(px, fonts, s, cfg, sw, sh, age, flag, flag_grow);
+            draw_widgets(
+                px,
+                fonts,
+                s,
+                cfg,
+                sw,
+                sh,
+                age,
+                flag,
+                flag_grow,
+                sw,
+                sh,
+                None,
+                |id, pixmap| {
+                    after_widget(id, pixmap);
+                    true
+                },
+            );
         });
     }
     if settings_hint {
@@ -670,7 +688,89 @@ pub fn draw(
     }
 }
 
-fn draw_widgets(
+/// Stream paint. Same widgets as [`draw`], and `after_widget` runs before the next one starts.
+/// The game overlay keeps a single [`draw`] call.
+pub fn draw_each<After>(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    snap: Option<&Snapshot>,
+    cfg: &HudConfig,
+    w: u32,
+    h: u32,
+    age: f32,
+    window_w: u32,
+    window_h: u32,
+    include: Option<&[bool; WidgetId::COUNT]>,
+    after_widget: After,
+) where
+    After: FnMut(WidgetId, &mut Pixmap) -> bool,
+{
+    crate::config::set_accent_rgb(cfg.primary);
+    clear_click_riders();
+    px.fill(Color::TRANSPARENT);
+    let Some(s) = snap else {
+        return;
+    };
+    if !s.has_session_data() {
+        if !cfg.any_overlay_widget() {
+            top_banner(
+                px,
+                fonts,
+                w,
+                "Press F8 — turn on Show on overlay. Widgets appear on track.",
+            );
+        } else {
+            top_banner(
+                px,
+                fonts,
+                w,
+                "Widgets appear on track. If you are racing, fully quit MX Bikes and start it again.",
+            );
+        }
+        return;
+    }
+    if !cfg.any_overlay_widget() {
+        top_banner(px, fonts, w, "Press F8 — turn on Show on overlay");
+    }
+    if cfg.edit_surface == EditSurface::Stream {
+        return;
+    }
+    let sw = w as f32;
+    let sh = h as f32;
+    let raster_w = if window_w >= 64 { window_w as f32 } else { sw };
+    let raster_h = if window_h >= 64 { window_h as f32 } else { sh };
+    RaceStore::refresh(s);
+    let (flag, flag_grow) = if cfg[WidgetId::Dash].show || cfg[WidgetId::Flag].show {
+        tick_display_flag(
+            s,
+            (cfg[WidgetId::Flag].show && cfg.flag_yellow)
+                || (cfg[WidgetId::Dash].show && cfg.dash_yellow),
+            (cfg[WidgetId::Flag].show && cfg.flag_blue)
+                || (cfg[WidgetId::Dash].show && cfg.dash_blue),
+            (cfg[WidgetId::Flag].show && cfg.flag_red)
+                || (cfg[WidgetId::Dash].show && cfg.dash_red),
+        )
+    } else {
+        (DashFlag::None, 0.0)
+    };
+    draw_widgets(
+        px,
+        fonts,
+        s,
+        cfg,
+        sw,
+        sh,
+        age,
+        flag,
+        flag_grow,
+        raster_w,
+        raster_h,
+        include,
+        after_widget,
+    );
+}
+
+fn draw_widgets<After>(
     px: &mut Pixmap,
     fonts: &Fonts,
     s: &Snapshot,
@@ -680,117 +780,206 @@ fn draw_widgets(
     age: f32,
     flag: DashFlag,
     flag_grow: f32,
-) {
+    raster_w: f32,
+    raster_h: f32,
+    include: Option<&[bool; WidgetId::COUNT]>,
+    mut after_widget: After,
+) where
+    After: FnMut(WidgetId, &mut Pixmap) -> bool,
+{
+    let included = |id: WidgetId| include.is_none_or(|mask| mask[id.idx()]);
     let delta = crate::delta::view_for(cfg.delta_session);
-    if s.show_standings != 0 {
-        let _g = push_style(
-            fonts,
-            cfg[WidgetId::Standings].bold,
-            cfg[WidgetId::Standings].font,
-        );
-        draw_standings(px, fonts, s, cfg, sw, sh);
+    if s.show_standings != 0 && included(WidgetId::Standings) {
+        RaceStore::with(|_| {
+            let _style = push_style(
+                fonts,
+                cfg[WidgetId::Standings].bold,
+                cfg[WidgetId::Standings].font,
+            );
+            draw_standings(px, fonts, s, cfg, sw, sh);
+        });
+        if !after_widget(WidgetId::Standings, px) {
+            return;
+        }
     }
-    if s.show_relative != 0 {
-        let _g = push_style(
-            fonts,
-            cfg[WidgetId::Relative].bold,
-            cfg[WidgetId::Relative].font,
-        );
-        draw_relative(px, fonts, s, cfg, sw, sh);
+    if s.show_relative != 0 && included(WidgetId::Relative) {
+        RaceStore::with(|_| {
+            let _style = push_style(
+                fonts,
+                cfg[WidgetId::Relative].bold,
+                cfg[WidgetId::Relative].font,
+            );
+            draw_relative(px, fonts, s, cfg, sw, sh);
+        });
+        if !after_widget(WidgetId::Relative, px) {
+            return;
+        }
     }
-    if s.show_map != 0 {
-        let _g = push_style(fonts, cfg[WidgetId::Map].bold, cfg[WidgetId::Map].font);
-        draw_map(px, fonts, s, cfg, sw, sh, age);
+    if s.show_map != 0 && included(WidgetId::Map) {
+        RaceStore::with(|_| {
+            let _style = push_style(fonts, cfg[WidgetId::Map].bold, cfg[WidgetId::Map].font);
+            draw_map(px, fonts, s, cfg, sw, sh, age);
+        });
+        if !after_widget(WidgetId::Map, px) {
+            return;
+        }
     }
-    if cfg[WidgetId::Minimap].show {
-        let _g = push_style(
-            fonts,
-            cfg[WidgetId::Minimap].bold,
-            cfg[WidgetId::Minimap].font,
-        );
-        draw_minimap(px, fonts, s, cfg, sw, sh, age);
+    if cfg[WidgetId::Minimap].show && included(WidgetId::Minimap) {
+        RaceStore::with(|_| {
+            let _style = push_style(
+                fonts,
+                cfg[WidgetId::Minimap].bold,
+                cfg[WidgetId::Minimap].font,
+            );
+            draw_minimap(px, fonts, s, cfg, sw, sh, age, raster_w, raster_h);
+        });
+        if !after_widget(WidgetId::Minimap, px) {
+            return;
+        }
     }
-    if cfg[WidgetId::Radar].show {
-        let _g = push_style(fonts, cfg[WidgetId::Radar].bold, cfg[WidgetId::Radar].font);
-        draw_radar(px, fonts, s, cfg, sw, sh, age);
+    if cfg[WidgetId::Radar].show && included(WidgetId::Radar) {
+        RaceStore::with(|_| {
+            let _style = push_style(fonts, cfg[WidgetId::Radar].bold, cfg[WidgetId::Radar].font);
+            draw_radar(px, fonts, s, cfg, sw, sh, age);
+        });
+        if !after_widget(WidgetId::Radar, px) {
+            return;
+        }
     }
-    if cfg[WidgetId::Dash].show {
-        let _g = push_style(fonts, cfg[WidgetId::Dash].bold, cfg[WidgetId::Dash].font);
-        let (dash_flag, dash_grow) = dash_wrap_flag(
-            flag,
-            flag_grow,
-            cfg.dash_yellow,
-            cfg.dash_blue,
-            cfg.dash_red,
-        );
-        draw_dash(px, fonts, s, cfg, sw, sh, dash_flag, dash_grow);
+    if cfg[WidgetId::Dash].show && included(WidgetId::Dash) {
+        RaceStore::with(|_| {
+            let _style = push_style(fonts, cfg[WidgetId::Dash].bold, cfg[WidgetId::Dash].font);
+            let (dash_flag, dash_grow) = dash_wrap_flag(
+                flag,
+                flag_grow,
+                cfg.dash_yellow,
+                cfg.dash_blue,
+                cfg.dash_red,
+            );
+            draw_dash(px, fonts, s, cfg, sw, sh, dash_flag, dash_grow);
+        });
+        if !after_widget(WidgetId::Dash, px) {
+            return;
+        }
     }
-    if cfg[WidgetId::Ticker].show {
-        let _g = push_style(
-            fonts,
-            cfg[WidgetId::Ticker].bold,
-            cfg[WidgetId::Ticker].font,
-        );
-        draw_ticker(px, fonts, s, cfg, sw, sh);
+    if cfg[WidgetId::Ticker].show && included(WidgetId::Ticker) {
+        RaceStore::with(|_| {
+            let _style = push_style(
+                fonts,
+                cfg[WidgetId::Ticker].bold,
+                cfg[WidgetId::Ticker].font,
+            );
+            draw_ticker(px, fonts, s, cfg, sw, sh);
+        });
+        if !after_widget(WidgetId::Ticker, px) {
+            return;
+        }
     }
-    if cfg[WidgetId::Sys].show {
-        let _g = push_style(fonts, cfg[WidgetId::Sys].bold, cfg[WidgetId::Sys].font);
-        draw_sys(px, fonts, cfg, sw, sh);
+    if cfg[WidgetId::Sys].show && included(WidgetId::Sys) {
+        RaceStore::with(|_| {
+            let _style = push_style(fonts, cfg[WidgetId::Sys].bold, cfg[WidgetId::Sys].font);
+            draw_sys(px, fonts, cfg, sw, sh);
+        });
+        if !after_widget(WidgetId::Sys, px) {
+            return;
+        }
     }
-    if cfg.sector_visible() {
-        let _g = push_style(
-            fonts,
-            cfg[WidgetId::Sector].bold,
-            cfg[WidgetId::Sector].font,
-        );
-        draw_sector(px, fonts, s, cfg, sw, sh);
+    if cfg.sector_visible() && included(WidgetId::Sector) {
+        RaceStore::with(|_| {
+            let _style = push_style(
+                fonts,
+                cfg[WidgetId::Sector].bold,
+                cfg[WidgetId::Sector].font,
+            );
+            draw_sector(px, fonts, s, cfg, sw, sh);
+        });
+        if !after_widget(WidgetId::Sector, px) {
+            return;
+        }
     }
-    if cfg.delta_visible() {
-        let _g = push_style(fonts, cfg[WidgetId::Delta].bold, cfg[WidgetId::Delta].font);
-        draw_delta(px, fonts, cfg, sw, sh, delta);
+    if cfg.delta_visible() && included(WidgetId::Delta) {
+        RaceStore::with(|_| {
+            let _style = push_style(fonts, cfg[WidgetId::Delta].bold, cfg[WidgetId::Delta].font);
+            draw_delta(px, fonts, cfg, sw, sh, delta);
+        });
+        if !after_widget(WidgetId::Delta, px) {
+            return;
+        }
     }
-    if cfg[WidgetId::Flag].show {
-        let _g = push_style(fonts, cfg[WidgetId::Flag].bold, cfg[WidgetId::Flag].font);
-        let (flag, flag_grow) = flag_widget_flag(
-            flag,
-            flag_grow,
-            cfg.flag_yellow,
-            cfg.flag_blue,
-            cfg.flag_red,
-        );
-        draw_flag(px, fonts, cfg, sw, sh, flag, flag_grow);
+    if cfg[WidgetId::Flag].show && included(WidgetId::Flag) {
+        RaceStore::with(|_| {
+            let _style = push_style(fonts, cfg[WidgetId::Flag].bold, cfg[WidgetId::Flag].font);
+            let (flag, flag_grow) = flag_widget_flag(
+                flag,
+                flag_grow,
+                cfg.flag_yellow,
+                cfg.flag_blue,
+                cfg.flag_red,
+            );
+            draw_flag(px, fonts, cfg, sw, sh, flag, flag_grow);
+        });
+        if !after_widget(WidgetId::Flag, px) {
+            return;
+        }
     }
-    if cfg.stance_visible() {
-        let _g = push_style(
-            fonts,
-            cfg[WidgetId::Stance].bold,
-            cfg[WidgetId::Stance].font,
-        );
-        draw_stance(px, fonts, cfg, sw, sh);
+    if cfg.stance_visible() && included(WidgetId::Stance) {
+        RaceStore::with(|_| {
+            let _style = push_style(
+                fonts,
+                cfg[WidgetId::Stance].bold,
+                cfg[WidgetId::Stance].font,
+            );
+            draw_stance(px, fonts, cfg, sw, sh);
+        });
+        if !after_widget(WidgetId::Stance, px) {
+            return;
+        }
     }
-    if cfg[WidgetId::Lean].show {
-        let _g = push_style(fonts, cfg[WidgetId::Lean].bold, cfg[WidgetId::Lean].font);
-        draw_lean(px, fonts, s, cfg, sw, sh);
+    if cfg[WidgetId::Lean].show && included(WidgetId::Lean) {
+        RaceStore::with(|_| {
+            let _style = push_style(fonts, cfg[WidgetId::Lean].bold, cfg[WidgetId::Lean].font);
+            draw_lean(px, fonts, s, cfg, sw, sh);
+        });
+        if !after_widget(WidgetId::Lean, px) {
+            return;
+        }
     }
-    if cfg.gamepad_visible() {
-        let _g = push_style(
-            fonts,
-            cfg[WidgetId::Gamepad].bold,
-            cfg[WidgetId::Gamepad].font,
-        );
-        draw_gamepad(px, fonts, cfg, sw, sh);
+    if cfg.gamepad_visible() && included(WidgetId::Gamepad) {
+        RaceStore::with(|_| {
+            let _style = push_style(
+                fonts,
+                cfg[WidgetId::Gamepad].bold,
+                cfg[WidgetId::Gamepad].font,
+            );
+            draw_gamepad(px, fonts, cfg, sw, sh);
+        });
+        if !after_widget(WidgetId::Gamepad, px) {
+            return;
+        }
     }
-    if cfg[WidgetId::Telemetry].show {
-        let _g = push_style(
-            fonts,
-            cfg[WidgetId::Telemetry].bold,
-            cfg[WidgetId::Telemetry].font,
-        );
-        draw_telemetry(px, fonts, s, cfg, sw, sh);
+    if cfg[WidgetId::Telemetry].show && included(WidgetId::Telemetry) {
+        RaceStore::with(|_| {
+            let _style = push_style(
+                fonts,
+                cfg[WidgetId::Telemetry].bold,
+                cfg[WidgetId::Telemetry].font,
+            );
+            draw_telemetry(px, fonts, s, cfg, sw, sh);
+        });
+        if !after_widget(WidgetId::Telemetry, px) {
+            return;
+        }
     }
-    if crate::pitboard::drawing(cfg[WidgetId::Pitboard].show, cfg.pit_when) {
-        let _g = push_style(fonts, false, 100);
-        draw_pitboard(px, fonts, s, cfg, sw, sh);
+    if crate::pitboard::drawing(cfg[WidgetId::Pitboard].show, cfg.pit_when)
+        && included(WidgetId::Pitboard)
+    {
+        RaceStore::with(|_| {
+            let _style = push_style(fonts, false, 100);
+            draw_pitboard(px, fonts, s, cfg, sw, sh);
+        });
+        if !after_widget(WidgetId::Pitboard, px) {
+            return;
+        }
     }
 }
 
@@ -4124,6 +4313,88 @@ fn draw_state_mark(px: &mut Pixmap, fonts: &Fonts, x: f32, y: f32, r: f32, mark:
         true,
     );
     icon(px, fonts, ch, size, ix, iy, col, true);
+}
+
+fn blit_circle_fit(dst: &mut Pixmap, src: &Pixmap, dx: f32, dy: f32, dest: f32) {
+    let dest_px = dest.round().max(1.0) as i32;
+    let src_w = src.width() as i32;
+    let src_h = src.height() as i32;
+    if src_w < 1 || src_h < 1 || dest_px < 1 {
+        return;
+    }
+    let cr = dest_px as f32 * 0.5 - 0.5;
+    let fade_start = cr * 0.58;
+    let cr2 = cr * cr;
+    let fade2 = fade_start * fade_start;
+    let fade_span = (cr - fade_start).max(0.001);
+    let center = dest_px as f32 * 0.5 - 0.5;
+    let origin_x = dx.round() as i32;
+    let origin_y = dy.round() as i32;
+    let src_data = src.data();
+    let dst_w = dst.width() as i32;
+    let dst_h = dst.height() as i32;
+    let dst_data = dst.data_mut();
+    let scale_x = src_w as f32 / dest_px as f32;
+    let scale_y = src_h as f32 / dest_px as f32;
+    for sy in 0..dest_px {
+        for sx in 0..dest_px {
+            let fx = sx as f32 + 0.5;
+            let fy = sy as f32 + 0.5;
+            let dist2 = (fx - center) * (fx - center) + (fy - center) * (fy - center);
+            if dist2 >= cr2 {
+                continue;
+            }
+            let cover = if dist2 <= fade2 {
+                1.0
+            } else {
+                let t = ((dist2.sqrt() - fade_start) / fade_span).clamp(0.0, 1.0);
+                let u = 1.0 - t;
+                u * u * (3.0 - 2.0 * u)
+            };
+            if cover <= 0.004 {
+                continue;
+            }
+            let dx_ = origin_x + sx;
+            let dy_ = origin_y + sy;
+            if dx_ < 0 || dy_ < 0 || dx_ >= dst_w || dy_ >= dst_h {
+                continue;
+            }
+            let sample = sample_pixmap(src_data, src_w, src_h, (fx - 0.5) * scale_x, (fy - 0.5) * scale_y);
+            let di = ((dy_ * dst_w + dx_) * 4) as usize;
+            let sa = (sample[3] as f32 / 255.0) * cover;
+            let inv = 1.0 - sa;
+            dst_data[di] = (sample[0] as f32 * cover + dst_data[di] as f32 * inv) as u8;
+            dst_data[di + 1] = (sample[1] as f32 * cover + dst_data[di + 1] as f32 * inv) as u8;
+            dst_data[di + 2] = (sample[2] as f32 * cover + dst_data[di + 2] as f32 * inv) as u8;
+            dst_data[di + 3] = (sample[3] as f32 * cover + dst_data[di + 3] as f32 * inv) as u8;
+        }
+    }
+}
+
+fn sample_pixmap(data: &[u8], width: i32, height: i32, x: f32, y: f32) -> [u8; 4] {
+    let x = x.clamp(0.0, (width - 1) as f32);
+    let y = y.clamp(0.0, (height - 1) as f32);
+    let x0 = x.floor() as i32;
+    let y0 = y.floor() as i32;
+    let x1 = (x0 + 1).min(width - 1);
+    let y1 = (y0 + 1).min(height - 1);
+    let tx = x - x0 as f32;
+    let ty = y - y0 as f32;
+    let texel = |px: i32, py: i32| {
+        let index = ((py * width + px) * 4) as usize;
+        [data[index], data[index + 1], data[index + 2], data[index + 3]]
+    };
+    let top_left = texel(x0, y0);
+    let top_right = texel(x1, y0);
+    let bottom_left = texel(x0, y1);
+    let bottom_right = texel(x1, y1);
+    let mut sample = [0u8; 4];
+    for channel in 0..4 {
+        let top = top_left[channel] as f32 * (1.0 - tx) + top_right[channel] as f32 * tx;
+        let bottom = bottom_left[channel] as f32 * (1.0 - tx) + bottom_right[channel] as f32 * tx;
+        sample[channel] = (top * (1.0 - ty) + bottom * ty).round() as u8;
+    }
+    sample
 }
 
 fn blit_circle(dst: &mut Pixmap, src: &Pixmap, dx: f32, dy: f32) {

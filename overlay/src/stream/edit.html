@@ -171,6 +171,40 @@ html, body {
 .row label { font-size: 12px; color: var(--text); }
 .row input[type="range"] { width: 120px; accent-color: var(--accent); }
 .row .val { font-size: 11px; color: var(--text-dim); min-width: 28px; text-align: right; }
+.row select {
+  font: inherit;
+  font-size: 11px;
+  color: var(--text);
+  background: var(--night-ink);
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 8px;
+  max-width: 140px;
+}
+.nudges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.nudge {
+  border: 0;
+  background: var(--accent);
+  color: var(--ink);
+  font: inherit;
+  font-size: 11px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transform: skewX(-8deg);
+}
+.nudge span { display: inline-block; transform: skewX(8deg); }
+.nudge:disabled {
+  background: var(--hairline);
+  color: var(--text-dim);
+  transform: none;
+  cursor: default;
+}
+.nudge:disabled span { transform: none; }
 .urls {
   margin-top: 24px;
   padding-top: 14px;
@@ -207,10 +241,18 @@ html, body {
   position: relative;
   flex: 1;
   min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: #121214;
   border: 1px solid var(--hairline);
   border-radius: 8px;
   overflow: hidden;
+}
+#frame {
+  position: relative;
+  max-width: 100%;
+  max-height: 100%;
 }
 #c, #boxes {
   position: absolute;
@@ -265,14 +307,18 @@ html, body {
     <div class="urls">
       <p id="obsUrl"></p>
       <button type="button" id="copyObs"><span>Copy OBS</span></button>
+      <p id="paintSize"></p>
+      <button type="button" id="copySize"><span>Copy size</span></button>
       <p id="editUrl"></p>
       <button type="button" id="copyEdit"><span>Copy Edit</span></button>
     </div>
   </aside>
   <section class="stage" aria-label="Live stream canvas">
     <div class="stage-wrap">
-      <canvas id="c" width="1920" height="1080"></canvas>
-      <div id="boxes"></div>
+      <div id="frame">
+        <canvas id="c" width="1920" height="1080"></canvas>
+        <div id="boxes"></div>
+      </div>
     </div>
     <p class="hint">Drag to move · corners and edges to resize</p>
   </section>
@@ -296,6 +342,7 @@ html, body {
 
   const canvas = document.getElementById("c");
   const ctx = canvas.getContext("2d");
+  const frameEl = document.getElementById("frame");
   const boxesEl = document.getElementById("boxes");
   const railEl = document.getElementById("rail");
   const presetsEl = document.getElementById("presets");
@@ -443,6 +490,136 @@ html, body {
     addToggle("Bold", "bold", w.bold);
     addRange("Font %", "font", w.font, 70, 160);
     addRange("Background", "bg", w.bg, 0, 100);
+
+    const postSetting = (key, value) => {
+      apiPost({
+        preset: state.edit,
+        widget: w.id,
+        settings: { [key]: value },
+      });
+    };
+    const addSettingRange = (label, key, value, min, max) => {
+      const row = document.createElement("div");
+      row.className = "row";
+      const labelEl = document.createElement("label");
+      labelEl.textContent = label;
+      const wrap = document.createElement("div");
+      wrap.style.display = "flex";
+      wrap.style.alignItems = "center";
+      wrap.style.gap = "8px";
+      const range = document.createElement("input");
+      range.type = "range";
+      range.min = String(min);
+      range.max = String(max);
+      range.value = String(value);
+      const valueEl = document.createElement("span");
+      valueEl.className = "val";
+      valueEl.textContent = String(value);
+      range.oninput = () => { valueEl.textContent = range.value; };
+      range.onchange = () => postSetting(key, Number(range.value));
+      wrap.appendChild(range);
+      wrap.appendChild(valueEl);
+      row.appendChild(labelEl);
+      row.appendChild(wrap);
+      settingsEl.appendChild(row);
+    };
+    const addChoice = (label, key, value, options, onPick) => {
+      const row = document.createElement("div");
+      row.className = "row";
+      const labelEl = document.createElement("label");
+      labelEl.textContent = label;
+      const select = document.createElement("select");
+      for (const option of options) {
+        const optionEl = document.createElement("option");
+        optionEl.value = option.id;
+        optionEl.textContent = option.label;
+        if (option.id === value) optionEl.selected = true;
+        select.appendChild(optionEl);
+      }
+      select.onchange = () => onPick(select.value);
+      row.appendChild(labelEl);
+      row.appendChild(select);
+      settingsEl.appendChild(row);
+    };
+    for (const control of w.controls || []) {
+      if (control.kind === "section" || control.kind === "order" || control.kind === "slots") {
+        const heading = document.createElement("h2");
+        heading.textContent = control.label;
+        settingsEl.appendChild(heading);
+      }
+      if (control.kind === "toggle") {
+        const row = document.createElement("div");
+        row.className = "row";
+        const labelEl = document.createElement("label");
+        labelEl.textContent = control.label;
+        const toggle = document.createElement("input");
+        toggle.type = "checkbox";
+        toggle.className = "toggle";
+        toggle.checked = !!control.value;
+        toggle.onchange = () => postSetting(control.key, toggle.checked);
+        row.appendChild(labelEl);
+        row.appendChild(toggle);
+        settingsEl.appendChild(row);
+      } else if (control.kind === "range") {
+        addSettingRange(control.label, control.key, control.value, control.min, control.max);
+      } else if (control.kind === "choice") {
+        addChoice(control.label, control.key, control.value, control.options, (value) => {
+          postSetting(control.key, value);
+        });
+      } else if (control.kind === "slots") {
+        control.values.forEach((value, index) => {
+          addChoice("Slot " + (index + 1), control.key, value, control.options, (picked) => {
+            const next = control.values.slice();
+            next[index] = picked;
+            postSetting(control.key, next.join(","));
+          });
+        });
+      } else if (control.kind === "order") {
+        control.items.forEach((item, index) => {
+          const row = document.createElement("div");
+          row.className = "row";
+          const labelEl = document.createElement("label");
+          labelEl.textContent = item.label;
+          const controls = document.createElement("div");
+          controls.className = "nudges";
+          const moveColumn = (direction) => {
+            const next = index + direction;
+            if (next < 0 || next >= control.items.length) return;
+            const ids = control.items.map((column) => column.id);
+            const swapped = ids[index];
+            ids[index] = ids[next];
+            ids[next] = swapped;
+            postSetting(control.key, ids.join(","));
+          };
+          const up = document.createElement("button");
+          up.type = "button";
+          up.className = "nudge";
+          up.innerHTML = "<span>Up</span>";
+          up.disabled = index === 0;
+          up.onclick = () => moveColumn(-1);
+          const down = document.createElement("button");
+          down.type = "button";
+          down.className = "nudge";
+          down.innerHTML = "<span>Down</span>";
+          down.disabled = index === control.items.length - 1;
+          down.onclick = () => moveColumn(1);
+          const toggle = document.createElement("input");
+          toggle.type = "checkbox";
+          toggle.className = "toggle";
+          toggle.checked = !!item.on;
+          toggle.onchange = () => postSetting(item.showKey, toggle.checked);
+          controls.appendChild(up);
+          controls.appendChild(down);
+          controls.appendChild(toggle);
+          row.appendChild(labelEl);
+          row.appendChild(controls);
+          settingsEl.appendChild(row);
+          if (item.on) {
+            addSettingRange(item.label + " width", item.widthKey, item.width, item.min, item.max);
+          }
+        });
+      }
+    }
   }
 
   function stageSize() {
@@ -564,8 +741,11 @@ html, body {
     if (!state) return;
     document.getElementById("obsUrl").textContent = "OBS: " + state.obsUrl;
     document.getElementById("editUrl").textContent = "Edit: " + state.editUrl;
+    const sourceSize = (state.paintW && state.paintH) ? (state.paintW + "x" + state.paintH) : "";
+    document.getElementById("paintSize").textContent = "Source: " + sourceSize;
     document.getElementById("copyObs").onclick = () => navigator.clipboard.writeText(state.obsUrl);
     document.getElementById("copyEdit").onclick = () => navigator.clipboard.writeText(state.editUrl);
+    document.getElementById("copySize").onclick = () => navigator.clipboard.writeText(sourceSize);
   }
 
   function renderAll() {
@@ -577,27 +757,25 @@ html, body {
   }
 
   let pending = null;
-  let busy = false;
-  let latestEpoch = 0;
   const widgets = new Map();
-  const stageWidth = 1920;
-  const stageHeight = 1080;
-  function fitStage() {
-    const wr = boxesEl.getBoundingClientRect();
-    const w = Math.max(1, Math.floor(wr.width));
-    const h = Math.max(1, Math.floor(wr.height));
-    if (canvas.width !== w || canvas.height !== h) {
-      canvas.width = w;
-      canvas.height = h;
-    }
+  let paintW = 1920;
+  let paintH = 1080;
+  function fitFrame() {
+    const wrap = frameEl.parentElement.getBoundingClientRect();
+    const scale = Math.min(wrap.width / paintW, wrap.height / paintH);
+    frameEl.style.width = Math.max(1, Math.floor(paintW * scale)) + "px";
+    frameEl.style.height = Math.max(1, Math.floor(paintH * scale)) + "px";
   }
   function readPieces(buffer) {
     const bytes = new Uint8Array(buffer);
-    if (bytes.length < 6 || bytes[0] !== 72 || bytes[1] !== 83 || bytes[2] !== 70 || bytes[3] !== 50) return null;
+    if (bytes.length < 11 || bytes[0] !== 72 || bytes[1] !== 83 || bytes[2] !== 70 || bytes[3] !== 53) return null;
     const view = new DataView(buffer);
-    const count = view.getUint16(4, true);
+    const partial = (bytes[4] & 1) !== 0;
+    const frameW = view.getUint16(5, true);
+    const frameH = view.getUint16(7, true);
+    const count = view.getUint16(9, true);
     const parts = [];
-    let offset = 6;
+    let offset = 11;
     for (let index = 0; index < count; index++) {
       if (offset + 10 > buffer.byteLength) break;
       const id = view.getUint8(offset);
@@ -607,85 +785,69 @@ html, body {
       const w = view.getUint16(offset + 6, true);
       const h = view.getUint16(offset + 8, true);
       offset += 10;
-      let png = null;
-      if (flags & 1) {
+      let pixels = null;
+      const remove = (flags & 2) !== 0;
+      if (!remove && (flags & 1)) {
         if (offset + 4 > buffer.byteLength) break;
         const length = view.getUint32(offset, true);
         offset += 4;
         if (offset + length > buffer.byteLength) break;
-        png = buffer.slice(offset, offset + length);
+        pixels = buffer.slice(offset, offset + length);
         offset += length;
       }
-      parts.push({ id: id, x: x, y: y, w: w, h: h, png: png });
+      parts.push({ id: id, x: x, y: y, w: w, h: h, pixels: pixels, remove: remove });
     }
-    return parts;
+    return { paintW: frameW, paintH: frameH, partial: partial, parts: parts };
   }
   function redraw() {
-    fitStage();
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    const scaleX = canvas.width / stageWidth;
-    const scaleY = canvas.height / stageHeight;
+    if (canvas.width !== paintW || canvas.height !== paintH) {
+      canvas.width = paintW;
+      canvas.height = paintH;
+    }
+    ctx.clearRect(0, 0, paintW, paintH);
     for (const part of widgets.values()) {
-      ctx.drawImage(part.bmp, part.x * scaleX, part.y * scaleY, part.w * scaleX, part.h * scaleY);
+      if (part.image) ctx.putImageData(part.image, part.x, part.y);
     }
   }
   function pumpFrames() {
-    if (busy || !pending) return;
+    if (!pending) return;
     const data = pending;
     pending = null;
-    const epoch = latestEpoch;
-    busy = true;
-    const parts = readPieces(data);
-    if (!parts) {
-      busy = false;
+    const frame = readPieces(data);
+    if (!frame) {
       pumpFrames();
       return;
     }
+    if (frame.paintW !== paintW || frame.paintH !== paintH) {
+      paintW = frame.paintW || paintW;
+      paintH = frame.paintH || paintH;
+      fitFrame();
+    }
     const seen = new Set();
-    const positioned = [];
-    const decodes = [];
-    for (const part of parts) {
+    for (const part of frame.parts) {
+      if (part.remove) {
+        widgets.delete(part.id);
+        continue;
+      }
       seen.add(part.id);
-      if (part.png) {
-        decodes.push(createImageBitmap(new Blob([part.png], { type: "image/png" }))
-          .then((bmp) => ({ bmp: bmp, id: part.id, x: part.x, y: part.y, w: part.w, h: part.h }))
-          .catch(() => null));
-      } else {
-        positioned.push(part);
+      let slot = widgets.get(part.id);
+      if (!slot) {
+        slot = { x: part.x, y: part.y, image: null };
+        widgets.set(part.id, slot);
+      }
+      slot.x = part.x;
+      slot.y = part.y;
+      if (part.pixels && part.w > 0 && part.h > 0 && part.pixels.byteLength === part.w * part.h * 4) {
+        slot.image = new ImageData(new Uint8ClampedArray(part.pixels), part.w, part.h);
       }
     }
-    Promise.all(decodes).then((items) => {
-      const ready = items.filter(Boolean);
-      if (epoch !== latestEpoch) {
-        ready.forEach((part) => part.bmp.close());
-        busy = false;
-        pumpFrames();
-        return;
-      }
-      for (const part of positioned) {
-        const existing = widgets.get(part.id);
-        if (existing) {
-          existing.x = part.x;
-          existing.y = part.y;
-          existing.w = part.w;
-          existing.h = part.h;
-        }
-      }
-      for (const part of ready) {
-        const existing = widgets.get(part.id);
-        if (existing) existing.bmp.close();
-        widgets.set(part.id, part);
-      }
+    if (!frame.partial) {
       for (const id of Array.from(widgets.keys())) {
-        if (!seen.has(id)) {
-          widgets.get(id).bmp.close();
-          widgets.delete(id);
-        }
+        if (!seen.has(id)) widgets.delete(id);
       }
-      redraw();
-      busy = false;
-      pumpFrames();
-    }).catch(() => { busy = false; pumpFrames(); });
+    }
+    redraw();
+    if (pending) pumpFrames();
   }
   function connectWs() {
     const proto = location.protocol === "https:" ? "wss" : "ws";
@@ -693,13 +855,15 @@ html, body {
     ws.binaryType = "arraybuffer";
     ws.onmessage = (ev) => {
       pending = ev.data;
-      latestEpoch++;
       pumpFrames();
     };
     ws.onclose = () => setTimeout(connectWs, 1000);
     ws.onerror = () => { try { ws.close(); } catch (_) {} };
   }
 
+  fitFrame();
+  requestAnimationFrame(fitFrame);
+  window.addEventListener("resize", fitFrame);
   apiGet();
   connectWs();
   setInterval(apiGet, 2000);

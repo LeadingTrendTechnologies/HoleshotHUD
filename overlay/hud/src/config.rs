@@ -3296,6 +3296,15 @@ fn apply_app_key(
     true
 }
 
+impl HudLayout {
+    /// Apply one INI layout key. `true`/`1` sets a toggle on.
+    pub fn apply_setting(&mut self, key: &str, value: &str) {
+        let on = value == "1" || value.eq_ignore_ascii_case("true");
+        let mut saw_last_cols = false;
+        apply_layout_key(self, key, value, on, &mut saw_last_cols);
+    }
+}
+
 fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last_cols: &mut bool) {
     match key {
         "sector_live" => cfg.sector_live = b,

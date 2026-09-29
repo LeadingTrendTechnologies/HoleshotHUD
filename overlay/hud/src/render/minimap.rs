@@ -16,19 +16,23 @@ pub(crate) fn draw_minimap(
     sw: f32,
     sh: f32,
     age: f32,
+    raster_w: f32,
+    raster_h: f32,
 ) {
     let r = cfg[WidgetId::Minimap].rect;
     let x = r.x * sw;
     let y = r.y * sh;
     let w = r.w * sw;
     let h = r.h * sh;
-    let size = w.min(h).max(48.0);
+    let place = w.min(h).max(48.0);
+    let place_dim = place.round().clamp(48.0, 900.0);
     let cx = x + w * 0.5;
     let cy = y + h * 0.5;
-    let dim = size.round().clamp(48.0, 900.0) as u32;
+    let raster = (r.w * raster_w).min(r.h * raster_h).max(48.0);
+    let dim = raster.round().clamp(48.0, 900.0).max(place_dim) as u32;
     let sdim = dim as f32;
-    let left = cx - sdim * 0.5;
-    let top = cy - sdim * 0.5;
+    let left = cx - place_dim * 0.5;
+    let top = cy - place_dim * 0.5;
     let mut held = MINI_PX
         .with(|slot| slot.borrow_mut().take())
         .filter(|p| p.width() == dim && p.height() == dim)
@@ -36,7 +40,7 @@ pub(crate) fn draw_minimap(
     let n = s.poly_count.max(0) as usize;
     if n < 2 {
         if let Some(mini) = held.as_ref() {
-            blit_circle(px, mini, left, top);
+            blit_minimap(px, mini, left, top, place_dim);
         }
         MINI_PX.with(|slot| *slot.borrow_mut() = held);
         return;
@@ -275,6 +279,14 @@ pub(crate) fn draw_minimap(
         );
     }
 
-    blit_circle(px, mini, left, top);
+    blit_minimap(px, mini, left, top, place_dim);
     MINI_PX.with(|slot| *slot.borrow_mut() = held);
+}
+
+fn blit_minimap(dst: &mut Pixmap, src: &Pixmap, left: f32, top: f32, place_dim: f32) {
+    if src.width() as f32 == place_dim && src.height() as f32 == place_dim {
+        blit_circle(dst, src, left, top);
+    } else {
+        blit_circle_fit(dst, src, left, top, place_dim);
+    }
 }
