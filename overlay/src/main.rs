@@ -17,6 +17,7 @@ mod settings;
 mod shm;
 mod stance;
 mod startup;
+mod stock_pitboard;
 mod sys;
 mod tray;
 mod uninstall;
@@ -303,6 +304,7 @@ fn main() {
         .lock()
         .unwrap_or_else(|e| e.into_inner()) = loaded;
     crate::game_ui::sync_from_config();
+    crate::stock_pitboard::sync_from_config();
     let fonts = Fonts::for_family(family)
         .or_else(Fonts::load)
         .expect("need a HUD font (bundled or Windows\\Fonts)");
@@ -472,7 +474,9 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
             if !game_on {
                 crate::plugin::retry_if_needed();
                 crate::game_ui::retry_if_needed();
+                crate::stock_pitboard::retry_if_needed();
                 crate::plugin::clear_game_restart();
+                crate::stock_pitboard::clear_game_restart();
             }
             if game_on {
                 if !saw_game && crate::config::with_config(|c| c.minimize_on_close) {

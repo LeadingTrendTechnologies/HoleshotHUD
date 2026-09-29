@@ -1,7 +1,7 @@
 //! THESIS: Settings is a first-run on-switch, then a working board — not a Windows Settings clone.
 //! OWN-WORLD: Charcoal stack, Holeshot Orange plaque, Exo 2 ExtraBold Italic, 6–10px rounds, no card shadows.
 //! STORY: Rider hits F8, sees Show on overlay, turns widgets on, then edits columns and snap.
-//! FIRST VIEWPORT: Top mode bar (Widgets / Profile / Settings / Feedback); Profile sub-nav Overview / Motos / Tracks; widget rail grouped Boards / Track / Cockpit; rail hides on Feedback; orange name plaque; Show on overlay on the right; Header/Footer are three slots.
+//! FIRST VIEWPORT: Top mode bar (Widgets / Profile / Settings / Feedback); Profile sub-nav Overview / Motos / Tracks; widget rail grouped Boards / Cockpit / Track; rail hides on Feedback; orange name plaque; Show on overlay on the right; Header/Footer are three slots.
 //! FORM: Combined Show Plaque + Header Strip columns; seed settings-comp.
 //! FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance.
 
@@ -25,7 +25,7 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
 use windows::Win32::UI::Accessibility::{NotifyWinEvent, HCF_HIGHCONTRASTON, HIGHCONTRASTW};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, ReleaseCapture, SetCapture, VK_CONTROL, VK_DOWN, VK_ESCAPE, VK_LEFT,
+    GetAsyncKeyState, ReleaseCapture, SetCapture, VK_BACK, VK_CONTROL, VK_DOWN, VK_ESCAPE, VK_LEFT,
     VK_RETURN, VK_RIGHT, VK_SHIFT, VK_SPACE, VK_TAB, VK_UP,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -46,14 +46,15 @@ use crate::config::{
     StanceMode, StanceStyle, TableText, UnitKind, Units, WidgetId, COL_W_MAX, COL_W_MIN,
     DEFAULT_PRIMARY, PRIMARY_SWATCHES, RADAR_RANGE_MAX, RADAR_RANGE_MIN, SYS_PRESETS, SYS_PROC_MAX,
 };
-use mxbo_hud::pitboard::{apply_json_names, factory_pack, factory_places, import_png, load_sidecar, normalize_places, pack_slot_names, pitboards_dir, slot_menu, write_pack, PitVar, PitWhen, FACTORY_ART, LEGACY_CATALOG};
-use crate::render::{fill_rect, icon, measure, text, Fonts};
+use mxbo_hud::pitboard::{add_design_slot, apply_json_names, apply_pack_colors, factory_pack, factory_places, normalize_places, pack_slot_names, pitboards_dir, remove_design_slot, slot_menu, slot_sample, write_pack, PitVar, PitWhen, FACTORY_ART, LEGACY_CATALOG, MAX_DESIGN_SLOTS};
+use crate::render::{fill_rect, icon, measure, text, text_bold, Fonts};
 
 mod app;
 mod clear;
 mod controls;
 mod dispatch;
 mod feedback;
+mod pit_help;
 mod profile;
 mod reply;
 mod review;
@@ -65,6 +66,7 @@ pub(crate) use clear::*;
 pub(crate) use controls::*;
 pub(crate) use dispatch::*;
 pub(crate) use feedback::*;
+pub(crate) use pit_help::*;
 pub(crate) use profile::*;
 pub(crate) use reply::*;
 pub(crate) use review::*;
@@ -539,12 +541,12 @@ impl AppSection {
 }
 
 /// Settings left rail: HUD chrome separate from app install/startup/menus.
-fn app_section_groups() -> [(&'static str, &'static [AppSection]); 2] {
-    [
-        ("HUD", &[AppSection::Look]),
+fn app_section_groups() -> Vec<(&'static str, Vec<AppSection>)> {
+    let mut groups = vec![
+        ("HUD", vec![AppSection::Look]),
         (
             "App",
-            &[
+            vec![
                 AppSection::Menus,
                 AppSection::Install,
                 AppSection::Startup,
@@ -553,7 +555,12 @@ fn app_section_groups() -> [(&'static str, &'static [AppSection]); 2] {
                 AppSection::Diagnostics,
             ],
         ),
-    ]
+    ];
+    groups.sort_by(|left, right| left.0.cmp(right.0));
+    for (_, items) in &mut groups {
+        items.sort_by_key(|item| item.label());
+    }
+    groups
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -652,15 +659,42 @@ pub(crate) enum Hit {
     TelemetryShow,
     PitShow,
     PitBrowse,
+    PitName,
+    PitBoardOpen,
+    PitBoardFactory,
+    PitBoardPick(u8),
+    PitExport,
+    PitImport,
+    PitDemo,
+    PitHelpOpen,
+    PitHelpDismiss,
+    PitHelpScrim,
+    PitHelpPanel,
+    PitDelete,
     PitReset,
+    #[allow(dead_code)]
     PitOpenFolder,
     PitWhenAlways,
     PitWhenSector,
     PitWhenLap,
     PitWhenOpen,
     PitSlotOpen(u8),
+    PitSlotSelect(u8),
     PitSlotPick(u8, u8),
     PitSlotNone(u8),
+    PitSlotGrab(u8),
+    PitSlotAdd,
+    PitSlotRemove,
+    PitSlotSize,
+    PitSlotBold,
+    PitSlotCenterX,
+    PitSlotCenterY,
+    PitSlotColorOpen,
+    PitSlotColorPanel,
+    PitSlotColorSv,
+    PitSlotColorHue,
+    PitSlotColorSwatch(u8),
+    PitSlotColorReset,
     TelemetryTraces,
     TelemetryTraceThrottle,
     TelemetryTraceBrake,
@@ -924,6 +958,7 @@ pub(crate) enum Drop {
     Info(InfoBar, u8),
     PitSlot(u8),
     PitWhen,
+    PitBoard,
     PresetCopy,
     AnalyzeCompare,
     AnalyzeLap,
@@ -931,6 +966,7 @@ pub(crate) enum Drop {
     GameUiPrimaryColor,
     PitYellow,
     PitBlue,
+    PitSlotColor,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -939,6 +975,7 @@ pub(crate) enum ColorPickKind {
     Menu,
     PitYellow,
     PitBlue,
+    PitSlot,
 }
 
 impl ColorPickKind {
@@ -948,6 +985,7 @@ impl ColorPickKind {
             Self::Menu => Hit::GameUiPrimaryOpen,
             Self::PitYellow => Hit::PitYellowOpen,
             Self::PitBlue => Hit::PitBlueOpen,
+            Self::PitSlot => Hit::PitSlotColorOpen,
         }
     }
 
@@ -957,6 +995,7 @@ impl ColorPickKind {
             Self::Menu => Hit::GameUiPrimaryPanel,
             Self::PitYellow => Hit::PitYellowPanel,
             Self::PitBlue => Hit::PitBluePanel,
+            Self::PitSlot => Hit::PitSlotColorPanel,
         }
     }
 
@@ -966,6 +1005,7 @@ impl ColorPickKind {
             Self::Menu => Hit::GameUiPrimarySv,
             Self::PitYellow => Hit::PitYellowSv,
             Self::PitBlue => Hit::PitBlueSv,
+            Self::PitSlot => Hit::PitSlotColorSv,
         }
     }
 
@@ -975,6 +1015,7 @@ impl ColorPickKind {
             Self::Menu => Hit::GameUiPrimaryHue,
             Self::PitYellow => Hit::PitYellowHue,
             Self::PitBlue => Hit::PitBlueHue,
+            Self::PitSlot => Hit::PitSlotColorHue,
         }
     }
 
@@ -984,6 +1025,7 @@ impl ColorPickKind {
             Self::Menu => Hit::GameUiPrimarySwatch(i),
             Self::PitYellow => Hit::PitYellowSwatch(i),
             Self::PitBlue => Hit::PitBlueSwatch(i),
+            Self::PitSlot => Hit::PitSlotColorSwatch(i),
         }
     }
 
@@ -993,6 +1035,7 @@ impl ColorPickKind {
             Self::Menu => Hit::GameUiPrimaryReset,
             Self::PitYellow => Hit::PitYellowReset,
             Self::PitBlue => Hit::PitBlueReset,
+            Self::PitSlot => Hit::PitSlotColorReset,
         }
     }
 
@@ -1002,6 +1045,7 @@ impl ColorPickKind {
             Self::Menu => "Menu color",
             Self::PitYellow => "Main",
             Self::PitBlue => "Secondary",
+            Self::PitSlot => "Text",
         }
     }
 }
@@ -1025,6 +1069,7 @@ fn color_kind_from_drop(drop: Option<Drop>) -> Option<ColorPickKind> {
         Some(Drop::GameUiPrimaryColor) => Some(ColorPickKind::Menu),
         Some(Drop::PitYellow) => Some(ColorPickKind::PitYellow),
         Some(Drop::PitBlue) => Some(ColorPickKind::PitBlue),
+        Some(Drop::PitSlotColor) => Some(ColorPickKind::PitSlot),
         _ => None,
     }
 }
@@ -1035,6 +1080,7 @@ fn color_kind_from_hue(hit: Hit) -> Option<ColorPickKind> {
         Hit::GameUiPrimaryHue => Some(ColorPickKind::Menu),
         Hit::PitYellowHue => Some(ColorPickKind::PitYellow),
         Hit::PitBlueHue => Some(ColorPickKind::PitBlue),
+        Hit::PitSlotColorHue => Some(ColorPickKind::PitSlot),
         _ => None,
     }
 }
@@ -1045,6 +1091,11 @@ fn read_kind_color(cfg: &HudConfig, kind: ColorPickKind) -> [u8; 3] {
         ColorPickKind::Menu => cfg.game_ui_primary,
         ColorPickKind::PitYellow => cfg.pit_yellow,
         ColorPickKind::PitBlue => cfg.pit_blue,
+        ColorPickKind::PitSlot => cfg
+            .pit_vars
+            .get(pit_selected() as usize)
+            .and_then(|place| place.color)
+            .unwrap_or([16, 16, 18]),
     }
 }
 
@@ -1054,6 +1105,12 @@ fn write_kind_color(cfg: &mut HudConfig, kind: ColorPickKind, rgb: [u8; 3]) {
         ColorPickKind::Menu => cfg.game_ui_primary = rgb,
         ColorPickKind::PitYellow => cfg.pit_yellow = rgb,
         ColorPickKind::PitBlue => cfg.pit_blue = rgb,
+        ColorPickKind::PitSlot => {
+            if let Some(place) = cfg.pit_vars.get_mut(pit_selected() as usize) {
+                place.color = Some(rgb);
+            }
+            let _ = mxbo_hud::pitboard::write_pack(&cfg.pit_art, &cfg.pit_vars, cfg.pit_text);
+        }
     }
 }
 
@@ -1061,7 +1118,7 @@ fn sync_after_kind(kind: ColorPickKind) {
     match kind {
         ColorPickKind::App => sync_menus_after_app_primary_change(),
         ColorPickKind::Menu => sync_menus_after_menu_accent_change(),
-        ColorPickKind::PitYellow | ColorPickKind::PitBlue => {}
+        ColorPickKind::PitYellow | ColorPickKind::PitBlue | ColorPickKind::PitSlot => {}
     }
 }
 
@@ -1205,6 +1262,7 @@ struct SettingsUi {
     nav_bottom: f32,
     banner_dismissed: bool,
     whats_new_open: bool,
+    pit_help_open: bool,
     whats_new_scroll: f32,
     whats_new_scroll_max: f32,
     reply_id: Option<String>,
@@ -1271,6 +1329,158 @@ thread_local! {
     static DROP_MENUS: RefCell<Vec<PendingDrop>> = RefCell::new(Vec::new());
     static COLOR_PICKER_ANCHOR: std::cell::Cell<Option<(f32, f32, f32, f32)>> =
         const { std::cell::Cell::new(None) };
+    static PIT_DESIGN: RefCell<PitDesign> = RefCell::new(PitDesign {
+        selected: 0,
+        preview: None,
+        dragging: false,
+        name: String::new(),
+        name_on: false,
+        shown_board: String::new(),
+        notice: String::new(),
+    });
+    static PIT_PLATE_GEN: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+struct PitDesign {
+    selected: u8,
+    preview: Option<(f32, f32, f32, f32)>,
+    dragging: bool,
+    name: String,
+    name_on: bool,
+    shown_board: String,
+    notice: String,
+}
+
+fn pit_selected() -> u8 {
+    PIT_DESIGN.with(|design| design.borrow().selected)
+}
+
+fn set_pit_selected(index: u8) {
+    PIT_DESIGN.with(|design| design.borrow_mut().selected = index);
+}
+
+fn seed_pit_name(board: &str) {
+    PIT_DESIGN.with(|design| {
+        let mut design = design.borrow_mut();
+        if design.name_on || design.shown_board == board {
+            return;
+        }
+        design.name = board.to_string();
+        design.shown_board = board.to_string();
+    });
+}
+
+fn pit_name_draft() -> String {
+    PIT_DESIGN.with(|design| design.borrow().name.clone())
+}
+
+fn pit_default_board() -> bool {
+    with_config(|c| c.pit_board.is_empty() && (c.pit_art.is_empty() || c.pit_art == FACTORY_ART))
+}
+
+fn board_name_from_picture(path: &std::path::Path) -> Result<String, String> {
+    let draft = if pit_default_board() { String::new() } else { pit_name_draft() };
+    mxbo_hud::pitboard::board_name_for_picture(&draft, path)
+}
+
+fn board_name_from_pack(path: &std::path::Path) -> Result<String, String> {
+    let draft = if pit_default_board() { String::new() } else { pit_name_draft() };
+    mxbo_hud::pitboard::board_name_for_pack(&draft, path)
+}
+
+fn pit_name_focused() -> bool {
+    PIT_DESIGN.with(|design| design.borrow().name_on)
+}
+
+fn pit_notice() -> String {
+    PIT_DESIGN.with(|design| design.borrow().notice.clone())
+}
+
+fn set_pit_notice(notice: &str) {
+    PIT_DESIGN.with(|design| design.borrow_mut().notice = notice.to_string());
+}
+
+fn set_pit_name(name: &str) {
+    PIT_DESIGN.with(|design| {
+        let mut design = design.borrow_mut();
+        design.name = name.to_string();
+        design.shown_board = name.to_string();
+    });
+}
+
+fn set_pit_name_focus(on: bool) {
+    PIT_DESIGN.with(|design| design.borrow_mut().name_on = on);
+}
+
+fn commit_pit_name() -> bool {
+    if pit_default_board() {
+        return true;
+    }
+    let current = with_config(|c| c.pit_board.clone());
+    let Some(name) = mxbo_hud::pitboard::sanitize_board_name(&pit_name_draft()) else {
+        set_pit_notice("That name cannot be used.");
+        return false;
+    };
+    if name == current {
+        set_pit_name(&current);
+        set_pit_notice("");
+        return true;
+    }
+    match mxbo_hud::pitboard::rename_saved_board(&current, &name) {
+        Ok(art) => {
+            update_config(|c| {
+                c.pit_board = name.clone();
+                c.pit_art = art;
+            });
+            set_pit_name(&name);
+            set_pit_notice("");
+            true
+        }
+        Err(msg) => {
+            set_pit_notice(&msg);
+            false
+        }
+    }
+}
+
+fn revert_pit_name() {
+    let current = with_config(|c| c.pit_board.clone());
+    set_pit_name(&current);
+    set_pit_notice("");
+}
+
+fn pit_name_push(ch: char) {
+    if ch.is_control() || matches!(ch, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|') {
+        return;
+    }
+    PIT_DESIGN.with(|design| {
+        let mut design = design.borrow_mut();
+        if design.name.chars().count() >= 48 {
+            return;
+        }
+        design.name.push(ch);
+        design.notice.clear();
+    });
+}
+
+fn pit_name_backspace() {
+    PIT_DESIGN.with(|design| {
+        let mut design = design.borrow_mut();
+        design.name.pop();
+        design.notice.clear();
+    });
+}
+
+fn set_pit_preview(rect: Option<(f32, f32, f32, f32)>) {
+    PIT_DESIGN.with(|design| design.borrow_mut().preview = rect);
+}
+
+pub(crate) fn invalidate_plate_preview() {
+    PIT_PLATE_GEN.with(|gen| gen.set(gen.get().wrapping_add(1)));
+}
+
+fn plate_preview_gen() -> u32 {
+    PIT_PLATE_GEN.with(|gen| gen.get())
 }
 
 pub(crate) fn queue_drop_menu(
@@ -1330,6 +1540,7 @@ pub fn attach(host: HWND) {
         nav_bottom: 0.0,
         banner_dismissed: false,
         whats_new_open: false,
+        pit_help_open: false,
         whats_new_scroll: 0.0,
         whats_new_scroll_max: 0.0,
         reply_id: None,
@@ -1559,6 +1770,7 @@ pub fn dump_whats_new(path: &std::path::Path) -> Result<crate::changelog::Notes,
         nav_bottom: 0.0,
         banner_dismissed: false,
         whats_new_open: true,
+        pit_help_open: false,
         whats_new_scroll: 0.0,
         whats_new_scroll_max: 0.0,
         reply_id: None,
@@ -1685,6 +1897,7 @@ fn paint_review_tab(
         nav_bottom: 0.0,
         banner_dismissed: false,
         whats_new_open: false,
+        pit_help_open: false,
         whats_new_scroll: 0.0,
         whats_new_scroll_max: 0.0,
         reply_id: None,
@@ -1737,6 +1950,24 @@ fn dismiss_whats_new() {
     if let Some(ui) = UI.lock().unwrap().as_mut() {
         ui.whats_new_open = false;
         ui.whats_new_scroll = 0.0;
+        ui.focus = None;
+    }
+}
+
+fn open_pit_help() {
+    if let Some(ui) = UI.lock().unwrap().as_mut() {
+        ui.pit_help_open = true;
+        ui.focus = Some(Hit::PitHelpDismiss);
+        ui.open_drop = None;
+        ui.drop_scroll = 0.0;
+        ui.drop_menu = None;
+        ui.bind_listen = false;
+    }
+}
+
+fn dismiss_pit_help() {
+    if let Some(ui) = UI.lock().unwrap().as_mut() {
+        ui.pit_help_open = false;
         ui.focus = None;
     }
 }
@@ -1944,6 +2175,7 @@ pub fn handle_message(msg: u32, wp: WPARAM, lp: LPARAM) -> bool {
                 } else if ui.whats_new_open {
                     ui.whats_new_scroll =
                         (ui.whats_new_scroll - delta * 0.4).clamp(0.0, ui.whats_new_scroll_max);
+                } else if ui.pit_help_open {
                 } else if ui.reply_id.is_some() {
                     ui.reply_scroll =
                         (ui.reply_scroll - delta * 0.4).clamp(0.0, ui.reply_scroll_max);
@@ -1969,7 +2201,15 @@ pub fn handle_message(msg: u32, wp: WPARAM, lp: LPARAM) -> bool {
             }
             true
         }
-        WM_CHAR => crate::feedback::on_char(char::from_u32(wp.0 as u32).unwrap_or('\0')),
+        WM_CHAR => {
+            let ch = char::from_u32(wp.0 as u32).unwrap_or('\0');
+            if pit_name_focused() {
+                pit_name_push(ch);
+                true
+            } else {
+                crate::feedback::on_char(ch)
+            }
+        }
         WM_KEYDOWN => {
             let vk = wp.0 as u16;
             let shift = unsafe { GetAsyncKeyState(VK_SHIFT.0 as i32) } < 0;
@@ -2094,8 +2334,17 @@ fn press(p: (f32, f32)) {
             }
         }
         Some(Hit::PrimarySv) | Some(Hit::GameUiPrimarySv) | Some(Hit::PitYellowSv)
-        | Some(Hit::PitBlueSv) => {
+        | Some(Hit::PitBlueSv)
+        | Some(Hit::PitSlotColorSv) => {
             start_sv_drag(p, host);
+        }
+        Some(Hit::PitSlotGrab(i)) => {
+            set_pit_selected(i);
+            PIT_DESIGN.with(|design| design.borrow_mut().dragging = true);
+            unsafe {
+                let _ = SetCapture(host);
+            }
+            place_pit_slot_at(p.0, p.1);
         }
         Some(Hit::StDrag(i)) => start_drag(DragKind::St, i, host),
         Some(Hit::RelDrag(i)) => start_drag(DragKind::Rel, i, host),
@@ -2167,6 +2416,8 @@ fn is_slider(hit: Hit) -> bool {
             | Hit::GameUiPrimaryHue
             | Hit::PitYellowHue
             | Hit::PitBlueHue
+            | Hit::PitSlotSize
+            | Hit::PitSlotColorHue
     )
 }
 
@@ -2192,7 +2443,9 @@ fn slide_range(hit: Hit) -> (i32, i32) {
         }
         Hit::Font(_) => (70, 160),
         Hit::RadarRange => (RADAR_RANGE_MIN, RADAR_RANGE_MAX),
-        Hit::PrimaryHue | Hit::GameUiPrimaryHue | Hit::PitYellowHue | Hit::PitBlueHue => (0, 360),
+        Hit::PrimaryHue | Hit::GameUiPrimaryHue | Hit::PitYellowHue | Hit::PitBlueHue
+        | Hit::PitSlotColorHue => (0, 360),
+        Hit::PitSlotSize => (10, 56),
         _ => (0, 100),
     }
 }
@@ -2318,6 +2571,12 @@ fn apply_slide(hit: Hit, mx: f32, x: f32, w: f32, min: i32, max: i32) {
             }
         }
         Hit::Font(id) => c.set_font_pct(id, v),
+        Hit::PitSlotSize => {
+            if let Some(place) = c.pit_vars.get_mut(pit_selected() as usize) {
+                place.size = v as f32;
+            }
+            let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+        }
         hit if color_kind_from_hue(hit).is_some() => {
             let kind = color_kind_from_hue(hit).unwrap();
             let (_, s, val) = rgb_to_hsv(read_kind_color(c, kind));
@@ -2327,7 +2586,33 @@ fn apply_slide(hit: Hit, mx: f32, x: f32, w: f32, min: i32, max: i32) {
     });
 }
 
+fn place_pit_slot_at(mx: f32, my: f32) {
+    let (preview, slot) = PIT_DESIGN.with(|design| {
+        let design = design.borrow();
+        (design.preview, design.selected as usize)
+    });
+    let Some((x, y, w, h)) = preview else {
+        return;
+    };
+    if w < 1.0 || h < 1.0 {
+        return;
+    }
+    let nx = ((mx - x) / w).clamp(0.04, 0.96);
+    let ny = ((my - y) / h).clamp(0.04, 0.96);
+    let mut cfg = mxbo_hud::config::CONFIG
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
+    if let Some(place) = cfg.pit_vars.get_mut(slot) {
+        place.x = nx;
+        place.y = ny;
+    }
+}
+
 fn update_drag(p: (f32, f32)) {
+    if PIT_DESIGN.with(|design| design.borrow().dragging) {
+        place_pit_slot_at(p.0, p.1);
+        return;
+    }
     {
         let mut ui = UI.lock().unwrap();
         if let Some(ui) = ui.as_mut() {
@@ -2406,6 +2691,21 @@ fn drag_over(hits: &[HitBox], kind: DragKind, y: f32) -> Option<u8> {
 
 fn release(p: (f32, f32)) {
     update_drag(p);
+    let was_pit = PIT_DESIGN.with(|design| {
+        let mut design = design.borrow_mut();
+        let on = design.dragging;
+        design.dragging = false;
+        on
+    });
+    if was_pit {
+        update_config(|c| {
+            let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+        });
+        unsafe {
+            let _ = ReleaseCapture();
+        }
+        return;
+    }
     let was_sv = {
         let mut ui = UI.lock().unwrap();
         ui.as_mut().is_some_and(|u| {
@@ -2533,6 +2833,8 @@ fn is_focusable(hit: Hit) -> bool {
             | Hit::UpdateBanner
             | Hit::WhatsNewScrim
             | Hit::WhatsNewPanel
+            | Hit::PitHelpScrim
+            | Hit::PitHelpPanel
             | Hit::ReplyScrim
             | Hit::ReplyPanel
             | Hit::ClearScrim
@@ -2545,6 +2847,9 @@ fn is_focusable(hit: Hit) -> bool {
             | Hit::PitYellowSv
             | Hit::PitBluePanel
             | Hit::PitBlueSv
+            | Hit::PitSlotColorPanel
+            | Hit::PitSlotColorSv
+            | Hit::PitSlotGrab(_)
     )
 }
 
@@ -2622,7 +2927,25 @@ fn hit_label(hit: Hit) -> String {
         Hit::TabGamepad => "Controller".into(),
         Hit::TabTelemetry => "Telemetry".into(),
         Hit::TabPitboard => "Pit Board".into(),
-        Hit::PitBrowse => "Use your PNG. board.json beside it locks the slots.".into(),
+        Hit::PitBrowse => "PNG or JPEG. An empty name uses the file name. A picture with no board.json starts as one slot.".into(),
+        Hit::PitExport => "Save this pit board folder, plate.png and board.json".into(),
+        Hit::PitImport => "Open a board.json that has plate.png beside it".into(),
+        Hit::PitDemo => "Save the demo plate as a PNG, then upload it".into(),
+        Hit::PitDelete => "Delete this saved pit board".into(),
+        Hit::PitName => "Name this pit board".into(),
+        Hit::PitBoardOpen => "Saved pit boards".into(),
+        Hit::PitBoardFactory => "Holeshot plate".into(),
+        Hit::PitBoardPick(_) => "Use this pit board".into(),
+        Hit::PitSlotGrab(_) => "Drag this slot".into(),
+        Hit::PitSlotSelect(_) => "Select this slot".into(),
+        Hit::PitSlotAdd => "Add a slot".into(),
+        Hit::PitSlotRemove => "Remove the selected slot".into(),
+        Hit::PitSlotSize => "Text size".into(),
+        Hit::PitSlotBold => "Bold this slot".into(),
+        Hit::PitSlotCenterX => "Center horizontally".into(),
+        Hit::PitSlotCenterY => "Center vertically".into(),
+        Hit::PitSlotColorOpen => "Text color".into(),
+        Hit::PitSlotColorReset => "Black. Lap delta stays green or red.".into(),
         Hit::PitReset => "Restore the Holeshot slots".into(),
         Hit::PitOpenFolder => "Plates folder, plus a starter board.json".into(),
         Hit::PitWhenAlways => "Show the board all the time with live values".into(),
@@ -2793,7 +3116,8 @@ fn hit_label(hit: Hit) -> String {
                 "What's new".into()
             }
         }
-        Hit::WhatsNewDismiss | Hit::ReplyDismiss => "Got it".into(),
+        Hit::WhatsNewDismiss | Hit::ReplyDismiss | Hit::PitHelpDismiss => "Got it".into(),
+        Hit::PitHelpOpen => "How to make a pit board".into(),
         Hit::ReplySend => "Send".into(),
         Hit::ReplyText => "Write a reply".into(),
         _ => "Control".into(),
@@ -2812,6 +3136,24 @@ fn announce(host: HWND, label: &str) {
 }
 
 fn handle_key(vk: u16, shift: bool, _ctrl: bool) -> bool {
+    if pit_name_focused() {
+        if vk == VK_ESCAPE.0 {
+            revert_pit_name();
+            set_pit_name_focus(false);
+            return true;
+        }
+        if vk == VK_RETURN.0 {
+            if commit_pit_name() {
+                set_pit_name_focus(false);
+            }
+            return true;
+        }
+        if vk == VK_BACK.0 {
+            pit_name_backspace();
+            return true;
+        }
+        return true;
+    }
     let fb = crate::feedback::is_focused();
     if fb && vk != VK_TAB.0 && vk != VK_ESCAPE.0 {
         return false;
@@ -2824,6 +3166,15 @@ fn handle_key(vk: u16, shift: bool, _ctrl: bool) -> bool {
             .is_some_and(|u| u.whats_new_open);
         if whats_new {
             dismiss_whats_new();
+            return true;
+        }
+        let pit_help = UI
+            .lock()
+            .unwrap()
+            .as_ref()
+            .is_some_and(|u| u.pit_help_open);
+        if pit_help {
+            dismiss_pit_help();
             return true;
         }
         let clear_open = UI
@@ -3051,6 +3402,11 @@ fn nudge_slider(hit: Hit, delta: i32) {
             .map(|f| f.width(c))
             .unwrap_or(min),
         Hit::Font(id) => c.font_pct(id),
+        Hit::PitSlotSize => c
+            .pit_vars
+            .get(pit_selected() as usize)
+            .map(|place| place.size.round() as i32)
+            .unwrap_or(18),
         hit if color_kind_from_hue(hit).is_some() => {
             rgb_to_hsv(read_kind_color(c, color_kind_from_hue(hit).unwrap()))
                 .0
@@ -3092,6 +3448,12 @@ fn nudge_slider(hit: Hit, delta: i32) {
             }
         }
         Hit::Font(id) => c.set_font_pct(id, v),
+        Hit::PitSlotSize => {
+            if let Some(place) = c.pit_vars.get_mut(pit_selected() as usize) {
+                place.size = v as f32;
+            }
+            let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+        }
         hit if color_kind_from_hue(hit).is_some() => {
             let kind = color_kind_from_hue(hit).unwrap();
             let (_, s, val) = rgb_to_hsv(read_kind_color(c, kind));
@@ -3232,6 +3594,7 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
         banner_dismissed,
         whats_new_open,
         whats_new_scroll,
+        pit_help_open,
         bind_listen,
         reply_scroll,
         reply_id,
@@ -3250,7 +3613,11 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
                 u.tab = Tab::Profile;
                 u.profile_section = ProfileSection::Motos;
             }
-            if !u.whats_new_open && u.reply_id.is_none() && u.clear_confirm.is_none() {
+            if !u.whats_new_open
+                && !u.pit_help_open
+                && u.reply_id.is_none()
+                && u.clear_confirm.is_none()
+            {
                 if let Some(view) = pending.as_ref() {
                     u.reply_id = Some(view.id.clone());
                     u.reply_scroll = 0.0;
@@ -3270,6 +3637,7 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
             ui.map(|u| u.banner_dismissed).unwrap_or(false),
             ui.map(|u| u.whats_new_open).unwrap_or(false),
             ui.map(|u| u.whats_new_scroll).unwrap_or(0.0),
+            ui.map(|u| u.pit_help_open).unwrap_or(false),
             ui.map(|u| u.bind_listen).unwrap_or(false),
             ui.map(|u| u.reply_scroll).unwrap_or(0.0),
             ui.and_then(|u| u.reply_id.clone()),
@@ -3598,6 +3966,10 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
         hits.clear();
         draw_clear_confirm(px, fonts, w, h, kind, hover, &mut hits);
         paint_focus(px, &hits, focus);
+    } else if pit_help_open {
+        hits.clear();
+        draw_pit_help(px, fonts, w, h, hover, &mut hits);
+        paint_focus(px, &hits, focus);
     } else {
         paint_focus(px, &hits, focus);
         paint_drop_menus(px, fonts, hover, &mut hits);
@@ -3646,9 +4018,26 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
                     [0, 0, 0],
                 );
             }
+            Some(Drop::PitSlotColor) => {
+                let rgb = cfg
+                    .pit_vars
+                    .get(pit_selected() as usize)
+                    .and_then(|place| place.color)
+                    .unwrap_or([16, 16, 18]);
+                paint_color_picker(
+                    px,
+                    fonts,
+                    hover,
+                    &mut hits,
+                    ColorPickKind::PitSlot,
+                    rgb,
+                    [16, 16, 18],
+                );
+            }
             _ => {}
         }
         paint_snap_tooltip(px, fonts, &cfg, hover, focus, &hits, w, h, clip_top);
+        paint_slot_center_tooltip(px, fonts, hover, focus, &hits, w, h, clip_top);
     }
 
     if let Some(ui) = UI.lock().unwrap().as_mut() {
@@ -3710,6 +4099,49 @@ fn widget_short_name(id: WidgetId) -> &'static str {
         WidgetId::Telemetry => "Telemetry",
         WidgetId::Pitboard => "Pit Board",
     }
+}
+
+fn paint_slot_center_tooltip(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    hover: Option<Hit>,
+    focus: Option<Hit>,
+    hits: &[HitBox],
+    win_w: f32,
+    win_h: f32,
+    clip_top: f32,
+) {
+    let Some(hit) = hover.or(focus) else {
+        return;
+    };
+    let (title, hint) = match hit {
+        Hit::PitSlotCenterX => ("Center horizontally", "Won't move up or down"),
+        Hit::PitSlotCenterY => ("Center vertically", "Won't move left or right"),
+        _ => return,
+    };
+    let Some(button) = hits.iter().rev().find(|box_hit| box_hit.id == hit) else {
+        return;
+    };
+    let pad = 12.0;
+    let tw = measure(fonts, title, 14.0)
+        .max(measure(fonts, hint, 11.0))
+        + pad * 2.0;
+    let th = pad + 16.0 + 4.0 + 14.0 + pad;
+    let mut tx = button.x + button.w + 16.0;
+    let mut ty = button.y;
+    if tx + tw > win_w - 16.0 {
+        tx = (button.x - 16.0 - tw).max(16.0);
+    }
+    if ty < clip_top + 8.0 {
+        ty = clip_top + 8.0;
+    }
+    if ty + th > win_h - 10.0 {
+        ty = (win_h - th - 10.0).max(clip_top + 8.0);
+    }
+    fill_round(px, tx - 1.0, ty - 1.0, tw + 2.0, th + 2.0, 12.0, shadow());
+    outlined(px, tx, ty, tw, th, 11.0, menu_fill());
+    text(px, fonts, title, 14.0, tx + pad, ty + pad, text_col(), false);
+    text(px, fonts, hint, 11.0, tx + pad, ty + pad + 20.0, dim(), false);
 }
 
 fn paint_snap_tooltip(
@@ -3923,7 +4355,7 @@ fn widget_groups(cfg: &HudConfig) -> Vec<(&'static str, Vec<(Tab, Hit, &'static 
             cfg[WidgetId::Pitboard].show,
         ),
     ];
-    vec![
+    let mut groups = vec![
         (
             "Boards",
             vec![
@@ -3966,7 +4398,12 @@ fn widget_groups(cfg: &HudConfig) -> Vec<(&'static str, Vec<(Tab, Hit, &'static 
             ],
         ),
         ("Cockpit", cockpit),
-    ]
+    ];
+    groups.sort_by(|left, right| left.0.cmp(right.0));
+    for (_, items) in &mut groups {
+        items.sort_by(|left, right| left.2.cmp(right.2));
+    }
+    groups
 }
 
 fn widget_rail_height(cfg: &HudConfig) -> f32 {
@@ -4025,7 +4462,7 @@ fn draw_app_rail(
     let mut y = clip_top + 10.0;
     for (title, items) in app_section_groups() {
         y = nav_group(px, fonts, 12.0, y, title);
-        for &item in items {
+        for &item in &items {
             section_nav_tab(
                 px,
                 fonts,
@@ -5529,6 +5966,9 @@ fn style_controls(
     hover: Option<Hit>,
     hits: &mut Vec<HitBox>,
 ) -> f32 {
+    if id == WidgetId::Pitboard {
+        return y;
+    }
     let mut g = PairGrid::new(x, y, w);
     g.place(|cx, cy, cw| {
         slider_row(
@@ -5547,13 +5987,11 @@ fn style_controls(
             hits,
         )
     });
-    if id != WidgetId::Pitboard {
-        g.place(|cx, cy, cw| {
-            slider_row(
-                px, fonts, cx, cy, cw, bg_label, bg, 0, 100, "%", bg_hit, hover, hits,
-            )
-        });
-    }
+    g.place(|cx, cy, cw| {
+        slider_row(
+            px, fonts, cx, cy, cw, bg_label, bg, 0, 100, "%", bg_hit, hover, hits,
+        )
+    });
     g.place(|cx, cy, cw| {
         toggle_row(
             px,
@@ -6113,30 +6551,6 @@ fn browse_exe(host: HWND) -> Option<String> {
     }
 }
 
-fn browse_png(host: HWND) -> Option<std::path::PathBuf> {
-    use windows::core::w;
-    use windows::Win32::System::Com::{
-        CoCreateInstance, CoInitializeEx, CoTaskMemFree, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
-    };
-    use windows::Win32::UI::Shell::{
-        FileOpenDialog, IFileOpenDialog, FOS_FILEMUSTEXIST, FOS_FORCEFILESYSTEM, FOS_PATHMUSTEXIST,
-        SIGDN_FILESYSPATH,
-    };
-    unsafe {
-        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
-        let dlg: IFileOpenDialog = CoCreateInstance(&FileOpenDialog, None, CLSCTX_ALL).ok()?;
-        dlg.SetOptions(FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST | FOS_FORCEFILESYSTEM)
-            .ok()?;
-        dlg.SetTitle(w!("Select a pit board picture (PNG)")).ok()?;
-        dlg.Show(host).ok()?;
-        let item = dlg.GetResult().ok()?;
-        let name = item.GetDisplayName(SIGDN_FILESYSPATH).ok()?;
-        let path = name.to_string().ok().filter(|s| !s.is_empty());
-        CoTaskMemFree(Some(name.0 as _));
-        path.map(std::path::PathBuf::from)
-    }
-}
-
 fn browse_image(host: HWND) -> Option<String> {
     use windows::core::w;
     use windows::Win32::System::Com::{
@@ -6177,6 +6591,147 @@ fn browse_image(host: HWND) -> Option<String> {
             return None;
         }
         Some(path)
+    }
+}
+
+fn browse_json(host: HWND) -> Option<String> {
+    use windows::core::w;
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoTaskMemFree, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
+    };
+    use windows::Win32::UI::Shell::Common::COMDLG_FILTERSPEC;
+    use windows::Win32::UI::Shell::{
+        FileOpenDialog, IFileOpenDialog, FOS_FILEMUSTEXIST, FOS_FORCEFILESYSTEM, FOS_PATHMUSTEXIST,
+        SIGDN_FILESYSPATH,
+    };
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let dlg: IFileOpenDialog = CoCreateInstance(&FileOpenDialog, None, CLSCTX_ALL).ok()?;
+        dlg.SetOptions(FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST | FOS_FORCEFILESYSTEM)
+            .ok()?;
+        dlg.SetTitle(w!("Import pit board")).ok()?;
+        let filters = [COMDLG_FILTERSPEC {
+            pszName: w!("Pit board (board.json)"),
+            pszSpec: w!("*.json"),
+        }];
+        let _ = dlg.SetFileTypes(&filters);
+        let _ = dlg.SetFileTypeIndex(1);
+        dlg.Show(host).ok()?;
+        let item = dlg.GetResult().ok()?;
+        let name = item.GetDisplayName(SIGDN_FILESYSPATH).ok()?;
+        let path = name.to_string().ok().filter(|s| !s.is_empty());
+        CoTaskMemFree(Some(name.0 as _));
+        let path = path?;
+        if !path.to_ascii_lowercase().ends_with(".json") {
+            let _ = windows::Win32::UI::WindowsAndMessaging::MessageBoxW(
+                host,
+                w!("Pick a board.json file."),
+                w!("Holeshot HUD"),
+                windows::Win32::UI::WindowsAndMessaging::MB_OK
+                    | windows::Win32::UI::WindowsAndMessaging::MB_ICONWARNING,
+            );
+            return None;
+        }
+        Some(path)
+    }
+}
+
+const DEMO_PIT_PNG: &[u8] =
+    include_bytes!("../../../pit-text-designs/chevron-frame/chevron-frame.png");
+
+fn pick_demo_png(host: HWND) -> Option<String> {
+    use windows::core::w;
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoTaskMemFree, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
+    };
+    use windows::Win32::UI::Shell::Common::COMDLG_FILTERSPEC;
+    use windows::Win32::UI::Shell::{
+        FileSaveDialog, IFileSaveDialog, FOS_FORCEFILESYSTEM, FOS_OVERWRITEPROMPT, FOS_PATHMUSTEXIST,
+        SIGDN_FILESYSPATH,
+    };
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let dlg: IFileSaveDialog = CoCreateInstance(&FileSaveDialog, None, CLSCTX_ALL).ok()?;
+        dlg.SetOptions(FOS_OVERWRITEPROMPT | FOS_PATHMUSTEXIST | FOS_FORCEFILESYSTEM)
+            .ok()?;
+        dlg.SetTitle(w!("Save demo pit board")).ok()?;
+        let filters = [COMDLG_FILTERSPEC {
+            pszName: w!("PNG"),
+            pszSpec: w!("*.png"),
+        }];
+        let _ = dlg.SetFileTypes(&filters);
+        let _ = dlg.SetFileTypeIndex(1);
+        let _ = dlg.SetDefaultExtension(w!("png"));
+        let _ = dlg.SetFileName(w!("holeshot-demo.png"));
+        dlg.Show(host).ok()?;
+        let item = dlg.GetResult().ok()?;
+        let name = item.GetDisplayName(SIGDN_FILESYSPATH).ok()?;
+        let path = name.to_string().ok().filter(|s| !s.is_empty());
+        CoTaskMemFree(Some(name.0 as _));
+        path
+    }
+}
+
+fn write_demo_png(path: &str) -> Result<String, String> {
+    let mut path = std::path::PathBuf::from(path);
+    let ext = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
+    if !ext.eq_ignore_ascii_case("png") {
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("holeshot-demo");
+        path.set_file_name(format!("{name}.png"));
+    }
+    std::fs::write(&path, DEMO_PIT_PNG).map_err(|_| "Could not save the demo pit board.".to_string())?;
+    Ok(path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("holeshot-demo.png")
+        .to_string())
+}
+
+fn pick_export_folder(host: HWND) -> Option<String> {
+    use windows::core::w;
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoTaskMemFree, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
+    };
+    use windows::Win32::UI::Shell::{
+        FileOpenDialog, IFileOpenDialog, FOS_FORCEFILESYSTEM, FOS_PICKFOLDERS, SIGDN_FILESYSPATH,
+    };
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let dlg: IFileOpenDialog = CoCreateInstance(&FileOpenDialog, None, CLSCTX_ALL).ok()?;
+        dlg.SetOptions(FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM).ok()?;
+        dlg.SetTitle(w!("Export pit board")).ok()?;
+        dlg.Show(host).ok()?;
+        let item = dlg.GetResult().ok()?;
+        let name = item.GetDisplayName(SIGDN_FILESYSPATH).ok()?;
+        let path = name.to_string().ok().filter(|s| !s.is_empty());
+        CoTaskMemFree(Some(name.0 as _));
+        path
+    }
+}
+
+fn confirm_delete_board(host: HWND, board: &str) -> bool {
+    use windows::core::PCWSTR;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        MessageBoxW, IDYES, MB_DEFBUTTON2, MB_ICONWARNING, MB_YESNO,
+    };
+    let prompt: Vec<u16> = format!("Delete the pit board \"{board}\"? This removes its folder.")
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    let title: Vec<u16> = "Holeshot HUD"
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    unsafe {
+        MessageBoxW(
+            host,
+            PCWSTR(prompt.as_ptr()),
+            PCWSTR(title.as_ptr()),
+            MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2,
+        ) == IDYES
     }
 }
 

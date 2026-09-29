@@ -1,7 +1,54 @@
 #![allow(unused_imports)]
 use super::*;
 
+fn use_named_board(
+    board: String,
+    art: String,
+    text: TableText,
+    places: Vec<mxbo_hud::pitboard::PitPlace>,
+) {
+    set_pit_name(&board);
+    set_pit_notice("");
+    update_config(|c| {
+        c.pit_art = art;
+        c.pit_board = board;
+        c.pit_text = text;
+        c.pit_sponsor.clear();
+        c.pit_vars = places;
+        let art = c.pit_art.clone();
+        apply_json_names(&art, &mut c.pit_vars);
+        apply_pack_colors(&art, &mut c.pit_vars);
+        let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+    });
+    set_pit_selected(0);
+    invalidate_plate_preview();
+}
+
+fn show_factory_board() {
+    set_pit_name("");
+    set_pit_notice("");
+    let (text, _, places) = factory_pack();
+    update_config(|c| {
+        c.pit_art = FACTORY_ART.into();
+        c.pit_board.clear();
+        c.pit_text = text;
+        c.pit_sponsor.clear();
+        c.pit_yellow = c.primary;
+        c.pit_blue = [0, 0, 0];
+        c.pit_vars = places;
+        let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+    });
+    set_pit_selected(0);
+    invalidate_plate_preview();
+}
+
 pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
+    if !matches!(id, Hit::PitName) {
+        if pit_name_focused() && !commit_pit_name() {
+            return;
+        }
+        set_pit_name_focus(false);
+    }
     match id {
         Hit::TabWidgets => {
             let last = UI
@@ -560,11 +607,90 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             return;
         }
         Hit::PitSlotOpen(slot) => {
+            set_pit_selected(slot);
             toggle_drop(Drop::PitSlot(slot));
+            return;
+        }
+        Hit::PitSlotSelect(slot) => {
+            close_drop();
+            set_pit_selected(slot);
             return;
         }
         Hit::PitWhenOpen => {
             toggle_drop(Drop::PitWhen);
+            return;
+        }
+        Hit::PitSlotAdd => {
+            close_drop();
+            update_config(|c| {
+                if add_design_slot(&mut c.pit_vars) {
+                    let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+                }
+            });
+            let n = with_config(|c| c.pit_vars.len());
+            set_pit_selected(n.saturating_sub(1) as u8);
+            return;
+        }
+        Hit::PitSlotRemove => {
+            close_drop();
+            let index = pit_selected() as usize;
+            update_config(|c| {
+                if remove_design_slot(&mut c.pit_vars, index) {
+                    let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+                }
+            });
+            let n = with_config(|c| c.pit_vars.len());
+            set_pit_selected(pit_selected().min(n.saturating_sub(1) as u8));
+            return;
+        }
+        Hit::PitSlotBold => {
+            close_drop();
+            update_config(|c| {
+                if let Some(place) = c.pit_vars.get_mut(pit_selected() as usize) {
+                    place.bold = !place.bold;
+                }
+                let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+            });
+            return;
+        }
+        Hit::PitSlotCenterX | Hit::PitSlotCenterY => {
+            close_drop();
+            let horizontal = matches!(id, Hit::PitSlotCenterX);
+            update_config(|c| {
+                if let Some(place) = c.pit_vars.get_mut(pit_selected() as usize) {
+                    if horizontal {
+                        place.x = 0.5;
+                    } else {
+                        place.y = 0.5;
+                    }
+                    let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+                }
+            });
+            return;
+        }
+        Hit::PitSlotColorOpen => {
+            toggle_drop(Drop::PitSlotColor);
+            return;
+        }
+        Hit::PitSlotColorPanel | Hit::PitSlotColorSv | Hit::PitSlotColorHue => return,
+        Hit::PitSlotColorReset => {
+            update_config(|c| {
+                if let Some(place) = c.pit_vars.get_mut(pit_selected() as usize) {
+                    place.color = None;
+                }
+                let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+            });
+            return;
+        }
+        Hit::PitSlotColorSwatch(i) => {
+            if let Some(&rgb) = PRIMARY_SWATCHES.get(i as usize) {
+                update_config(|c| {
+                    if let Some(place) = c.pit_vars.get_mut(pit_selected() as usize) {
+                        place.color = Some(rgb);
+                    }
+                    let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+                });
+            }
             return;
         }
         Hit::InfoOpen(bar, slot) => {
@@ -708,38 +834,175 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         }
         Hit::PitBrowse => {
             close_drop();
+            set_pit_name_focus(false);
             let host = UI.lock().unwrap().as_ref().map(|u| u.host);
             let Some(host) = host else {
                 return;
             };
-            if let Some(path) = browse_png(host) {
-                match import_png(&path) {
-                    Ok(name) => {
-                        let pack = load_sidecar(&path);
-                        update_config(|c| {
-                            c.pit_art = name;
-                            if let Some((text, _, places)) = pack {
-                                c.pit_text = text;
-                                c.pit_sponsor.clear();
-                                c.pit_vars = places;
-                                let art = c.pit_art.clone();
-                                apply_json_names(&art, &mut c.pit_vars);
-                            }
-                        });
-                    }
-                    Err(msg) => unsafe {
-                        let mut text: Vec<u16> = msg.encode_utf16().collect();
-                        text.push(0);
-                        let _ = windows::Win32::UI::WindowsAndMessaging::MessageBoxW(
-                            host,
-                            windows::core::PCWSTR(text.as_ptr()),
-                            windows::core::w!("Holeshot HUD"),
-                            windows::Win32::UI::WindowsAndMessaging::MB_OK
-                                | windows::Win32::UI::WindowsAndMessaging::MB_ICONWARNING,
-                        );
+            if let Some(path) = browse_image(host) {
+                let path = std::path::PathBuf::from(path);
+                match board_name_from_picture(&path) {
+                    Ok(board) => match mxbo_hud::pitboard::save_named_board(&board, &path) {
+                        Ok((art, text, places)) => use_named_board(board, art, text, places),
+                        Err(msg) => set_pit_notice(&msg),
                     },
+                    Err(msg) => set_pit_notice(&msg),
                 }
             }
+            return;
+        }
+        Hit::PitExport => {
+            close_drop();
+            set_pit_name_focus(false);
+            let (board, art, places, text) = with_config(|c| {
+                (
+                    c.pit_board.clone(),
+                    c.pit_art.clone(),
+                    c.pit_vars.clone(),
+                    c.pit_text,
+                )
+            });
+            if board.is_empty() {
+                set_pit_notice("Save a named pit board before exporting.");
+                return;
+            }
+            let _ = write_pack(&art, &places, text);
+            let host = UI.lock().unwrap().as_ref().map(|u| u.host);
+            let Some(host) = host else {
+                return;
+            };
+            let Some(path) = pick_export_folder(host) else {
+                return;
+            };
+            match mxbo_hud::pitboard::export_board(
+                &board,
+                &art,
+                &places,
+                text,
+                std::path::Path::new(&path),
+            ) {
+                Ok(()) => set_pit_notice(""),
+                Err(msg) => set_pit_notice(&msg),
+            }
+            return;
+        }
+        Hit::PitDemo => {
+            close_drop();
+            set_pit_name_focus(false);
+            let host = UI.lock().unwrap().as_ref().map(|u| u.host);
+            let Some(host) = host else {
+                return;
+            };
+            let Some(path) = pick_demo_png(host) else {
+                return;
+            };
+            match write_demo_png(&path) {
+                Ok(name) => set_pit_notice(&format!("Saved {name}.")),
+                Err(msg) => set_pit_notice(&msg),
+            }
+            return;
+        }
+        Hit::PitHelpOpen => {
+            close_drop();
+            open_pit_help();
+            return;
+        }
+        Hit::PitHelpDismiss => {
+            close_drop();
+            dismiss_pit_help();
+            return;
+        }
+        Hit::PitHelpScrim | Hit::PitHelpPanel => {
+            close_drop();
+            return;
+        }
+        Hit::PitImport => {
+            close_drop();
+            set_pit_name_focus(false);
+            let host = UI.lock().unwrap().as_ref().map(|u| u.host);
+            let Some(host) = host else {
+                return;
+            };
+            if let Some(path) = browse_json(host) {
+                let path = std::path::PathBuf::from(path);
+                match board_name_from_pack(&path) {
+                    Ok(board) => match mxbo_hud::pitboard::import_pack_json(&board, &path) {
+                        Ok((art, text, places)) => use_named_board(board, art, text, places),
+                        Err(msg) => set_pit_notice(&msg),
+                    },
+                    Err(msg) => set_pit_notice(&msg),
+                }
+            }
+            return;
+        }
+        Hit::PitDelete => {
+            close_drop();
+            set_pit_name_focus(false);
+            let board = with_config(|c| c.pit_board.clone());
+            if board.is_empty() {
+                set_pit_notice("Holeshot cannot be deleted.");
+                return;
+            }
+            let host = UI.lock().unwrap().as_ref().map(|u| u.host);
+            let Some(host) = host else {
+                return;
+            };
+            if !confirm_delete_board(host, &board) {
+                return;
+            }
+            match mxbo_hud::pitboard::delete_saved_board(&board) {
+                Ok(()) => show_factory_board(),
+                Err(msg) => set_pit_notice(&msg),
+            }
+            return;
+        }
+        Hit::PitName => {
+            close_drop();
+            if pit_default_board() {
+                set_pit_name_focus(false);
+                return;
+            }
+            set_pit_name_focus(true);
+            crate::feedback::set_focus(false);
+            return;
+        }
+        Hit::PitBoardOpen => {
+            set_pit_name_focus(false);
+            toggle_drop(Drop::PitBoard);
+            return;
+        }
+        Hit::PitBoardFactory => {
+            close_drop();
+            set_pit_name_focus(false);
+            show_factory_board();
+            return;
+        }
+        Hit::PitBoardPick(index) => {
+            close_drop();
+            set_pit_name_focus(false);
+            let boards = mxbo_hud::pitboard::saved_boards();
+            let Some(name) = boards.get(index as usize).cloned() else {
+                return;
+            };
+            let Some((art, text, places)) = mxbo_hud::pitboard::open_saved_board(&name) else {
+                set_pit_notice("That pit board could not be opened.");
+                return;
+            };
+            set_pit_name(&name);
+            set_pit_notice("");
+            update_config(|c| {
+                c.pit_art = art;
+                c.pit_board = name;
+                c.pit_text = text;
+                c.pit_sponsor.clear();
+                c.pit_vars = places;
+                let art = c.pit_art.clone();
+                apply_json_names(&art, &mut c.pit_vars);
+                apply_pack_colors(&art, &mut c.pit_vars);
+                let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+            });
+            set_pit_selected(0);
+            invalidate_plate_preview();
             return;
         }
         Hit::PitOpenFolder => {
@@ -825,11 +1088,17 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::PitReset => {
             let (text, _, places) = factory_pack();
             c.pit_art = FACTORY_ART.into();
+            c.pit_board.clear();
             c.pit_text = text;
             c.pit_sponsor.clear();
             c.pit_vars = places;
             c.pit_yellow = c.primary;
             c.pit_blue = [0, 0, 0];
+            let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+            set_pit_selected(0);
+            set_pit_name("");
+            set_pit_notice("");
+            invalidate_plate_preview();
         }
         Hit::PitWhenAlways => c.pit_when = PitWhen::Always,
         Hit::PitWhenSector => c.pit_when = PitWhen::Sector,
@@ -838,9 +1107,11 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             if let Some(var) = PitVar::from_idx(i) {
                 mxbo_hud::pitboard::set_slot_var(&mut c.pit_vars, slot as usize, Some(var));
             }
+            let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
         }
         Hit::PitSlotNone(slot) => {
             mxbo_hud::pitboard::set_slot_var(&mut c.pit_vars, slot as usize, None);
+            let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
         }
         Hit::TelemetryTraces => c.telemetry_traces = !c.telemetry_traces,
         Hit::TelemetryTraceThrottle => c.telemetry_trace_throttle = !c.telemetry_trace_throttle,
@@ -1074,6 +1345,20 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::TickerFootOpen(_)
         | Hit::InfoOpen(_, _)
         | Hit::PitSlotOpen(_)
+        | Hit::PitSlotSelect(_)
+        | Hit::PitSlotGrab(_)
+        | Hit::PitSlotAdd
+        | Hit::PitSlotRemove
+        | Hit::PitSlotSize
+        | Hit::PitSlotBold
+        | Hit::PitSlotCenterX
+        | Hit::PitSlotCenterY
+        | Hit::PitSlotColorOpen
+        | Hit::PitSlotColorPanel
+        | Hit::PitSlotColorSv
+        | Hit::PitSlotColorHue
+        | Hit::PitSlotColorSwatch(_)
+        | Hit::PitSlotColorReset
         | Hit::PitWhenOpen
         | Hit::PresetCopyOpen
         | Hit::UpdateCheck
@@ -1130,6 +1415,18 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::TelemetryBg
         | Hit::PitBg
         | Hit::PitBrowse
+        | Hit::PitName
+        | Hit::PitBoardOpen
+        | Hit::PitBoardFactory
+        | Hit::PitBoardPick(_)
+        | Hit::PitExport
+        | Hit::PitImport
+        | Hit::PitDemo
+        | Hit::PitHelpOpen
+        | Hit::PitHelpDismiss
+        | Hit::PitHelpScrim
+        | Hit::PitHelpPanel
+        | Hit::PitDelete
         | Hit::PitOpenFolder
         | Hit::StW(_)
         | Hit::RelW(_)
@@ -1152,6 +1449,12 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::AnalyzeMap
         | Hit::AnalyzeFollow => {}
     });
+    if matches!(
+        id,
+        Hit::PitShow | Hit::PresetCopyTo(_) | Hit::PresetCopyAll
+    ) {
+        crate::stock_pitboard::sync_from_config();
+    }
     if matches!(id, Hit::ThemePick(_)) {
         if let Some(host) = UI.lock().unwrap().as_ref().map(|u| u.host) {
             refresh_palette();

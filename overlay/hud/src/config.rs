@@ -2059,6 +2059,8 @@ pub struct HudLayout {
     pub telemetry_dial: bool,
     pub pit_sponsor: String,
     pub pit_art: String,
+    /// Saved board folder under `pitboards`. Empty is the Holeshot plate.
+    pub pit_board: String,
     pub pit_text: TableText,
     pub pit_vars: Vec<PitPlace>,
     /// Always, or flash 5s at each sector end / lap start.
@@ -2221,6 +2223,7 @@ impl HudLayout {
             telemetry_dial: true,
             pit_sponsor: factory_pack().1,
             pit_art: FACTORY_ART.into(),
+            pit_board: String::new(),
             pit_text: factory_pack().0,
             pit_vars: factory_places(),
             pit_when: PitWhen::Always,
@@ -2396,6 +2399,13 @@ impl HudConfig {
         c
     }
 
+    /// True when any session preset has the Pit Board widget on.
+    pub fn pitboard_shown_anywhere(&self) -> bool {
+        self.layouts
+            .iter()
+            .any(|layout| layout[WidgetId::Pitboard].show)
+    }
+
     /// Accent written into the MX Bikes menu pack.
     pub fn game_ui_accent(&self) -> [u8; 3] {
         if self.game_ui_match_primary {
@@ -2483,6 +2493,7 @@ impl HudConfig {
                 layout.pit_vars = places;
             }
             crate::pitboard::lift_low_factory(&mut layout.pit_vars);
+            crate::pitboard::apply_pack_colors(&layout.pit_art, &mut layout.pit_vars);
             migrate_saved_plate(layout, cfg.primary);
         }
         if let Some(p) = meta_path {
@@ -2515,6 +2526,7 @@ impl HudConfig {
                 layout.pit_vars = places;
             }
             crate::pitboard::lift_low_factory(&mut layout.pit_vars);
+            crate::pitboard::apply_pack_colors(&layout.pit_art, &mut layout.pit_vars);
             migrate_saved_plate(layout, accent);
         }
     }
@@ -3249,6 +3261,7 @@ fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last
         "telemetry_dial" => cfg.telemetry_dial = b,
         "pit_sponsor" => cfg.pit_sponsor = val.trim().to_string(),
         "pit_art" => cfg.pit_art = val.trim().to_string(),
+        "pit_board" => cfg.pit_board = val.trim().to_string(),
         "pit_text" => cfg.pit_text = TableText::parse(val),
         "pit_vars" => cfg.pit_vars = parse_places(val),
         "pit_when" => cfg.pit_when = PitWhen::parse(val),
@@ -3379,7 +3392,7 @@ fn layout_ini(l: &HudLayout) -> String {
          telemetry_bars={}\ntelemetry_bar_clutch={}\ntelemetry_bar_brake={}\ntelemetry_bar_throttle={}\ntelemetry_bar_steer={}\n\
          telemetry_dial={}\n\
          telemetry_bg={}\ntelemetry_font={}\ntelemetry_bold={}\n\
-         pit_sponsor={}\npit_art={}\npit_text={}\npit_vars={}\npit_when={}\n\
+         pit_sponsor={}\npit_art={}\npit_board={}\npit_text={}\npit_vars={}\npit_when={}\n\
          pit_yellow={}\npit_blue={}\n\
          pit_bg={}\npit_font={}\npit_bold={}",
         st.rect.x, st.rect.y, st.rect.w, st.rect.h,
@@ -3446,6 +3459,7 @@ fn layout_ini(l: &HudLayout) -> String {
         telemetry.bg, telemetry.font, b(telemetry.bold),
         ini_line(&l.pit_sponsor),
         ini_line(&l.pit_art),
+        ini_line(&l.pit_board),
         l.pit_text.key(),
         encode_places(&l.pit_vars),
         l.pit_when.key(),

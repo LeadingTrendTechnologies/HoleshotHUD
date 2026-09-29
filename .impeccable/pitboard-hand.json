@@ -1,0 +1,40 @@
+{
+  "title": "Pit board plate",
+  "question": "Lock one empty plate. That art becomes the PNG. Re-roll deals three other structures.",
+  "options": [
+    {
+      "id": "flag-tab",
+      "label": "Flag Tab",
+      "kicker": "THE ROLL",
+      "thesis": "One orange tab on the top-left carries the mark. The rest of the plate is an open white field.",
+      "palette": ["#FF9430", "#0A0A0A", "#FFFFFF"],
+      "materials": ["flat vinyl plate", "die-cut handle slots"],
+      "viewport": "Wide rounded plate. Small orange tab at the top-left with the logo and HOLESHOT. Thin black rim. Handle slots in the upper corners. Empty white center.",
+      "risk": "The tab reads as a sticker if it does not share the plate edge.",
+      "comp": ".impeccable/mocks/decision/flag-tab.png"
+    },
+    {
+      "id": "chevron-frame",
+      "label": "Chevron Frame",
+      "thesis": "Two orange chevrons point in from the sides and stop before the empty center.",
+      "palette": ["#FF9430", "#0A0A0A", "#FFFFFF"],
+      "materials": ["flat vinyl plate", "cut chevron edges"],
+      "viewport": "Wide plate. Chevrons only in the outer sides. HOLESHOT and the logo sit small on the bottom edge. Handle slots up top. The middle stays white.",
+      "risk": "The chevrons crowd the lap time if they reach past the outer fifth.",
+      "comp": ".impeccable/mocks/decision/chevron-frame.png"
+    },
+    {
+      "id": "stepped-crown",
+      "label": "Stepped Crown",
+      "thesis": "The top center steps up into a short orange crown that holds HOLESHOT. Under it, a plain white well.",
+      "palette": ["#FF9430", "#0A0A0A", "#FFFFFF"],
+      "materials": ["molded plate", "raised crown"],
+      "viewport": "Stepped silhouette. Orange crown on top with the logo and HOLESHOT. Handle slots in the side shoulders. A black hairline around the white well. Plain bottom.",
+      "risk": "A tall crown steals the top of the field where the name sits.",
+      "comp": ".impeccable/mocks/decision/stepped-crown.png"
+    }
+  ],
+  "reroll": { "registers": ["safer", "bolder"] },
+  "steer": true,
+  "buildPath": { "value": "comp", "toggle": true }
+}

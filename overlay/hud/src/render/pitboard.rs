@@ -23,6 +23,17 @@ thread_local! {
     });
 }
 
+/// Recolored Holeshot plate, logo included.
+pub(crate) fn factory_plate_image(art: &str, main: [u8; 3], secondary: [u8; 3]) -> Option<Pixmap> {
+    FACTORY_PLATE.with(|slot| {
+        let mut cache = slot.borrow_mut();
+        if !cache.ensure(art, main, secondary) {
+            return None;
+        }
+        cache.painted.clone()
+    })
+}
+
 pub(crate) fn draw_pitboard(
     px: &mut Pixmap,
     fonts: &Fonts,
@@ -44,19 +55,24 @@ pub(crate) fn draw_pitboard(
     if !draw_art(px, cfg, x, y, w, h) {
         draw_glass_plate(px, x, y, w, h, a);
     }
-    let k = style_k();
     for (index, place) in cfg.pit_vars.iter().enumerate().filter(|(_, place)| place.show) {
-        let authored = crate::pitboard::pack_slot_color(&cfg.pit_art, index);
+        let authored = place
+            .color
+            .or_else(|| crate::pitboard::pack_slot_color(&cfg.pit_art, index));
         let rgb = crate::pitboard::place_ink(authored);
         let ink = Color::from_rgba8(rgb[0], rgb[1], rgb[2], 255);
         let (label, mut col) = shown_text(pit_value(s, cfg, place.var, ink_black, ink_black), ink_black);
         if authored.is_some() {
             col = ink;
         }
-        let fs = (place.size * k).clamp(9.0, 56.0);
+        let fs = place.size.clamp(9.0, 56.0);
         let cx = x + place.x * w;
         let cy = y + place.y * h - fs * 0.55;
-        text_halo(px, fonts, &label, fs, cx, cy, col, true, false);
+        if place.bold {
+            text_bold(px, fonts, &label, fs, cx, cy, col, true);
+        } else {
+            text_halo(px, fonts, &label, fs, cx, cy, col, true, false);
+        }
     }
 }
 

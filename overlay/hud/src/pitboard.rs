@@ -7,6 +7,8 @@ use crate::config::{ini_path, BoardField, TableText};
 
 /// Old ini dump of every catalog stat. Row count follows the pack, not this list.
 pub const LEGACY_CATALOG: usize = 29;
+/// Settings designer cap. F8 lists one row per slot.
+pub const MAX_DESIGN_SLOTS: usize = 12;
 use crate::shm::Snapshot;
 
 pub const FACTORY_ART: &str = "holeshot.png";
@@ -555,6 +557,7 @@ pub struct PitPlace {
     pub y: f32,
     pub size: f32,
     pub show: bool,
+    pub bold: bool,
     pub label: String,
     pub color: Option<[u8; 3]>,
 }
@@ -568,6 +571,7 @@ impl PitPlace {
             y: y.clamp(0.04, 0.96),
             size: size.clamp(10.0, 56.0),
             show: true,
+            bold: false,
             label: String::new(),
             color: None,
         }
@@ -637,6 +641,16 @@ pub fn slot_row_name(art: &str, slot: usize, place: &PitPlace) -> String {
         .cloned()
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| place.row_label())
+}
+
+/// Copy slot color from the pack JSON when the ini row has none.
+pub fn apply_pack_colors(art: &str, places: &mut [PitPlace]) {
+    let named = pack_named_places(art);
+    for (place, from) in places.iter_mut().zip(named) {
+        if place.color.is_none() {
+            place.color = from.color;
+        }
+    }
 }
 
 /// Copy `name` from the pack JSON onto each settings row.
@@ -718,6 +732,10 @@ pub fn encode_places(places: &[PitPlace]) -> String {
                 s.push(',');
                 s.push_str(&p.label.replace(',', " "));
             }
+            if let Some(rgb) = p.color {
+                s.push(',');
+                s.push_str(&hex_color(rgb));
+            }
             s
         })
         .collect::<Vec<_>>()
@@ -736,7 +754,12 @@ pub fn normalize_places(places: &mut Vec<PitPlace>) {
         *places = factory_places();
         return;
     }
-    places.retain(|p| p.show || (p.x - 0.5).abs() >= 0.03 || (p.y - 0.5).abs() >= 0.03);
+    places.retain(|p| {
+        p.show
+            || !p.label.is_empty()
+            || (p.x - 0.5).abs() >= 0.03
+            || (p.y - 0.5).abs() >= 0.03
+    });
     if places.is_empty() {
         *places = factory_places();
     }
@@ -764,7 +787,14 @@ fn parse_place_tokens(s: &str, drop_v1_fillers: bool) -> Vec<PitPlace> {
         let y: f32 = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0.5);
         let third = parts.next().unwrap_or("");
         let fourth = parts.next().unwrap_or("");
-        let label = parts.collect::<Vec<_>>().join(",").trim().to_string();
+        let mut extra: Vec<String> = parts.map(|part| part.to_string()).collect();
+        let color = extra
+            .last()
+            .and_then(|token| crate::config::parse_primary_color(token.trim()));
+        if color.is_some() {
+            extra.pop();
+        }
+        let label = extra.join(",").trim().to_string();
         let (var, size, show) = if is_old_show_flag(third) {
             let show = third == "1" || third.eq_ignore_ascii_case("true");
             let size = fourth.parse().unwrap_or(16.0);
@@ -783,6 +813,7 @@ fn parse_place_tokens(s: &str, drop_v1_fillers: bool) -> Vec<PitPlace> {
         place.var = var;
         place.show = show;
         place.label = label;
+        place.color = color;
         places.push(place);
     }
     places
@@ -1002,33 +1033,320 @@ pub fn art_bytes(name: &str) -> Option<Vec<u8>> {
     None
 }
 
+pub const PLATE_FILE: &str = "plate.png";
+
 pub fn art_path(name: &str) -> Option<PathBuf> {
     let name = name.trim();
-    if name.is_empty() || name.contains("..") || name.contains('/') || name.contains('\\') {
+    if name.is_empty() || name.contains("..") {
         return None;
     }
-    let lower = name.to_ascii_lowercase();
-    if !lower.ends_with(".png") {
+    let mut parts = name.split(['/', '\\']).filter(|part| !part.is_empty());
+    let first = parts.next()?;
+    let second = parts.next();
+    if parts.next().is_some() || first == "." || first == ".." {
         return None;
     }
-    Some(pitboards_dir().join(name))
+    let file = second.unwrap_or(first);
+    if !file.to_ascii_lowercase().ends_with(".png") {
+        return None;
+    }
+    if second.is_some() {
+        Some(pitboards_dir().join(first).join(file))
+    } else {
+        Some(pitboards_dir().join(file))
+    }
 }
 
-pub fn import_png(src: &Path) -> Result<String, String> {
-    let ext = src
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    if ext != "png" {
-        return Err("Pick a PNG picture.".into());
+/// Folder name for a saved board. Empty, reserved, and path characters are refused.
+pub fn sanitize_board_name(raw: &str) -> Option<String> {
+    let name = raw.trim().trim_end_matches(['.', ' ']);
+    if name.is_empty() || name == "." || name == ".." || name.eq_ignore_ascii_case("holeshot") {
+        return None;
     }
+    if name.chars().any(|c| matches!(c, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|')) {
+        return None;
+    }
+    if name.contains("..") {
+        return None;
+    }
+    Some(name.to_string())
+}
+
+/// Subfolders that contain `plate.png`, sorted.
+pub fn saved_boards() -> Vec<String> {
+    let mut names = Vec::new();
+    let Ok(entries) = fs::read_dir(pitboards_dir()) else {
+        return names;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() || !path.join(PLATE_FILE).is_file() {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if sanitize_board_name(name).is_some() {
+            names.push(name.to_string());
+        }
+    }
+    names.sort_by(|a, b| a.to_ascii_lowercase().cmp(&b.to_ascii_lowercase()));
+    names
+}
+
+/// Copy a picture into `pitboards/<name>/plate.png`. An existing folder keeps its slots
+/// unless the picture has a sibling `board.json`.
+pub fn save_named_board(
+    name: &str,
+    src: &Path,
+) -> Result<(String, TableText, Vec<PitPlace>), String> {
+    let folder = sanitize_board_name(name).ok_or_else(|| "Name the pit board first.".to_string())?;
     let bytes = fs::read(src).map_err(|_| "Could not read that picture.".to_string())?;
+    let png = raster_to_png(&bytes)?;
+    let dir = pitboards_dir().join(&folder);
+    fs::create_dir_all(&dir).map_err(|_| "Could not create that pit board.".to_string())?;
+    let from_picture = load_sidecar(src);
+    let existing = fs::read_to_string(dir.join("board.json"))
+        .ok()
+        .and_then(|body| read_pack_json(&body));
+    let (text, places) = if let Some((text, _, places)) = from_picture {
+        (text, places)
+    } else if let Some((_, text, _, places)) = existing {
+        (text, places)
+    } else {
+        (TableText::Black, starter_places())
+    };
+    let art = format!("{folder}/{PLATE_FILE}");
+    fs::write(dir.join(PLATE_FILE), png).map_err(|_| "Could not save that picture.".to_string())?;
+    fs::write(dir.join("board.json"), pack_json(&art, &places, text))
+        .map_err(|_| "Could not write board.json.".to_string())?;
+    Ok((art, text, places))
+}
+
+/// Slots and plate path for a saved folder.
+pub fn open_saved_board(name: &str) -> Option<(String, TableText, Vec<PitPlace>)> {
+    let folder = sanitize_board_name(name)?;
+    let art = format!("{folder}/{PLATE_FILE}");
+    let path = art_path(&art)?;
+    let (text, _, places) = load_sidecar(&path)?;
+    Some((art, text, places))
+}
+
+/// Move `pitboards/<from>` to `pitboards/<to>` and point `board.json` at the new plate.
+pub fn rename_saved_board(from: &str, to: &str) -> Result<String, String> {
+    let from = sanitize_board_name(from).ok_or_else(|| "That name cannot be used.".to_string())?;
+    let to = sanitize_board_name(to).ok_or_else(|| "That name cannot be used.".to_string())?;
+    let art = format!("{to}/{PLATE_FILE}");
+    if from == to {
+        return Ok(art);
+    }
+    let root = pitboards_dir();
+    let src = root.join(&from);
+    if !src.is_dir() {
+        return Err("That pit board could not be renamed.".into());
+    }
+    let dest = root.join(&to);
+    let case_only = from.eq_ignore_ascii_case(&to);
+    if dest.exists() && !case_only {
+        return Err("That name is already used.".into());
+    }
+    if case_only {
+        let temp = root.join(format!("{from}.renaming"));
+        fs::rename(&src, &temp).map_err(|_| "That pit board could not be renamed.".to_string())?;
+        if fs::rename(&temp, &dest).is_err() {
+            let _ = fs::rename(&temp, &src);
+            return Err("That pit board could not be renamed.".into());
+        }
+    } else {
+        fs::rename(&src, &dest).map_err(|_| "That pit board could not be renamed.".to_string())?;
+    }
+    let json_path = dest.join("board.json");
+    if let Ok(body) = fs::read_to_string(&json_path) {
+        if let Some((_, text, _, places)) = read_pack_json(&body) {
+            let _ = fs::write(&json_path, pack_json(&art, &places, text));
+        }
+    }
+    Ok(art)
+}
+
+/// Copy the live plate into `<dest>/<name>/` with `plate.png` and `board.json`.
+pub fn export_board(
+    name: &str,
+    art: &str,
+    places: &[PitPlace],
+    text: TableText,
+    dest: &Path,
+) -> Result<(), String> {
+    let folder = sanitize_board_name(name)
+        .ok_or_else(|| "Save a named pit board before exporting.".to_string())?;
+    let src = art_path(art).ok_or_else(|| "That pit board has no picture.".to_string())?;
+    let bytes = fs::read(&src).map_err(|_| "Could not read that pit board.".to_string())?;
+    let dir = dest.join(&folder);
+    fs::create_dir_all(&dir).map_err(|_| "Could not save that pit board.".to_string())?;
+    fs::write(dir.join(PLATE_FILE), &bytes)
+        .map_err(|_| "Could not save that pit board.".to_string())?;
+    let packed = format!("{folder}/{PLATE_FILE}");
+    fs::write(dir.join("board.json"), pack_json(&packed, places, text))
+        .map_err(|_| "Could not write board.json.".to_string())
+}
+
+/// Typed name wins. An empty draft uses the picture's file name. Holeshot is refused.
+pub fn board_name_for_picture(draft: &str, src: &Path) -> Result<String, String> {
+    let raw = if draft.trim().is_empty() {
+        src.file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or("")
+    } else {
+        draft
+    };
+    sanitize_board_name(raw).ok_or_else(|| "That name cannot be used.".to_string())
+}
+
+/// Typed name wins. An empty draft uses the folder that holds `board.json`.
+pub fn board_name_for_pack(draft: &str, json: &Path) -> Result<String, String> {
+    let raw = if draft.trim().is_empty() {
+        json.parent()
+            .and_then(|dir| dir.file_name())
+            .and_then(|name| name.to_str())
+            .unwrap_or("")
+    } else {
+        draft
+    };
+    sanitize_board_name(raw).ok_or_else(|| "That name cannot be used.".to_string())
+}
+
+/// Import `board.json` only when `plate.png` sits in the same folder.
+pub fn import_pack_json(
+    name: &str,
+    json: &Path,
+) -> Result<(String, TableText, Vec<PitPlace>), String> {
+    let file = json
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("");
+    if !file.eq_ignore_ascii_case("board.json") {
+        return Err("Pick a board.json.".into());
+    }
+    let dir = json
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .ok_or_else(|| "That file is not a pit board.".to_string())?;
+    let body = fs::read_to_string(json).map_err(|_| "Could not read that board.json.".to_string())?;
+    if read_pack_json(&body).is_none() {
+        return Err("That file is not a pit board.".into());
+    }
+    let plate = dir.join(PLATE_FILE);
+    if !plate.is_file() {
+        return Err("That board.json has no plate.png beside it.".into());
+    }
+    save_named_board(name, &plate)
+}
+
+/// Remove one saved folder. Holeshot is not a folder.
+pub fn delete_saved_board(name: &str) -> Result<(), String> {
+    let folder = sanitize_board_name(name).ok_or_else(|| "Holeshot cannot be deleted.".to_string())?;
+    let dir = pitboards_dir().join(&folder);
+    if !dir.is_dir() {
+        return Err("That pit board is already gone.".into());
+    }
+    fs::remove_dir_all(&dir).map_err(|_| "Could not delete that pit board.".to_string())
+}
+
+fn hex_color(rgb: [u8; 3]) -> String {
+    format!("#{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2])
+}
+
+/// One hidden slot for a picture that has no sibling `board.json`.
+pub fn starter_places() -> Vec<PitPlace> {
+    vec![blank_slot(0)]
+}
+
+pub fn blank_slot(index: usize) -> PitPlace {
+    let n = index + 1;
+    let mut place = PitPlace::slot(
+        PitVar::Name,
+        0.50,
+        (0.42 + index as f32 * 0.08).clamp(0.08, 0.92),
+        18.0,
+    );
+    place.show = false;
+    place.label = format!("Slot {n}");
+    place
+}
+
+/// Sibling `board.json` wins. A picture alone starts as one blank slot.
+pub fn places_from_browse(sidecar: Option<Vec<PitPlace>>) -> Vec<PitPlace> {
+    match sidecar {
+        Some(places) if !places.is_empty() => places,
+        _ => starter_places(),
+    }
+}
+
+pub fn add_design_slot(places: &mut Vec<PitPlace>) -> bool {
+    if places.len() >= MAX_DESIGN_SLOTS {
+        return false;
+    }
+    places.push(blank_slot(places.len()));
+    true
+}
+
+pub fn remove_design_slot(places: &mut Vec<PitPlace>, index: usize) -> bool {
+    if places.len() <= 1 || index >= places.len() {
+        return false;
+    }
+    places.remove(index);
+    for (slot, place) in places.iter_mut().enumerate() {
+        if slot_number_name(&place.label) {
+            place.label = format!("Slot {}", slot + 1);
+        }
+    }
+    true
+}
+
+fn slot_number_name(label: &str) -> bool {
+    let Some(number) = label.strip_prefix("Slot ") else {
+        return false;
+    };
+    !number.is_empty() && number.chars().all(|ch| ch.is_ascii_digit())
+}
+
+/// Sample line drawn on the settings plate. None is blank. A chosen stat with no sample is `---`.
+pub fn slot_sample(place: &PitPlace) -> &'static str {
+    if !place.show {
+        return "";
+    }
+    match place.var {
+        PitVar::Pos | PitVar::ClassPos => "P1",
+        PitVar::Laps | PitVar::Lap => "L3",
+        PitVar::Delta | PitVar::LapDiff | PitVar::Gap | PitVar::Int | PitVar::GapAhead
+        | PitVar::GapBehind => "+0.12",
+        PitVar::Name | PitVar::Bike | PitVar::Track => "RIDER",
+        PitVar::Last | PitVar::Best | PitVar::Cur | PitVar::SessionBest => "1:23.456",
+        _ => "---",
+    }
+}
+
+/// Decode a PNG or JPEG and return PNG bytes the HUD can draw.
+pub fn raster_to_png(bytes: &[u8]) -> Result<Vec<u8>, String> {
     if bytes.len() > 8 * 1024 * 1024 {
         return Err("Picture is too large (8 MB max).".into());
     }
-    let dir = pitboards_dir();
-    fs::create_dir_all(&dir).map_err(|_| "Could not create the designs folder.".to_string())?;
+    let img = image::load_from_memory(bytes)
+        .map_err(|_| "Could not read that picture.".to_string())?
+        .into_rgba8();
+    let (w, h) = (img.width(), img.height());
+    if w == 0 || h == 0 || w > 8192 || h > 8192 {
+        return Err("Picture is too large.".into());
+    }
+    let mut px = tiny_skia::Pixmap::new(w, h).ok_or_else(|| "Could not read that picture.".to_string())?;
+    px.data_mut().copy_from_slice(img.as_raw());
+    px.encode_png()
+        .map_err(|_| "Could not save that picture.".to_string())
+}
+
+pub fn import_png(src: &Path) -> Result<String, String> {
+    let bytes = fs::read(src).map_err(|_| "Could not read that picture.".to_string())?;
+    let png = raster_to_png(&bytes)?;
     let stem = src
         .file_stem()
         .and_then(|s| s.to_str())
@@ -1037,8 +1355,25 @@ pub fn import_png(src: &Path) -> Result<String, String> {
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
         .collect::<String>();
     let stem = if stem.is_empty() { "plate".into() } else { stem };
+    store_plate_png(&stem, &png)
+}
+
+pub fn store_plate_png(stem: &str, png_bytes: &[u8]) -> Result<String, String> {
+    if png_bytes.len() > 8 * 1024 * 1024 {
+        return Err("Picture is too large (8 MB max).".into());
+    }
+    if tiny_skia::Pixmap::decode_png(png_bytes).is_err() {
+        return Err("Could not read that picture.".into());
+    }
+    let dir = pitboards_dir();
+    fs::create_dir_all(&dir).map_err(|_| "Could not create the designs folder.".to_string())?;
+    let stem: String = stem
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+    let stem = if stem.is_empty() { "plate".into() } else { stem };
     let name = format!("{stem}.png");
-    fs::write(dir.join(&name), bytes).map_err(|_| "Could not save that picture.".to_string())?;
+    fs::write(dir.join(&name), png_bytes).map_err(|_| "Could not save that picture.".to_string())?;
     Ok(name)
 }
 
@@ -1070,9 +1405,15 @@ pub fn pack_json(art: &str, places: &[PitPlace], text: TableText) -> String {
             p.y,
             p.size
         ));
+        if let Some(rgb) = p.color {
+            slots.push_str(&format!(", \"color\": {}", json_str(&hex_color(rgb))));
+        }
         if !p.show || p.var != p.default {
             let current = if p.show { p.var.key() } else { "none" };
             slots.push_str(&format!(", \"current\": {}", json_str(current)));
+        }
+        if p.bold {
+            slots.push_str(", \"bold\": true");
         }
         slots.push_str(" }");
     }
@@ -1087,7 +1428,9 @@ pub fn pack_json(art: &str, places: &[PitPlace], text: TableText) -> String {
 
 pub fn write_pack(art: &str, places: &[PitPlace], text: TableText) -> Result<(), String> {
     ensure_factory_pack();
-    let dir = pitboards_dir();
+    let dir = art_path(art)
+        .and_then(|path| path.parent().map(|parent| parent.to_path_buf()))
+        .unwrap_or_else(pitboards_dir);
     fs::create_dir_all(&dir).map_err(|_| "Could not create the designs folder.".to_string())?;
     fs::write(dir.join("board.json"), pack_json(art, places, text))
         .map_err(|_| "Could not write board.json.".to_string())
@@ -1136,6 +1479,7 @@ fn parse_slots_array(s: &str) -> Option<Vec<PitPlace>> {
                 None => place.show = false,
             }
         }
+        place.bold = json_true(&obj, "bold");
         places.push(place);
     }
     Some(places)
@@ -1183,6 +1527,17 @@ fn json_array_objects(s: &str, key: &str) -> Option<Vec<String>> {
         }
     }
     Some(objs)
+}
+
+fn json_true(s: &str, key: &str) -> bool {
+    let needle = format!("\"{key}\"");
+    let Some(at) = s.find(&needle) else {
+        return false;
+    };
+    s[at + needle.len()..]
+        .trim_start()
+        .strip_prefix(':')
+        .is_some_and(|rest| rest.trim_start().starts_with("true"))
 }
 
 fn json_num(s: &str, key: &str) -> Option<f32> {
@@ -1742,5 +2097,127 @@ mod tests {
         tick(&s);
         assert!(drawing(true, PitWhen::Lap));
         assert!(!drawing(true, PitWhen::Sector));
+    }
+
+    #[test]
+    fn color_round_trips_through_pack_json_and_ini() {
+        let mut place = blank_slot(0);
+        place.color = Some([255, 0, 64]);
+        place.show = true;
+        place.var = PitVar::Last;
+        let json = pack_json("plate.png", &[place.clone()], TableText::Black);
+        assert!(json.contains("\"color\": \"#FF0040\""));
+        let (_, _, _, places) = read_pack_json(&json).unwrap();
+        assert_eq!(places[0].color, Some([255, 0, 64]));
+        let again = parse_places(&encode_places(&[place]));
+        assert_eq!(again[0].color, Some([255, 0, 64]));
+        assert_eq!(again[0].label, "Slot 1");
+    }
+
+    #[test]
+    fn picture_without_sidecar_starts_as_one_slot() {
+        let mut places = places_from_browse(None);
+        assert_eq!(places.len(), 1);
+        assert!(!places[0].show);
+        normalize_places(&mut places);
+        assert_eq!(places.len(), 1);
+        assert!(places_from_browse(Some(factory_places())).len() >= 5);
+    }
+
+    #[test]
+    fn jpeg_import_stores_a_png_the_hud_can_decode() {
+        let dir = std::env::temp_dir().join(format!("mxbo-pit-jpeg-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let ini = dir.join("Holeshot-HUD.ini");
+        std::env::set_var("MXBO_TEST_INI", &ini);
+        let img = image::RgbImage::from_pixel(8, 8, image::Rgb([40, 90, 140]));
+        let mut jpeg = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgb8(img)
+            .write_to(&mut jpeg, image::ImageFormat::Jpeg)
+            .unwrap();
+        let src = dir.join("My Board.jpg");
+        fs::write(&src, jpeg.into_inner()).unwrap();
+        let name = import_png(&src).unwrap();
+        assert_eq!(name, "My-Board.png");
+        let bytes = art_bytes(&name).unwrap();
+        assert!(tiny_skia::Pixmap::decode_png(&bytes).is_ok());
+        std::env::remove_var("MXBO_TEST_INI");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn named_board_folder_keeps_slots_and_a_second_design() {
+        let dir = std::env::temp_dir().join(format!("mxbo-pit-boards-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let ini = dir.join("Holeshot-HUD.ini");
+        std::env::set_var("MXBO_TEST_INI", &ini);
+        let png = dir.join("fresh.png");
+        let img = image::RgbaImage::from_pixel(4, 4, image::Rgba([255, 255, 255, 255]));
+        img.save(&png).unwrap();
+        assert!(sanitize_board_name("").is_none());
+        assert!(sanitize_board_name("Holeshot").is_none());
+        assert!(sanitize_board_name(r"a/b").is_none());
+        assert!(art_path(r"../secret.png").is_none());
+        assert!(art_path("Race/plate.png").is_some());
+
+        let (art, _, places) = save_named_board("Race", &png).unwrap();
+        assert_eq!(art, "Race/plate.png");
+        assert_eq!(places.len(), 1);
+        assert!(pitboards_dir().join("Race").join(PLATE_FILE).is_file());
+        let race_json = pitboards_dir().join("Race").join("board.json");
+        let mut body = fs::read_to_string(&race_json).unwrap();
+        body = body.replace("\"size\": 18", "\"size\": 22");
+        fs::write(&race_json, &body).unwrap();
+
+        let (art2, _, kept) = save_named_board("Race", &png).unwrap();
+        assert_eq!(art2, "Race/plate.png");
+        assert!((kept[0].size - 22.0).abs() < 0.1, "replacing the png keeps the slots");
+
+        let (other, _, _) = save_named_board("Practice", &png).unwrap();
+        assert_eq!(other, "Practice/plate.png");
+        let names = saved_boards();
+        assert_eq!(names, vec!["Practice".to_string(), "Race".to_string()]);
+        let (opened, _, opened_places) = open_saved_board("Race").unwrap();
+        assert_eq!(opened, "Race/plate.png");
+        assert!((opened_places[0].size - 22.0).abs() < 0.1);
+        assert!(pitboards_dir().join("Practice").join(PLATE_FILE).is_file());
+
+        let (art, text, mut places) = open_saved_board("Race").unwrap();
+        places[0].size = 30.0;
+        let dest = dir.join("share");
+        export_board("Race", &art, &places, text, &dest).unwrap();
+        let plate = dest.join("Race").join(PLATE_FILE);
+        assert!(plate.is_file());
+        let packed = fs::read_to_string(dest.join("Race").join("board.json")).unwrap();
+        assert!(packed.contains("\"size\": 30"), "export writes the live slots");
+        assert!(export_board("Holeshot", &art, &places, text, &dest).is_err());
+
+        let lone = dir.join("lone.png");
+        img.save(&lone).unwrap();
+        assert_eq!(board_name_for_picture("", &lone).unwrap(), "lone");
+        assert_eq!(board_name_for_picture("Night", &lone).unwrap(), "Night");
+        assert!(board_name_for_picture("", &dir.join("holeshot.png")).is_err());
+        let bare = dir.join("json-only");
+        fs::create_dir_all(&bare).unwrap();
+        fs::write(bare.join("board.json"), &packed).unwrap();
+        assert!(import_pack_json("Night", &bare.join("board.json")).is_err());
+        let pack = dest.join("Race").join("board.json");
+        assert_eq!(board_name_for_pack("", &pack).unwrap(), "Race");
+        assert_eq!(board_name_for_pack("Night", &pack).unwrap(), "Night");
+        let (imported, _, imported_places) = import_pack_json("Night", &pack).unwrap();
+        assert_eq!(imported, "Night/plate.png");
+        assert!((imported_places[0].size - 30.0).abs() < 0.1);
+
+        delete_saved_board("Race").unwrap();
+        assert!(!pitboards_dir().join("Race").exists());
+        assert!(pitboards_dir().join("Practice").join(PLATE_FILE).is_file());
+        assert!(pitboards_dir().join("Night").join(PLATE_FILE).is_file());
+        assert!(delete_saved_board("Holeshot").is_err());
+        assert!(delete_saved_board("").is_err());
+
+        std::env::remove_var("MXBO_TEST_INI");
+        let _ = fs::remove_dir_all(&dir);
     }
 }

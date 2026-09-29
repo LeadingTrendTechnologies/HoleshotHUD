@@ -71,6 +71,10 @@ pub(crate) use telemetry::*;
 pub(crate) use ticker::*;
 pub(crate) use pitboard::*;
 
+pub fn painted_factory_plate(art: &str, main: [u8; 3], secondary: [u8; 3]) -> Option<Pixmap> {
+    pitboard::factory_plate_image(art, main, secondary)
+}
+
 fn accent() -> Color {
     let [r, g, b] = accent_rgb();
     Color::from_rgba8(r, g, b, 255)
@@ -782,7 +786,7 @@ fn draw_widgets(
         draw_telemetry(px, fonts, s, cfg, sw, sh);
     }
     if crate::pitboard::drawing(cfg[WidgetId::Pitboard].show, cfg.pit_when) {
-        let _g = push_style(fonts, cfg[WidgetId::Pitboard].bold, cfg[WidgetId::Pitboard].font);
+        let _g = push_style(fonts, false, 100);
         draw_pitboard(px, fonts, s, cfg, sw, sh);
     }
 }
@@ -1100,7 +1104,7 @@ fn text_halo(
     text(px, fonts, s, size, x, y, color, center);
 }
 
-fn text_bold(
+pub fn text_bold(
     px: &mut Pixmap,
     fonts: &Fonts,
     s: &str,

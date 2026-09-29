@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "background": "chevron-frame.png",
+  "text": "black",
+  "slots": [
+    { "name": "Slot 1", "default": "name", "current": "none", "x": 0.50, "y": 0.18, "size": 12 },
+    { "name": "Slot 2", "default": "pos", "x": 0.38, "y": 0.30, "size": 14 },
+    { "name": "Slot 3", "default": "laps", "x": 0.62, "y": 0.30, "size": 14 },
+    { "name": "Slot 4", "default": "last", "x": 0.50, "y": 0.42, "size": 28 },
+    { "name": "Slot 5", "default": "delta", "x": 0.50, "y": 0.56, "size": 15 }
+  ]
+}
