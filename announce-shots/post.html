@@ -1,6 +1,6 @@
 <div>
     <div><span style="text-decoration: underline"><strong>Holeshot HUD</strong></span> — a free, fully customizable overlay for MX Bikes</div>
-    <div>MX Bikes does not give you much on-screen. Holeshot HUD sits on top of the game and shows live race data the way *you* want it: standings, gaps, a dash, telemetry, maps, and who’s around you.</div>
+    <div>MX Bikes does not give you much on-screen. Holeshot HUD sits on top of the game and shows live race data the way *you* want it: standings, gaps, a dash, a pit board, telemetry, maps, and who’s around you.</div>
     <div><span style="text-decoration: underline"><strong>It is fully customizable.</strong></span> Nothing is locked in. Every widget can be turned on or off, moved, resized, restyled, and filled with the data you actually use. Build a tiny race HUD, a full broadcast layout, or anything in between.</div>
     <div>Try the widgets in the browser first (demo data), then download for Windows:</div>
     <div>https://holeshot-hud.vercel.app/</div>
@@ -45,6 +45,7 @@
          <li><strong>Minimap</strong> — Zoomed circular view of the track around you, same rider markers and sector lines. The outline is smoothed. Ahead/behind rings match Map: off in warmup and practice.</li>
          <li><strong>Radar</strong> — Who is beside and behind you. <strong>Look</strong> is <strong>Plaque</strong> (range rings and blips, default) or <strong>Arrows</strong> (larger tips on the screen edge that slide with the bike). A nearby crash flashes on the arrow for about 1.75 s, then stays hidden. Plaque still shows downed riders.</li>
          <li><strong>Dash</strong> — Gear, speed, RPM, position, and a footer you can set (including fuel, gap, interval, gap behind, and last lap diff). Last lap diff stays off until you turn it on. Optional rev bar, or Simple dash (gear and speed only). Optional Shift color flushes the gear faint red at the shift light or limiter (off by default). Session clock and race flags (white / checkered) sit with the dash.</li>
+         <li><strong>Pit Board</strong> — Your own plate for last lap and delta, or any stats you pick. Design it in F8, or use it as a custom dash. Details under Pit Board.</li>
          <li><strong>Telemetry</strong> — Throttle (green) and brake (red) traces, clutch / brake / throttle bars, and a gear/speed dial with an orange RPM arc. Turn sections or channels off; hidden parts reflow. Optional steer is off until you turn it on. Riding uses your bike inputs. Spectate follows that rider’s throttle and front brake. Restart MX Bikes after install so the plugin can publish those inputs.</li>
          <li><strong>Lean</strong> — Bike roll, pitch, and steering for the rider the camera is on. Figure (rear-view rider) or Minimal (numbers). Not sit / stand.</li>
          <li><strong>Controller</strong> — Live DualShock or Xbox under Cockpit. Turn it on with <strong>Show on overlay</strong>. <strong>Theme</strong> is Light or Dark. Sticks follow your hands. Triggers fill with squeeze. Bumpers light when held.</li>
@@ -53,6 +54,15 @@
          <li><strong>Flags</strong> — White or checkered as its own plaque (same timing as the Dash wrap). Optional yellow (crash ahead) and blue (being lapped). Draws nothing when no flag is up.</li>
          <li><strong>Systems</strong> — CPU and memory in twin columns, process load under each, FPS, ping, and GPU in the footer.</li>
          <li><strong>Stance</strong> — Sit/stand plaque. Follows a bind you set; it does not read rider animation from the game. Details under User requested.</li>
+    </ul>
+    <hr />
+    <h3>🪧 Pit Board</h3>
+    <div>Under <strong>F8 → Pit Board</strong>. Hidden until you turn on <strong>Show on overlay</strong>. The factory Holeshot plate shows position, lap, a large last lap, and a signed delta (green ahead, red behind). The top slot stays blank until you pick a stat. A shown stat with no value draws <code>---</code>. It can stand in as a custom dash.</div>
+    <ul>
+         <li><strong>Your plate</strong> — <strong>Download demo</strong>, or upload a PNG or JPEG (<strong>Upload Pitboard image</strong>). A picture alone starts as one blank slot. Drag slots on the settings preview. <strong>Size</strong>, <strong>Bold</strong>, and <strong>Text</strong> (letter color) follow the selected slot. Add or remove slots, up to 12. Each slot picks a stat from the Standings header and footer list, plus name, last, and delta. <strong>None</strong> hides that spot. Ctrl+drag still moves the whole widget.</li>
+         <li><strong>When</strong> — <strong>Always</strong> (live values), or a 5-second flash at the end of a sector or a lap, using the split that just finished.</li>
+         <li><strong>Boards</strong> — Save a named design. <strong>Export</strong> writes the plate and its layout. <strong>Import</strong> opens that pair. <strong>Reset layout</strong> on Holeshot restores the factory plate. <strong>Main</strong> and <strong>Secondary</strong> recolor only that plate. An uploaded picture keeps the colors in the file.</li>
+         <li><strong>Stock board</strong> — Turning it on hides MX Bikes’ flat pit board. The board on the track stays. Quit MX Bikes fully before that change shows up.</li>
     </ul>
     <hr />
     <h3>🏍️ Motos</h3>
