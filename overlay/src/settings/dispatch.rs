@@ -1,6 +1,24 @@
 #![allow(unused_imports)]
 use super::*;
 
+fn open_default_browser(url: &str) {
+    use windows::core::{w, PCWSTR};
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    let wide: Vec<u16> = url.encode_utf16().chain(std::iter::once(0)).collect();
+    unsafe {
+        let _ = ShellExecuteW(
+            HWND::default(),
+            w!("open"),
+            PCWSTR(wide.as_ptr()),
+            PCWSTR::null(),
+            PCWSTR::null(),
+            SW_SHOWNORMAL,
+        );
+    }
+}
+
 fn use_named_board(
     board: String,
     art: String,
@@ -736,6 +754,13 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             close_drop();
             return;
         }
+        Hit::WhatsNewLink => {
+            close_drop();
+            if let Some(url) = whats_new_link_url() {
+                open_default_browser(&url);
+            }
+            return;
+        }
         Hit::ReplyDismiss => {
             close_drop();
             dismiss_reply();
@@ -808,6 +833,16 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             close_drop();
             let url = crate::stream::edit_url();
             let _ = crate::feedback::copy_text(&url);
+            return;
+        }
+        Hit::StreamOpenUrl => {
+            close_drop();
+            open_default_browser(&crate::stream::url());
+            return;
+        }
+        Hit::StreamOpenEditUrl => {
+            close_drop();
+            open_default_browser(&crate::stream::edit_url());
             return;
         }
         Hit::StreamCopyGameToStream => {
@@ -1404,6 +1439,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::WhatsNewDismiss
         | Hit::WhatsNewScrim
         | Hit::WhatsNewPanel
+        | Hit::WhatsNewLink
         | Hit::ReplyDismiss
         | Hit::ReplySend
         | Hit::ReplyText
@@ -1417,6 +1453,8 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::StreamEnabled
         | Hit::StreamCopyUrl
         | Hit::StreamCopyEditUrl
+        | Hit::StreamOpenUrl
+        | Hit::StreamOpenEditUrl
         | Hit::StreamCopyGameToStream
         | Hit::AutoUpdateOnLaunch
         | Hit::QuitApp

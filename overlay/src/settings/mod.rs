@@ -865,6 +865,7 @@ pub(crate) enum Hit {
     WhatsNewDismiss,
     WhatsNewScrim,
     WhatsNewPanel,
+    WhatsNewLink,
     ClearScrim,
     ClearPanel,
     ClearCancel,
@@ -881,6 +882,8 @@ pub(crate) enum Hit {
     StreamEnabled,
     StreamCopyUrl,
     StreamCopyEditUrl,
+    StreamOpenUrl,
+    StreamOpenEditUrl,
     StreamCopyGameToStream,
     FeatureSector,
     AutoUpdateOnLaunch,
@@ -3121,6 +3124,8 @@ fn hit_label(hit: Hit) -> String {
         Hit::StreamEnabled => "Browser Source".into(),
         Hit::StreamCopyUrl => "Copy OBS URL".into(),
         Hit::StreamCopyEditUrl => "Copy layout editor URL".into(),
+        Hit::StreamOpenUrl => "Open OBS URL in the browser".into(),
+        Hit::StreamOpenEditUrl => "Updates in your browser".into(),
         Hit::StreamCopyGameToStream => "Copy this preset's game layout onto its stream slot".into(),
         Hit::UpdateCheck => "Check for updates".into(),
         Hit::UpdateInstall => "Install update".into(),
@@ -3132,6 +3137,7 @@ fn hit_label(hit: Hit) -> String {
             }
         }
         Hit::WhatsNewDismiss | Hit::ReplyDismiss | Hit::PitHelpDismiss => "Got it".into(),
+        Hit::WhatsNewLink => "Open link".into(),
         Hit::PitHelpOpen => "How to make a pit board".into(),
         Hit::ReplySend => "Send".into(),
         Hit::ReplyText => "Write a reply".into(),
@@ -3950,6 +3956,7 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
         tab,
         cfg.settings_key.label(),
         cfg.review,
+        cfg.stream_enabled,
         hover,
         &mut hits,
     );
@@ -4053,6 +4060,7 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
         }
         paint_snap_tooltip(px, fonts, &cfg, hover, focus, &hits, w, h, clip_top);
         paint_slot_center_tooltip(px, fonts, hover, focus, &hits, w, h, clip_top);
+        paint_edit_stream_tooltip(px, fonts, hover, focus, &hits, w, h);
     }
 
     if let Some(ui) = UI.lock().unwrap().as_mut() {
@@ -4152,6 +4160,43 @@ fn paint_slot_center_tooltip(
     }
     if ty + th > win_h - 10.0 {
         ty = (win_h - th - 10.0).max(clip_top + 8.0);
+    }
+    fill_round(px, tx - 1.0, ty - 1.0, tw + 2.0, th + 2.0, 12.0, shadow());
+    outlined(px, tx, ty, tw, th, 11.0, menu_fill());
+    text(px, fonts, title, 14.0, tx + pad, ty + pad, text_col(), false);
+    text(px, fonts, hint, 11.0, tx + pad, ty + pad + 20.0, dim(), false);
+}
+
+fn paint_edit_stream_tooltip(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    hover: Option<Hit>,
+    focus: Option<Hit>,
+    hits: &[HitBox],
+    win_w: f32,
+    win_h: f32,
+) {
+    let hit = Hit::StreamOpenEditUrl;
+    if hover.or(focus) != Some(hit) {
+        return;
+    }
+    let Some(button) = hits.iter().rev().find(|box_hit| box_hit.id == hit) else {
+        return;
+    };
+    let title = "Edit stream";
+    let hint = "Updates in your browser";
+    let pad = 12.0;
+    let tw = measure(fonts, title, 14.0)
+        .max(measure(fonts, hint, 11.0))
+        + pad * 2.0;
+    let th = pad + 16.0 + 4.0 + 14.0 + pad;
+    let mut tx = button.x;
+    let mut ty = button.y + button.h + 8.0;
+    if tx + tw > win_w - 16.0 {
+        tx = (win_w - 16.0 - tw).max(16.0);
+    }
+    if ty + th > win_h - 10.0 {
+        ty = (button.y - 8.0 - th).max(8.0);
     }
     fill_round(px, tx - 1.0, ty - 1.0, tw + 2.0, th + 2.0, 12.0, shadow());
     outlined(px, tx, ty, tw, th, 11.0, menu_fill());
@@ -4540,6 +4585,7 @@ fn draw_top_bar(
     tab: Tab,
     key_label: &str,
     _review_on: bool,
+    stream_enabled: bool,
     hover: Option<Hit>,
     hits: &mut Vec<HitBox>,
 ) {
@@ -4595,7 +4641,7 @@ fn draw_top_bar(
         hover,
         hits,
     );
-    let _ = mode_tab(
+    mx += mode_tab(
         px,
         fonts,
         mx,
@@ -4606,6 +4652,19 @@ fn draw_top_bar(
         hover,
         hits,
     );
+    if stream_enabled {
+        let _ = mode_tab(
+            px,
+            fonts,
+            mx,
+            ty,
+            "Edit stream",
+            false,
+            Hit::StreamOpenEditUrl,
+            hover,
+            hits,
+        );
+    }
 
     let quit_w = 148.0;
     let quit_h = 32.0;

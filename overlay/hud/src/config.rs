@@ -2545,6 +2545,14 @@ impl HudConfig {
         }
     }
 
+    /// Copy one stream preset onto another. Game layouts and the F8 slot stay put.
+    pub fn copy_stream_layout_to(&mut self, src: SessionPreset, dst: SessionPreset) {
+        if src == dst {
+            return;
+        }
+        self.stream_layouts[dst.idx()] = self.stream_layouts[src.idx()].clone();
+    }
+
     /// Copy the open chip's game layout onto that chip's stream slot.
     pub fn copy_game_edit_to_stream(&mut self) {
         let src = self.layouts[self.settings_preset.idx()].clone();

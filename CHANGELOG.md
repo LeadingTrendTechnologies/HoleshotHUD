@@ -1,31 +1,20 @@
 # Changelog
 
-## Unreleased
+## 0.22.0
 
-### Overlay
+Put your HUD on the stream. Lay the widgets out in the browser. The game window stays yours.
 
-- The stream sends the widgets the game just drew, so the map and minimap move on that frame instead of being drawn again.
-- Moving stream widgets paint from the newest sample, so a standings draw no longer steps the map or the minimap.
-- The stream minimap is sent on every sample, so the rider dot is not held behind the other widgets.
-- The stream minimap is drawn at the same size as the in-game circle, so 70% zoom shows the same track.
-- Each widget is sent as soon as it is drawn, so the map does not wait for the widgets drawn after it.
-- Each widget is sent as soon as its pixels are ready, so the map does not wait for the rest of the paint.
-- The stream paints with the game frame, so the map and other widgets stay on the same beat as the in-game HUD.
-- Each stream widget is its own message, so the next paint starts when the current widget finishes instead of after every widget.
-- OBS draws once per display frame and drops the frames that piled up, so the picture does not run late and then snap forward.
-- OBS draws the latest frame as soon as it arrives, instead of waiting for the next animation frame.
-- Stream widgets are sent as pixels and drawn directly, so OBS does not wait on a PNG decode.
-- OBS clears a widget before drawing its new frame, so the previous picture does not stay underneath.
-- OBS shows each decoded frame, then catches up, so the stream stays with `/edit` instead of falling behind.
-- OBS updates only the widgets that changed, instead of clearing the whole Browser Source every frame.
-- Set the OBS Browser Source to the size shown on `/edit`, then scale it to the canvas. A source at the game resolution makes OBS composite that many pixels every frame.
-- The stream follows the OBS source aspect and stays inside a 1080p pixel budget, so ultrawide, 4K, and 8K sources stay light. `/edit` shows that same frame.
-- `/edit` can tune each stream widget the same way F8 tunes the in-game HUD. Those changes stay on the stream layout.
-- **Settings → Stream → Browser Source** starts a localhost page (`http://127.0.0.1:8765`, next port if busy). Copy the URL into OBS as a Browser Source at your canvas size. Transparent.
-- Browser Source paints the live **stream** layout for the current session (`for_stream()`). Fresh install: every stream Show starts off.
-- INI sections `[PracticeStream]` / `[WarmupStream]` / `[RaceStream]` / `[SpectateStream]`.
-- Stream layout editor at `http://127.0.0.1:<port>/edit`: Show on stream, drag/resize, basic prefs. OBS keeps paint-only `/`.
-- F8 Widgets is game-only (Game | Stream surface removed). Settings → Stream copies OBS `/` and Edit `/edit` URLs; **Copy game → stream** seeds the open chip.
+### Streamers
+
+- Shoutout to Tloubih, who streams with our HUD: https://linktr.ee/Tloubih
+
+### Stream
+
+- One URL in OBS, Streamlabs, or XSplit. The page is transparent, so only the widgets show.
+- Edit stream opens a page where you drag and resize. Practice, Warmup, Race, and Spectate each keep their own layout.
+- That layout is only for the stream. The widgets on the game window stay as they are.
+- Copy one session onto another, or copy the in-game layout onto the stream.
+- On track they show. In the garage they hide, the same as in the game.
 
 ## 0.21.0
 

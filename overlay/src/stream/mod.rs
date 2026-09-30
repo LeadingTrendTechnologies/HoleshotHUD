@@ -396,6 +396,9 @@ fn run_painter(
     let mut fonts: Option<crate::render::Fonts> = None;
     let mut font_family = None;
     let mut painted_text_rev = 0u64;
+    let mut painted_edit: Option<SessionPreset> = None;
+    let mut edit_cleared_for: Option<SessionPreset> = None;
+    let mut stream_cleared = false;
     while !STOP.load(Ordering::SeqCst) && ENABLED.load(Ordering::SeqCst) {
         let job = {
             let mut latest = LATEST.lock().unwrap_or_else(|e| e.into_inner());
@@ -428,6 +431,9 @@ fn run_painter(
             &mut fonts,
             &mut font_family,
             &mut painted_text_rev,
+            &mut painted_edit,
+            &mut edit_cleared_for,
+            &mut stream_cleared,
         );
     }
 }
@@ -471,6 +477,9 @@ fn paint_job(
     fonts: &mut Option<crate::render::Fonts>,
     font_family: &mut Option<crate::config::FontFamily>,
     painted_text_rev: &mut u64,
+    painted_edit: &mut Option<SessionPreset>,
+    edit_cleared_for: &mut Option<SessionPreset>,
+    stream_cleared: &mut bool,
 ) {
     let obs_n = clients.lock().map(|c| c.len()).unwrap_or(0);
     let edit_n = edit_clients.lock().map(|c| c.len()).unwrap_or(0);
@@ -481,9 +490,29 @@ fn paint_job(
     let window_w = job.window_w;
     let window_h = job.window_h;
 
-    if job.snap.is_none() {
+    // Garage and menus have no session. The game overlay returns without drawing.
+    // Widget messages are partial, so the last on-track frame stays up until each id is removed.
+    let in_session = job
+        .snap
+        .as_ref()
+        .is_some_and(|snap| snap.has_session_data());
+    if !in_session {
+        if !*stream_cleared {
+            let paint_w = frame_px.width();
+            let paint_h = frame_px.height();
+            push_edit_removes(last_png, paint_w, paint_h);
+            push_edit_removes(last_edit_png, paint_w, paint_h);
+            finish_keyframe(last_png, Vec::new());
+            finish_keyframe(last_edit_png, Vec::new());
+            *obs_cache = empty_widget_cache();
+            *edit_cache = empty_widget_cache();
+            *painted_edit = None;
+            *edit_cleared_for = None;
+            *stream_cleared = true;
+        }
         return;
     }
+    *stream_cleared = false;
 
     let family = job.live_cfg.font_family;
     if font_family.is_none_or(|current| current != family) {
@@ -498,7 +527,16 @@ fn paint_job(
     let text = text_widgets();
     let edit = edit_preset();
     let force_text = job.stream_rev != *painted_text_rev;
-    if obs_n > 0 && edit_n > 0 && edit == job.live_cfg.active_preset {
+    // Widget messages are partial, so a preset switch has to name every id or the
+    // previous preset stays on /edit. The shared live path paints from the OBS cache
+    // and would not send those removes.
+    let preset_changed = edit_n > 0 && *painted_edit != Some(edit);
+    if preset_changed && *edit_cleared_for != Some(edit) {
+        push_edit_removes(last_edit_png, frame_px.width(), frame_px.height());
+        *edit_cache = empty_widget_cache();
+        *edit_cleared_for = Some(edit);
+    }
+    if obs_n > 0 && edit_n > 0 && edit == job.live_cfg.active_preset && !preset_changed {
         if let Some(snap) = job.snap.as_ref() {
             let yielded = paint_pass(
                 frame_px,
@@ -634,10 +672,28 @@ fn paint_job(
                 false,
                 force_text,
             );
+            *painted_edit = Some(edit);
         }
     }
     if force_text {
         *painted_text_rev = job.stream_rev;
+    }
+}
+
+/// Tell /edit to drop every widget. A later draw of the same id replaces its remove.
+fn push_edit_removes(sink: &Mutex<Option<SharedFrame>>, paint_w: u32, paint_h: u32) {
+    begin_paint(sink);
+    for id in WidgetId::ALL {
+        let piece = WidgetPiece {
+            id: id.idx() as u8,
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+            png: Arc::new(Vec::new()),
+            remove: true,
+        };
+        push_message(sink, write_widget_message(&piece, false, paint_w, paint_h));
     }
 }
 
@@ -2007,10 +2063,14 @@ fn apply_stream_layout_post(body: &str) -> String {
     }
     let preset = edit_preset();
     let copy_game = json_bool_field(body, "copyGame").unwrap_or(false);
+    let copy_to = json_str_field(body, "copyTo").and_then(preset_from_key);
     config::update_config(|cfg| {
         if copy_game {
             cfg.settings_preset = preset;
             cfg.copy_game_edit_to_stream();
+        }
+        if let Some(dst) = copy_to {
+            cfg.copy_stream_layout_to(preset, dst);
         }
         if let Some(id) = json_str_field(body, "widget").and_then(widget_from_key) {
             {

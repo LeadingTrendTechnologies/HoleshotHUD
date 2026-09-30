@@ -163,16 +163,26 @@ pub(crate) fn draw_whats_new(
                         fill_circle(&mut body, 4.0, y + 8.0, 2.2, accent());
                         let mut ly = y;
                         for line in lines {
-                            text(
-                                &mut body,
-                                fonts,
-                                line,
-                                body_size,
-                                14.0,
-                                ly,
-                                text_col(),
-                                false,
-                            );
+                            paint_bullet_line(&mut body, fonts, line, body_size, 14.0, ly);
+                            if ly + line_h > 0.0 && ly < view_h {
+                                if let Some((start, end)) = https_span(line) {
+                                    let before = &line[..start];
+                                    let url = &line[start..end];
+                                    let url_x = 14.0 + measure(fonts, before, body_size);
+                                    let url_w = measure(fonts, url, body_size);
+                                    let top = ly.max(0.0);
+                                    let bot = (ly + line_h).min(view_h);
+                                    if bot > top && url_w > 0.0 {
+                                        hits.push(HitBox {
+                                            id: Hit::WhatsNewLink,
+                                            x: panel_x + pad + url_x,
+                                            y: body_top + top,
+                                            w: url_w,
+                                            h: bot - top,
+                                        });
+                                    }
+                                }
+                            }
                             ly += line_h;
                         }
                     }
@@ -220,4 +230,56 @@ pub(crate) fn draw_whats_new(
         true,
     );
     scroll_max
+}
+
+fn paint_bullet_line(px: &mut Pixmap, fonts: &Fonts, line: &str, size: f32, x: f32, y: f32) {
+    let Some((start, end)) = https_span(line) else {
+        text(px, fonts, line, size, x, y, text_col(), false);
+        return;
+    };
+    let before = &line[..start];
+    let url = &line[start..end];
+    let after = &line[end..];
+    text(px, fonts, before, size, x, y, text_col(), false);
+    let url_x = x + measure(fonts, before, size);
+    text(px, fonts, url, size, url_x, y, accent(), false);
+    let url_w = measure(fonts, url, size);
+    if let Some(r) = Rect::from_xywh(url_x, y + size + 1.0, url_w.max(1.0), 1.0) {
+        fill_rect(px, r, accent());
+    }
+    if !after.is_empty() {
+        text(
+            px,
+            fonts,
+            after,
+            size,
+            url_x + url_w,
+            y,
+            text_col(),
+            false,
+        );
+    }
+}
+
+fn https_span(line: &str) -> Option<(usize, usize)> {
+    let start = line.find("https://")?;
+    let tail = &line[start..];
+    let len = tail.find(char::is_whitespace).unwrap_or(tail.len());
+    if len == 0 {
+        None
+    } else {
+        Some((start, start + len))
+    }
+}
+
+pub(crate) fn whats_new_link_url() -> Option<String> {
+    let notes = crate::changelog::modal_notes()?;
+    for sec in &notes.sections {
+        for bullet in &sec.bullets {
+            if let Some((start, end)) = https_span(bullet) {
+                return Some(bullet[start..end].to_string());
+            }
+        }
+    }
+    None
 }

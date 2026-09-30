@@ -964,6 +964,69 @@ fn copy_settings_to_one_slot_leaves_the_others() {
 }
 
 #[test]
+fn copy_stream_layout_to_leaves_game_and_other_slots() {
+    let mut cfg = HudConfig::new();
+    cfg.active_preset = SessionPreset::Practice;
+    cfg.edit_surface = EditSurface::Stream;
+    cfg.settings_preset = SessionPreset::Race;
+    cfg[WidgetId::Dash].show = true;
+    cfg[WidgetId::Dash].rect.y = 0.33;
+    cfg.settings_preset = SessionPreset::Practice;
+    cfg[WidgetId::Dash].show = true;
+    cfg[WidgetId::Dash].rect.y = 0.1;
+
+    cfg.edit_surface = EditSurface::Game;
+    cfg.settings_preset = SessionPreset::Race;
+    cfg[WidgetId::Dash].show = false;
+    cfg.settings_preset = SessionPreset::Warmup;
+    cfg[WidgetId::Dash].show = false;
+
+    cfg.copy_stream_layout_to(SessionPreset::Race, SessionPreset::Warmup);
+    assert_eq!(cfg.settings_preset, SessionPreset::Warmup);
+    assert_eq!(cfg.active_preset, SessionPreset::Practice);
+    assert_eq!(cfg.edit_surface, EditSurface::Game);
+    assert!(stream_slots_match(&cfg, SessionPreset::Race, SessionPreset::Warmup));
+
+    cfg.edit_surface = EditSurface::Stream;
+    cfg.settings_preset = SessionPreset::Practice;
+    assert!(cfg[WidgetId::Dash].show);
+    assert!((cfg[WidgetId::Dash].rect.y - 0.1).abs() < 0.0001);
+    cfg.settings_preset = SessionPreset::Spectate;
+    assert!(!cfg[WidgetId::Dash].show);
+
+    cfg.edit_surface = EditSurface::Game;
+    cfg.settings_preset = SessionPreset::Race;
+    assert!(!cfg[WidgetId::Dash].show);
+    cfg.settings_preset = SessionPreset::Warmup;
+    assert!(!cfg[WidgetId::Dash].show);
+
+    cfg.edit_surface = EditSurface::Stream;
+    cfg.settings_preset = SessionPreset::Race;
+    cfg[WidgetId::Map].show = true;
+    cfg.copy_stream_layout_to(SessionPreset::Race, SessionPreset::Race);
+    cfg.settings_preset = SessionPreset::Warmup;
+    assert!(!cfg[WidgetId::Map].show);
+}
+
+fn stream_slots_match(cfg: &HudConfig, src: SessionPreset, dst: SessionPreset) -> bool {
+    let left = cfg.stream_slot(src);
+    let right = cfg.stream_slot(dst);
+    WidgetId::ALL.iter().all(|id| {
+        let source = &left[*id];
+        let dest = &right[*id];
+        source.show == dest.show
+            && source.font == dest.font
+            && source.bold == dest.bold
+            && source.bg == dest.bg
+            && (source.rect.x - dest.rect.x).abs() < 0.0001
+            && (source.rect.y - dest.rect.y).abs() < 0.0001
+            && (source.rect.w - dest.rect.w).abs() < 0.0001
+            && (source.rect.h - dest.rect.h).abs() < 0.0001
+            && left.widget_look(*id) == right.widget_look(*id)
+    })
+}
+
+#[test]
 fn sync_live_holds_a_different_settings_slot() {
     let mut cfg = HudConfig::new();
     cfg.active_preset = SessionPreset::Warmup;

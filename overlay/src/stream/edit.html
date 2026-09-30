@@ -72,6 +72,51 @@ html, body {
   background: var(--accent);
   color: var(--ink);
 }
+.copy-to {
+  position: relative;
+  margin: 0 0 14px 4px;
+}
+.copy-to > button {
+  border: 0;
+  background: var(--accent);
+  color: var(--ink);
+  font: inherit;
+  font-size: 11px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transform: skewX(-8deg);
+}
+.copy-to > button span { display: inline-block; transform: skewX(8deg); }
+.copy-menu {
+  position: absolute;
+  z-index: 5;
+  left: 0;
+  top: 100%;
+  margin-top: 4px;
+  min-width: 148px;
+  background: var(--pane);
+  border-radius: 8px;
+  padding: 4px;
+}
+.copy-menu[hidden] { display: none; }
+.copy-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.copy-menu button:hover {
+  background: var(--tab-on);
+  color: var(--accent);
+}
 .rail-group {
   margin: 10px 0 4px 8px;
   font-size: 10px;
@@ -297,6 +342,10 @@ html, body {
   <nav class="rail" aria-label="Stream widgets">
     <h1>Stream layout</h1>
     <div class="chips" id="presets"></div>
+    <div class="copy-to">
+      <button type="button" id="copyToBtn"><span>Copy to</span></button>
+      <div class="copy-menu" id="copyMenu" hidden></div>
+    </div>
     <p class="rail-group">Show on stream</p>
     <div id="rail"></div>
   </nav>
@@ -336,6 +385,7 @@ html, body {
 
   let state = null;
   let selected = "standings";
+  let copyOpen = false;
   let drag = null;
   let dragFrame = 0;
   let layoutEpoch = 0;
@@ -389,8 +439,27 @@ html, body {
       b.type = "button";
       b.textContent = PRESET_LABEL[p];
       if (state && state.edit === p) b.classList.add("on");
-      b.onclick = () => apiPost({ preset: p });
+      b.onclick = () => {
+        copyOpen = false;
+        apiPost({ preset: p });
+      };
       presetsEl.appendChild(b);
+    }
+    const menu = document.getElementById("copyMenu");
+    menu.innerHTML = "";
+    menu.hidden = !copyOpen || !state;
+    if (!state) return;
+    for (const p of PRESETS) {
+      if (p === state.edit) continue;
+      const item = document.createElement("button");
+      item.type = "button";
+      item.textContent = PRESET_LABEL[p];
+      item.onclick = (ev) => {
+        ev.stopPropagation();
+        copyOpen = false;
+        apiPost({ preset: state.edit, copyTo: p });
+      };
+      menu.appendChild(item);
     }
   }
 
@@ -860,6 +929,17 @@ html, body {
     ws.onclose = () => setTimeout(connectWs, 1000);
     ws.onerror = () => { try { ws.close(); } catch (_) {} };
   }
+
+  document.getElementById("copyToBtn").onclick = (ev) => {
+    ev.stopPropagation();
+    copyOpen = !copyOpen;
+    renderPresets();
+  };
+  document.addEventListener("click", () => {
+    if (!copyOpen) return;
+    copyOpen = false;
+    renderPresets();
+  });
 
   fitFrame();
   requestAnimationFrame(fitFrame);
