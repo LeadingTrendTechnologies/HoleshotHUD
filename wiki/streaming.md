@@ -68,6 +68,10 @@ A second-monitor companion window can come later.
 
 ## Change log
 
+- 2026-09-30 — Standings and the other text widgets send a style change or hide to OBS on the next frame, even while a newer sample is waiting.
+- 2026-09-30 — OBS paints a style change when the frame arrives, instead of waiting for an animation frame.
+- 2026-09-30 — Turning a stream widget on copies that preset’s in-game settings once. Later in-game edits leave the stream widget as it was.
+- 2026-09-30 — Stream widgets use the in-game pixels only while the look matches, so a stream background change paints with the stream layout.
 - 2026-09-29 — The stream sends the widgets the game just drew, so the map and minimap move on that frame instead of being drawn again.
 - 2026-09-29 — Moving stream widgets paint from the newest sample, so a standings draw no longer steps the map or the minimap.
 - 2026-09-29 — The stream minimap is sent on every sample, so the rider dot is not held behind the other widgets.

@@ -1310,3 +1310,113 @@ fn old_plate_colors_follow_the_accent() {
     assert_eq!(kept.pit_yellow, [1, 2, 3]);
     assert_eq!(kept.pit_blue, [4, 5, 6]);
 }
+
+#[test]
+fn widget_look_tracks_visual_fields_not_rect() {
+    let base = HudLayout::new();
+    let standings = base.widget_look(WidgetId::Standings);
+    let mut moved = base.clone();
+    moved[WidgetId::Standings].rect.x += 0.05;
+    assert_eq!(moved.widget_look(WidgetId::Standings), standings);
+
+    let mut background = base.clone();
+    background[WidgetId::Standings].bg += 1;
+    assert_ne!(background.widget_look(WidgetId::Standings), standings);
+
+    let mut changed = base.clone();
+    changed.rel_stripe = !changed.rel_stripe;
+    assert_ne!(changed.widget_look(WidgetId::Relative), base.widget_look(WidgetId::Relative));
+
+    let mut changed = base.clone();
+    changed.map_follow = !changed.map_follow;
+    assert_ne!(changed.widget_look(WidgetId::Map), base.widget_look(WidgetId::Map));
+
+    let mut changed = base.clone();
+    changed.mini_zoom += 1;
+    assert_ne!(changed.widget_look(WidgetId::Minimap), base.widget_look(WidgetId::Minimap));
+
+    let mut changed = base.clone();
+    changed.radar_range += 1;
+    assert_ne!(changed.widget_look(WidgetId::Radar), base.widget_look(WidgetId::Radar));
+
+    let mut changed = base.clone();
+    changed.dash_simple = !changed.dash_simple;
+    assert_ne!(changed.widget_look(WidgetId::Dash), base.widget_look(WidgetId::Dash));
+
+    let mut changed = base.clone();
+    changed.ticker_hl += 1;
+    assert_ne!(changed.widget_look(WidgetId::Ticker), base.widget_look(WidgetId::Ticker));
+
+    let mut changed = base.clone();
+    changed.sys_apps[0].show = !changed.sys_apps[0].show;
+    assert_ne!(changed.widget_look(WidgetId::Sys), base.widget_look(WidgetId::Sys));
+
+    let mut changed = base.clone();
+    changed.sector_live = !changed.sector_live;
+    assert_ne!(changed.widget_look(WidgetId::Sector), base.widget_look(WidgetId::Sector));
+
+    let mut changed = base.clone();
+    changed.delta_session = !changed.delta_session;
+    assert_ne!(changed.widget_look(WidgetId::Delta), base.widget_look(WidgetId::Delta));
+
+    let mut changed = base.clone();
+    changed.flag_text = !changed.flag_text;
+    assert_ne!(changed.widget_look(WidgetId::Flag), base.widget_look(WidgetId::Flag));
+
+    let mut changed = base.clone();
+    changed.stance_style = StanceStyle::Icon;
+    assert_ne!(changed.widget_look(WidgetId::Stance), base.widget_look(WidgetId::Stance));
+
+    let mut changed = base.clone();
+    changed.lean_style = LeanStyle::Minimal;
+    assert_ne!(changed.widget_look(WidgetId::Lean), base.widget_look(WidgetId::Lean));
+
+    let mut changed = base.clone();
+    changed.gamepad_theme = GamepadTheme::Dark;
+    assert_ne!(changed.widget_look(WidgetId::Gamepad), base.widget_look(WidgetId::Gamepad));
+
+    let mut changed = base.clone();
+    changed.telemetry_traces = !changed.telemetry_traces;
+    assert_ne!(
+        changed.widget_look(WidgetId::Telemetry),
+        base.widget_look(WidgetId::Telemetry)
+    );
+
+    let pit = base.widget_look(WidgetId::Pitboard);
+    let mut plate = base.clone();
+    plate.pit_when = PitWhen::Lap;
+    assert_ne!(plate.widget_look(WidgetId::Pitboard), pit);
+    let mut ignored = base.clone();
+    ignored[WidgetId::Pitboard].bg += 1;
+    ignored[WidgetId::Pitboard].font += 1;
+    ignored[WidgetId::Pitboard].bold = !ignored[WidgetId::Pitboard].bold;
+    assert_eq!(ignored.widget_look(WidgetId::Pitboard), pit);
+}
+
+#[test]
+fn seed_stream_widget_copies_factory_settings_once() {
+    let mut cfg = HudConfig::new();
+    let preset = SessionPreset::Race;
+    cfg[WidgetId::Standings].bg = 80;
+    cfg.st_pos = false;
+    cfg.stream_slot_mut(preset)[WidgetId::Standings].rect.x = 0.4;
+
+    cfg.seed_stream_widget_from_game(preset, WidgetId::Standings);
+    assert_eq!(cfg.stream_slot(preset)[WidgetId::Standings].bg, 80);
+    assert!(!cfg.stream_slot(preset).st_pos);
+    assert!((cfg.stream_slot(preset)[WidgetId::Standings].rect.x - 0.4).abs() < 0.0001);
+    assert!(!cfg.stream_slot(preset)[WidgetId::Standings].show);
+
+    cfg[WidgetId::Standings].bg = 10;
+    assert_eq!(cfg.stream_slot(preset)[WidgetId::Standings].bg, 80);
+
+    cfg.stream_slot_mut(preset)[WidgetId::Standings].bg = 33;
+    cfg[WidgetId::Standings].bg = 90;
+    cfg.seed_stream_widget_from_game(preset, WidgetId::Standings);
+    assert_eq!(cfg.stream_slot(preset)[WidgetId::Standings].bg, 33);
+
+    cfg.mini_zoom = 40;
+    cfg.seed_stream_widget_from_game(preset, WidgetId::Minimap);
+    assert_eq!(cfg.stream_slot(preset).mini_zoom, 40);
+    assert_eq!(cfg.stream_slot(preset)[WidgetId::Standings].bg, 33);
+}

@@ -1,6 +1,6 @@
 [package]
 name = "mxbo-overlay"
-version = "0.22.16"
+version = "0.22.20"
 edition = "2021"
 
 [[bin]]

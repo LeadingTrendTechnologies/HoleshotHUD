@@ -2,7 +2,7 @@
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU8, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
@@ -47,6 +47,8 @@ static BOUND_PORT: AtomicU16 = AtomicU16::new(0);
 static CLIENTS: AtomicUsize = AtomicUsize::new(0);
 static EDIT_CLIENTS: AtomicUsize = AtomicUsize::new(0);
 static EDIT_PRESET: AtomicU8 = AtomicU8::new(0);
+/// Bumped on each `/edit` layout write. The painter runs one text pass when this moves.
+static STREAM_REV: AtomicU64 = AtomicU64::new(0);
 static STOP: AtomicBool = AtomicBool::new(false);
 static SERVER: OnceLock<Mutex<Option<ServerState>>> = OnceLock::new();
 
@@ -65,6 +67,8 @@ struct PaintJob {
     window_h: u32,
     /// Pixels copied out of the game draw. Empty when that widget was not drawn.
     copies: GameCopies,
+    /// Layout revision captured with `live_cfg`, so a text pass is not marked done on an older frame.
+    stream_rev: u64,
 }
 
 struct GameCopy {
@@ -72,6 +76,8 @@ struct GameCopy {
     height: u32,
     /// Premultiplied RGBA, row-major.
     pixels: Vec<u8>,
+    /// Look of the layout that drew these pixels. A different stream look is painted instead.
+    look: u64,
 }
 
 type GameCopies = [Option<GameCopy>; WidgetId::COUNT];
@@ -311,6 +317,7 @@ pub fn copy_game_widget(
         width,
         height,
         pixels,
+        look: cfg.widget_look(id),
     });
 }
 
@@ -342,12 +349,17 @@ fn copy_premul(px: &Pixmap, x: u32, y: u32, width: u32, height: u32) -> Option<V
 }
 
 /// Store the newest HUD sample. The paint thread encodes it off the overlay loop.
+pub fn layout_rev() -> u64 {
+    STREAM_REV.load(Ordering::SeqCst)
+}
+
 pub fn publish_frame(
     snap: Option<crate::shm::Snapshot>,
     live_cfg: HudConfig,
     age: f32,
     window_w: u32,
     window_h: u32,
+    stream_rev: u64,
 ) {
     let copies = take_game_copies();
     if !is_running() || client_count() == 0 {
@@ -361,6 +373,7 @@ pub fn publish_frame(
         window_w,
         window_h,
         copies,
+        stream_rev,
     });
     drop(latest);
     LATEST_CV.notify_one();
@@ -382,6 +395,7 @@ fn run_painter(
     let mut edit_cache = empty_widget_cache();
     let mut fonts: Option<crate::render::Fonts> = None;
     let mut font_family = None;
+    let mut painted_text_rev = 0u64;
     while !STOP.load(Ordering::SeqCst) && ENABLED.load(Ordering::SeqCst) {
         let job = {
             let mut latest = LATEST.lock().unwrap_or_else(|e| e.into_inner());
@@ -413,6 +427,7 @@ fn run_painter(
             &mut edit_cache,
             &mut fonts,
             &mut font_family,
+            &mut painted_text_rev,
         );
     }
 }
@@ -455,6 +470,7 @@ fn paint_job(
     edit_cache: &mut WidgetCache,
     fonts: &mut Option<crate::render::Fonts>,
     font_family: &mut Option<crate::config::FontFamily>,
+    painted_text_rev: &mut u64,
 ) {
     let obs_n = clients.lock().map(|c| c.len()).unwrap_or(0);
     let edit_n = edit_clients.lock().map(|c| c.len()).unwrap_or(0);
@@ -481,6 +497,7 @@ fn paint_job(
     let motion = motion_widgets();
     let text = text_widgets();
     let edit = edit_preset();
+    let force_text = job.stream_rev != *painted_text_rev;
     if obs_n > 0 && edit_n > 0 && edit == job.live_cfg.active_preset {
         if let Some(snap) = job.snap.as_ref() {
             let yielded = paint_pass(
@@ -496,8 +513,9 @@ fn paint_job(
                 &motion,
                 &job.copies,
                 true,
+                false,
             );
-            if !yielded && !sample_waiting() {
+            if force_text || (!yielded && !sample_waiting()) {
                 paint_pass(
                     text_px,
                     fonts,
@@ -511,7 +529,9 @@ fn paint_job(
                     &text,
                     &job.copies,
                     false,
+                    force_text,
                 );
+                *painted_text_rev = job.stream_rev;
             }
             *edit_cache = obs_cache.clone();
         }
@@ -533,8 +553,9 @@ fn paint_job(
                 &motion,
                 &job.copies,
                 true,
+                false,
             );
-            if yielded || sample_waiting() {
+            if !force_text && (yielded || sample_waiting()) {
                 return;
             }
         }
@@ -565,8 +586,9 @@ fn paint_job(
                 &motion,
                 &job.copies,
                 true,
+                false,
             );
-            if yielded || sample_waiting() {
+            if !force_text && (yielded || sample_waiting()) {
                 return;
             }
         }
@@ -587,8 +609,9 @@ fn paint_job(
                 &text,
                 &job.copies,
                 false,
+                force_text,
             );
-            if yielded || sample_waiting() {
+            if !force_text && (yielded || sample_waiting()) {
                 return;
             }
         }
@@ -609,8 +632,12 @@ fn paint_job(
                 &text,
                 &job.copies,
                 false,
+                force_text,
             );
         }
+    }
+    if force_text {
+        *painted_text_rev = job.stream_rev;
     }
 }
 
@@ -672,6 +699,7 @@ fn text_widgets() -> [bool; WidgetId::COUNT] {
 
 /// Draw one set of widgets. Motion passes start a generation. The text pass only pushes,
 /// and either pass returns when a newer sample is already waiting.
+/// `force` finishes this pass even if a newer sample is queued.
 fn paint_pass(
     px: &mut Pixmap,
     fonts: &crate::render::Fonts,
@@ -685,6 +713,7 @@ fn paint_pass(
     include: &[bool; WidgetId::COUNT],
     copies: &GameCopies,
     start_generation: bool,
+    force: bool,
 ) -> bool {
     let paint_w = px.width();
     let paint_h = px.height();
@@ -699,6 +728,7 @@ fn paint_pass(
     let mut yielded = false;
     place_game_copies(
         px,
+        cfg,
         &crops,
         copies,
         include,
@@ -708,7 +738,7 @@ fn paint_pass(
         paint_w,
         paint_h,
     );
-    if sample_waiting() {
+    if !force && sample_waiting() {
         yielded = true;
     }
     let still_drawing = crops.iter().any(|crop| {
@@ -734,7 +764,7 @@ fn paint_pass(
                         queue_crop(pixmap, crop, cache, sinks, paint_w, paint_h);
                     }
                 }
-                if sample_waiting() {
+                if !force && sample_waiting() {
                     yielded = true;
                     return false;
                 }
@@ -841,6 +871,7 @@ fn crop_rect_for(
 
 fn place_game_copies(
     px: &mut Pixmap,
+    cfg: &HudConfig,
     crops: &[WidgetCrop],
     copies: &GameCopies,
     include: &[bool; WidgetId::COUNT],
@@ -858,6 +889,9 @@ fn place_game_copies(
         let Some(copy) = copies[index].as_ref() else {
             continue;
         };
+        if copy.look != cfg.widget_look(WidgetId::ALL[index]) {
+            continue;
+        }
         blit_copy_fit(px, copy, crop);
         queue_crop(px, crop, cache, sinks, paint_w, paint_h);
         draw_include[index] = false;
@@ -1980,6 +2014,11 @@ fn apply_stream_layout_post(body: &str) -> String {
         }
         if let Some(id) = json_str_field(body, "widget").and_then(widget_from_key) {
             {
+                let turning_on =
+                    json_bool_field(body, "show") == Some(true) && !cfg.stream_slot(preset)[id].show;
+                if turning_on {
+                    cfg.seed_stream_widget_from_game(preset, id);
+                }
                 let slot = &mut cfg.stream_slot_mut(preset)[id];
                 if let Some(show) = json_bool_field(body, "show") {
                     slot.show = show;
@@ -2012,6 +2051,7 @@ fn apply_stream_layout_post(body: &str) -> String {
             }
         }
     });
+    STREAM_REV.fetch_add(1, Ordering::SeqCst);
     stream_layout_json()
 }
 
@@ -2111,7 +2151,6 @@ const STREAM_HTML: &str = r#"<!DOCTYPE html>
   reportView();
   window.addEventListener("resize", () => { reportView(); fitStage(); });
   let ws;
-  let scheduled = false;
   const widgets = new Map();
   let paintW = 1920;
   let paintH = 1080;
@@ -2132,7 +2171,7 @@ const STREAM_HTML: &str = r#"<!DOCTYPE html>
     if (slot) return slot;
     const canvas = document.createElement("canvas");
     stage.appendChild(canvas);
-    slot = { canvas: canvas, ctx: canvas.getContext("2d"), x: -1, y: -1, w: -1, h: -1, pixels: null, dirty: false };
+    slot = { canvas: canvas, ctx: canvas.getContext("2d"), x: -1, y: -1, w: -1, h: -1, pixels: null };
     widgets.set(id, slot);
     return slot;
   };
@@ -2213,8 +2252,9 @@ const STREAM_HTML: &str = r#"<!DOCTYPE html>
       const slot = ensure(part.id);
       move(slot, part);
       if (part.pixels && part.w > 0 && part.h > 0 && part.pixels.length === part.w * part.h * 4) {
-        slot.pixels = part.pixels;
-        slot.dirty = true;
+        slot.pixels = new Uint8ClampedArray(part.pixels);
+        paintWidget(slot);
+        slot.pixels = null;
       }
     }
     if (!frame.partial) {
@@ -2225,21 +2265,6 @@ const STREAM_HTML: &str = r#"<!DOCTYPE html>
         }
       }
     }
-    schedule();
-  };
-  const pump = () => {
-    scheduled = false;
-    for (const slot of widgets.values()) {
-      if (!slot.dirty || !slot.pixels) continue;
-      paintWidget(slot);
-      slot.dirty = false;
-      slot.pixels = null;
-    }
-  };
-  const schedule = () => {
-    if (scheduled) return;
-    scheduled = true;
-    requestAnimationFrame(pump);
   };
   const connect = () => {
     const proto = location.protocol === "https:" ? "wss" : "ws";

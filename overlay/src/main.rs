@@ -800,7 +800,8 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
             paint(&cfg);
         }
         {
-            let stream_cfg = crate::config::with_config(|c| c.for_stream());
+            let (stream_cfg, stream_rev) =
+                crate::config::with_config(|c| (c.for_stream(), crate::stream::layout_rev()));
             let mut stream_snap = last_snap;
             if let Some(s) = stream_snap.as_mut() {
                 stream_cfg.apply_stream_live_to_snapshot(s);
@@ -808,7 +809,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
             // Browser Source must not follow game-overlay z-order (alt-tab blanks OBS).
             let stream_hud =
                 stream_snap.filter(|s| s.has_session_data() || hitch_hold || live);
-            crate::stream::publish_frame(stream_hud, stream_cfg, age, w as u32, h as u32);
+            crate::stream::publish_frame(stream_hud, stream_cfg, age, w as u32, h as u32, stream_rev);
         }
         if overlay_on {
             live_mark = Some(render::draw_live_mark(
