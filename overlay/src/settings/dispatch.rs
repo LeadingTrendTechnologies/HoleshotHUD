@@ -1,6 +1,24 @@
 #![allow(unused_imports)]
 use super::*;
 
+fn open_default_browser(url: &str) {
+    use windows::core::{w, PCWSTR};
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    let wide: Vec<u16> = url.encode_utf16().chain(std::iter::once(0)).collect();
+    unsafe {
+        let _ = ShellExecuteW(
+            HWND::default(),
+            w!("open"),
+            PCWSTR(wide.as_ptr()),
+            PCWSTR::null(),
+            PCWSTR::null(),
+            SW_SHOWNORMAL,
+        );
+    }
+}
+
 fn use_named_board(
     board: String,
     art: String,
@@ -78,6 +96,10 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         }
         Hit::AppStartup => {
             set_app_section(AppSection::Startup);
+            return;
+        }
+        Hit::AppStream => {
+            set_app_section(AppSection::Stream);
             return;
         }
         Hit::AppLabs => {
@@ -732,6 +754,13 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             close_drop();
             return;
         }
+        Hit::WhatsNewLink => {
+            close_drop();
+            if let Some(url) = whats_new_link_url() {
+                open_default_browser(&url);
+            }
+            return;
+        }
         Hit::ReplyDismiss => {
             close_drop();
             dismiss_reply();
@@ -779,6 +808,46 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
                 // Turning off: stop leftover HUD waiters from an older build.
                 crate::startup::kill_other_hud_processes();
             }
+            return;
+        }
+        Hit::StreamEnabled => {
+            close_drop();
+            let on = crate::config::with_config(|c| !c.stream_enabled);
+            let port = crate::stream::set_enabled(on);
+            crate::config::update_config(|c| {
+                c.stream_enabled = on;
+                c.stream_port = port;
+                if !on {
+                    c.edit_surface = EditSurface::Game;
+                }
+            });
+            return;
+        }
+        Hit::StreamCopyUrl => {
+            close_drop();
+            let url = crate::stream::url();
+            let _ = crate::feedback::copy_text(&url);
+            return;
+        }
+        Hit::StreamCopyEditUrl => {
+            close_drop();
+            let url = crate::stream::edit_url();
+            let _ = crate::feedback::copy_text(&url);
+            return;
+        }
+        Hit::StreamOpenUrl => {
+            close_drop();
+            open_default_browser(&crate::stream::url());
+            return;
+        }
+        Hit::StreamOpenEditUrl => {
+            close_drop();
+            open_default_browser(&crate::stream::edit_url());
+            return;
+        }
+        Hit::StreamCopyGameToStream => {
+            close_drop();
+            crate::config::update_config(|c| c.copy_game_edit_to_stream());
             return;
         }
         Hit::AutoUpdateOnLaunch => {
@@ -1257,6 +1326,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::AppMenus
         | Hit::AppInstall
         | Hit::AppStartup
+        | Hit::AppStream
         | Hit::AppLabs
         | Hit::AppUpdates
         | Hit::AppDiagnostics
@@ -1369,6 +1439,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::WhatsNewDismiss
         | Hit::WhatsNewScrim
         | Hit::WhatsNewPanel
+        | Hit::WhatsNewLink
         | Hit::ReplyDismiss
         | Hit::ReplySend
         | Hit::ReplyText
@@ -1379,6 +1450,12 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::MinimizeOnClose
         | Hit::CloseWithGame
         | Hit::OpenWithGame
+        | Hit::StreamEnabled
+        | Hit::StreamCopyUrl
+        | Hit::StreamCopyEditUrl
+        | Hit::StreamOpenUrl
+        | Hit::StreamOpenEditUrl
+        | Hit::StreamCopyGameToStream
         | Hit::AutoUpdateOnLaunch
         | Hit::QuitApp
         | Hit::Uninstall

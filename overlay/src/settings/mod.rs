@@ -41,8 +41,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use crate::config::{
     format_primary_color, hsv_to_rgb, rgb_to_hsv, update_config, with_config, BoardField,
-    DashField, DotLabel, FontFamily, GamepadStyle, GamepadTheme, HudConfig, LeanStyle, RadarStyle,
-    RelField, SessionPreset, SettingsKey, SettingsTheme, SnapAlign, StField, StanceBind,
+    DashField, DotLabel, EditSurface, FontFamily, GamepadStyle, GamepadTheme, HudConfig, LeanStyle,
+    RadarStyle, RelField, SessionPreset, SettingsKey, SettingsTheme, SnapAlign, StField, StanceBind,
     StanceMode, StanceStyle, TableText, UnitKind, Units, WidgetId, COL_W_MAX, COL_W_MIN,
     DEFAULT_PRIMARY, PRIMARY_SWATCHES, RADAR_RANGE_MAX, RADAR_RANGE_MIN, SYS_PRESETS, SYS_PROC_MAX,
 };
@@ -484,6 +484,7 @@ pub(crate) enum AppSection {
     Menus,
     Install,
     Startup,
+    Stream,
     Labs,
     Updates,
     Diagnostics,
@@ -521,6 +522,7 @@ impl AppSection {
             Self::Menus => "In game HUD",
             Self::Install => "Install",
             Self::Startup => "Startup",
+            Self::Stream => "Stream",
             Self::Labs => "Labs",
             Self::Updates => "Updates",
             Self::Diagnostics => "Diagnostics",
@@ -533,6 +535,7 @@ impl AppSection {
             Self::Menus => Hit::AppMenus,
             Self::Install => Hit::AppInstall,
             Self::Startup => Hit::AppStartup,
+            Self::Stream => Hit::AppStream,
             Self::Labs => Hit::AppLabs,
             Self::Updates => Hit::AppUpdates,
             Self::Diagnostics => Hit::AppDiagnostics,
@@ -550,6 +553,7 @@ fn app_section_groups() -> Vec<(&'static str, Vec<AppSection>)> {
                 AppSection::Menus,
                 AppSection::Install,
                 AppSection::Startup,
+                AppSection::Stream,
                 AppSection::Labs,
                 AppSection::Updates,
                 AppSection::Diagnostics,
@@ -579,6 +583,7 @@ pub(crate) enum Hit {
     AppMenus,
     AppInstall,
     AppStartup,
+    AppStream,
     AppLabs,
     AppUpdates,
     AppDiagnostics,
@@ -860,6 +865,7 @@ pub(crate) enum Hit {
     WhatsNewDismiss,
     WhatsNewScrim,
     WhatsNewPanel,
+    WhatsNewLink,
     ClearScrim,
     ClearPanel,
     ClearCancel,
@@ -873,6 +879,12 @@ pub(crate) enum Hit {
     MinimizeOnClose,
     CloseWithGame,
     OpenWithGame,
+    StreamEnabled,
+    StreamCopyUrl,
+    StreamCopyEditUrl,
+    StreamOpenUrl,
+    StreamOpenEditUrl,
+    StreamCopyGameToStream,
     FeatureSector,
     AutoUpdateOnLaunch,
     QuitApp,
@@ -1593,6 +1605,7 @@ pub fn show(host: HWND) {
 
 pub fn hide(host: HWND) {
     persist_host_pos(host);
+    update_config(|c| c.edit_surface = EditSurface::Game);
     unsafe {
         let _ = ShowWindow(host, SW_HIDE);
     }
@@ -2876,6 +2889,7 @@ fn hit_label(hit: Hit) -> String {
         Hit::AppMenus => "In game HUD".into(),
         Hit::AppInstall => "Install".into(),
         Hit::AppStartup => "Startup".into(),
+        Hit::AppStream => "Stream".into(),
         Hit::AppLabs => "Labs".into(),
         Hit::AppUpdates => "Updates".into(),
         Hit::AppDiagnostics => "Diagnostics".into(),
@@ -3107,6 +3121,12 @@ fn hit_label(hit: Hit) -> String {
         Hit::FbSend => "Send feedback".into(),
         Hit::Uninstall => "Uninstall".into(),
         Hit::GameFolder => "MX Bikes folder".into(),
+        Hit::StreamEnabled => "Browser Source".into(),
+        Hit::StreamCopyUrl => "Copy OBS URL".into(),
+        Hit::StreamCopyEditUrl => "Copy layout editor URL".into(),
+        Hit::StreamOpenUrl => "Open OBS URL in the browser".into(),
+        Hit::StreamOpenEditUrl => "Updates in your browser".into(),
+        Hit::StreamCopyGameToStream => "Copy this preset's game layout onto its stream slot".into(),
         Hit::UpdateCheck => "Check for updates".into(),
         Hit::UpdateInstall => "Install update".into(),
         Hit::WhatsNewOpen => {
@@ -3117,6 +3137,7 @@ fn hit_label(hit: Hit) -> String {
             }
         }
         Hit::WhatsNewDismiss | Hit::ReplyDismiss | Hit::PitHelpDismiss => "Got it".into(),
+        Hit::WhatsNewLink => "Open link".into(),
         Hit::PitHelpOpen => "How to make a pit board".into(),
         Hit::ReplySend => "Send".into(),
         Hit::ReplyText => "Write a reply".into(),
@@ -3935,6 +3956,7 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
         tab,
         cfg.settings_key.label(),
         cfg.review,
+        cfg.stream_enabled,
         hover,
         &mut hits,
     );
@@ -4038,6 +4060,7 @@ fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig
         }
         paint_snap_tooltip(px, fonts, &cfg, hover, focus, &hits, w, h, clip_top);
         paint_slot_center_tooltip(px, fonts, hover, focus, &hits, w, h, clip_top);
+        paint_edit_stream_tooltip(px, fonts, hover, focus, &hits, w, h);
     }
 
     if let Some(ui) = UI.lock().unwrap().as_mut() {
@@ -4137,6 +4160,43 @@ fn paint_slot_center_tooltip(
     }
     if ty + th > win_h - 10.0 {
         ty = (win_h - th - 10.0).max(clip_top + 8.0);
+    }
+    fill_round(px, tx - 1.0, ty - 1.0, tw + 2.0, th + 2.0, 12.0, shadow());
+    outlined(px, tx, ty, tw, th, 11.0, menu_fill());
+    text(px, fonts, title, 14.0, tx + pad, ty + pad, text_col(), false);
+    text(px, fonts, hint, 11.0, tx + pad, ty + pad + 20.0, dim(), false);
+}
+
+fn paint_edit_stream_tooltip(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    hover: Option<Hit>,
+    focus: Option<Hit>,
+    hits: &[HitBox],
+    win_w: f32,
+    win_h: f32,
+) {
+    let hit = Hit::StreamOpenEditUrl;
+    if hover.or(focus) != Some(hit) {
+        return;
+    }
+    let Some(button) = hits.iter().rev().find(|box_hit| box_hit.id == hit) else {
+        return;
+    };
+    let title = "Edit stream";
+    let hint = "Updates in your browser";
+    let pad = 12.0;
+    let tw = measure(fonts, title, 14.0)
+        .max(measure(fonts, hint, 11.0))
+        + pad * 2.0;
+    let th = pad + 16.0 + 4.0 + 14.0 + pad;
+    let mut tx = button.x;
+    let mut ty = button.y + button.h + 8.0;
+    if tx + tw > win_w - 16.0 {
+        tx = (win_w - 16.0 - tw).max(16.0);
+    }
+    if ty + th > win_h - 10.0 {
+        ty = (button.y - 8.0 - th).max(8.0);
     }
     fill_round(px, tx - 1.0, ty - 1.0, tw + 2.0, th + 2.0, 12.0, shadow());
     outlined(px, tx, ty, tw, th, 11.0, menu_fill());
@@ -4525,6 +4585,7 @@ fn draw_top_bar(
     tab: Tab,
     key_label: &str,
     _review_on: bool,
+    stream_enabled: bool,
     hover: Option<Hit>,
     hits: &mut Vec<HitBox>,
 ) {
@@ -4580,7 +4641,7 @@ fn draw_top_bar(
         hover,
         hits,
     );
-    let _ = mode_tab(
+    mx += mode_tab(
         px,
         fonts,
         mx,
@@ -4591,6 +4652,19 @@ fn draw_top_bar(
         hover,
         hits,
     );
+    if stream_enabled {
+        let _ = mode_tab(
+            px,
+            fonts,
+            mx,
+            ty,
+            "Edit stream",
+            false,
+            Hit::StreamOpenEditUrl,
+            hover,
+            hits,
+        );
+    }
 
     let quit_w = 148.0;
     let quit_h = 32.0;
@@ -4958,6 +5032,19 @@ fn nav_icon(px: &mut Pixmap, hit: Hit, cx: f32, cy: f32, c: Color) {
             pb.close();
             if let Some(path) = pb.finish() {
                 icon_stroke(px, &path, c, 1.5);
+            }
+        }
+        Hit::AppStream => {
+            icon_stroke_circle(px, cx - 2.8, cy, 2.4, c);
+            icon_stroke_circle(px, cx + 2.8, cy, 2.4, c);
+            icon_stroke_line(px, cx - 0.4, cy, cx + 0.4, cy, c, 1.4);
+            let mut wave = PathBuilder::new();
+            wave.move_to(cx - 6.4, cy - 3.2);
+            wave.quad_to(cx - 4.8, cy, cx - 6.4, cy + 3.2);
+            wave.move_to(cx + 6.4, cy - 3.2);
+            wave.quad_to(cx + 4.8, cy, cx + 6.4, cy + 3.2);
+            if let Some(path) = wave.finish() {
+                icon_stroke(px, &path, c, 1.4);
             }
         }
         Hit::AppLabs => {

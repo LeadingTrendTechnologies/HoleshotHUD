@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Holeshot HUD — Stream layout</title>
+<style>
+@font-face {
+  font-family: "Exo 2";
+  src: local("Exo 2 ExtraBold"), local("Exo2-ExtraBold"), local("Segoe UI");
+  font-weight: 800;
+  font-style: italic;
+}
+:root {
+  --night-ink: #0a0a0a;
+  --charcoal-side: #08080a;
+  --pane: #1c1f21;
+  --text: #e4e4e6;
+  --text-dim: #84848a;
+  --accent: #ff9430;
+  --ink: #0c0c0e;
+  --hairline: #2a2a2e;
+  --tab-on: rgba(255, 148, 48, 0.11);
+  --rail-w: 220px;
+  --twin-w: 280px;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; height: 100%;
+  background: var(--night-ink);
+  color: var(--text);
+  font-family: "Exo 2", "Segoe UI", sans-serif;
+  font-weight: 800;
+  font-style: italic;
+  overflow: hidden;
+}
+.pit {
+  display: grid;
+  grid-template-columns: var(--rail-w) var(--twin-w) 1fr;
+  height: 100%;
+  min-height: 0;
+}
+.rail {
+  background: var(--charcoal-side);
+  border-right: 1px solid var(--hairline);
+  overflow: auto;
+  padding: 14px 10px 20px;
+  min-width: 0;
+}
+.rail h1 {
+  margin: 0 0 12px 6px;
+  font-size: 18px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  line-height: 1.1;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 14px 4px;
+}
+.chips button {
+  border: 0;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font: inherit;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-dim);
+}
+.chips button.on {
+  background: var(--accent);
+  color: var(--ink);
+}
+.copy-to {
+  position: relative;
+  margin: 0 0 14px 4px;
+}
+.copy-to > button {
+  border: 0;
+  background: var(--accent);
+  color: var(--ink);
+  font: inherit;
+  font-size: 11px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transform: skewX(-8deg);
+}
+.copy-to > button span { display: inline-block; transform: skewX(8deg); }
+.copy-menu {
+  position: absolute;
+  z-index: 5;
+  left: 0;
+  top: 100%;
+  margin-top: 4px;
+  min-width: 148px;
+  background: var(--pane);
+  border-radius: 8px;
+  padding: 4px;
+}
+.copy-menu[hidden] { display: none; }
+.copy-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.copy-menu button:hover {
+  background: var(--tab-on);
+  color: var(--accent);
+}
+.rail-group {
+  margin: 10px 0 4px 8px;
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.rail-group:first-of-type { margin-top: 0; }
+.rail-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 0 4px 0 0;
+}
+.rail-row button.pick {
+  flex: 1;
+  text-align: left;
+  margin: 0;
+  padding: 10px 8px 10px 16px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  border-radius: 8px;
+  cursor: pointer;
+  position: relative;
+}
+.rail-row button.pick:hover { background: rgba(255,255,255,0.04); }
+.rail-row button.pick.on {
+  background: var(--tab-on);
+  color: var(--accent);
+}
+.rail-row button.pick.on::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 4px;
+  background: var(--accent);
+}
+.toggle {
+  appearance: none;
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
+  background: var(--hairline);
+  border: 0;
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+}
+.toggle::after {
+  content: "";
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: #fafafc;
+  transition: transform 0.12s ease;
+}
+.toggle:checked { background: var(--accent); }
+.toggle:checked::after { transform: translateX(16px); }
+.twin {
+  background: var(--pane);
+  border-right: 1px solid var(--hairline);
+  overflow: auto;
+  padding: 18px 16px 28px;
+  min-width: 0;
+}
+.twin h1 {
+  margin: 0 0 14px;
+  font-size: 28px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.twin h2 {
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 18px 0 8px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 8px;
+  min-height: 32px;
+}
+.row label { font-size: 12px; color: var(--text); }
+.row input[type="range"] { width: 120px; accent-color: var(--accent); }
+.row .val { font-size: 11px; color: var(--text-dim); min-width: 28px; text-align: right; }
+.row select {
+  font: inherit;
+  font-size: 11px;
+  color: var(--text);
+  background: var(--night-ink);
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 8px;
+  max-width: 140px;
+}
+.nudges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.nudge {
+  border: 0;
+  background: var(--accent);
+  color: var(--ink);
+  font: inherit;
+  font-size: 11px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transform: skewX(-8deg);
+}
+.nudge span { display: inline-block; transform: skewX(8deg); }
+.nudge:disabled {
+  background: var(--hairline);
+  color: var(--text-dim);
+  transform: none;
+  cursor: default;
+}
+.nudge:disabled span { transform: none; }
+.urls {
+  margin-top: 24px;
+  padding-top: 14px;
+  border-top: 1px solid var(--hairline);
+}
+.urls p {
+  margin: 0 0 8px;
+  font-size: 10px;
+  color: var(--text-dim);
+  word-break: break-all;
+}
+.urls button {
+  border: 0;
+  background: var(--accent);
+  color: var(--ink);
+  font: inherit;
+  font-size: 11px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transform: skewX(-8deg);
+  margin: 0 6px 8px 0;
+}
+.urls button span { display: inline-block; transform: skewX(8deg); }
+.stage {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--night-ink);
+  padding: 12px;
+}
+.stage-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #121214;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  overflow: hidden;
+}
+#frame {
+  position: relative;
+  max-width: 100%;
+  max-height: 100%;
+}
+#c, #boxes {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+#c { display: block; background: transparent; }
+#boxes { pointer-events: none; }
+#boxes .box {
+  position: absolute;
+  border: 1.5px dashed var(--accent);
+  box-sizing: border-box;
+  pointer-events: auto;
+  cursor: move;
+}
+#boxes .box.sel { border-style: solid; border-width: 2px; }
+#boxes .box .h {
+  position: absolute;
+  width: 10px; height: 10px;
+  background: var(--accent);
+  border-radius: 2px;
+}
+#boxes .box .h.nw { left: -5px; top: -5px; cursor: nwse-resize; }
+#boxes .box .h.ne { right: -5px; top: -5px; cursor: nesw-resize; }
+#boxes .box .h.sw { left: -5px; bottom: -5px; cursor: nesw-resize; }
+#boxes .box .h.se { right: -5px; bottom: -5px; cursor: nwse-resize; }
+#boxes .box .h.n { left: 50%; top: -5px; margin-left: -5px; cursor: ns-resize; }
+#boxes .box .h.s { left: 50%; bottom: -5px; margin-left: -5px; cursor: ns-resize; }
+#boxes .box .h.w { left: -5px; top: 50%; margin-top: -5px; cursor: ew-resize; }
+#boxes .box .h.e { right: -5px; top: 50%; margin-top: -5px; cursor: ew-resize; }
+.hint {
+  margin: 8px 4px 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.empty-settings { color: var(--text-dim); font-size: 12px; }
+</style>
+</head>
+<body>
+<main class="pit">
+  <nav class="rail" aria-label="Stream widgets">
+    <h1>Stream layout</h1>
+    <div class="chips" id="presets"></div>
+    <div class="copy-to">
+      <button type="button" id="copyToBtn"><span>Copy to</span></button>
+      <div class="copy-menu" id="copyMenu" hidden></div>
+    </div>
+    <p class="rail-group">Show on stream</p>
+    <div id="rail"></div>
+  </nav>
+  <aside class="twin" aria-label="Widget settings">
+    <h1 id="title">Standings</h1>
+    <h2>Settings</h2>
+    <div id="settings"></div>
+    <div class="urls">
+      <p id="obsUrl"></p>
+      <button type="button" id="copyObs"><span>Copy OBS</span></button>
+      <p id="paintSize"></p>
+      <button type="button" id="copySize"><span>Copy size</span></button>
+      <p id="editUrl"></p>
+      <button type="button" id="copyEdit"><span>Copy Edit</span></button>
+    </div>
+  </aside>
+  <section class="stage" aria-label="Live stream canvas">
+    <div class="stage-wrap">
+      <div id="frame">
+        <canvas id="c" width="1920" height="1080"></canvas>
+        <div id="boxes"></div>
+      </div>
+    </div>
+    <p class="hint">Drag to move · corners and edges to resize</p>
+  </section>
+</main>
+<script>
+(() => {
+  const GROUPS = [
+    { name: "Boards", ids: ["standings", "relative", "ticker"] },
+    { name: "Track", ids: ["map", "minimap", "radar"] },
+    { name: "Cockpit", ids: ["dash", "telemetry", "stance", "lean", "delta", "sector", "flag", "sys", "pitboard"] },
+    { name: "Experimental", ids: ["gamepad"] },
+  ];
+  const PRESETS = ["practice", "warmup", "race", "spectate"];
+  const PRESET_LABEL = { practice: "Practice", warmup: "Warmup", race: "Race", spectate: "Spectate" };
+
+  let state = null;
+  let selected = "standings";
+  let copyOpen = false;
+  let drag = null;
+  let dragFrame = 0;
+  let layoutEpoch = 0;
+
+  const canvas = document.getElementById("c");
+  const ctx = canvas.getContext("2d");
+  const frameEl = document.getElementById("frame");
+  const boxesEl = document.getElementById("boxes");
+  const railEl = document.getElementById("rail");
+  const presetsEl = document.getElementById("presets");
+  const titleEl = document.getElementById("title");
+  const settingsEl = document.getElementById("settings");
+
+  const widget = (id) => (state && state.widgets || []).find((w) => w.id === id);
+
+  async function apiGet() {
+    const epoch = layoutEpoch;
+    const res = await fetch("/api/stream-layout", { cache: "no-store" });
+    const next = await res.json();
+    if (epoch !== layoutEpoch || drag) return;
+    state = next;
+    if (!widget(selected)) {
+      const on = (state.widgets || []).find((w) => w.show);
+      selected = on ? on.id : (state.widgets[0] && state.widgets[0].id) || "standings";
+    }
+    renderAll();
+  }
+
+  async function apiPost(body) {
+    const epoch = ++layoutEpoch;
+    const res = await fetch("/api/stream-layout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const next = await res.json();
+    if (epoch !== layoutEpoch) return;
+    state = next;
+    if (drag) return;
+    if (!widget(selected)) {
+      const on = (state.widgets || []).find((w) => w.show);
+      selected = on ? on.id : (state.widgets[0] && state.widgets[0].id) || "standings";
+    }
+    renderAll();
+  }
+
+  function renderPresets() {
+    presetsEl.innerHTML = "";
+    for (const p of PRESETS) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = PRESET_LABEL[p];
+      if (state && state.edit === p) b.classList.add("on");
+      b.onclick = () => {
+        copyOpen = false;
+        apiPost({ preset: p });
+      };
+      presetsEl.appendChild(b);
+    }
+    const menu = document.getElementById("copyMenu");
+    menu.innerHTML = "";
+    menu.hidden = !copyOpen || !state;
+    if (!state) return;
+    for (const p of PRESETS) {
+      if (p === state.edit) continue;
+      const item = document.createElement("button");
+      item.type = "button";
+      item.textContent = PRESET_LABEL[p];
+      item.onclick = (ev) => {
+        ev.stopPropagation();
+        copyOpen = false;
+        apiPost({ preset: state.edit, copyTo: p });
+      };
+      menu.appendChild(item);
+    }
+  }
+
+  function renderRail() {
+    railEl.innerHTML = "";
+    if (!state) return;
+    const byId = Object.fromEntries(state.widgets.map((w) => [w.id, w]));
+    for (const g of GROUPS) {
+      const label = document.createElement("p");
+      label.className = "rail-group";
+      label.textContent = g.name;
+      railEl.appendChild(label);
+      for (const id of g.ids) {
+        const w = byId[id];
+        if (!w) continue;
+        const row = document.createElement("div");
+        row.className = "rail-row";
+        const pick = document.createElement("button");
+        pick.type = "button";
+        pick.className = "pick" + (selected === id ? " on" : "");
+        pick.textContent = w.label;
+        pick.onclick = () => { selected = id; renderAll(); };
+        const tog = document.createElement("input");
+        tog.type = "checkbox";
+        tog.className = "toggle";
+        tog.checked = !!w.show;
+        tog.title = "Show on stream";
+        tog.onchange = () => apiPost({
+          preset: state.edit,
+          widget: id,
+          show: tog.checked,
+        });
+        row.appendChild(pick);
+        row.appendChild(tog);
+        railEl.appendChild(row);
+      }
+    }
+  }
+
+  function renderSettings() {
+    const w = widget(selected);
+    if (!w) {
+      titleEl.textContent = "—";
+      settingsEl.innerHTML = '<p class="empty-settings">Select a widget</p>';
+      return;
+    }
+    titleEl.textContent = w.label;
+    settingsEl.innerHTML = "";
+    const addToggle = (label, key, value) => {
+      const row = document.createElement("div");
+      row.className = "row";
+      const lab = document.createElement("label");
+      lab.textContent = label;
+      const tog = document.createElement("input");
+      tog.type = "checkbox";
+      tog.className = "toggle";
+      tog.checked = !!value;
+      tog.onchange = () => {
+        const body = { preset: state.edit, widget: w.id };
+        body[key] = tog.checked;
+        apiPost(body);
+      };
+      row.appendChild(lab);
+      row.appendChild(tog);
+      settingsEl.appendChild(row);
+    };
+    const addRange = (label, key, value, min, max) => {
+      const row = document.createElement("div");
+      row.className = "row";
+      const lab = document.createElement("label");
+      lab.textContent = label;
+      const wrap = document.createElement("div");
+      wrap.style.display = "flex";
+      wrap.style.alignItems = "center";
+      wrap.style.gap = "8px";
+      const range = document.createElement("input");
+      range.type = "range";
+      range.min = String(min);
+      range.max = String(max);
+      range.value = String(value);
+      const val = document.createElement("span");
+      val.className = "val";
+      val.textContent = String(value);
+      range.oninput = () => { val.textContent = range.value; };
+      range.onchange = () => {
+        const body = { preset: state.edit, widget: w.id };
+        body[key] = Number(range.value);
+        apiPost(body);
+      };
+      wrap.appendChild(range);
+      wrap.appendChild(val);
+      row.appendChild(lab);
+      row.appendChild(wrap);
+      settingsEl.appendChild(row);
+    };
+    addToggle("Show on stream", "show", w.show);
+    addToggle("Bold", "bold", w.bold);
+    addRange("Font %", "font", w.font, 70, 160);
+    addRange("Background", "bg", w.bg, 0, 100);
+
+    const postSetting = (key, value) => {
+      apiPost({
+        preset: state.edit,
+        widget: w.id,
+        settings: { [key]: value },
+      });
+    };
+    const addSettingRange = (label, key, value, min, max) => {
+      const row = document.createElement("div");
+      row.className = "row";
+      const labelEl = document.createElement("label");
+      labelEl.textContent = label;
+      const wrap = document.createElement("div");
+      wrap.style.display = "flex";
+      wrap.style.alignItems = "center";
+      wrap.style.gap = "8px";
+      const range = document.createElement("input");
+      range.type = "range";
+      range.min = String(min);
+      range.max = String(max);
+      range.value = String(value);
+      const valueEl = document.createElement("span");
+      valueEl.className = "val";
+      valueEl.textContent = String(value);
+      range.oninput = () => { valueEl.textContent = range.value; };
+      range.onchange = () => postSetting(key, Number(range.value));
+      wrap.appendChild(range);
+      wrap.appendChild(valueEl);
+      row.appendChild(labelEl);
+      row.appendChild(wrap);
+      settingsEl.appendChild(row);
+    };
+    const addChoice = (label, key, value, options, onPick) => {
+      const row = document.createElement("div");
+      row.className = "row";
+      const labelEl = document.createElement("label");
+      labelEl.textContent = label;
+      const select = document.createElement("select");
+      for (const option of options) {
+        const optionEl = document.createElement("option");
+        optionEl.value = option.id;
+        optionEl.textContent = option.label;
+        if (option.id === value) optionEl.selected = true;
+        select.appendChild(optionEl);
+      }
+      select.onchange = () => onPick(select.value);
+      row.appendChild(labelEl);
+      row.appendChild(select);
+      settingsEl.appendChild(row);
+    };
+    for (const control of w.controls || []) {
+      if (control.kind === "section" || control.kind === "order" || control.kind === "slots") {
+        const heading = document.createElement("h2");
+        heading.textContent = control.label;
+        settingsEl.appendChild(heading);
+      }
+      if (control.kind === "toggle") {
+        const row = document.createElement("div");
+        row.className = "row";
+        const labelEl = document.createElement("label");
+        labelEl.textContent = control.label;
+        const toggle = document.createElement("input");
+        toggle.type = "checkbox";
+        toggle.className = "toggle";
+        toggle.checked = !!control.value;
+        toggle.onchange = () => postSetting(control.key, toggle.checked);
+        row.appendChild(labelEl);
+        row.appendChild(toggle);
+        settingsEl.appendChild(row);
+      } else if (control.kind === "range") {
+        addSettingRange(control.label, control.key, control.value, control.min, control.max);
+      } else if (control.kind === "choice") {
+        addChoice(control.label, control.key, control.value, control.options, (value) => {
+          postSetting(control.key, value);
+        });
+      } else if (control.kind === "slots") {
+        control.values.forEach((value, index) => {
+          addChoice("Slot " + (index + 1), control.key, value, control.options, (picked) => {
+            const next = control.values.slice();
+            next[index] = picked;
+            postSetting(control.key, next.join(","));
+          });
+        });
+      } else if (control.kind === "order") {
+        control.items.forEach((item, index) => {
+          const row = document.createElement("div");
+          row.className = "row";
+          const labelEl = document.createElement("label");
+          labelEl.textContent = item.label;
+          const controls = document.createElement("div");
+          controls.className = "nudges";
+          const moveColumn = (direction) => {
+            const next = index + direction;
+            if (next < 0 || next >= control.items.length) return;
+            const ids = control.items.map((column) => column.id);
+            const swapped = ids[index];
+            ids[index] = ids[next];
+            ids[next] = swapped;
+            postSetting(control.key, ids.join(","));
+          };
+          const up = document.createElement("button");
+          up.type = "button";
+          up.className = "nudge";
+          up.innerHTML = "<span>Up</span>";
+          up.disabled = index === 0;
+          up.onclick = () => moveColumn(-1);
+          const down = document.createElement("button");
+          down.type = "button";
+          down.className = "nudge";
+          down.innerHTML = "<span>Down</span>";
+          down.disabled = index === control.items.length - 1;
+          down.onclick = () => moveColumn(1);
+          const toggle = document.createElement("input");
+          toggle.type = "checkbox";
+          toggle.className = "toggle";
+          toggle.checked = !!item.on;
+          toggle.onchange = () => postSetting(item.showKey, toggle.checked);
+          controls.appendChild(up);
+          controls.appendChild(down);
+          controls.appendChild(toggle);
+          row.appendChild(labelEl);
+          row.appendChild(controls);
+          settingsEl.appendChild(row);
+          if (item.on) {
+            addSettingRange(item.label + " width", item.widthKey, item.width, item.min, item.max);
+          }
+        });
+      }
+    }
+  }
+
+  function stageSize() {
+    const r = boxesEl.getBoundingClientRect();
+    return { w: r.width, h: r.height, left: r.left, top: r.top };
+  }
+
+  function renderBoxes() {
+    boxesEl.innerHTML = "";
+    if (!state) return;
+    for (const w of state.widgets) {
+      if (!w.show) continue;
+      const el = document.createElement("div");
+      el.className = "box" + (selected === w.id ? " sel" : "");
+      el.style.left = (w.rect.x * 100) + "%";
+      el.style.top = (w.rect.y * 100) + "%";
+      el.style.width = (w.rect.w * 100) + "%";
+      el.style.height = (w.rect.h * 100) + "%";
+      el.dataset.id = w.id;
+      for (const h of ["nw","ne","sw","se","n","s","w","e"]) {
+        const handle = document.createElement("div");
+        handle.className = "h " + h;
+        handle.dataset.handle = h;
+        el.appendChild(handle);
+      }
+      el.addEventListener("pointerdown", onBoxDown);
+      boxesEl.appendChild(el);
+    }
+  }
+
+  function onBoxDown(ev) {
+    const box = ev.currentTarget;
+    const id = box.dataset.id;
+    selected = id;
+    renderSettings();
+    renderRail();
+    document.querySelectorAll("#boxes .box").forEach((b) => b.classList.toggle("sel", b.dataset.id === id));
+    const handle = ev.target.dataset && ev.target.dataset.handle;
+    const w = widget(id);
+    if (!w) return;
+    const sz = stageSize();
+    drag = {
+      id,
+      handle: handle || "move",
+      startX: ev.clientX,
+      startY: ev.clientY,
+      orig: { ...w.rect },
+      sw: sz.w,
+      sh: sz.h,
+    };
+    box.setPointerCapture(ev.pointerId);
+    ev.preventDefault();
+  }
+
+  function clampRect(r) {
+    let { x, y, w, h } = r;
+    w = Math.max(0.04, Math.min(1, w));
+    h = Math.max(0.04, Math.min(1, h));
+    x = Math.max(0, Math.min(1 - w, x));
+    y = Math.max(0, Math.min(1 - h, y));
+    return { x, y, w, h };
+  }
+
+  function onPointerMove(ev) {
+    if (!drag) return;
+    const dx = (ev.clientX - drag.startX) / drag.sw;
+    const dy = (ev.clientY - drag.startY) / drag.sh;
+    let r = { ...drag.orig };
+    const h = drag.handle;
+    if (h === "move") {
+      r.x += dx; r.y += dy;
+    } else {
+      if (h.includes("e")) r.w = drag.orig.w + dx;
+      if (h.includes("s")) r.h = drag.orig.h + dy;
+      if (h.includes("w")) { r.x = drag.orig.x + dx; r.w = drag.orig.w - dx; }
+      if (h.includes("n")) { r.y = drag.orig.y + dy; r.h = drag.orig.h - dy; }
+    }
+    r = clampRect(r);
+    const el = boxesEl.querySelector(`[data-id="${drag.id}"]`);
+    if (el) {
+      el.style.left = (r.x * 100) + "%";
+      el.style.top = (r.y * 100) + "%";
+      el.style.width = (r.w * 100) + "%";
+      el.style.height = (r.h * 100) + "%";
+    }
+    drag.next = r;
+    if (!dragFrame) {
+      dragFrame = requestAnimationFrame(() => {
+        dragFrame = 0;
+        if (!drag || !drag.next || !state) return;
+        apiPost({
+          preset: state.edit,
+          widget: drag.id,
+          rect: drag.next,
+        });
+      });
+    }
+  }
+
+  function onPointerUp() {
+    if (dragFrame) {
+      cancelAnimationFrame(dragFrame);
+      dragFrame = 0;
+    }
+    if (!drag || !drag.next) { drag = null; return; }
+    const body = {
+      preset: state.edit,
+      widget: drag.id,
+      rect: drag.next,
+    };
+    drag = null;
+    apiPost(body);
+  }
+
+  window.addEventListener("pointermove", onPointerMove);
+  window.addEventListener("pointerup", onPointerUp);
+
+  function renderUrls() {
+    if (!state) return;
+    document.getElementById("obsUrl").textContent = "OBS: " + state.obsUrl;
+    document.getElementById("editUrl").textContent = "Edit: " + state.editUrl;
+    const sourceSize = (state.paintW && state.paintH) ? (state.paintW + "x" + state.paintH) : "";
+    document.getElementById("paintSize").textContent = "Source: " + sourceSize;
+    document.getElementById("copyObs").onclick = () => navigator.clipboard.writeText(state.obsUrl);
+    document.getElementById("copyEdit").onclick = () => navigator.clipboard.writeText(state.editUrl);
+    document.getElementById("copySize").onclick = () => navigator.clipboard.writeText(sourceSize);
+  }
+
+  function renderAll() {
+    renderPresets();
+    renderRail();
+    renderSettings();
+    renderBoxes();
+    renderUrls();
+  }
+
+  let pending = null;
+  const widgets = new Map();
+  let paintW = 1920;
+  let paintH = 1080;
+  function fitFrame() {
+    const wrap = frameEl.parentElement.getBoundingClientRect();
+    const scale = Math.min(wrap.width / paintW, wrap.height / paintH);
+    frameEl.style.width = Math.max(1, Math.floor(paintW * scale)) + "px";
+    frameEl.style.height = Math.max(1, Math.floor(paintH * scale)) + "px";
+  }
+  function readPieces(buffer) {
+    const bytes = new Uint8Array(buffer);
+    if (bytes.length < 11 || bytes[0] !== 72 || bytes[1] !== 83 || bytes[2] !== 70 || bytes[3] !== 53) return null;
+    const view = new DataView(buffer);
+    const partial = (bytes[4] & 1) !== 0;
+    const frameW = view.getUint16(5, true);
+    const frameH = view.getUint16(7, true);
+    const count = view.getUint16(9, true);
+    const parts = [];
+    let offset = 11;
+    for (let index = 0; index < count; index++) {
+      if (offset + 10 > buffer.byteLength) break;
+      const id = view.getUint8(offset);
+      const flags = view.getUint8(offset + 1);
+      const x = view.getUint16(offset + 2, true);
+      const y = view.getUint16(offset + 4, true);
+      const w = view.getUint16(offset + 6, true);
+      const h = view.getUint16(offset + 8, true);
+      offset += 10;
+      let pixels = null;
+      const remove = (flags & 2) !== 0;
+      if (!remove && (flags & 1)) {
+        if (offset + 4 > buffer.byteLength) break;
+        const length = view.getUint32(offset, true);
+        offset += 4;
+        if (offset + length > buffer.byteLength) break;
+        pixels = buffer.slice(offset, offset + length);
+        offset += length;
+      }
+      parts.push({ id: id, x: x, y: y, w: w, h: h, pixels: pixels, remove: remove });
+    }
+    return { paintW: frameW, paintH: frameH, partial: partial, parts: parts };
+  }
+  function redraw() {
+    if (canvas.width !== paintW || canvas.height !== paintH) {
+      canvas.width = paintW;
+      canvas.height = paintH;
+    }
+    ctx.clearRect(0, 0, paintW, paintH);
+    for (const part of widgets.values()) {
+      if (part.image) ctx.putImageData(part.image, part.x, part.y);
+    }
+  }
+  function pumpFrames() {
+    if (!pending) return;
+    const data = pending;
+    pending = null;
+    const frame = readPieces(data);
+    if (!frame) {
+      pumpFrames();
+      return;
+    }
+    if (frame.paintW !== paintW || frame.paintH !== paintH) {
+      paintW = frame.paintW || paintW;
+      paintH = frame.paintH || paintH;
+      fitFrame();
+    }
+    const seen = new Set();
+    for (const part of frame.parts) {
+      if (part.remove) {
+        widgets.delete(part.id);
+        continue;
+      }
+      seen.add(part.id);
+      let slot = widgets.get(part.id);
+      if (!slot) {
+        slot = { x: part.x, y: part.y, image: null };
+        widgets.set(part.id, slot);
+      }
+      slot.x = part.x;
+      slot.y = part.y;
+      if (part.pixels && part.w > 0 && part.h > 0 && part.pixels.byteLength === part.w * part.h * 4) {
+        slot.image = new ImageData(new Uint8ClampedArray(part.pixels), part.w, part.h);
+      }
+    }
+    if (!frame.partial) {
+      for (const id of Array.from(widgets.keys())) {
+        if (!seen.has(id)) widgets.delete(id);
+      }
+    }
+    redraw();
+    if (pending) pumpFrames();
+  }
+  function connectWs() {
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    const ws = new WebSocket(`${proto}://${location.host}/ws/edit`);
+    ws.binaryType = "arraybuffer";
+    ws.onmessage = (ev) => {
+      pending = ev.data;
+      pumpFrames();
+    };
+    ws.onclose = () => setTimeout(connectWs, 1000);
+    ws.onerror = () => { try { ws.close(); } catch (_) {} };
+  }
+
+  document.getElementById("copyToBtn").onclick = (ev) => {
+    ev.stopPropagation();
+    copyOpen = !copyOpen;
+    renderPresets();
+  };
+  document.addEventListener("click", () => {
+    if (!copyOpen) return;
+    copyOpen = false;
+    renderPresets();
+  });
+
+  fitFrame();
+  requestAnimationFrame(fitFrame);
+  window.addEventListener("resize", fitFrame);
+  apiGet();
+  connectWs();
+  setInterval(apiGet, 2000);
+})();
+</script>
+</body>
+</html>

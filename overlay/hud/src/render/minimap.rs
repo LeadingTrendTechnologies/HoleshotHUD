@@ -16,19 +16,23 @@ pub(crate) fn draw_minimap(
     sw: f32,
     sh: f32,
     age: f32,
+    raster_w: f32,
+    raster_h: f32,
 ) {
     let r = cfg[WidgetId::Minimap].rect;
     let x = r.x * sw;
     let y = r.y * sh;
     let w = r.w * sw;
     let h = r.h * sh;
-    let size = w.min(h).max(48.0);
+    let place = w.min(h).max(48.0);
+    let place_dim = place.round().clamp(48.0, 900.0);
     let cx = x + w * 0.5;
     let cy = y + h * 0.5;
-    let dim = size.round().clamp(48.0, 900.0) as u32;
+    let raster = (r.w * raster_w).min(r.h * raster_h).max(48.0);
+    let dim = raster.round().clamp(48.0, 900.0).max(place_dim) as u32;
     let sdim = dim as f32;
-    let left = cx - sdim * 0.5;
-    let top = cy - sdim * 0.5;
+    let left = cx - place_dim * 0.5;
+    let top = cy - place_dim * 0.5;
     let mut held = MINI_PX
         .with(|slot| slot.borrow_mut().take())
         .filter(|p| p.width() == dim && p.height() == dim)
@@ -36,7 +40,7 @@ pub(crate) fn draw_minimap(
     let n = s.poly_count.max(0) as usize;
     if n < 2 {
         if let Some(mini) = held.as_ref() {
-            blit_circle(px, mini, left, top);
+            blit_minimap(px, mini, left, top, place_dim);
         }
         MINI_PX.with(|slot| *slot.borrow_mut() = held);
         return;
@@ -57,24 +61,40 @@ pub(crate) fn draw_minimap(
 
     let subject = camera_subject(s);
     let you = subject_pose(s, age);
-    let (fx, fz, rx, rz, scale, origin_x, origin_z, north_up) = if let Some(pose) = you.as_ref() {
-        let (fx, fz) = track_forward(s, n, pose.x, pose.z).unwrap_or_else(|| {
+    let radius_m = mini_view_radius(cfg.mini_zoom);
+    // On the line, keep the bike as the origin. Off the line, center the circle on the
+    // nearest centerline so the stroke is in the view. Past 300 m, fit the whole track.
+    let on_track = you.as_ref().and_then(|pose| {
+        let hit = nearest_centerline(s, n, pose.x, pose.z)?;
+        if hit.dist2 > 90_000.0 {
+            return None;
+        }
+        let (fx, fz) = hit.forward.unwrap_or_else(|| {
             if pose.from_local {
-                let (f, z, _, _) = radar_axes(s);
-                (f, z)
+                let (forward_x, forward_z, _, _) = radar_axes(s);
+                (forward_x, forward_z)
             } else {
                 yaw_forward(pose.yaw)
             }
         });
-        let radius_m = mini_view_radius(cfg.mini_zoom);
+        let (origin_x, origin_z) = if hit.dist2 > radius_m * radius_m {
+            (hit.x, hit.z)
+        } else {
+            (pose.x, pose.z)
+        };
+        Some((fx, fz, origin_x, origin_z))
+    });
+    let (fx, fz, rx, rz, scale, origin_x, origin_z, north_up) = if let Some((fx, fz, origin_x, origin_z)) =
+        on_track
+    {
         (
             fx,
             fz,
             fz,
             -fx,
             (sdim * 0.46) / radius_m,
-            pose.x,
-            pose.z,
+            origin_x,
+            origin_z,
             true,
         )
     } else {
@@ -259,6 +279,14 @@ pub(crate) fn draw_minimap(
         );
     }
 
-    blit_circle(px, mini, left, top);
+    blit_minimap(px, mini, left, top, place_dim);
     MINI_PX.with(|slot| *slot.borrow_mut() = held);
+}
+
+fn blit_minimap(dst: &mut Pixmap, src: &Pixmap, left: f32, top: f32, place_dim: f32) {
+    if src.width() as f32 == place_dim && src.height() as f32 == place_dim {
+        blit_circle(dst, src, left, top);
+    } else {
+        blit_circle_fit(dst, src, left, top, place_dim);
+    }
 }

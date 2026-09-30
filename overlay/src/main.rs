@@ -18,6 +18,7 @@ mod shm;
 mod stance;
 mod startup;
 mod stock_pitboard;
+mod stream;
 mod sys;
 mod tray;
 mod uninstall;
@@ -73,6 +74,7 @@ pub(crate) fn quit_app() {
     if QUITTING.swap(true, Ordering::SeqCst) {
         return;
     }
+    crate::stream::set_enabled(false);
     crate::startup::handover_game_waiter();
     crate::tray::remove();
     crate::compat::stop_background_threads();
@@ -351,6 +353,10 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
     crate::startup::sync_from_config();
     mxbo_hud::pitboard::ensure_factory_pack();
     crate::startup::ensure_game_waiter();
+    if crate::config::with_config(|c| c.stream_enabled) {
+        let port = crate::stream::set_enabled(true);
+        crate::config::update_config(|c| c.stream_port = port);
+    }
     apply_window_icons(host, icon_big, icon_small);
     crate::tray::add(host, icon_small);
     let start_minimized = std::env::args().any(|a| a == "--minimized" || a == "--wait-for-game");
@@ -780,6 +786,11 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
                     && (crate::plugin::needs_restart()
                         || shm_miss_since.is_some_and(|t| t.elapsed() >= Duration::from_secs(2))),
                 layout_on,
+                &mut |id, pixmap| {
+                    if let Some(snap) = hud {
+                        crate::stream::copy_game_widget(id, pixmap, snap, cfg);
+                    }
+                },
             );
         };
         if let Some(cfg) = preview_cfg.as_ref() {
@@ -787,6 +798,18 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         } else {
             let cfg = crate::config::with_config(|c| c.for_overlay());
             paint(&cfg);
+        }
+        {
+            let (stream_cfg, stream_rev) =
+                crate::config::with_config(|c| (c.for_stream(), crate::stream::layout_rev()));
+            let mut stream_snap = last_snap;
+            if let Some(s) = stream_snap.as_mut() {
+                stream_cfg.apply_stream_live_to_snapshot(s);
+            }
+            // Browser Source must not follow game-overlay z-order (alt-tab blanks OBS).
+            let stream_hud =
+                stream_snap.filter(|s| s.has_session_data() || hitch_hold || live);
+            crate::stream::publish_frame(stream_hud, stream_cfg, age, w as u32, h as u32, stream_rev);
         }
         if overlay_on {
             live_mark = Some(render::draw_live_mark(

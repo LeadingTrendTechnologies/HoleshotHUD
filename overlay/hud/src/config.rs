@@ -1253,6 +1253,23 @@ pub enum SessionPreset {
     Spectate,
 }
 
+/// F8 Widgets: edit the in-game board or the OBS stream board. Runtime only — not saved.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum EditSurface {
+    #[default]
+    Game,
+    Stream,
+}
+
+impl EditSurface {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Game => "Game",
+            Self::Stream => "Stream",
+        }
+    }
+}
+
 impl SessionPreset {
     pub const ALL: [Self; 4] = [Self::Practice, Self::Warmup, Self::Race, Self::Spectate];
     pub const COUNT: usize = 4;
@@ -2297,10 +2314,14 @@ impl IndexMut<WidgetId> for HudLayout {
 #[derive(Clone)]
 pub struct HudConfig {
     layouts: [HudLayout; SessionPreset::COUNT],
+    /// Parallel stream boards (OBS Browser Source). Same preset index as `layouts`.
+    stream_layouts: [HudLayout; SessionPreset::COUNT],
     pub active_preset: SessionPreset,
     pub settings_preset: SessionPreset,
     /// True while a session is live. The HUD uses `active_preset`; F8 can edit another slot.
     pub session_live: bool,
+    /// F8 Game / Stream surface. Not written to the ini.
+    pub edit_surface: EditSurface,
     /// Settings → Labs → Experimental features. Gates Profile → Tracks.
     pub experimental: bool,
     /// F8 Motos records motos only when this is on. Default off; missing ini key stays off.
@@ -2326,6 +2347,10 @@ pub struct HudConfig {
     pub minimize_on_close: bool,
     pub close_with_game: bool,
     pub open_with_game: bool,
+    /// F8 Settings → Stream: localhost Browser Source server.
+    pub stream_enabled: bool,
+    /// Last bound localhost port for the stream page (0 = use default).
+    pub stream_port: u16,
     pub auto_update_on_launch: bool,
     /// Last version whose What's new modal was dismissed with Got it.
     pub whats_new_seen: String,
@@ -2345,11 +2370,14 @@ pub struct HudConfig {
 impl HudConfig {
     pub fn new() -> Self {
         let layout = HudLayout::new();
+        let stream = HudLayout::new();
         Self {
             layouts: [layout.clone(), layout.clone(), layout.clone(), layout],
+            stream_layouts: [stream.clone(), stream.clone(), stream.clone(), stream],
             active_preset: SessionPreset::Race,
             settings_preset: SessionPreset::Race,
             session_live: false,
+            edit_surface: EditSurface::Game,
             experimental: false,
             review: false,
             ingame_hud: false,
@@ -2365,6 +2393,8 @@ impl HudConfig {
             minimize_on_close: false,
             close_with_game: false,
             open_with_game: false,
+            stream_enabled: false,
+            stream_port: 0,
             auto_update_on_launch: false,
             whats_new_seen: String::new(),
             first_install_version: String::new(),
@@ -2385,17 +2415,88 @@ impl HudConfig {
         &mut self.layouts[self.active_preset.idx()]
     }
 
+    pub fn stream_live(&self) -> &HudLayout {
+        &self.stream_layouts[self.active_preset.idx()]
+    }
+
+    pub fn stream_live_mut(&mut self) -> &mut HudLayout {
+        &mut self.stream_layouts[self.active_preset.idx()]
+    }
+
+
     pub fn edit(&self) -> &HudLayout {
-        &self.layouts[self.settings_preset.idx()]
+        match self.edit_surface {
+            EditSurface::Game => &self.layouts[self.settings_preset.idx()],
+            EditSurface::Stream => &self.stream_layouts[self.settings_preset.idx()],
+        }
     }
 
     pub fn edit_mut(&mut self) -> &mut HudLayout {
-        &mut self.layouts[self.settings_preset.idx()]
+        match self.edit_surface {
+            EditSurface::Game => &mut self.layouts[self.settings_preset.idx()],
+            EditSurface::Stream => &mut self.stream_layouts[self.settings_preset.idx()],
+        }
+    }
+
+    pub fn stream_edit(&self) -> &HudLayout {
+        &self.stream_layouts[self.settings_preset.idx()]
+    }
+
+    pub fn stream_edit_mut(&mut self) -> &mut HudLayout {
+        &mut self.stream_layouts[self.settings_preset.idx()]
     }
 
     pub fn for_overlay(&self) -> Self {
         let mut c = self.clone();
         c.settings_preset = c.active_preset;
+        c.edit_surface = EditSurface::Game;
+        c
+    }
+
+    /// Browser Source paint: live stream board for `active_preset`.
+    pub fn for_stream(&self) -> Self {
+        let mut c = self.clone();
+        c.layouts = c.stream_layouts.clone();
+        c.settings_preset = c.active_preset;
+        c.edit_surface = EditSurface::Game;
+        c
+    }
+
+    /// Editor preview: stream board for a chosen session chip.
+    pub fn for_stream_preset(&self, preset: SessionPreset) -> Self {
+        let mut c = self.clone();
+        c.active_preset = preset;
+        c.settings_preset = preset;
+        c.layouts = c.stream_layouts.clone();
+        c.edit_surface = EditSurface::Game;
+        c
+    }
+
+    pub fn stream_slot(&self, preset: SessionPreset) -> &HudLayout {
+        &self.stream_layouts[preset.idx()]
+    }
+
+    pub fn stream_slot_mut(&mut self, preset: SessionPreset) -> &mut HudLayout {
+        &mut self.stream_layouts[preset.idx()]
+    }
+
+    /// Game HWND while F8 is editing Stream: hide live widgets; chrome uses stream edit.
+    pub fn for_stream_edit_chrome(&self) -> Self {
+        let mut c = self.clone();
+        c.edit_surface = EditSurface::Stream;
+        for layout in &mut c.layouts {
+            for id in WidgetId::ALL {
+                layout[id].show = false;
+            }
+        }
+        // Orange boxes / draw path for edit chrome read stream edit via layouts swap:
+        c.layouts[c.settings_preset.idx()] = c.stream_layouts[c.settings_preset.idx()].clone();
+        for id in WidgetId::ALL {
+            // Keep show true for widgets that are on the stream edit board so chrome can hit them.
+            let on = c.stream_layouts[c.settings_preset.idx()][id].show;
+            c.layouts[c.settings_preset.idx()][id].show = on;
+        }
+        c.active_preset = c.settings_preset;
         c
     }
 
@@ -2419,13 +2520,54 @@ impl HudConfig {
         if dst == self.settings_preset {
             return;
         }
-        let src = self.layouts[self.settings_preset.idx()].clone();
-        self.layouts[dst.idx()] = src;
+        match self.edit_surface {
+            EditSurface::Game => {
+                let src = self.layouts[self.settings_preset.idx()].clone();
+                self.layouts[dst.idx()] = src;
+            }
+            EditSurface::Stream => {
+                let src = self.stream_layouts[self.settings_preset.idx()].clone();
+                self.stream_layouts[dst.idx()] = src;
+            }
+        }
     }
 
     pub fn copy_settings_to_all(&mut self) {
+        match self.edit_surface {
+            EditSurface::Game => {
+                let src = self.layouts[self.settings_preset.idx()].clone();
+                self.layouts = [src.clone(), src.clone(), src.clone(), src];
+            }
+            EditSurface::Stream => {
+                let src = self.stream_layouts[self.settings_preset.idx()].clone();
+                self.stream_layouts = [src.clone(), src.clone(), src.clone(), src];
+            }
+        }
+    }
+
+    /// Copy one stream preset onto another. Game layouts and the F8 slot stay put.
+    pub fn copy_stream_layout_to(&mut self, src: SessionPreset, dst: SessionPreset) {
+        if src == dst {
+            return;
+        }
+        self.stream_layouts[dst.idx()] = self.stream_layouts[src.idx()].clone();
+    }
+
+    /// Copy the open chip's game layout onto that chip's stream slot.
+    pub fn copy_game_edit_to_stream(&mut self) {
         let src = self.layouts[self.settings_preset.idx()].clone();
-        self.layouts = [src.clone(), src.clone(), src.clone(), src];
+        self.stream_layouts[self.settings_preset.idx()] = src;
+    }
+
+    /// Copy one widget's game settings onto the stream slot while that stream widget is still factory.
+    /// Rect and show stay put. A later edit to the game layout is not copied.
+    pub fn seed_stream_widget_from_game(&mut self, preset: SessionPreset, id: WidgetId) {
+        let factory = HudLayout::new().widget_look(id);
+        if self.stream_layouts[preset.idx()].widget_look(id) != factory {
+            return;
+        }
+        let source = self.layouts[preset.idx()].clone();
+        self.stream_layouts[preset.idx()].copy_widget_settings_from(&source, id);
     }
 
     /// Follow the live session. When `hold_settings` is set and F8 is on another
@@ -2496,6 +2638,9 @@ impl HudConfig {
             crate::pitboard::apply_pack_colors(&layout.pit_art, &mut layout.pit_vars);
             migrate_saved_plate(layout, cfg.primary);
         }
+        for layout in &mut cfg.stream_layouts {
+            layout.migrate_rects();
+        }
         if let Some(p) = meta_path {
             cfg.loaded_mtime = fs::metadata(p).and_then(|m| m.modified()).ok();
         }
@@ -2529,9 +2674,30 @@ impl HudConfig {
             crate::pitboard::apply_pack_colors(&layout.pit_art, &mut layout.pit_vars);
             migrate_saved_plate(layout, accent);
         }
+        for layout in &mut self.stream_layouts {
+            layout.migrate_rects();
+        }
     }
 
     /// Full ini body for the live stream layout (WASM feed).
+    pub fn stream_ini(&self) -> String {
+        let live = self.for_stream();
+        format!(
+            "[App]\n\
+             font_family={}\nprimary_color={}\nunits={}\nunits_speed={}\nunits_liquids={}\nunits_temperature={}\n\
+             active_preset={}\n\
+             \n[{}]\n{}",
+            live.font_family.key(),
+            format_primary_color(live.primary),
+            live.units.speed.key(),
+            live.units.speed.key(),
+            live.units.liquids.key(),
+            live.units.temperature.key(),
+            live.active_preset.key(),
+            live.active_preset.label(),
+            layout_ini(live.live()),
+        )
+    }
 
     pub fn add_sys_preset(&mut self, key: &str) {
         if self.sys_apps.len() >= SYS_APP_MAX {
@@ -2624,11 +2790,12 @@ impl HudConfig {
              [App]\n\
              font_family={}\nprimary_color={}\nunits={}\nunits_speed={}\nunits_liquids={}\nunits_temperature={}\n\
              settings_key={}\nsettings_theme={}\nsettings_x={}\nsettings_y={}\nstart_with_windows={}\nminimize_on_close={}\n\
-             close_with_game={}\nopen_with_game={}\nauto_update_on_launch={}\nwhats_new_seen={}\n\
+             close_with_game={}\nopen_with_game={}\nstream_enabled={}\nstream_port={}\nauto_update_on_launch={}\nwhats_new_seen={}\n\
              first_install_version={}\nexperimental={}\nreview={}\ningame_hud={}\ngame_ui={}\n\
              game_ui_match_primary={}\ngame_ui_primary_color={}\n\
              game_ui_splash_path={}\ngame_ui_loading_path={}\nstance_bind={}\nactive_preset={}\n\
-             \n[Practice]\n{}\n\n[Warmup]\n{}\n\n[Race]\n{}\n\n[Spectate]\n{}\n",
+             \n[Practice]\n{}\n\n[Warmup]\n{}\n\n[Race]\n{}\n\n[Spectate]\n{}\n\
+             \n[PracticeStream]\n{}\n\n[WarmupStream]\n{}\n\n[RaceStream]\n{}\n\n[SpectateStream]\n{}\n",
             self.font_family.key(),
             format_primary_color(self.primary),
             self.units.speed.key(),
@@ -2643,6 +2810,8 @@ impl HudConfig {
             b(self.minimize_on_close),
             b(self.close_with_game),
             b(self.open_with_game),
+            b(self.stream_enabled),
+            self.stream_port,
             b(self.auto_update_on_launch),
             self.whats_new_seen,
             self.first_install_version,
@@ -2659,7 +2828,11 @@ impl HudConfig {
             layout_ini(&self.layouts[SessionPreset::Practice.idx()]),
             layout_ini(&self.layouts[SessionPreset::Warmup.idx()]),
             layout_ini(&self.layouts[SessionPreset::Race.idx()]),
-            layout_ini(&self.layouts[SessionPreset::Spectate.idx()])
+            layout_ini(&self.layouts[SessionPreset::Spectate.idx()]),
+            layout_ini(&self.stream_layouts[SessionPreset::Practice.idx()]),
+            layout_ini(&self.stream_layouts[SessionPreset::Warmup.idx()]),
+            layout_ini(&self.stream_layouts[SessionPreset::Race.idx()]),
+            layout_ini(&self.stream_layouts[SessionPreset::Spectate.idx()]),
         );
         if write_atomic(&path, &body).is_ok() {
             self.loaded_mtime = fs::metadata(&path).and_then(|m| m.modified()).ok();
@@ -2671,8 +2844,16 @@ impl HudConfig {
     }
 
     pub fn apply_to_snapshot(&self, s: &mut Snapshot) {
+        // Game HWND always follows the in-game board. Stream edits live in /edit.
         Self::write_layout_to_snapshot(self.live(), s);
     }
+
+    /// Map / Standings / Relative draw from snapshot show+rects. Browser Source must
+    /// stamp the live stream board, not the game (or F8 stream-edit) board.
+    pub fn apply_stream_live_to_snapshot(&self, s: &mut Snapshot) {
+        Self::write_layout_to_snapshot(self.stream_live(), s);
+    }
+
 
     fn write_layout_to_snapshot(lay: &HudLayout, s: &mut Snapshot) {
         s.standings_rect = lay[WidgetId::Standings].rect;
@@ -2840,14 +3021,17 @@ impl DerefMut for HudConfig {
 enum IniSection {
     App,
     Preset(SessionPreset),
+    StreamPreset(SessionPreset),
     Legacy,
 }
 
 struct IniScan {
     saw_last_cols: [bool; SessionPreset::COUNT],
+    saw_stream_last_cols: [bool; SessionPreset::COUNT],
     saw_first_install: bool,
     saw_unit: [bool; UnitKind::COUNT],
     saw_preset: [bool; SessionPreset::COUNT],
+    saw_stream_preset: [bool; SessionPreset::COUNT],
     saw_legacy_layout: bool,
     legacy_last_cols: bool,
     legacy_layout: HudLayout,
@@ -2857,9 +3041,11 @@ impl Default for IniScan {
     fn default() -> Self {
         Self {
             saw_last_cols: [false; SessionPreset::COUNT],
+            saw_stream_last_cols: [false; SessionPreset::COUNT],
             saw_first_install: false,
             saw_unit: [false; UnitKind::COUNT],
             saw_preset: [false; SessionPreset::COUNT],
+            saw_stream_preset: [false; SessionPreset::COUNT],
             saw_legacy_layout: false,
             legacy_last_cols: false,
             legacy_layout: HudLayout::new(),
@@ -2874,7 +3060,9 @@ impl IniScan {
 
     fn take_layout(&mut self, extra: Self) {
         self.saw_last_cols = extra.saw_last_cols;
+        self.saw_stream_last_cols = extra.saw_stream_last_cols;
         self.saw_preset = extra.saw_preset;
+        self.saw_stream_preset = extra.saw_stream_preset;
         self.saw_legacy_layout = extra.saw_legacy_layout;
         self.legacy_last_cols = extra.legacy_last_cols;
         self.legacy_layout = extra.legacy_layout;
@@ -2919,6 +3107,14 @@ fn apply_ini_text(cfg: &mut HudConfig, text: &str) -> IniScan {
                     continue;
                 }
                 apply_layout_key(layout, key, val, b, &mut scan.saw_last_cols[p.idx()]);
+            }
+            IniSection::StreamPreset(p) => {
+                scan.saw_stream_preset[p.idx()] = true;
+                let layout = &mut cfg.stream_layouts[p.idx()];
+                if apply_widget_prefs(layout, key, val, f, b) {
+                    continue;
+                }
+                apply_layout_key(layout, key, val, b, &mut scan.saw_stream_last_cols[p.idx()]);
             }
             IniSection::Legacy => {
                 if apply_app_key(
@@ -2981,6 +3177,15 @@ fn apply_scanned_layouts(cfg: &mut HudConfig, scan: IniScan) {
             legacy_layout,
         ];
     }
+    // Missing stream sections stay HudLayout::new() (all Show off). Only fill last-cols defaults.
+    for p in SessionPreset::ALL {
+        if scan.saw_stream_preset[p.idx()] && !scan.saw_stream_last_cols[p.idx()] {
+            cfg.stream_layouts[p.idx()].st_best = true;
+            cfg.stream_layouts[p.idx()].st_last = true;
+            cfg.stream_layouts[p.idx()].rel_best = true;
+            cfg.stream_layouts[p.idx()].rel_last = true;
+        }
+    }
 }
 
 fn ini_tmp_path(path: &Path) -> PathBuf {
@@ -3018,6 +3223,10 @@ fn parse_ini_section(line: &str) -> IniSection {
         "warmup" => IniSection::Preset(SessionPreset::Warmup),
         "race" => IniSection::Preset(SessionPreset::Race),
         "spectate" | "spectating" => IniSection::Preset(SessionPreset::Spectate),
+        "practicestream" => IniSection::StreamPreset(SessionPreset::Practice),
+        "warmupstream" => IniSection::StreamPreset(SessionPreset::Warmup),
+        "racestream" => IniSection::StreamPreset(SessionPreset::Race),
+        "spectatestream" | "spectatingstream" => IniSection::StreamPreset(SessionPreset::Spectate),
         _ => IniSection::Legacy,
     }
 }
@@ -3065,6 +3274,12 @@ fn apply_app_key(
         "minimize_on_close" => cfg.minimize_on_close = b,
         "close_with_game" => cfg.close_with_game = b,
         "open_with_game" => cfg.open_with_game = b,
+        "stream_enabled" => cfg.stream_enabled = b,
+        "stream_port" => {
+            if let Ok(n) = val.parse::<u16>() {
+                cfg.stream_port = n;
+            }
+        }
         "auto_update_on_launch" => cfg.auto_update_on_launch = b,
         "whats_new_seen" => cfg.whats_new_seen = val.trim().to_string(),
         "first_install_version" => {
@@ -3098,6 +3313,544 @@ fn apply_app_key(
         }
     }
     true
+}
+
+/// Fields that change a widget's pixels. Rect and show are left out.
+struct LookMix(u64);
+
+impl LookMix {
+    fn new() -> Self {
+        Self(0xcbf29ce484222325)
+    }
+
+    fn unit(&mut self, value: u64) {
+        self.0 ^= value;
+        self.0 = self.0.wrapping_mul(0x100000001b3);
+    }
+
+    fn i32(&mut self, value: i32) {
+        self.unit(value as u32 as u64);
+    }
+
+    fn flag(&mut self, value: bool) {
+        self.unit(u64::from(value));
+    }
+
+    fn text(&mut self, value: &str) {
+        self.unit(value.len() as u64);
+        for byte in value.bytes() {
+            self.unit(u64::from(byte));
+        }
+    }
+
+    fn scalar(&mut self, value: f32) {
+        self.unit(u64::from(value.to_bits()));
+    }
+
+    fn finish(self) -> u64 {
+        self.0
+    }
+}
+
+fn mix_style(mix: &mut LookMix, lay: &HudLayout, id: WidgetId) {
+    let prefs = &lay[id];
+    mix.i32(prefs.font);
+    mix.flag(prefs.bold);
+    mix.i32(prefs.bg);
+}
+
+fn mix_board(mix: &mut LookMix, slots: &[BoardField]) {
+    for field in slots {
+        mix.text(field.key());
+    }
+}
+
+fn rgb_key(rgb: [u8; 3]) -> u64 {
+    u64::from(rgb[0]) << 16 | u64::from(rgb[1]) << 8 | u64::from(rgb[2])
+}
+
+fn sys_kind_key(kind: SysAppKind) -> &'static str {
+    match kind {
+        SysAppKind::Hud => "hud",
+        SysAppKind::Mxbikes => "mxbikes",
+        SysAppKind::MxbApp => "mxbapp",
+        SysAppKind::Reshade => "reshade",
+        SysAppKind::Exe => "exe",
+    }
+}
+
+impl HudLayout {
+    /// Fingerprint of the fields that change this widget's pixels.
+    /// Rect and show stay out: the stream crop places the widget, and show decides whether it is drawn.
+    /// Pit Board font, bold, and background are omitted because the plate draw does not read them.
+    pub fn widget_look(&self, id: WidgetId) -> u64 {
+        let mut mix = LookMix::new();
+        mix.unit(id.idx() as u64);
+        match id {
+            WidgetId::Standings => self.mix_standings(&mut mix),
+            WidgetId::Relative => self.mix_relative(&mut mix),
+            WidgetId::Map => self.mix_map(&mut mix),
+            WidgetId::Minimap => self.mix_minimap(&mut mix),
+            WidgetId::Radar => self.mix_radar(&mut mix),
+            WidgetId::Dash => self.mix_dash(&mut mix),
+            WidgetId::Ticker => self.mix_ticker(&mut mix),
+            WidgetId::Sys => self.mix_sys(&mut mix),
+            WidgetId::Sector => self.mix_sector(&mut mix),
+            WidgetId::Delta => self.mix_delta(&mut mix),
+            WidgetId::Stance => self.mix_stance(&mut mix),
+            WidgetId::Flag => self.mix_flag(&mut mix),
+            WidgetId::Lean => self.mix_lean(&mut mix),
+            WidgetId::Gamepad => self.mix_gamepad(&mut mix),
+            WidgetId::Telemetry => self.mix_telemetry(&mut mix),
+            WidgetId::Pitboard => self.mix_pit(&mut mix),
+        }
+        mix.finish()
+    }
+
+    /// Copy the fields `widget_look` reads. Rect and show stay on `self`.
+    pub fn copy_widget_settings_from(&mut self, source: &HudLayout, id: WidgetId) {
+        if id != WidgetId::Pitboard {
+            let rect = self[id].rect;
+            let show = self[id].show;
+            self[id] = source[id];
+            self[id].rect = rect;
+            self[id].show = show;
+        }
+        match id {
+            WidgetId::Standings => {
+                self.standings_rows = source.standings_rows;
+                self.st_hl = source.st_hl;
+                self.st_text = source.st_text;
+                self.st_stripe = source.st_stripe;
+                self.st_plaque_text = source.st_plaque_text;
+                self.st_plaque = source.st_plaque;
+                self.st_pos = source.st_pos;
+                self.st_num = source.st_num;
+                self.st_name = source.st_name;
+                self.st_gap = source.st_gap;
+                self.st_interval = source.st_interval;
+                self.st_laps = source.st_laps;
+                self.st_current = source.st_current;
+                self.st_best = source.st_best;
+                self.st_last = source.st_last;
+                self.st_status = source.st_status;
+                self.st_bike = source.st_bike;
+                self.st_penalty = source.st_penalty;
+                self.st_crashed = source.st_crashed;
+                self.st_category = source.st_category;
+                self.st_lapdiff = source.st_lapdiff;
+                self.st_w_pos = source.st_w_pos;
+                self.st_w_num = source.st_w_num;
+                self.st_w_name = source.st_w_name;
+                self.st_w_gap = source.st_w_gap;
+                self.st_w_interval = source.st_w_interval;
+                self.st_w_laps = source.st_w_laps;
+                self.st_w_current = source.st_w_current;
+                self.st_w_best = source.st_w_best;
+                self.st_w_last = source.st_w_last;
+                self.st_w_status = source.st_w_status;
+                self.st_w_bike = source.st_w_bike;
+                self.st_w_penalty = source.st_w_penalty;
+                self.st_w_crashed = source.st_w_crashed;
+                self.st_w_category = source.st_w_category;
+                self.st_w_lapdiff = source.st_w_lapdiff;
+                self.st_head = source.st_head;
+                self.st_foot = source.st_foot;
+                self.st_order = source.st_order.clone();
+            }
+            WidgetId::Relative => {
+                self.relative_count = source.relative_count;
+                self.rel_hl = source.rel_hl;
+                self.rel_text = source.rel_text;
+                self.rel_stripe = source.rel_stripe;
+                self.rel_plaque_text = source.rel_plaque_text;
+                self.rel_plaque = source.rel_plaque;
+                self.rel_num = source.rel_num;
+                self.rel_name = source.rel_name;
+                self.rel_gap = source.rel_gap;
+                self.rel_laps = source.rel_laps;
+                self.rel_current = source.rel_current;
+                self.rel_pos = source.rel_pos;
+                self.rel_bike = source.rel_bike;
+                self.rel_penalty = source.rel_penalty;
+                self.rel_interval = source.rel_interval;
+                self.rel_status = source.rel_status;
+                self.rel_best = source.rel_best;
+                self.rel_last = source.rel_last;
+                self.rel_category = source.rel_category;
+                self.rel_speed = source.rel_speed;
+                self.rel_lapdiff = source.rel_lapdiff;
+                self.rel_w_num = source.rel_w_num;
+                self.rel_w_name = source.rel_w_name;
+                self.rel_w_gap = source.rel_w_gap;
+                self.rel_w_laps = source.rel_w_laps;
+                self.rel_w_current = source.rel_w_current;
+                self.rel_w_pos = source.rel_w_pos;
+                self.rel_w_bike = source.rel_w_bike;
+                self.rel_w_penalty = source.rel_w_penalty;
+                self.rel_w_interval = source.rel_w_interval;
+                self.rel_w_status = source.rel_w_status;
+                self.rel_w_best = source.rel_w_best;
+                self.rel_w_last = source.rel_w_last;
+                self.rel_w_category = source.rel_w_category;
+                self.rel_w_speed = source.rel_w_speed;
+                self.rel_w_lapdiff = source.rel_w_lapdiff;
+                self.rel_head = source.rel_head;
+                self.rel_foot = source.rel_foot;
+                self.rel_order = source.rel_order.clone();
+            }
+            WidgetId::Map => {
+                self.map_others = source.map_others;
+                self.map_sf = source.map_sf;
+                self.map_sectors = source.map_sectors;
+                self.map_name = source.map_name;
+                self.map_numbers = source.map_numbers;
+                self.map_arrows = source.map_arrows;
+                self.map_follow = source.map_follow;
+                self.map_crown = source.map_crown;
+                self.map_place = source.map_place;
+                self.map_dot = source.map_dot;
+            }
+            WidgetId::Minimap => {
+                self.mini_others = source.mini_others;
+                self.mini_sf = source.mini_sf;
+                self.mini_sectors = source.mini_sectors;
+                self.mini_numbers = source.mini_numbers;
+                self.mini_arrows = source.mini_arrows;
+                self.mini_crown = source.mini_crown;
+                self.mini_place = source.mini_place;
+                self.mini_dot = source.mini_dot;
+                self.mini_zoom = source.mini_zoom;
+            }
+            WidgetId::Radar => {
+                self.radar_sides = source.radar_sides;
+                self.radar_rear = source.radar_rear;
+                self.radar_rings = source.radar_rings;
+                self.radar_style = source.radar_style;
+                self.radar_range = source.radar_range;
+            }
+            WidgetId::Dash => {
+                self.dash_rev = source.dash_rev;
+                self.dash_yellow = source.dash_yellow;
+                self.dash_blue = source.dash_blue;
+                self.dash_red = source.dash_red;
+                self.dash_simple = source.dash_simple;
+                self.dash_shift_color = source.dash_shift_color;
+                self.dash_left = source.dash_left;
+                self.dash_mid = source.dash_mid;
+                self.dash_right = source.dash_right;
+            }
+            WidgetId::Ticker => {
+                self.ticker_count = source.ticker_count;
+                self.ticker_title = source.ticker_title;
+                self.ticker_autoscroll = source.ticker_autoscroll;
+                self.ticker_status = source.ticker_status;
+                self.ticker_slide = source.ticker_slide;
+                self.ticker_hl = source.ticker_hl;
+                self.ticker_left = source.ticker_left;
+                self.ticker_right = source.ticker_right;
+            }
+            WidgetId::Sys => self.sys_apps = source.sys_apps.clone(),
+            WidgetId::Sector => {
+                self.sector_live = source.sector_live;
+                self.sector_session = source.sector_session;
+                self.sector_hist = source.sector_hist;
+                self.sector_hist_laps = source.sector_hist_laps;
+            }
+            WidgetId::Delta => self.delta_session = source.delta_session,
+            WidgetId::Stance => {
+                self.stance_style = source.stance_style;
+                self.stance_show_sit = source.stance_show_sit;
+            }
+            WidgetId::Flag => {
+                self.flag_text = source.flag_text;
+                self.flag_yellow = source.flag_yellow;
+                self.flag_blue = source.flag_blue;
+                self.flag_red = source.flag_red;
+            }
+            WidgetId::Lean => self.lean_style = source.lean_style,
+            WidgetId::Gamepad => {
+                self.gamepad_style = source.gamepad_style;
+                self.gamepad_theme = source.gamepad_theme;
+            }
+            WidgetId::Telemetry => {
+                self.telemetry_traces = source.telemetry_traces;
+                self.telemetry_trace_throttle = source.telemetry_trace_throttle;
+                self.telemetry_trace_brake = source.telemetry_trace_brake;
+                self.telemetry_trace_steer = source.telemetry_trace_steer;
+                self.telemetry_bars = source.telemetry_bars;
+                self.telemetry_bar_clutch = source.telemetry_bar_clutch;
+                self.telemetry_bar_brake = source.telemetry_bar_brake;
+                self.telemetry_bar_throttle = source.telemetry_bar_throttle;
+                self.telemetry_bar_steer = source.telemetry_bar_steer;
+                self.telemetry_dial = source.telemetry_dial;
+            }
+            WidgetId::Pitboard => {
+                self.pit_sponsor = source.pit_sponsor.clone();
+                self.pit_art = source.pit_art.clone();
+                self.pit_board = source.pit_board.clone();
+                self.pit_text = source.pit_text;
+                self.pit_when = source.pit_when;
+                self.pit_yellow = source.pit_yellow;
+                self.pit_blue = source.pit_blue;
+                self.pit_vars = source.pit_vars.clone();
+            }
+        }
+    }
+
+    fn mix_standings(&self, mix: &mut LookMix) {
+        mix_style(mix, self, WidgetId::Standings);
+        mix.i32(self.standings_rows);
+        mix.i32(self.st_hl);
+        mix.text(self.st_text.key());
+        mix.flag(self.st_stripe);
+        mix.text(self.st_plaque_text.key());
+        mix.flag(self.st_plaque);
+        mix.flag(self.st_pos);
+        mix.flag(self.st_num);
+        mix.flag(self.st_name);
+        mix.flag(self.st_gap);
+        mix.flag(self.st_interval);
+        mix.flag(self.st_laps);
+        mix.flag(self.st_current);
+        mix.flag(self.st_best);
+        mix.flag(self.st_last);
+        mix.flag(self.st_status);
+        mix.flag(self.st_bike);
+        mix.flag(self.st_penalty);
+        mix.flag(self.st_crashed);
+        mix.flag(self.st_category);
+        mix.flag(self.st_lapdiff);
+        mix.i32(self.st_w_pos);
+        mix.i32(self.st_w_num);
+        mix.i32(self.st_w_name);
+        mix.i32(self.st_w_gap);
+        mix.i32(self.st_w_interval);
+        mix.i32(self.st_w_laps);
+        mix.i32(self.st_w_current);
+        mix.i32(self.st_w_best);
+        mix.i32(self.st_w_last);
+        mix.i32(self.st_w_status);
+        mix.i32(self.st_w_bike);
+        mix.i32(self.st_w_penalty);
+        mix.i32(self.st_w_crashed);
+        mix.i32(self.st_w_category);
+        mix.i32(self.st_w_lapdiff);
+        mix_board(mix, &self.st_head);
+        mix_board(mix, &self.st_foot);
+        mix.unit(self.st_order.len() as u64);
+        for field in &self.st_order {
+            mix.text(field.key());
+        }
+    }
+
+    fn mix_relative(&self, mix: &mut LookMix) {
+        mix_style(mix, self, WidgetId::Relative);
+        mix.i32(self.relative_count);
+        mix.i32(self.rel_hl);
+        mix.text(self.rel_text.key());
+        mix.flag(self.rel_stripe);
+        mix.text(self.rel_plaque_text.key());
+        mix.flag(self.rel_plaque);
+        mix.flag(self.rel_num);
+        mix.flag(self.rel_name);
+        mix.flag(self.rel_gap);
+        mix.flag(self.rel_laps);
+        mix.flag(self.rel_current);
+        mix.flag(self.rel_pos);
+        mix.flag(self.rel_bike);
+        mix.flag(self.rel_penalty);
+        mix.flag(self.rel_interval);
+        mix.flag(self.rel_status);
+        mix.flag(self.rel_best);
+        mix.flag(self.rel_last);
+        mix.flag(self.rel_category);
+        mix.flag(self.rel_speed);
+        mix.flag(self.rel_lapdiff);
+        mix.i32(self.rel_w_num);
+        mix.i32(self.rel_w_name);
+        mix.i32(self.rel_w_gap);
+        mix.i32(self.rel_w_laps);
+        mix.i32(self.rel_w_current);
+        mix.i32(self.rel_w_pos);
+        mix.i32(self.rel_w_bike);
+        mix.i32(self.rel_w_penalty);
+        mix.i32(self.rel_w_interval);
+        mix.i32(self.rel_w_status);
+        mix.i32(self.rel_w_best);
+        mix.i32(self.rel_w_last);
+        mix.i32(self.rel_w_category);
+        mix.i32(self.rel_w_speed);
+        mix.i32(self.rel_w_lapdiff);
+        mix_board(mix, &self.rel_head);
+        mix_board(mix, &self.rel_foot);
+        mix.unit(self.rel_order.len() as u64);
+        for field in &self.rel_order {
+            mix.text(field.key());
+        }
+    }
+
+    fn mix_map(&self, mix: &mut LookMix) {
+        mix_style(mix, self, WidgetId::Map);
+        mix.flag(self.map_others);
+        mix.flag(self.map_sf);
+        mix.flag(self.map_sectors);
+        mix.flag(self.map_name);
+        mix.flag(self.map_numbers);
+        mix.flag(self.map_arrows);
+        mix.flag(self.map_follow);
+        mix.flag(self.map_crown);
+        mix.flag(self.map_place);
+        mix.text(self.map_dot.key());
+    }
+
+    fn mix_minimap(&self, mix: &mut LookMix) {
+        mix_style(mix, self, WidgetId::Minimap);
+        mix.flag(self.mini_others);
+        mix.flag(self.mini_sf);
+        mix.flag(self.mini_sectors);
+        mix.flag(self.mini_numbers);
+        mix.flag(self.mini_arrows);
+        mix.flag(self.mini_crown);
+        mix.flag(self.mini_place);
+        mix.text(self.mini_dot.key());
+        mix.i32(self.mini_zoom);
+    }
+
+    fn mix_radar(&self, mix: &mut LookMix) {
+        mix_style(mix, self, WidgetId::Radar);
+        mix.flag(self.radar_sides);
+        mix.flag(self.radar_rear);
+        mix.flag(self.radar_rings);
+        mix.text(self.radar_style.key());
+        mix.i32(self.radar_range);
+    }
+
+    fn mix_dash(&self, mix: &mut LookMix) {
+        mix_style(mix, self, WidgetId::Dash);
+        mix.flag(self.dash_rev);
+        mix.flag(self.dash_yellow);
+        mix.flag(self.dash_blue);
+        mix.flag(self.dash_red);
+        mix.flag(self.dash_simple);
+        mix.flag(self.dash_shift_color);
+        mix.text(self.dash_left.key());
+        mix.text(self.dash_mid.key());
+        mix.text(self.dash_right.key());
+    }
+
+    fn mix_ticker(&self, mix: &mut LookMix) {
+        mix_style(mix, self, WidgetId::Ticker);
+        mix.i32(self.ticker_count);
+        mix.flag(self.ticker_title);
+        mix.flag(self.ticker_autoscroll);
+        mix.flag(self.ticker_status);
+        mix.flag(self.ticker_slide);
+        mix.i32(self.ticker_hl);
+        mix.text(self.ticker_left.key());
+        mix.text(self.ticker_right.key());
+    }
+
+    fn mix_sys(&self, mix: &mut LookMix) {
+        mix_style(mix, self, WidgetId::Sys);
+        mix.unit(self.sys_apps.len() as u64);
+        for app in &self.sys_apps {
+            mix.text(&app.key);
+            mix.text(&app.label);
+            mix.text(sys_kind_key(app.kind));
+            mix.flag(app.show);
+            mix.unit(app.names.len() as u64);
+            for name in &app.names {
+                mix.text(name);
+            }
+        }
+    }
+
+    fn mix_sector(&self, mix: &mut LookMix) {
+        mix_style(mix, self, WidgetId::Sector);
+        mix.flag(self.sector_live);
+        mix.flag(self.sector_session);
+        mix.flag(self.sector_hist);
+        mix.i32(self.sector_hist_laps);
+    }
+
+    fn mix_delta(&self, mix: &mut LookMix) {
+        mix_style(mix, self, WidgetId::Delta);
+        mix.flag(self.delta_session);
+    }
+
+    fn mix_stance(&self, mix: &mut LookMix) {
+        mix_style(mix, self, WidgetId::Stance);
+        mix.text(self.stance_style.key());
+        mix.flag(self.stance_show_sit);
+    }
+
+    fn mix_flag(&self, mix: &mut LookMix) {
+        mix_style(mix, self, WidgetId::Flag);
+        mix.flag(self.flag_text);
+        mix.flag(self.flag_yellow);
+        mix.flag(self.flag_blue);
+        mix.flag(self.flag_red);
+    }
+
+    fn mix_lean(&self, mix: &mut LookMix) {
+        mix_style(mix, self, WidgetId::Lean);
+        mix.text(self.lean_style.key());
+    }
+
+    fn mix_gamepad(&self, mix: &mut LookMix) {
+        mix_style(mix, self, WidgetId::Gamepad);
+        mix.text(self.gamepad_style.key());
+        mix.text(self.gamepad_theme.key());
+    }
+
+    fn mix_telemetry(&self, mix: &mut LookMix) {
+        mix_style(mix, self, WidgetId::Telemetry);
+        mix.flag(self.telemetry_traces);
+        mix.flag(self.telemetry_trace_throttle);
+        mix.flag(self.telemetry_trace_brake);
+        mix.flag(self.telemetry_trace_steer);
+        mix.flag(self.telemetry_bars);
+        mix.flag(self.telemetry_bar_clutch);
+        mix.flag(self.telemetry_bar_brake);
+        mix.flag(self.telemetry_bar_throttle);
+        mix.flag(self.telemetry_bar_steer);
+        mix.flag(self.telemetry_dial);
+    }
+
+    fn mix_pit(&self, mix: &mut LookMix) {
+        mix.text(&self.pit_sponsor);
+        mix.text(&self.pit_art);
+        mix.text(&self.pit_board);
+        mix.text(self.pit_text.key());
+        mix.text(self.pit_when.key());
+        mix.unit(rgb_key(self.pit_yellow));
+        mix.unit(rgb_key(self.pit_blue));
+        mix.unit(self.pit_vars.len() as u64);
+        for place in &self.pit_vars {
+            mix.text(place.var.key());
+            mix.scalar(place.x);
+            mix.scalar(place.y);
+            mix.scalar(place.size);
+            mix.flag(place.show);
+            mix.flag(place.bold);
+            mix.text(&place.label);
+            match place.color {
+                Some(rgb) => {
+                    mix.flag(true);
+                    mix.unit(rgb_key(rgb));
+                }
+                None => mix.flag(false),
+            }
+        }
+    }
+
+    /// Apply one INI layout key. `true`/`1` sets a toggle on.
+    pub fn apply_setting(&mut self, key: &str, value: &str) {
+        let on = value == "1" || value.eq_ignore_ascii_case("true");
+        let mut saw_last_cols = false;
+        apply_layout_key(self, key, value, on, &mut saw_last_cols);
+    }
 }
 
 fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last_cols: &mut bool) {

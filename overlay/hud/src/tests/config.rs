@@ -964,6 +964,69 @@ fn copy_settings_to_one_slot_leaves_the_others() {
 }
 
 #[test]
+fn copy_stream_layout_to_leaves_game_and_other_slots() {
+    let mut cfg = HudConfig::new();
+    cfg.active_preset = SessionPreset::Practice;
+    cfg.edit_surface = EditSurface::Stream;
+    cfg.settings_preset = SessionPreset::Race;
+    cfg[WidgetId::Dash].show = true;
+    cfg[WidgetId::Dash].rect.y = 0.33;
+    cfg.settings_preset = SessionPreset::Practice;
+    cfg[WidgetId::Dash].show = true;
+    cfg[WidgetId::Dash].rect.y = 0.1;
+
+    cfg.edit_surface = EditSurface::Game;
+    cfg.settings_preset = SessionPreset::Race;
+    cfg[WidgetId::Dash].show = false;
+    cfg.settings_preset = SessionPreset::Warmup;
+    cfg[WidgetId::Dash].show = false;
+
+    cfg.copy_stream_layout_to(SessionPreset::Race, SessionPreset::Warmup);
+    assert_eq!(cfg.settings_preset, SessionPreset::Warmup);
+    assert_eq!(cfg.active_preset, SessionPreset::Practice);
+    assert_eq!(cfg.edit_surface, EditSurface::Game);
+    assert!(stream_slots_match(&cfg, SessionPreset::Race, SessionPreset::Warmup));
+
+    cfg.edit_surface = EditSurface::Stream;
+    cfg.settings_preset = SessionPreset::Practice;
+    assert!(cfg[WidgetId::Dash].show);
+    assert!((cfg[WidgetId::Dash].rect.y - 0.1).abs() < 0.0001);
+    cfg.settings_preset = SessionPreset::Spectate;
+    assert!(!cfg[WidgetId::Dash].show);
+
+    cfg.edit_surface = EditSurface::Game;
+    cfg.settings_preset = SessionPreset::Race;
+    assert!(!cfg[WidgetId::Dash].show);
+    cfg.settings_preset = SessionPreset::Warmup;
+    assert!(!cfg[WidgetId::Dash].show);
+
+    cfg.edit_surface = EditSurface::Stream;
+    cfg.settings_preset = SessionPreset::Race;
+    cfg[WidgetId::Map].show = true;
+    cfg.copy_stream_layout_to(SessionPreset::Race, SessionPreset::Race);
+    cfg.settings_preset = SessionPreset::Warmup;
+    assert!(!cfg[WidgetId::Map].show);
+}
+
+fn stream_slots_match(cfg: &HudConfig, src: SessionPreset, dst: SessionPreset) -> bool {
+    let left = cfg.stream_slot(src);
+    let right = cfg.stream_slot(dst);
+    WidgetId::ALL.iter().all(|id| {
+        let source = &left[*id];
+        let dest = &right[*id];
+        source.show == dest.show
+            && source.font == dest.font
+            && source.bold == dest.bold
+            && source.bg == dest.bg
+            && (source.rect.x - dest.rect.x).abs() < 0.0001
+            && (source.rect.y - dest.rect.y).abs() < 0.0001
+            && (source.rect.w - dest.rect.w).abs() < 0.0001
+            && (source.rect.h - dest.rect.h).abs() < 0.0001
+            && left.widget_look(*id) == right.widget_look(*id)
+    })
+}
+
+#[test]
 fn sync_live_holds_a_different_settings_slot() {
     let mut cfg = HudConfig::new();
     cfg.active_preset = SessionPreset::Warmup;
@@ -1119,6 +1182,103 @@ fn atomic_save_round_trip_leaves_no_tmp() {
 }
 
 #[test]
+fn stream_show_independent_of_game() {
+    let mut cfg = HudConfig::new();
+    cfg.settings_preset = SessionPreset::Race;
+    cfg.edit_surface = EditSurface::Game;
+    cfg[WidgetId::Standings].show = true;
+    cfg.edit_surface = EditSurface::Stream;
+    assert!(!cfg[WidgetId::Standings].show);
+    cfg[WidgetId::Standings].show = true;
+    cfg.edit_surface = EditSurface::Game;
+    assert!(cfg[WidgetId::Standings].show);
+    cfg.edit_surface = EditSurface::Stream;
+    assert!(cfg[WidgetId::Standings].show);
+    assert!(cfg.stream_edit()[WidgetId::Standings].show);
+    assert!(cfg.live()[WidgetId::Standings].show); // game live still on for Race
+}
+
+#[test]
+fn copy_game_edit_to_stream() {
+    let mut cfg = HudConfig::new();
+    cfg.settings_preset = SessionPreset::Race;
+    cfg.edit_surface = EditSurface::Game;
+    cfg[WidgetId::Relative].show = true;
+    cfg[WidgetId::Relative].rect.x = 0.42;
+    cfg.copy_game_edit_to_stream();
+    assert!(cfg.stream_edit()[WidgetId::Relative].show);
+    assert!((cfg.stream_edit()[WidgetId::Relative].rect.x - 0.42).abs() < 0.0001);
+    cfg.edit_surface = EditSurface::Game;
+    cfg[WidgetId::Relative].show = false;
+    assert!(cfg.stream_edit()[WidgetId::Relative].show);
+}
+
+#[test]
+fn stream_sections_round_trip() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-stream-rt-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    std::env::set_var("MXBO_TEST_INI", &path);
+
+    let mut cfg = HudConfig::new();
+    cfg.first_install_version = "0.1.0".into();
+    cfg.settings_preset = SessionPreset::Race;
+    cfg.edit_surface = EditSurface::Stream;
+    cfg[WidgetId::Standings].show = true;
+    cfg[WidgetId::Standings].rect.y = 0.25;
+    cfg.save();
+
+    let text = std::fs::read_to_string(&path).unwrap();
+    let loaded = HudConfig::load_file();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert!(text.contains("[RaceStream]"));
+    assert!(text.contains("show_standings=1"));
+    let mut loaded = loaded;
+    loaded.edit_surface = EditSurface::Stream;
+    loaded.settings_preset = SessionPreset::Race;
+    assert!(loaded[WidgetId::Standings].show);
+    assert!((loaded[WidgetId::Standings].rect.y - 0.25).abs() < 0.0001);
+    loaded.edit_surface = EditSurface::Game;
+    assert!(!loaded[WidgetId::Standings].show);
+}
+
+#[test]
+fn for_stream_uses_stream_live_layout() {
+    let mut cfg = HudConfig::new();
+    cfg.active_preset = SessionPreset::Warmup;
+    cfg.settings_preset = SessionPreset::Warmup;
+    cfg.edit_surface = EditSurface::Stream;
+    cfg[WidgetId::Delta].show = true;
+    let stream = cfg.for_stream();
+    assert!(stream.live()[WidgetId::Delta].show);
+    assert!(!cfg.for_overlay().live()[WidgetId::Delta].show);
+}
+
+#[test]
+fn apply_stream_live_to_snapshot_ignores_game_show() {
+    let mut cfg = HudConfig::new();
+    cfg.active_preset = SessionPreset::Race;
+    cfg.settings_preset = SessionPreset::Race;
+    cfg.edit_surface = EditSurface::Game;
+    cfg[WidgetId::Map].show = false;
+    cfg.edit_surface = EditSurface::Stream;
+    cfg[WidgetId::Map].show = true;
+    cfg[WidgetId::Map].rect.x = 0.11;
+    cfg.edit_surface = EditSurface::Game;
+
+    let mut snap = Snapshot::default();
+    cfg.apply_to_snapshot(&mut snap);
+    assert_eq!(snap.show_map, 0);
+
+    cfg.apply_stream_live_to_snapshot(&mut snap);
+    assert_eq!(snap.show_map, 1);
+    assert!((snap.map.x - 0.11).abs() < 0.0001);
+}
+
+#[test]
 fn radar_style_round_trips_and_expands_default_plaque() {
     let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let dir = std::env::temp_dir().join(format!("mxbo-ini-radar-style-{}", std::process::id()));
@@ -1212,4 +1372,114 @@ fn old_plate_colors_follow_the_accent() {
     let _ = std::fs::remove_dir_all(&dir);
     assert_eq!(kept.pit_yellow, [1, 2, 3]);
     assert_eq!(kept.pit_blue, [4, 5, 6]);
+}
+
+#[test]
+fn widget_look_tracks_visual_fields_not_rect() {
+    let base = HudLayout::new();
+    let standings = base.widget_look(WidgetId::Standings);
+    let mut moved = base.clone();
+    moved[WidgetId::Standings].rect.x += 0.05;
+    assert_eq!(moved.widget_look(WidgetId::Standings), standings);
+
+    let mut background = base.clone();
+    background[WidgetId::Standings].bg += 1;
+    assert_ne!(background.widget_look(WidgetId::Standings), standings);
+
+    let mut changed = base.clone();
+    changed.rel_stripe = !changed.rel_stripe;
+    assert_ne!(changed.widget_look(WidgetId::Relative), base.widget_look(WidgetId::Relative));
+
+    let mut changed = base.clone();
+    changed.map_follow = !changed.map_follow;
+    assert_ne!(changed.widget_look(WidgetId::Map), base.widget_look(WidgetId::Map));
+
+    let mut changed = base.clone();
+    changed.mini_zoom += 1;
+    assert_ne!(changed.widget_look(WidgetId::Minimap), base.widget_look(WidgetId::Minimap));
+
+    let mut changed = base.clone();
+    changed.radar_range += 1;
+    assert_ne!(changed.widget_look(WidgetId::Radar), base.widget_look(WidgetId::Radar));
+
+    let mut changed = base.clone();
+    changed.dash_simple = !changed.dash_simple;
+    assert_ne!(changed.widget_look(WidgetId::Dash), base.widget_look(WidgetId::Dash));
+
+    let mut changed = base.clone();
+    changed.ticker_hl += 1;
+    assert_ne!(changed.widget_look(WidgetId::Ticker), base.widget_look(WidgetId::Ticker));
+
+    let mut changed = base.clone();
+    changed.sys_apps[0].show = !changed.sys_apps[0].show;
+    assert_ne!(changed.widget_look(WidgetId::Sys), base.widget_look(WidgetId::Sys));
+
+    let mut changed = base.clone();
+    changed.sector_live = !changed.sector_live;
+    assert_ne!(changed.widget_look(WidgetId::Sector), base.widget_look(WidgetId::Sector));
+
+    let mut changed = base.clone();
+    changed.delta_session = !changed.delta_session;
+    assert_ne!(changed.widget_look(WidgetId::Delta), base.widget_look(WidgetId::Delta));
+
+    let mut changed = base.clone();
+    changed.flag_text = !changed.flag_text;
+    assert_ne!(changed.widget_look(WidgetId::Flag), base.widget_look(WidgetId::Flag));
+
+    let mut changed = base.clone();
+    changed.stance_style = StanceStyle::Icon;
+    assert_ne!(changed.widget_look(WidgetId::Stance), base.widget_look(WidgetId::Stance));
+
+    let mut changed = base.clone();
+    changed.lean_style = LeanStyle::Minimal;
+    assert_ne!(changed.widget_look(WidgetId::Lean), base.widget_look(WidgetId::Lean));
+
+    let mut changed = base.clone();
+    changed.gamepad_theme = GamepadTheme::Dark;
+    assert_ne!(changed.widget_look(WidgetId::Gamepad), base.widget_look(WidgetId::Gamepad));
+
+    let mut changed = base.clone();
+    changed.telemetry_traces = !changed.telemetry_traces;
+    assert_ne!(
+        changed.widget_look(WidgetId::Telemetry),
+        base.widget_look(WidgetId::Telemetry)
+    );
+
+    let pit = base.widget_look(WidgetId::Pitboard);
+    let mut plate = base.clone();
+    plate.pit_when = PitWhen::Lap;
+    assert_ne!(plate.widget_look(WidgetId::Pitboard), pit);
+    let mut ignored = base.clone();
+    ignored[WidgetId::Pitboard].bg += 1;
+    ignored[WidgetId::Pitboard].font += 1;
+    ignored[WidgetId::Pitboard].bold = !ignored[WidgetId::Pitboard].bold;
+    assert_eq!(ignored.widget_look(WidgetId::Pitboard), pit);
+}
+
+#[test]
+fn seed_stream_widget_copies_factory_settings_once() {
+    let mut cfg = HudConfig::new();
+    let preset = SessionPreset::Race;
+    cfg[WidgetId::Standings].bg = 80;
+    cfg.st_pos = false;
+    cfg.stream_slot_mut(preset)[WidgetId::Standings].rect.x = 0.4;
+
+    cfg.seed_stream_widget_from_game(preset, WidgetId::Standings);
+    assert_eq!(cfg.stream_slot(preset)[WidgetId::Standings].bg, 80);
+    assert!(!cfg.stream_slot(preset).st_pos);
+    assert!((cfg.stream_slot(preset)[WidgetId::Standings].rect.x - 0.4).abs() < 0.0001);
+    assert!(!cfg.stream_slot(preset)[WidgetId::Standings].show);
+
+    cfg[WidgetId::Standings].bg = 10;
+    assert_eq!(cfg.stream_slot(preset)[WidgetId::Standings].bg, 80);
+
+    cfg.stream_slot_mut(preset)[WidgetId::Standings].bg = 33;
+    cfg[WidgetId::Standings].bg = 90;
+    cfg.seed_stream_widget_from_game(preset, WidgetId::Standings);
+    assert_eq!(cfg.stream_slot(preset)[WidgetId::Standings].bg, 33);
+
+    cfg.mini_zoom = 40;
+    cfg.seed_stream_widget_from_game(preset, WidgetId::Minimap);
+    assert_eq!(cfg.stream_slot(preset).mini_zoom, 40);
+    assert_eq!(cfg.stream_slot(preset)[WidgetId::Standings].bg, 33);
 }

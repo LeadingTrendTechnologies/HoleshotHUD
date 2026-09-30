@@ -18,6 +18,7 @@ pub(crate) fn pane_app(
         AppSection::Menus => pane_app_menus(px, fonts, cfg, hover, open_drop, hits, x, y, w),
         AppSection::Install => pane_app_install(px, fonts, hover, hits, x, y, w),
         AppSection::Startup => pane_app_startup(px, fonts, cfg, hover, hits, x, y, w),
+        AppSection::Stream => pane_app_stream(px, fonts, cfg, hover, hits, x, y, w),
         AppSection::Labs => pane_app_labs(px, fonts, cfg, hover, hits, x, y, w),
         AppSection::Updates => pane_app_updates(px, fonts, cfg, hover, hits, x, y, w),
         AppSection::Diagnostics => pane_app_diagnostics(px, fonts, hover, hits, x, y, w),
@@ -530,6 +531,190 @@ fn pane_app_startup(
         y += 22.0;
     }
     y + 28.0
+}
+
+fn pane_app_stream(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    cfg: &HudConfig,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+    x: f32,
+    y: f32,
+    w: f32,
+) -> f32 {
+    let mut y = heading(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        "Stream",
+        "OBS Browser Source for the live HUD layout",
+        None,
+        hover,
+        hits,
+    );
+    y = toggle_row(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        "Browser Source",
+        cfg.stream_enabled,
+        Hit::StreamEnabled,
+        hover,
+        hits,
+    );
+    if cfg.stream_enabled {
+        y = stream_note(
+            px,
+            fonts,
+            x,
+            y,
+            w,
+            "OBS and Streamlabs use a Browser Source. XSplit uses a Webpage source. Set that source to the size on /edit, then scale it to the canvas.",
+        );
+        let copy_w = 88.0;
+        let open_w = 88.0;
+        let gap = 10.0;
+        let field_w = (w - copy_w - open_w - gap * 2.0).max(120.0);
+        let field_h = 36.0;
+        let obs = crate::stream::url();
+        outlined(px, x, y, field_w, field_h, 8.0, panel());
+        text(
+            px,
+            fonts,
+            &obs,
+            12.0,
+            x + 12.0,
+            y + 10.0,
+            text_col(),
+            false,
+        );
+        action_btn(
+            px,
+            fonts,
+            x + field_w + gap,
+            y,
+            copy_w,
+            field_h,
+            "Copy",
+            Hit::StreamCopyUrl,
+            hover,
+            hits,
+            true,
+        );
+        action_btn(
+            px,
+            fonts,
+            x + field_w + gap + copy_w + gap,
+            y,
+            open_w,
+            field_h,
+            "Open",
+            Hit::StreamOpenUrl,
+            hover,
+            hits,
+            false,
+        );
+        y += field_h + 10.0;
+        let edit = crate::stream::edit_url();
+        outlined(px, x, y, field_w, field_h, 8.0, panel());
+        text(
+            px,
+            fonts,
+            &edit,
+            12.0,
+            x + 12.0,
+            y + 10.0,
+            text_col(),
+            false,
+        );
+        action_btn(
+            px,
+            fonts,
+            x + field_w + gap,
+            y,
+            copy_w,
+            field_h,
+            "Copy",
+            Hit::StreamCopyEditUrl,
+            hover,
+            hits,
+            true,
+        );
+        action_btn(
+            px,
+            fonts,
+            x + field_w + gap + copy_w + gap,
+            y,
+            open_w,
+            field_h,
+            "Open",
+            Hit::StreamOpenEditUrl,
+            hover,
+            hits,
+            false,
+        );
+        y += field_h + 10.0;
+        text(
+            px,
+            fonts,
+            &crate::stream::status_line(),
+            11.0,
+            x + 4.0,
+            y,
+            dim(),
+            false,
+        );
+        y += 22.0;
+        action_btn(
+            px,
+            fonts,
+            x,
+            y,
+            w.min(280.0),
+            36.0,
+            &format!("Copy game {} → stream", cfg.settings_preset.label()),
+            Hit::StreamCopyGameToStream,
+            hover,
+            hits,
+            true,
+        );
+        y += 44.0;
+        text(
+            px,
+            fonts,
+            "While you stream",
+            13.0,
+            x + 4.0,
+            y,
+            text_col(),
+            false,
+        );
+        y += 22.0;
+        for step in [
+            "Open Edit stream in the top bar, or the second URL. That page turns stream widgets on, and you drag and resize them there. Practice, Warmup, Race, and Spectate each keep their own layout.",
+            "Add the first URL in OBS or Streamlabs as a Browser Source, or in XSplit as a Webpage source. Set that source to the size shown on /edit, then scale it to the canvas. The page is transparent.",
+            "Copy to on /edit copies the layout you are editing onto another session. Copy game → stream copies the in-game layout for the preset open in F8.",
+            "Widgets show on track and hide in the garage, the same way they do in the game. The stream layout does not change the widgets on the game window.",
+        ] {
+            y = stream_note(px, fonts, x, y, w, step);
+        }
+    }
+    y + 28.0
+}
+
+fn stream_note(px: &mut Pixmap, fonts: &Fonts, x: f32, y: f32, w: f32, msg: &str) -> f32 {
+    let lines = wrap_fb(fonts, msg, (w - 8.0).max(40.0), 12.0);
+    let mut y = y;
+    for line in &lines {
+        text(px, fonts, line, 12.0, x + 4.0, y + 2.0, dim(), false);
+        y += 18.0;
+    }
+    y + 10.0
 }
 
 fn pane_app_labs(

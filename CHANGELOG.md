@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.22.0
+
+Put your HUD on the stream. Lay the widgets out in the browser. The game window stays yours.
+
+### Streamers
+
+- Shoutout to Tloubih, who streams with our HUD: https://linktr.ee/Tloubih
+
+### Stream
+
+- One URL in OBS, Streamlabs, or XSplit. The page is transparent, so only the widgets show.
+- Edit stream opens a page where you drag and resize. Practice, Warmup, Race, and Spectate each keep their own layout.
+- That layout is only for the stream. The widgets on the game window stay as they are.
+- Copy one session onto another, or copy the in-game layout onto the stream.
+- On track they show. In the garage they hide, the same as in the game.
+
 ## 0.21.0
 
 Make your own pit board from a PNG, or use it as a custom dash.
