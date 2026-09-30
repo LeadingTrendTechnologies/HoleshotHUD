@@ -522,10 +522,10 @@ syncButtons();
 renderSettings();
 
 const q = new URLSearchParams(location.search);
-if (q.get("mode") === "widgets") {
-  setMode("widgets");
-} else {
+if (q.get("mode") === "motos") {
   setMode("motos");
+} else {
+  setMode("widgets");
 }
 if (q.get("widget") && NAMES[q.get("widget")]) {
   preview.select_widget(q.get("widget"));
