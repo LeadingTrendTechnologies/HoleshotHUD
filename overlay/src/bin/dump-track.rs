@@ -1,7 +1,7 @@
 #[path = "../shm.rs"]
 mod shm;
 
-use mxbo_hud::snapshot::cstr;
+use mxbo_hud::snapshot::bytes_as_text;
 use std::env;
 use std::fs;
 use std::io::Write;
@@ -24,7 +24,7 @@ fn main() {
         );
         std::process::exit(1);
     }
-    let name = cstr(&snap.track_name);
+    let name = bytes_as_text(&snap.track_name);
     let name = if name.is_empty() {
         "Track".into()
     } else {

@@ -4,7 +4,7 @@ These are **not shipped**. When one lands, give it a real page under `wiki/widge
 
 Plugin field status lives in [Home.md](../Home.md). **Overlay** = already in SHM. **Need SHM** = API has it, plugin/overlay do not publish it yet.
 
-Streaming (OBS Browser Source, stream-only layout) is not a widget — see [streaming.md](../streaming.md).
+Streaming (OBS Browser Source, stream-only layout) is not a widget — see [streaming.md](../streaming.md). Broadcast gaps: [stream-broadcast.md](../stream-broadcast.md).
 
 | Widget | Closest we have | Data |
 | --- | --- | --- |
@@ -105,6 +105,7 @@ Timestamped race-event feed.
 
 ## Change log
 
+- 2026-10-01 — Broadcast gaps live on [stream-broadcast.md](../stream-broadcast.md), so streaming is not treated as “no new widgets.”
 - 2026-09-11 — Pit Board shipped. Moved to [pitboard.md](pitboard.md).
 - 2026-09-22 — Radar lappers shipped as blue/red rings on [radar.md](radar.md); dropped from this page.
 - 2026-09-10 — Dropped unapproved ideas (ahead plate, interval bar, hunt, remount, finish projection, bike health, and the parked list).

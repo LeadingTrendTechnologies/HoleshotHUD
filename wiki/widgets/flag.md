@@ -34,6 +34,8 @@ Fresh install: `show_flag = false`, `flag_yellow = false`, `flag_blue = false`, 
 
 ## Change log
 
+- 2026-10-01 — Same white/checkered timing as Dash: timed +2 lapped on `0/2` or `1/2` shows the checkered on the line that would start `2/2`.
+- 2026-10-01 — Same white/checkered timing as Dash: timed +1 on `0/1` shows the checkered when the leader has already finished the lap that lapped you. A finish with no pass does not.
 - 2026-09-25 — Yellow holds ~1.75 s after the crash bit or span edge drops so blue/red cannot flash during the same incident. Blue/red ignore crashed riders (a downed backmarker no longer arms red the instant yellow clears).
 - 2026-09-24 — Red is pairwise only: leader lapping someone behind you no longer waves red.
 - 2026-09-24 — Same-race S/F straddles no longer wave blue/red (`lap_rel` continuous progress when `gap_laps` match).

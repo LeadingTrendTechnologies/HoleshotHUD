@@ -3,7 +3,7 @@
 Everything the PiBoSo plugin API can send this project, and whether we already keep it.
 
 Source of truth: `src/vendor/piboso/mxb_api.h` (data version **8**, interface **9**).  
-The game loads `Holeshot-HUD.dlo` and calls the exported functions below. The plugin may copy fields into `PluginState`, then into shared memory `Local\MXBOHudV18` for the Rust overlay. Field offsets for that snapshot are locked in [`src/shm/abi.txt`](../src/shm/abi.txt) — `tools/shm-abi.cpp` and the Rust `Snapshot` / `CmdView` must match, or CI fails. Tessellation, standings copy, and seqlock write are checked by `tools/shm-publish-test`. Bump `MXBO_SHM_VERSION` (and the mapping name) when the layout changes; regenerate the abi file with `UPDATE_SHM_ABI=1 cargo test --manifest-path overlay/Cargo.toml rust_shm_layout_matches_checked_in_abi`.
+The game loads `Holeshot-HUD.dlo` and calls the exported functions below. The plugin may copy fields into `PluginState`, then into shared memory `Local\MXBOHudV19` for the Rust overlay. Field offsets for that snapshot are locked in [`src/shm/abi.txt`](../src/shm/abi.txt) — `tools/shm-abi.cpp` and the Rust `Snapshot` / `CmdView` must match, or CI fails. Tessellation, standings copy, and seqlock write are checked by `tools/shm-publish-test`. Bump `MXBO_SHM_VERSION` (and the mapping name) when the layout changes; regenerate the abi file with `UPDATE_SHM_ABI=1 cargo test --manifest-path overlay/Cargo.toml rust_shm_layout_matches_checked_in_abi`.
 
 **Status**
 
@@ -39,7 +39,7 @@ To add a widget: if the field is **Overlay**, draw it. If **Cached** / **Receive
 
 ## Overlay widget wikis
 
-Per-widget behavior, pitfalls, and change history for agents: **[widgets.md](widgets.md)**. Wishlist (not shipped): **[future.md](widgets/future.md)**. Streaming (OBS Browser Source + stream layouts): **[streaming.md](streaming.md)**.
+Per-widget behavior, pitfalls, and change history for agents: **[widgets.md](widgets.md)**. Wishlist (not shipped): **[future.md](widgets/future.md)**. Streaming (OBS Browser Source + stream layouts): **[streaming.md](streaming.md)**. Broadcast gaps: **[stream-broadcast.md](stream-broadcast.md)**.
 
 Rust overlay structure and possible refactors (suggestions only): **[rust-patterns.md](rust-patterns.md)**. MX Bikes menu pack (`game_ui/`) cleanup backlog: **[game-ui.md](game-ui.md)**.
 
@@ -81,7 +81,7 @@ Local speed / yaw / crash / track pos are in SHM for the moving marker, not as t
 | `RunDeinit` | — | Overlay | Clears the run (telemetry, positions). Leftover standings are not `onTrack`. |
 | `RunStart` / `RunStop` | — | Unused | Green flag / pause style events |
 | `DrawInit` | sprite/font names | Draw-only | We request **0** sprites/fonts |
-| `Draw` | — | Draw-only | Publishes SHM every frame. Frozen in-game HUD (`ingame_hud=1`): standings, relative, map only |
+| `Draw` | — | Draw-only | Publishes SHM every frame. Frozen in-game HUD is off unless the plugin is built with `MXBO_INGAME_HUD=1` |
 | `SpectateVehicles` | `SPluginsSpectateVehicle_t[]` | Overlay | Reads the current camera target; overlay name/card clicks can change it in replay/spectate |
 | `SpectateCameras` | camera list | Unused | Names only; not a video feed |
 
@@ -424,12 +424,12 @@ Already published (version **1**):
 - Fuel: `fuel` / `maxFuel` — SHM version **10**
 - Lean: `localRoll` / `localPitch` / `localSteer` / `steerLock`; per-rider `lean` — SHM version **12**
 - Setup: `setupName` — SHM version **13**. Filename from `RunInit`
-- Inputs: `localThrottle` / `localFrontBrake` / `localRearBrake` / `localClutch` — SHM version **14**. Per-rider `y` / speed / RPM / gear / throttle / front brake and `localY` — SHM version **15**. `holeshotRaceNum` / `holeshotTime` — SHM version **16**. `drawCount` (Systems Draw FPS) — SHM version **17**. `serverName` / `eventGuid` — SHM version **18** (`Local\MXBOHudV18`). [Motos](review.md)
+- Inputs: `localThrottle` / `localFrontBrake` / `localRearBrake` / `localClutch` — SHM version **14**. Per-rider `y` / speed / RPM / gear / throttle / front brake and `localY` — SHM version **15**. `holeshotRaceNum` / `holeshotTime` — SHM version **16**. `drawCount` (Systems Draw FPS) — SHM version **17**. `serverName` / `eventGuid` — SHM version **18**. Per-rider `sectorGate` (S1/S2 this lap) — SHM version **19** (`Local\MXBOHudV19`). [Motos](review.md)
 - Layout: map / standings / relative rects + show flags + row counts
 
 Command mapping `Local\MXBOHudCmdV1` (`MxboShmCmd`): overlay writes `spectateRaceNum`; plugin writes `spectating` while `SpectateVehicles` is live. Not part of the snapshot seqlock.
 
-**Not published yet** (but available in the API or `PluginState`): penalty, bike names, laps/splits, comms, temps/suspension, spectate camera list, `m_iServerType`. Local throttle / brakes / clutch are Overlay (V14). Other riders still only send throttle / front brake / lean. Holeshot is Overlay (V16). Draw FPS counter is Overlay (V17). Server name + event GUID are Overlay (V18).
+**Not published yet** (but available in the API or `PluginState`): penalty, bike names, laps/splits, comms, temps/suspension, spectate camera list, `m_iServerType`. Local throttle / brakes / clutch are Overlay (V14). Other riders still only send throttle / front brake / lean. Holeshot is Overlay (V16). Draw FPS counter is Overlay (V17). Server name + event GUID are Overlay (V18). Sector gate per rider is Overlay (V19).
 
 Bump `MXBO_SHM_VERSION` when you add fields; keep C and Rust `#[repr(C)]` layouts identical.
 
@@ -495,3 +495,7 @@ Existing overlay widgets: [widgets.md](widgets.md) (behavior + change logs). Fie
 8. `wiki/widgets/<name>.md` — agent context + change log
 
 Enums without comments in the header (`m_iSession`, `m_iConditions`, `m_iType`, communication codes) should be logged once in-game before you hard-code labels.
+
+## Change log
+
+- 2026-10-01 — Broadcast gaps live on [stream-broadcast.md](stream-broadcast.md), so streaming is not treated as “no new widgets.”

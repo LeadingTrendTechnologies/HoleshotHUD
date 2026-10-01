@@ -64,7 +64,7 @@ pub(crate) struct RadarBlip {
 }
 
 pub(crate) fn radar_range_m(cfg: &HudConfig) -> f32 {
-    cfg.radar_range.clamp(
+    cfg.radar.radar_range.clamp(
         crate::config::RADAR_RANGE_MIN,
         crate::config::RADAR_RANGE_MAX,
     ) as f32
@@ -427,7 +427,7 @@ pub(crate) fn collect_radar_blips(s: &Snapshot, cfg: &HudConfig, age: f32) -> Ve
         if !radar_same_stretch(s, rider.track_pos, RADAR_STRETCH_M.max(range)) {
             continue;
         }
-        if !radar_in_view(fwd, lat, cfg.radar_sides, cfg.radar_rear, rear_m, lat_m) {
+        if !radar_in_view(fwd, lat, cfg.radar.radar_sides, cfg.radar.radar_rear, rear_m, lat_m) {
             continue;
         }
         let dist = (fwd * fwd + lat * lat).sqrt();
@@ -478,7 +478,7 @@ pub(crate) fn collect_radar_arrow_blips(
         let lat = dx * rx + dz * rz;
         let stretch = radar_same_stretch(s, rider.track_pos, RADAR_STRETCH_M.max(range));
         let in_view =
-            stretch && radar_in_view(fwd, lat, cfg.radar_sides, cfg.radar_rear, rear_m, lat_m);
+            stretch && radar_in_view(fwd, lat, cfg.radar.radar_sides, cfg.radar.radar_rear, rear_m, lat_m);
         let crashed = rider.crashed != 0;
         let track = map.entry(rider.race_num).or_insert(ArrowCrashTrack {
             was_crashed: false,
@@ -546,7 +546,7 @@ fn draw_radar_plaque(
     let size = w.min(h);
     let pad = pad_from_size(size);
 
-    let a = bg_a(cfg[WidgetId::Radar].bg);
+    let a = background_alpha(cfg[WidgetId::Radar].bg);
     if a > 0 {
         fill_round(px, x, y, w, h, 6.0, Color::from_rgba8(14, 14, 16, a));
         if let Some(frame) = round_rect_path(x + 0.5, y + 0.5, w - 1.0, h - 1.0, 5.5) {
@@ -563,7 +563,7 @@ fn draw_radar_plaque(
     let inset = (size * 0.028).max(4.0);
     let scale = radar_fit_scale(w, h, ox, oy, x, y, inset, fit_m);
 
-    if cfg.radar_rings {
+    if cfg.radar.radar_rings {
         draw_radar_range_rings(
             px,
             fonts,
@@ -672,11 +672,11 @@ pub(crate) fn draw_radar(
     let y = r.y * sh;
     let w = (r.w * sw).max(48.0);
     let h = (r.h * sh).max(48.0);
-    let blips = match cfg.radar_style {
+    let blips = match cfg.radar.radar_style {
         RadarStyle::Plaque => collect_radar_blips(s, cfg, age),
         RadarStyle::Arrows => collect_radar_arrow_blips(s, cfg, age),
     };
-    match cfg.radar_style {
+    match cfg.radar.radar_style {
         RadarStyle::Plaque => draw_radar_plaque(px, fonts, s, cfg, x, y, w, h, &blips),
         RadarStyle::Arrows => draw_radar_arrows(px, fonts, s, x, y, w, h, &blips),
     }

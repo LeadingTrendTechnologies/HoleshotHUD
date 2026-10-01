@@ -134,16 +134,16 @@ impl Editor {
             cfg[WidgetId::Relative].rect = r;
         }
         if let Some(w) = self.st_w_name {
-            cfg.st_w_name = w;
+            cfg.standings.st_w_name = w;
         }
         if let Some(w) = self.rel_w_name {
-            cfg.rel_w_name = w;
+            cfg.relative.rel_w_name = w;
         }
         if let Some(n) = self.standings_rows {
-            cfg.standings_rows = n;
+            cfg.standings.standings_rows = n;
         }
         if let Some(n) = self.relative_count {
-            cfg.relative_count = n;
+            cfg.relative.relative_count = n;
         }
     }
 
@@ -182,8 +182,8 @@ impl Editor {
             if let Some(s) = snap {
                 if let Some((t, h)) = hit(s, self, cfg, nx, ny, ow, oh) {
                     let (name_w, rows) = match t {
-                        WidgetId::Standings => (cfg.st_w_name, cfg.standings_rows),
-                        WidgetId::Relative => (cfg.rel_w_name, cfg.relative_count),
+                        WidgetId::Standings => (cfg.standings.st_w_name, cfg.standings.standings_rows),
+                        WidgetId::Relative => (cfg.relative.rel_w_name, cfg.relative.relative_count),
                         _ => (0, 0),
                     };
                     self.drag = Some(Drag {
@@ -321,16 +321,16 @@ impl Editor {
                 lay[WidgetId::Pitboard].rect = s;
             }
             if let Some(w) = self.st_w_name {
-                lay.st_w_name = w;
+                lay.standings.st_w_name = w;
             }
             if let Some(w) = self.rel_w_name {
-                lay.rel_w_name = w;
+                lay.relative.rel_w_name = w;
             }
             if let Some(n) = self.standings_rows {
-                lay.standings_rows = n;
+                lay.standings.standings_rows = n;
             }
             if let Some(n) = self.relative_count {
-                lay.relative_count = n;
+                lay.relative.relative_count = n;
             }
         });
     }

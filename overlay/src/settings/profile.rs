@@ -116,22 +116,22 @@ pub(crate) fn pane_profile(
 
     let left = [
         ("Wins", p.wins.to_string()),
-        ("Podium rate", fmt_pct(p.podium_rate)),
-        ("Avg finish", fmt_place(p.avg_finish)),
+        ("Podium rate", format_percent(p.podium_rate)),
+        ("Avg finish", format_place(p.avg_finish)),
     ];
     let mut right = vec![
         ("Crashes per lap", fmt_crash_per_lap(p.crash_rate)),
-        ("Holeshot rate", fmt_pct(p.holeshot_rate)),
-        ("Avg Penalty Seconds", fmt_pen(p.avg_penalty_ms)),
+        ("Holeshot rate", format_percent(p.holeshot_rate)),
+        ("Avg Penalty Seconds", format_penalty(p.avg_penalty_ms)),
     ];
     if p.dns_count > 0 {
-        right.push(("Did not start", fmt_pct(p.dns_rate)));
+        right.push(("Did not start", format_percent(p.dns_rate)));
     }
     if p.dnf_count > 0 {
-        right.push(("Did not finish", fmt_pct(p.dnf_rate)));
+        right.push(("Did not finish", format_percent(p.dnf_rate)));
     }
     if p.dsq_count > 0 {
-        right.push(("Disqualified", fmt_pct(p.dsq_rate)));
+        right.push(("Disqualified", format_percent(p.dsq_rate)));
     }
     paint_kpi_stack(px, fonts, left_x, y, flank_w, card_h, &left);
     let tip = paint_spider_card(
@@ -237,7 +237,7 @@ struct SpiderTip {
     score: Option<f32>,
 }
 
-fn fmt_pct(v: Option<f32>) -> String {
+fn format_percent(v: Option<f32>) -> String {
     match v {
         Some(x) => format!("{}%", (x * 100.0).round() as i32),
         None => "N/A".into(),
@@ -251,14 +251,14 @@ fn fmt_crash_per_lap(v: Option<f32>) -> String {
     }
 }
 
-fn fmt_place(v: Option<f32>) -> String {
+fn format_place(v: Option<f32>) -> String {
     match v {
         Some(x) => format!("P{:.1}", x),
         None => "N/A".into(),
     }
 }
 
-fn fmt_pen(ms: Option<f32>) -> String {
+fn format_penalty(ms: Option<f32>) -> String {
     match ms {
         Some(m) if m >= 500.0 => format!("{}s", (m / 1000.0).round() as i32),
         Some(_) => "0s".into(),

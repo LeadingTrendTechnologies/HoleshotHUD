@@ -159,6 +159,7 @@ void fillSnapshot(MxboShmSnapshot& local,
         copyBounded(d.bike, MXBO_NAME, e ? e->bikeShort.c_str() : "");
         d.lastLapMs = s.lastLapMs;
         copyBounded(d.category, MXBO_NAME, e ? e->category.c_str() : "");
+        d.sectorGate = state.sectorGate(s.raceNum);
     }
 
     local.map = MxboShmRect{config.map.x, config.map.y, config.map.w, config.map.h};

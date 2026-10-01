@@ -28,15 +28,15 @@ fn use_named_board(
     set_pit_name(&board);
     set_pit_notice("");
     update_config(|c| {
-        c.pit_art = art;
-        c.pit_board = board;
-        c.pit_text = text;
-        c.pit_sponsor.clear();
-        c.pit_vars = places;
-        let art = c.pit_art.clone();
-        apply_json_names(&art, &mut c.pit_vars);
-        apply_pack_colors(&art, &mut c.pit_vars);
-        let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+        c.pit.pit_art = art;
+        c.pit.pit_board = board;
+        c.pit.pit_text = text;
+        c.pit.pit_sponsor.clear();
+        c.pit.pit_vars = places;
+        let art = c.pit.pit_art.clone();
+        apply_json_names(&art, &mut c.pit.pit_vars);
+        apply_pack_colors(&art, &mut c.pit.pit_vars);
+        let _ = write_pack(&c.pit.pit_art, &c.pit.pit_vars, c.pit.pit_text);
     });
     set_pit_selected(0);
     invalidate_plate_preview();
@@ -47,14 +47,14 @@ fn show_factory_board() {
     set_pit_notice("");
     let (text, _, places) = factory_pack();
     update_config(|c| {
-        c.pit_art = FACTORY_ART.into();
-        c.pit_board.clear();
-        c.pit_text = text;
-        c.pit_sponsor.clear();
-        c.pit_yellow = c.primary;
-        c.pit_blue = [0, 0, 0];
-        c.pit_vars = places;
-        let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+        c.pit.pit_art = FACTORY_ART.into();
+        c.pit.pit_board.clear();
+        c.pit.pit_text = text;
+        c.pit.pit_sponsor.clear();
+        c.pit.pit_yellow = c.primary;
+        c.pit.pit_blue = [0, 0, 0];
+        c.pit.pit_vars = places;
+        let _ = write_pack(&c.pit.pit_art, &c.pit.pit_vars, c.pit.pit_text);
     });
     set_pit_selected(0);
     invalidate_plate_preview();
@@ -393,9 +393,9 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::TabPitboard => {
             set_tab(Tab::Pitboard);
             update_config(|c| {
-                normalize_places(&mut c.pit_vars);
-                let art = c.pit_art.clone();
-                apply_json_names(&art, &mut c.pit_vars);
+                normalize_places(&mut c.pit.pit_vars);
+                let art = c.pit.pit_art.clone();
+                apply_json_names(&art, &mut c.pit.pit_vars);
             });
             return;
         }
@@ -419,7 +419,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             toggle_drop(Drop::PrimaryColor);
             return;
         }
-        Hit::PrimaryPanel | Hit::PrimarySv | Hit::PrimaryHue => return,
+        Hit::PrimaryPanel | Hit::PrimarySaturation | Hit::PrimaryHue => return,
         Hit::PrimaryReset => {
             update_config(|c| c.primary = DEFAULT_PRIMARY);
             sync_menus_after_app_primary_change();
@@ -453,7 +453,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             toggle_drop(Drop::GameUiPrimaryColor);
             return;
         }
-        Hit::GameUiPrimaryPanel | Hit::GameUiPrimarySv | Hit::GameUiPrimaryHue => return,
+        Hit::GameUiPrimaryPanel | Hit::GameUiPrimarySaturation | Hit::GameUiPrimaryHue => return,
         Hit::GameUiPrimaryReset => {
             update_config(|c| c.game_ui_primary = DEFAULT_PRIMARY);
             sync_menus_after_menu_accent_change();
@@ -470,14 +470,14 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             toggle_drop(Drop::PitYellow);
             return;
         }
-        Hit::PitYellowPanel | Hit::PitYellowSv | Hit::PitYellowHue => return,
+        Hit::PitYellowPanel | Hit::PitYellowSaturation | Hit::PitYellowHue => return,
         Hit::PitYellowReset => {
-            update_config(|c| c.pit_yellow = c.primary);
+            update_config(|c| c.pit.pit_yellow = c.primary);
             return;
         }
         Hit::PitYellowSwatch(i) => {
             if let Some(&rgb) = PRIMARY_SWATCHES.get(i as usize) {
-                update_config(|c| c.pit_yellow = rgb);
+                update_config(|c| c.pit.pit_yellow = rgb);
             }
             return;
         }
@@ -485,14 +485,14 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             toggle_drop(Drop::PitBlue);
             return;
         }
-        Hit::PitBluePanel | Hit::PitBlueSv | Hit::PitBlueHue => return,
+        Hit::PitBluePanel | Hit::PitBlueSaturation | Hit::PitBlueHue => return,
         Hit::PitBlueReset => {
-            update_config(|c| c.pit_blue = [0, 0, 0]);
+            update_config(|c| c.pit.pit_blue = [0, 0, 0]);
             return;
         }
         Hit::PitBlueSwatch(i) => {
             if let Some(&rgb) = PRIMARY_SWATCHES.get(i as usize) {
-                update_config(|c| c.pit_blue = rgb);
+                update_config(|c| c.pit.pit_blue = rgb);
             }
             return;
         }
@@ -645,11 +645,11 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::PitSlotAdd => {
             close_drop();
             update_config(|c| {
-                if add_design_slot(&mut c.pit_vars) {
-                    let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+                if add_design_slot(&mut c.pit.pit_vars) {
+                    let _ = write_pack(&c.pit.pit_art, &c.pit.pit_vars, c.pit.pit_text);
                 }
             });
-            let n = with_config(|c| c.pit_vars.len());
+            let n = with_config(|c| c.pit.pit_vars.len());
             set_pit_selected(n.saturating_sub(1) as u8);
             return;
         }
@@ -657,21 +657,21 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             close_drop();
             let index = pit_selected() as usize;
             update_config(|c| {
-                if remove_design_slot(&mut c.pit_vars, index) {
-                    let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+                if remove_design_slot(&mut c.pit.pit_vars, index) {
+                    let _ = write_pack(&c.pit.pit_art, &c.pit.pit_vars, c.pit.pit_text);
                 }
             });
-            let n = with_config(|c| c.pit_vars.len());
+            let n = with_config(|c| c.pit.pit_vars.len());
             set_pit_selected(pit_selected().min(n.saturating_sub(1) as u8));
             return;
         }
         Hit::PitSlotBold => {
             close_drop();
             update_config(|c| {
-                if let Some(place) = c.pit_vars.get_mut(pit_selected() as usize) {
+                if let Some(place) = c.pit.pit_vars.get_mut(pit_selected() as usize) {
                     place.bold = !place.bold;
                 }
-                let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+                let _ = write_pack(&c.pit.pit_art, &c.pit.pit_vars, c.pit.pit_text);
             });
             return;
         }
@@ -679,13 +679,13 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             close_drop();
             let horizontal = matches!(id, Hit::PitSlotCenterX);
             update_config(|c| {
-                if let Some(place) = c.pit_vars.get_mut(pit_selected() as usize) {
+                if let Some(place) = c.pit.pit_vars.get_mut(pit_selected() as usize) {
                     if horizontal {
                         place.x = 0.5;
                     } else {
                         place.y = 0.5;
                     }
-                    let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+                    let _ = write_pack(&c.pit.pit_art, &c.pit.pit_vars, c.pit.pit_text);
                 }
             });
             return;
@@ -694,23 +694,23 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             toggle_drop(Drop::PitSlotColor);
             return;
         }
-        Hit::PitSlotColorPanel | Hit::PitSlotColorSv | Hit::PitSlotColorHue => return,
+        Hit::PitSlotColorPanel | Hit::PitSlotColorSaturation | Hit::PitSlotColorHue => return,
         Hit::PitSlotColorReset => {
             update_config(|c| {
-                if let Some(place) = c.pit_vars.get_mut(pit_selected() as usize) {
+                if let Some(place) = c.pit.pit_vars.get_mut(pit_selected() as usize) {
                     place.color = None;
                 }
-                let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+                let _ = write_pack(&c.pit.pit_art, &c.pit.pit_vars, c.pit.pit_text);
             });
             return;
         }
         Hit::PitSlotColorSwatch(i) => {
             if let Some(&rgb) = PRIMARY_SWATCHES.get(i as usize) {
                 update_config(|c| {
-                    if let Some(place) = c.pit_vars.get_mut(pit_selected() as usize) {
+                    if let Some(place) = c.pit.pit_vars.get_mut(pit_selected() as usize) {
                         place.color = Some(rgb);
                     }
-                    let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+                    let _ = write_pack(&c.pit.pit_art, &c.pit.pit_vars, c.pit.pit_text);
                 });
             }
             return;
@@ -925,10 +925,10 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             set_pit_name_focus(false);
             let (board, art, places, text) = with_config(|c| {
                 (
-                    c.pit_board.clone(),
-                    c.pit_art.clone(),
-                    c.pit_vars.clone(),
-                    c.pit_text,
+                    c.pit.pit_board.clone(),
+                    c.pit.pit_art.clone(),
+                    c.pit.pit_vars.clone(),
+                    c.pit.pit_text,
                 )
             });
             if board.is_empty() {
@@ -1007,7 +1007,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::PitDelete => {
             close_drop();
             set_pit_name_focus(false);
-            let board = with_config(|c| c.pit_board.clone());
+            let board = with_config(|c| c.pit.pit_board.clone());
             if board.is_empty() {
                 set_pit_notice("Holeshot cannot be deleted.");
                 return;
@@ -1060,15 +1060,15 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             set_pit_name(&name);
             set_pit_notice("");
             update_config(|c| {
-                c.pit_art = art;
-                c.pit_board = name;
-                c.pit_text = text;
-                c.pit_sponsor.clear();
-                c.pit_vars = places;
-                let art = c.pit_art.clone();
-                apply_json_names(&art, &mut c.pit_vars);
-                apply_pack_colors(&art, &mut c.pit_vars);
-                let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+                c.pit.pit_art = art;
+                c.pit.pit_board = name;
+                c.pit.pit_text = text;
+                c.pit.pit_sponsor.clear();
+                c.pit.pit_vars = places;
+                let art = c.pit.pit_art.clone();
+                apply_json_names(&art, &mut c.pit.pit_vars);
+                apply_pack_colors(&art, &mut c.pit.pit_vars);
+                let _ = write_pack(&c.pit.pit_art, &c.pit.pit_vars, c.pit.pit_text);
             });
             set_pit_selected(0);
             invalidate_plate_preview();
@@ -1077,7 +1077,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::PitOpenFolder => {
             close_drop();
             let (art, places, text) = with_config(|c| {
-                (c.pit_art.clone(), c.pit_vars.clone(), c.pit_text)
+                (c.pit.pit_art.clone(), c.pit.pit_vars.clone(), c.pit.pit_text)
             });
             let _ = write_pack(&art, &places, text);
             let dir = pitboards_dir();
@@ -1128,12 +1128,12 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::MiniShow => c[WidgetId::Minimap].show ^= true,
         Hit::RadarShow => c[WidgetId::Radar].show ^= true,
         Hit::DashShow => c[WidgetId::Dash].show ^= true,
-        Hit::DashRev => c.dash_rev = !c.dash_rev,
-        Hit::DashYellow => c.dash_yellow = !c.dash_yellow,
-        Hit::DashBlue => c.dash_blue = !c.dash_blue,
-        Hit::DashRed => c.dash_red = !c.dash_red,
-        Hit::DashSimple => c.dash_simple = !c.dash_simple,
-        Hit::DashShiftColor => c.dash_shift_color = !c.dash_shift_color,
+        Hit::DashRev => c.dash.dash_rev = !c.dash.dash_rev,
+        Hit::DashYellow => c.dash.dash_yellow = !c.dash.dash_yellow,
+        Hit::DashBlue => c.dash.dash_blue = !c.dash.dash_blue,
+        Hit::DashRed => c.dash.dash_red = !c.dash.dash_red,
+        Hit::DashSimple => c.dash.dash_simple = !c.dash.dash_simple,
+        Hit::DashShiftColor => c.dash.dash_shift_color = !c.dash.dash_shift_color,
         Hit::TickerShow => c[WidgetId::Ticker].show ^= true,
         Hit::SysShow => c[WidgetId::Sys].show ^= true,
         Hit::SysAppShow(i) => c.toggle_sys_app(i as usize),
@@ -1144,11 +1144,11 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             }
         }
         Hit::SectorShow => c[WidgetId::Sector].show ^= true,
-        Hit::SectorLive => c.sector_live = !c.sector_live,
-        Hit::SectorSession => c.sector_session = !c.sector_session,
-        Hit::SectorHist => c.sector_hist = !c.sector_hist,
+        Hit::SectorLive => c.sector.sector_live = !c.sector.sector_live,
+        Hit::SectorSession => c.sector.sector_session = !c.sector.sector_session,
+        Hit::SectorHist => c.sector.sector_hist = !c.sector.sector_hist,
         Hit::DeltaShow => c[WidgetId::Delta].show ^= true,
-        Hit::DeltaSession => c.delta_session = !c.delta_session,
+        Hit::DeltaSession => c.delta.delta_session = !c.delta.delta_session,
         Hit::StanceShow => c[WidgetId::Stance].show ^= true,
         Hit::FlagShow => c[WidgetId::Flag].show ^= true,
         Hit::LeanShow => c[WidgetId::Lean].show ^= true,
@@ -1156,111 +1156,111 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::PitShow => c[WidgetId::Pitboard].show ^= true,
         Hit::PitReset => {
             let (text, _, places) = factory_pack();
-            c.pit_art = FACTORY_ART.into();
-            c.pit_board.clear();
-            c.pit_text = text;
-            c.pit_sponsor.clear();
-            c.pit_vars = places;
-            c.pit_yellow = c.primary;
-            c.pit_blue = [0, 0, 0];
-            let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+            c.pit.pit_art = FACTORY_ART.into();
+            c.pit.pit_board.clear();
+            c.pit.pit_text = text;
+            c.pit.pit_sponsor.clear();
+            c.pit.pit_vars = places;
+            c.pit.pit_yellow = c.primary;
+            c.pit.pit_blue = [0, 0, 0];
+            let _ = write_pack(&c.pit.pit_art, &c.pit.pit_vars, c.pit.pit_text);
             set_pit_selected(0);
             set_pit_name("");
             set_pit_notice("");
             invalidate_plate_preview();
         }
-        Hit::PitWhenAlways => c.pit_when = PitWhen::Always,
-        Hit::PitWhenSector => c.pit_when = PitWhen::Sector,
-        Hit::PitWhenLap => c.pit_when = PitWhen::Lap,
+        Hit::PitWhenAlways => c.pit.pit_when = PitWhen::Always,
+        Hit::PitWhenSector => c.pit.pit_when = PitWhen::Sector,
+        Hit::PitWhenLap => c.pit.pit_when = PitWhen::Lap,
         Hit::PitSlotPick(slot, i) => {
             if let Some(var) = PitVar::from_idx(i) {
-                mxbo_hud::pitboard::set_slot_var(&mut c.pit_vars, slot as usize, Some(var));
+                mxbo_hud::pitboard::set_slot_var(&mut c.pit.pit_vars, slot as usize, Some(var));
             }
-            let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+            let _ = write_pack(&c.pit.pit_art, &c.pit.pit_vars, c.pit.pit_text);
         }
         Hit::PitSlotNone(slot) => {
-            mxbo_hud::pitboard::set_slot_var(&mut c.pit_vars, slot as usize, None);
-            let _ = write_pack(&c.pit_art, &c.pit_vars, c.pit_text);
+            mxbo_hud::pitboard::set_slot_var(&mut c.pit.pit_vars, slot as usize, None);
+            let _ = write_pack(&c.pit.pit_art, &c.pit.pit_vars, c.pit.pit_text);
         }
-        Hit::TelemetryTraces => c.telemetry_traces = !c.telemetry_traces,
-        Hit::TelemetryTraceThrottle => c.telemetry_trace_throttle = !c.telemetry_trace_throttle,
-        Hit::TelemetryTraceBrake => c.telemetry_trace_brake = !c.telemetry_trace_brake,
-        Hit::TelemetryTraceSteer => c.telemetry_trace_steer = !c.telemetry_trace_steer,
-        Hit::TelemetryBars => c.telemetry_bars = !c.telemetry_bars,
-        Hit::TelemetryBarClutch => c.telemetry_bar_clutch = !c.telemetry_bar_clutch,
-        Hit::TelemetryBarBrake => c.telemetry_bar_brake = !c.telemetry_bar_brake,
-        Hit::TelemetryBarThrottle => c.telemetry_bar_throttle = !c.telemetry_bar_throttle,
-        Hit::TelemetryBarSteer => c.telemetry_bar_steer = !c.telemetry_bar_steer,
-        Hit::TelemetryDial => c.telemetry_dial = !c.telemetry_dial,
+        Hit::TelemetryTraces => c.telemetry.telemetry_traces = !c.telemetry.telemetry_traces,
+        Hit::TelemetryTraceThrottle => c.telemetry.telemetry_trace_throttle = !c.telemetry.telemetry_trace_throttle,
+        Hit::TelemetryTraceBrake => c.telemetry.telemetry_trace_brake = !c.telemetry.telemetry_trace_brake,
+        Hit::TelemetryTraceSteer => c.telemetry.telemetry_trace_steer = !c.telemetry.telemetry_trace_steer,
+        Hit::TelemetryBars => c.telemetry.telemetry_bars = !c.telemetry.telemetry_bars,
+        Hit::TelemetryBarClutch => c.telemetry.telemetry_bar_clutch = !c.telemetry.telemetry_bar_clutch,
+        Hit::TelemetryBarBrake => c.telemetry.telemetry_bar_brake = !c.telemetry.telemetry_bar_brake,
+        Hit::TelemetryBarThrottle => c.telemetry.telemetry_bar_throttle = !c.telemetry.telemetry_bar_throttle,
+        Hit::TelemetryBarSteer => c.telemetry.telemetry_bar_steer = !c.telemetry.telemetry_bar_steer,
+        Hit::TelemetryDial => c.telemetry.telemetry_dial = !c.telemetry.telemetry_dial,
         Hit::GamepadShow => c[WidgetId::Gamepad].show ^= true,
         Hit::FeatureSector => {
             c.experimental = !c.experimental;
         }
-        Hit::FlagYellow => c.flag_yellow = !c.flag_yellow,
-        Hit::FlagBlue => c.flag_blue = !c.flag_blue,
-        Hit::FlagRed => c.flag_red = !c.flag_red,
-        Hit::FlagText => c.flag_text = !c.flag_text,
-        Hit::StanceShowSit => c.stance_show_sit = !c.stance_show_sit,
-        Hit::TickerTitle => c.ticker_title = !c.ticker_title,
-        Hit::TickerAutoscroll => c.ticker_autoscroll = !c.ticker_autoscroll,
-        Hit::TickerStatus => c.ticker_status = !c.ticker_status,
-        Hit::TickerSlide => c.ticker_slide = !c.ticker_slide,
-        Hit::StStripe => c.st_stripe = !c.st_stripe,
-        Hit::RelStripe => c.rel_stripe = !c.rel_stripe,
-        Hit::StPlaque => c.st_plaque = !c.st_plaque,
-        Hit::RelPlaque => c.rel_plaque = !c.rel_plaque,
-        Hit::StPos => c.st_pos = !c.st_pos,
-        Hit::StNum => c.st_num = !c.st_num,
-        Hit::StName => c.st_name = !c.st_name,
-        Hit::StGap => c.st_gap = !c.st_gap,
-        Hit::StLaps => c.st_laps = !c.st_laps,
-        Hit::StCurrent => c.st_current = !c.st_current,
-        Hit::StBest => c.st_best = !c.st_best,
-        Hit::StLast => c.st_last = !c.st_last,
-        Hit::StStatus => c.st_status = !c.st_status,
-        Hit::StBike => c.st_bike = !c.st_bike,
-        Hit::StPenalty => c.st_penalty = !c.st_penalty,
-        Hit::StCrashed => c.st_crashed = !c.st_crashed,
-        Hit::StInterval => c.st_interval = !c.st_interval,
-        Hit::StCategory => c.st_category = !c.st_category,
-        Hit::StLapDiff => c.st_lapdiff = !c.st_lapdiff,
-        Hit::RelNum => c.rel_num = !c.rel_num,
-        Hit::RelName => c.rel_name = !c.rel_name,
-        Hit::RelGap => c.rel_gap = !c.rel_gap,
-        Hit::RelLaps => c.rel_laps = !c.rel_laps,
-        Hit::RelCurrent => c.rel_current = !c.rel_current,
-        Hit::RelPos => c.rel_pos = !c.rel_pos,
-        Hit::RelBike => c.rel_bike = !c.rel_bike,
-        Hit::RelPenalty => c.rel_penalty = !c.rel_penalty,
-        Hit::RelInterval => c.rel_interval = !c.rel_interval,
-        Hit::RelStatus => c.rel_status = !c.rel_status,
-        Hit::RelBest => c.rel_best = !c.rel_best,
-        Hit::RelLast => c.rel_last = !c.rel_last,
-        Hit::RelCategory => c.rel_category = !c.rel_category,
-        Hit::RelSpeed => c.rel_speed = !c.rel_speed,
-        Hit::RelLapDiff => c.rel_lapdiff = !c.rel_lapdiff,
-        Hit::MapOthers => c.map_others = !c.map_others,
-        Hit::MapSf => c.map_sf = !c.map_sf,
-        Hit::MapSectors => c.map_sectors = !c.map_sectors,
-        Hit::MapArrows => c.map_arrows = !c.map_arrows,
-        Hit::MapFollow => c.map_follow = !c.map_follow,
-        Hit::MapCrown => c.map_crown = !c.map_crown,
-        Hit::MapPlace => c.map_place = !c.map_place,
-        Hit::MapNumbers => c.map_numbers = !c.map_numbers,
-        Hit::MapDotNum => c.map_dot = DotLabel::Number,
-        Hit::MapDotPos => c.map_dot = DotLabel::Position,
-        Hit::MiniOthers => c.mini_others = !c.mini_others,
-        Hit::MiniSf => c.mini_sf = !c.mini_sf,
-        Hit::MiniSectors => c.mini_sectors = !c.mini_sectors,
-        Hit::MiniArrows => c.mini_arrows = !c.mini_arrows,
-        Hit::MiniCrown => c.mini_crown = !c.mini_crown,
-        Hit::MiniPlace => c.mini_place = !c.mini_place,
-        Hit::MiniNumbers => c.mini_numbers = !c.mini_numbers,
-        Hit::MiniDotNum => c.mini_dot = DotLabel::Number,
-        Hit::MiniDotPos => c.mini_dot = DotLabel::Position,
-        Hit::RadarSides => c.radar_sides = !c.radar_sides,
-        Hit::RadarRear => c.radar_rear = !c.radar_rear,
-        Hit::RadarRings => c.radar_rings = !c.radar_rings,
+        Hit::FlagYellow => c.flag.flag_yellow = !c.flag.flag_yellow,
+        Hit::FlagBlue => c.flag.flag_blue = !c.flag.flag_blue,
+        Hit::FlagRed => c.flag.flag_red = !c.flag.flag_red,
+        Hit::FlagText => c.flag.flag_text = !c.flag.flag_text,
+        Hit::StanceShowSit => c.stance.stance_show_sit = !c.stance.stance_show_sit,
+        Hit::TickerTitle => c.ticker.ticker_title = !c.ticker.ticker_title,
+        Hit::TickerAutoscroll => c.ticker.ticker_autoscroll = !c.ticker.ticker_autoscroll,
+        Hit::TickerStatus => c.ticker.ticker_status = !c.ticker.ticker_status,
+        Hit::TickerSlide => c.ticker.ticker_slide = !c.ticker.ticker_slide,
+        Hit::StStripe => c.standings.st_stripe = !c.standings.st_stripe,
+        Hit::RelStripe => c.relative.rel_stripe = !c.relative.rel_stripe,
+        Hit::StPlaque => c.standings.st_plaque = !c.standings.st_plaque,
+        Hit::RelPlaque => c.relative.rel_plaque = !c.relative.rel_plaque,
+        Hit::StPos => c.standings.st_pos = !c.standings.st_pos,
+        Hit::StNum => c.standings.st_num = !c.standings.st_num,
+        Hit::StName => c.standings.st_name = !c.standings.st_name,
+        Hit::StGap => c.standings.st_gap = !c.standings.st_gap,
+        Hit::StLaps => c.standings.st_laps = !c.standings.st_laps,
+        Hit::StCurrent => c.standings.st_current = !c.standings.st_current,
+        Hit::StBest => c.standings.st_best = !c.standings.st_best,
+        Hit::StLast => c.standings.st_last = !c.standings.st_last,
+        Hit::StStatus => c.standings.st_status = !c.standings.st_status,
+        Hit::StBike => c.standings.st_bike = !c.standings.st_bike,
+        Hit::StPenalty => c.standings.st_penalty = !c.standings.st_penalty,
+        Hit::StCrashed => c.standings.st_crashed = !c.standings.st_crashed,
+        Hit::StInterval => c.standings.st_interval = !c.standings.st_interval,
+        Hit::StCategory => c.standings.st_category = !c.standings.st_category,
+        Hit::StLapDiff => c.standings.st_lapdiff = !c.standings.st_lapdiff,
+        Hit::RelNum => c.relative.rel_num = !c.relative.rel_num,
+        Hit::RelName => c.relative.rel_name = !c.relative.rel_name,
+        Hit::RelGap => c.relative.rel_gap = !c.relative.rel_gap,
+        Hit::RelLaps => c.relative.rel_laps = !c.relative.rel_laps,
+        Hit::RelCurrent => c.relative.rel_current = !c.relative.rel_current,
+        Hit::RelPos => c.relative.rel_pos = !c.relative.rel_pos,
+        Hit::RelBike => c.relative.rel_bike = !c.relative.rel_bike,
+        Hit::RelPenalty => c.relative.rel_penalty = !c.relative.rel_penalty,
+        Hit::RelInterval => c.relative.rel_interval = !c.relative.rel_interval,
+        Hit::RelStatus => c.relative.rel_status = !c.relative.rel_status,
+        Hit::RelBest => c.relative.rel_best = !c.relative.rel_best,
+        Hit::RelLast => c.relative.rel_last = !c.relative.rel_last,
+        Hit::RelCategory => c.relative.rel_category = !c.relative.rel_category,
+        Hit::RelSpeed => c.relative.rel_speed = !c.relative.rel_speed,
+        Hit::RelLapDiff => c.relative.rel_lapdiff = !c.relative.rel_lapdiff,
+        Hit::MapOthers => c.map.map_others = !c.map.map_others,
+        Hit::MapSf => c.map.map_sf = !c.map.map_sf,
+        Hit::MapSectors => c.map.map_sectors = !c.map.map_sectors,
+        Hit::MapArrows => c.map.map_arrows = !c.map.map_arrows,
+        Hit::MapFollow => c.map.map_follow = !c.map.map_follow,
+        Hit::MapCrown => c.map.map_crown = !c.map.map_crown,
+        Hit::MapPlace => c.map.map_place = !c.map.map_place,
+        Hit::MapNumbers => c.map.map_numbers = !c.map.map_numbers,
+        Hit::MapDotNum => c.map.map_dot = DotLabel::Number,
+        Hit::MapDotPos => c.map.map_dot = DotLabel::Position,
+        Hit::MiniOthers => c.mini.mini_others = !c.mini.mini_others,
+        Hit::MiniSf => c.mini.mini_sf = !c.mini.mini_sf,
+        Hit::MiniSectors => c.mini.mini_sectors = !c.mini.mini_sectors,
+        Hit::MiniArrows => c.mini.mini_arrows = !c.mini.mini_arrows,
+        Hit::MiniCrown => c.mini.mini_crown = !c.mini.mini_crown,
+        Hit::MiniPlace => c.mini.mini_place = !c.mini.mini_place,
+        Hit::MiniNumbers => c.mini.mini_numbers = !c.mini.mini_numbers,
+        Hit::MiniDotNum => c.mini.mini_dot = DotLabel::Number,
+        Hit::MiniDotPos => c.mini.mini_dot = DotLabel::Position,
+        Hit::RadarSides => c.radar.radar_sides = !c.radar.radar_sides,
+        Hit::RadarRear => c.radar.radar_rear = !c.radar.radar_rear,
+        Hit::RadarRings => c.radar.radar_rings = !c.radar.radar_rings,
         Hit::Bold(id) => {
             let on = !c.bold(id);
             c.set_bold(id, on);
@@ -1275,34 +1275,34 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::FontGoldman => c.font_family = FontFamily::Goldman,
         Hit::FontMontserrat => c.font_family = FontFamily::Montserrat,
         Hit::UnitsPick(kind, units) => c.units.set(kind, units),
-        Hit::StTextWhite => c.st_text = TableText::White,
-        Hit::StTextBlack => c.st_text = TableText::Black,
-        Hit::RelTextWhite => c.rel_text = TableText::White,
-        Hit::RelTextBlack => c.rel_text = TableText::Black,
-        Hit::StPlaqueTextWhite => c.st_plaque_text = TableText::White,
-        Hit::StPlaqueTextBlack => c.st_plaque_text = TableText::Black,
-        Hit::RelPlaqueTextWhite => c.rel_plaque_text = TableText::White,
-        Hit::RelPlaqueTextBlack => c.rel_plaque_text = TableText::Black,
+        Hit::StTextWhite => c.standings.st_text = TableText::White,
+        Hit::StTextBlack => c.standings.st_text = TableText::Black,
+        Hit::RelTextWhite => c.relative.rel_text = TableText::White,
+        Hit::RelTextBlack => c.relative.rel_text = TableText::Black,
+        Hit::StPlaqueTextWhite => c.standings.st_plaque_text = TableText::White,
+        Hit::StPlaqueTextBlack => c.standings.st_plaque_text = TableText::Black,
+        Hit::RelPlaqueTextWhite => c.relative.rel_plaque_text = TableText::White,
+        Hit::RelPlaqueTextBlack => c.relative.rel_plaque_text = TableText::Black,
         Hit::SettingsKeyPick(key) => c.settings_key = key,
         Hit::ThemePick(theme) => c.settings_theme = theme,
-        Hit::StanceModePick(mode) => c.stance_mode = mode,
-        Hit::StanceStylePick(style) => c.stance_style = style,
-        Hit::LeanStylePick(style) => c.lean_style = style,
+        Hit::StanceModePick(mode) => c.stance.stance_mode = mode,
+        Hit::StanceStylePick(style) => c.stance.stance_style = style,
+        Hit::LeanStylePick(style) => c.lean.lean_style = style,
         Hit::RadarStylePick(style) => {
-            c.radar_style = style;
+            c.radar.radar_style = style;
             mxbo_hud::config::maybe_expand_radar_for_arrows(c);
         }
-        Hit::GamepadStylePick(style) => c.gamepad_style = style,
-        Hit::GamepadThemePick(theme) => c.gamepad_theme = theme,
+        Hit::GamepadStylePick(style) => c.gamepad.gamepad_style = style,
+        Hit::GamepadThemePick(theme) => c.gamepad.gamepad_theme = theme,
         Hit::DashFootPick(slot, field) => match slot {
-            0 => c.dash_left = field,
-            1 => c.dash_mid = field,
-            2 => c.dash_right = field,
+            0 => c.dash.dash_left = field,
+            1 => c.dash.dash_mid = field,
+            2 => c.dash.dash_right = field,
             _ => {}
         },
         Hit::TickerFootPick(slot, field) => match slot {
-            0 => c.ticker_left = field,
-            1 => c.ticker_right = field,
+            0 => c.ticker.ticker_left = field,
+            1 => c.ticker.ticker_right = field,
             _ => {}
         },
         Hit::InfoPick(bar, slot, field) => set_info_slot(c, bar, slot, field),
@@ -1312,14 +1312,14 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             c.settings_preset = p;
         }
         Hit::PresetCopyAll => c.copy_settings_to_all(),
-        Hit::StDec => c.standings_rows = (c.standings_rows - 1).max(3),
-        Hit::StInc => c.standings_rows = (c.standings_rows + 1).min(40),
-        Hit::RelDec => c.relative_count = (c.relative_count - 1).max(1),
-        Hit::RelInc => c.relative_count = (c.relative_count + 1).min(8),
-        Hit::TickerDec => c.ticker_count = (c.ticker_count - 1).max(3),
-        Hit::TickerInc => c.ticker_count = (c.ticker_count + 1).min(15),
-        Hit::SectorHistDec => c.sector_hist_laps = (c.sector_hist_laps - 1).max(1),
-        Hit::SectorHistInc => c.sector_hist_laps = (c.sector_hist_laps + 1).min(5),
+        Hit::StDec => c.standings.standings_rows = (c.standings.standings_rows - 1).max(3),
+        Hit::StInc => c.standings.standings_rows = (c.standings.standings_rows + 1).min(40),
+        Hit::RelDec => c.relative.relative_count = (c.relative.relative_count - 1).max(1),
+        Hit::RelInc => c.relative.relative_count = (c.relative.relative_count + 1).min(8),
+        Hit::TickerDec => c.ticker.ticker_count = (c.ticker.ticker_count - 1).max(3),
+        Hit::TickerInc => c.ticker.ticker_count = (c.ticker.ticker_count + 1).min(15),
+        Hit::SectorHistDec => c.sector.sector_hist_laps = (c.sector.sector_hist_laps - 1).max(1),
+        Hit::SectorHistInc => c.sector.sector_hist_laps = (c.sector.sector_hist_laps + 1).min(5),
         Hit::TabWidgets
         | Hit::TabApp
         | Hit::AppLook
@@ -1369,26 +1369,26 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::FontOpen
         | Hit::PrimaryOpen
         | Hit::PrimaryPanel
-        | Hit::PrimarySv
+        | Hit::PrimarySaturation
         | Hit::PrimaryHue
         | Hit::PrimarySwatch(_)
         | Hit::PrimaryReset
         | Hit::GameUiMatchPrimary
         | Hit::GameUiPrimaryOpen
         | Hit::GameUiPrimaryPanel
-        | Hit::GameUiPrimarySv
+        | Hit::GameUiPrimarySaturation
         | Hit::GameUiPrimaryHue
         | Hit::GameUiPrimarySwatch(_)
         | Hit::GameUiPrimaryReset
         | Hit::PitYellowOpen
         | Hit::PitYellowPanel
-        | Hit::PitYellowSv
+        | Hit::PitYellowSaturation
         | Hit::PitYellowHue
         | Hit::PitYellowSwatch(_)
         | Hit::PitYellowReset
         | Hit::PitBlueOpen
         | Hit::PitBluePanel
-        | Hit::PitBlueSv
+        | Hit::PitBlueSaturation
         | Hit::PitBlueHue
         | Hit::PitBlueSwatch(_)
         | Hit::PitBlueReset
@@ -1425,7 +1425,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::PitSlotCenterY
         | Hit::PitSlotColorOpen
         | Hit::PitSlotColorPanel
-        | Hit::PitSlotColorSv
+        | Hit::PitSlotColorSaturation
         | Hit::PitSlotColorHue
         | Hit::PitSlotColorSwatch(_)
         | Hit::PitSlotColorReset
@@ -1475,6 +1475,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::RelBg
         | Hit::RelHl
         | Hit::MapBg
+        | Hit::MapZoom
         | Hit::MiniBg
         | Hit::MiniZoom
         | Hit::RadarRange

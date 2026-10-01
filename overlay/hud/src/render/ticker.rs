@@ -37,7 +37,7 @@ pub(crate) fn ticker_meta_label(field: BoardField, val: &str) -> &'static str {
 }
 
 pub(crate) fn ticker_title(s: &Snapshot) -> String {
-    let track = cstr(&s.track_name);
+    let track = bytes_as_text(&s.track_name);
     let kind = if is_warmup(s) {
         "WARMUP"
     } else if is_lap_race(s) {
@@ -70,7 +70,7 @@ pub(crate) fn draw_ticker(
     let w = (r.w * sw).max(280.0);
     let h = (r.h * sh).clamp(42.0, 64.0);
     let k = style_k();
-    let a = bg_a(cfg[WidgetId::Ticker].bg);
+    let a = background_alpha(cfg[WidgetId::Ticker].bg);
     let cut = (h * 0.16).clamp(8.0, 14.0);
     if a > 0 {
         fill_skew(px, x, y, w, h, cut, Color::from_rgba8(16, 16, 20, a));
@@ -79,7 +79,7 @@ pub(crate) fn draw_ticker(
 
     let pad_l = (h * 0.10).clamp(6.0, 12.0);
     let pad_r = (h * 0.05).clamp(3.0, 6.0);
-    let show_title = cfg.ticker_title;
+    let show_title = cfg.ticker.ticker_title;
     let title_h = if show_title {
         (h * 0.22).clamp(11.0, 15.0)
     } else {
@@ -89,15 +89,15 @@ pub(crate) fn draw_ticker(
     let inner_w = (w - pad_l - pad_r).max(120.0);
     let card_y = y + if show_title { title_h + 1.0 } else { 4.0 };
     let card_h = (y + h - 4.0 - card_y).max(22.0);
-    let left_on = cfg.ticker_left != BoardField::None;
-    let right_on = cfg.ticker_right != BoardField::None;
+    let left_on = cfg.ticker.ticker_left != BoardField::None;
+    let right_on = cfg.ticker.ticker_right != BoardField::None;
     let left_w = if left_on {
-        ticker_meta_width(fonts, s, cfg, cfg.ticker_left, card_h, k)
+        ticker_meta_width(fonts, s, cfg, cfg.ticker.ticker_left, card_h, k)
     } else {
         0.0
     };
     let right_w = if right_on {
-        ticker_meta_width(fonts, s, cfg, cfg.ticker_right, card_h, k)
+        ticker_meta_width(fonts, s, cfg, cfg.ticker.ticker_right, card_h, k)
     } else {
         0.0
     };
@@ -112,7 +112,7 @@ pub(crate) fn draw_ticker(
             fonts,
             s,
             cfg,
-            cfg.ticker_left,
+            cfg.ticker.ticker_left,
             inner_x,
             card_y,
             left_w,
@@ -127,7 +127,7 @@ pub(crate) fn draw_ticker(
             fonts,
             s,
             cfg,
-            cfg.ticker_right,
+            cfg.ticker.ticker_right,
             inner_x + inner_w - right_w,
             card_y,
             right_w,
@@ -175,7 +175,7 @@ pub(crate) fn draw_ticker(
             );
             return;
         }
-        let want = cfg.ticker_count.clamp(3, 15) as usize;
+        let want = cfg.ticker.ticker_count.clamp(3, 15) as usize;
         let (vis, card_w) = hstand_layout(cards_w, k, want, n);
         let focus = s.focus_race_num;
         let fi = race
@@ -196,12 +196,12 @@ pub(crate) fn draw_ticker(
         let stride = card_w + gap;
         let now = anim_now();
         let ids = row_ids(board.iter().take(n).map(|card| card.race_num));
-        let slots = if cfg.ticker_slide {
+        let slots = if cfg.ticker.ticker_slide {
             HS_SLIDE.with(|a| a.borrow_mut().indices(&ids, now))
         } else {
             (0..n).map(|i| i as f32).collect()
         };
-        let scroll = if cfg.ticker_autoscroll && n > vis {
+        let scroll = if cfg.ticker.ticker_autoscroll && n > vis {
             (now * HS_AUTO_SPEED).rem_euclid(n as f32)
         } else {
             let target = hstand_scroll_start(fi, vis, n);
@@ -212,7 +212,7 @@ pub(crate) fn draw_ticker(
         if let Some(mut layer) = Pixmap::new(lw, lh) {
             for (i, card) in board.iter().enumerate().take(n) {
                 let slot = slots.get(i).copied().unwrap_or(i as f32);
-                let x = if cfg.ticker_autoscroll && n > vis {
+                let x = if cfg.ticker.ticker_autoscroll && n > vis {
                     match hstand_loop_x(slot, scroll, n as f32, stride, cards_w, card_w) {
                         Some(x) => x,
                         None => continue,
@@ -404,11 +404,11 @@ pub(crate) fn draw_ticker_card(
     let is_focus = row.race_num == focus.race_num;
     let out = standing_status(row).is_some() && standing_status(row) != Some("PIT");
     if is_focus {
-        fill_round(px, x, y, w, h, 3.0, you_row_bg(cfg.ticker_hl));
+        fill_fade_row(px, x, y, w, h, you_row_bg(cfg.ticker.ticker_hl));
     }
     let pos_s = (h * 0.38).clamp(14.0, 20.0);
     let pos_y = y + (h - pos_s) * 0.5;
-    if let Some(rrt) = rr(x + 4.0, pos_y, pos_s, pos_s) {
+    if let Some(rrt) = try_rect(x + 4.0, pos_y, pos_s, pos_s) {
         fill_rect(px, rrt, Color::from_rgba8(244, 244, 247, 255));
     }
     let pos = format_place_digits(row.position.max(0), false);
@@ -428,15 +428,15 @@ pub(crate) fn draw_ticker_card(
         star,
         true,
     );
-    let accent_c = bike_color(&cstr(&row.bike), &cstr(&row.category));
+    let accent_c = bike_color(&bytes_as_text(&row.bike), &bytes_as_text(&row.category));
     let bar_x = x + 4.0 + pos_s + 3.0;
-    if let Some(rrt) = rr(bar_x, y + 4.0, 2.2, h - 8.0) {
+    if let Some(rrt) = try_rect(bar_x, y + 4.0, 2.2, h - 8.0) {
         fill_rect(px, rrt, accent_c);
     }
     let text_x = bar_x + 7.0;
     let name_sz = (h * 0.28).clamp(10.5, 13.5);
     let gap_sz = (h * 0.22).clamp(8.5, 11.0);
-    let mark = if cfg.ticker_status {
+    let mark = if cfg.ticker.ticker_status {
         standing_mark(s, row.race_num, row.crashed != 0)
     } else {
         RiderMark::None
@@ -448,7 +448,7 @@ pub(crate) fn draw_ticker_card(
     };
     let name = ellipsize(
         fonts,
-        &cstr(&row.name),
+        &bytes_as_text(&row.name),
         name_sz,
         (w - (text_x - x) - 8.0 - status_pad).max(24.0),
     );
@@ -483,7 +483,7 @@ pub(crate) fn draw_ticker_card(
             row.best_lap_ms
         };
         format_lap(ms)
-    } else if !cfg.ticker_status {
+    } else if !cfg.ticker.ticker_status {
         if let Some(st) = standing_status(row) {
             st.to_string()
         } else {

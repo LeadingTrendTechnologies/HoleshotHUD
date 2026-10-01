@@ -38,7 +38,7 @@ pub(crate) fn draw_stance_icon(
     let Some(src) = stance_glyph(sitting) else {
         return false;
     };
-    let a = bg_a(cfg[WidgetId::Stance].bg);
+    let a = background_alpha(cfg[WidgetId::Stance].bg);
     if a > 0 {
         fill_round(px, x, y, w, h, 6.0, Color::from_rgba8(10, 10, 12, a));
     }
@@ -75,14 +75,14 @@ pub(crate) fn draw_stance(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f
     if w < 36.0 || h < 22.0 {
         return;
     }
-    if stance_sitting() && !cfg.stance_show_sit {
+    if stance_sitting() && !cfg.stance.stance_show_sit {
         return;
     }
-    if cfg.stance_style == StanceStyle::Icon && draw_stance_icon(px, cfg, x, y, w, h) {
+    if cfg.stance.stance_style == StanceStyle::Icon && draw_stance_icon(px, cfg, x, y, w, h) {
         return;
     }
     let sitting = stance_sitting();
-    let a = bg_a(cfg[WidgetId::Stance].bg);
+    let a = background_alpha(cfg[WidgetId::Stance].bg);
     let stand = !sitting;
     let fill = if stand {
         accent_a(a.max(220))

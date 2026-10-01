@@ -1,5 +1,5 @@
 pub const MAGIC: u32 = 0x4F42584D;
-pub const VERSION: u32 = 18;
+pub const VERSION: u32 = 19;
 pub const MAX_POLY: usize = 1024;
 pub const MAX_RIDERS: usize = 64;
 pub const MAX_STANDINGS: usize = 40;
@@ -72,6 +72,8 @@ pub struct Standing {
     pub bike: [u8; NAME],
     pub last_lap_ms: i32,
     pub category: [u8; NAME],
+    /// Gates crossed this lap: 0, 1 after S1, 2 after S2.
+    pub sector_gate: i32,
 }
 
 impl Default for Standing {
@@ -91,6 +93,7 @@ impl Default for Standing {
             bike: [0; NAME],
             last_lap_ms: 0,
             category: [0; NAME],
+            sector_gate: 0,
         }
     }
 }
@@ -289,14 +292,14 @@ impl Snapshot {
         self.standings[..n]
             .iter()
             .find(|r| r.race_num == num)
-            .map(|r| cstr(&r.bike))
+            .map(|r| bytes_as_text(&r.bike))
             .filter(|b| !b.is_empty())
             .unwrap_or_default()
     }
 
     /// Setup filename stem from `RunInit` (`m_szSetupFileName`). Empty in replay until a local run.
     pub fn setup_label(&self) -> String {
-        format_setup_name(&cstr(&self.setup_name))
+        format_setup_name(&bytes_as_text(&self.setup_name))
     }
 }
 
@@ -314,7 +317,7 @@ pub fn format_setup_name(raw: &str) -> String {
     stem.trim().to_string()
 }
 
-pub fn cstr(buf: &[u8]) -> String {
+pub fn bytes_as_text(buf: &[u8]) -> String {
     let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
     let bytes = &buf[..end];
     let raw = if let Ok(s) = std::str::from_utf8(bytes) {
@@ -453,10 +456,10 @@ impl Snapshot {
         let _ = writeln!(
             o,
             "track={:?} length={:.1} sf_meters={:.1} setup={:?}",
-            cstr(&self.track_name),
+            bytes_as_text(&self.track_name),
             self.track_length,
             self.sf_meters,
-            cstr(&self.setup_name)
+            bytes_as_text(&self.setup_name)
         );
         let _ = writeln!(
             o,
@@ -544,7 +547,7 @@ impl Snapshot {
                 o,
                 "  rider[{i}] #{} {:?} xz=({:.2},{:.2}) yaw={:.2} pos={:.4} crashed={}",
                 r.race_num,
-                cstr(&r.name),
+                bytes_as_text(&r.name),
                 r.x,
                 r.z,
                 r.yaw,
@@ -561,9 +564,9 @@ impl Snapshot {
                 "  stand[{i}] P{} #{} {:?} {} {} laps={} last={} best={} gap={} gap_laps={} pit={} pen={} crashed={} state={}",
                 st.position,
                 st.race_num,
-                cstr(&st.name),
-                cstr(&st.bike),
-                cstr(&st.category),
+                bytes_as_text(&st.name),
+                bytes_as_text(&st.bike),
+                bytes_as_text(&st.category),
                 st.num_laps,
                 st.last_lap_ms,
                 st.best_lap_ms,
@@ -760,6 +763,13 @@ pub fn abi_text() -> String {
         "category",
         offset_of!(Standing, category),
         NAME,
+    );
+    field(
+        &mut o,
+        "MxboShmStanding",
+        "sectorGate",
+        offset_of!(Standing, sector_gate),
+        4,
     );
     let _ = writeln!(o, "MxboShmRect.size {}", size_of::<Rect>());
     field(&mut o, "MxboShmRect", "x", offset_of!(Rect, x), 4);

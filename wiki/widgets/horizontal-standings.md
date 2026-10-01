@@ -17,7 +17,7 @@ Settings subtitle: “Your name is highlighted in the field”.
 - Optional title: `WARMUP` / `LAP RACE` / `TIMED` / `EXTRA` / `SESSION` plus track name. Warmup is 10:00 (or 12/15/20 / 30+ min practice) with no extras; not a leftover 8-minute race.
 - Side slots (`ticker_left` / `ticker_right`) are `BoardField` (default Lap, Air). **Fuel**, **Fuel %**, **Setup**, **Gap ahead**, **Gap behind**, **Delta**, **Last** / **Last lap diff** / **Current**, **Gap to leader**, **Engine**, **Penalty**, and **Server** are options. **Last lap diff** is your last completed lap minus the one before it (not Delta versus best): green faster, red slower, `0.000` the same, `--` until two laps. Ahead/behind are live-order place neighbors, not the card delta vs you.
 - Cards show position, name, gap vs you (`ticker_delta` = signed gap difference), last/best. Session-best lap is purple. Position gets a trailing green/red `*` when live place ≠ on-track place due to penalties (see [live race order](../live-order.md)).
-- Your card is highlighted. **Row highlight** opacity is adjustable in settings (`ticker_hl`, default 50 — same scale as Standings / Relative).
+- Your card is a left-to-right fade of the accent with a 1px line on the top and bottom edges. **Row highlight** opacity is adjustable in settings (`ticker_hl`, default 50 — same scale as Standings / Relative) and scales that fade and those lines.
 - Optional **Status** (`ticker_status`, default off) appends a finish / crash / DNS / OUT / DSQ / pit icon at the **end** of each card. Finished riders show only the flag. When on, gap stays gap (status is not written over it). When off, DNS/OUT/DSQ/PIT still replace the gap text for out riders (legacy).
 - In replay / spectate, clicking a card follows that rider (same camera path as standings names).
 - **Riders shown** (`ticker_count`, 3–15) is a target; `hstand_layout` shrinks to what fits at a minimum card width.
@@ -41,6 +41,7 @@ Settings subtitle: “Your name is highlighted in the field”.
 
 ## Change log
 
+- 2026-10-01 — Your card is a left-to-right accent fade with a 1px line on the top and bottom, same treatment as Standings. **Row highlight** still scales it.
 - 2026-09-25 — Side-slot **Last lap diff**. Last completed lap minus the previous one. Green is faster, red is slower. Not Delta versus best.
 - 2026-09-25 — Side-slot **BoardField** options: Delta, Last, Current, Gap to leader, Engine, Penalty, Server (shared with Standings / Relative chrome).
 - 2026-09-25 — **Row highlight** opacity (`ticker_hl`, default 50) and **Slide on pass** toggle (`ticker_slide`, default on).

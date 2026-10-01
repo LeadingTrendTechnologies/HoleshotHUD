@@ -917,7 +917,7 @@ fn crop_rect_for(
         WidgetId::Gamepad if cfg.gamepad_visible() => Some(cfg[id].rect),
         WidgetId::Telemetry if cfg[id].show => Some(cfg[id].rect),
         WidgetId::Pitboard
-            if mxbo_hud::pitboard::drawing(cfg[id].show, cfg.pit_when) =>
+            if mxbo_hud::pitboard::drawing(cfg[id].show, cfg.pit.pit_when) =>
         {
             Some(cfg[id].rect)
         }
@@ -2042,8 +2042,8 @@ fn apply_stream_setting(layout: &mut crate::config::HudLayout, key: &str, value:
             .map(str::trim)
             .filter(|part| !part.is_empty())
             .collect();
-        if keys.len() == layout.pit_vars.len() {
-            for (place, var_key) in layout.pit_vars.iter_mut().zip(keys) {
+        if keys.len() == layout.pit.pit_vars.len() {
+            for (place, var_key) in layout.pit.pit_vars.iter_mut().zip(keys) {
                 if var_key == "none" {
                     place.show = false;
                 } else if let Some(var) = mxbo_hud::pitboard::PitVar::parse(var_key) {

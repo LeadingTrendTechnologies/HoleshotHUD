@@ -1,7 +1,7 @@
 //! Live-then-freeze sector times vs your saved best at this point in the sector.
 
 use crate::delta;
-use crate::shm::{cstr, Snapshot};
+use crate::shm::{bytes_as_text, Snapshot};
 use crate::track_pb::{self, BINS};
 use std::sync::Mutex;
 
@@ -83,7 +83,7 @@ pub fn tick(s: &Snapshot) {
     if s.has_telemetry == 0 {
         return;
     }
-    let track = cstr(&s.track_name).to_string();
+    let track = bytes_as_text(&s.track_name).to_string();
     let mut g = live();
     if !track.is_empty() {
         let bike_now = track_pb::bike_class(&s.local_bike());
@@ -247,7 +247,7 @@ pub fn row_vs(s: &Snapshot, i: usize, live_on: bool, session: bool) -> SectorRow
     let cur = s.sector_cur.get(i).copied().unwrap_or(0);
     let mut g = live();
     let frozen =
-        !g.track.is_empty() && cstr(&s.track_name) == g.track && (g.freeze_ok & (1 << i)) != 0;
+        !g.track.is_empty() && bytes_as_text(&s.track_name) == g.track && (g.freeze_ok & (1 << i)) != 0;
     let cur_all = [
         s.sector_cur.first().copied().unwrap_or(0),
         s.sector_cur.get(1).copied().unwrap_or(0),

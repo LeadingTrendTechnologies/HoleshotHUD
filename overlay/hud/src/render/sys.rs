@@ -88,7 +88,7 @@ pub(crate) fn sys_procs() -> Vec<SysProc> {
         .unwrap_or_default()
 }
 
-pub(crate) fn fmt_sys_mem(mb: f32) -> String {
+pub(crate) fn format_memory(mb: f32) -> String {
     if mb < 0.05 {
         "0 MB".into()
     } else if mb < 9.95 {
@@ -195,7 +195,7 @@ pub(crate) fn draw_sys_procs(
             SysProcKind::Mem => {
                 if p.on {
                     (
-                        fmt_sys_mem(p.mem_mb),
+                        format_memory(p.mem_mb),
                         (p.mem_mb / mem_scale * 100.0).clamp(0.0, 100.0),
                         false,
                     )
@@ -269,7 +269,7 @@ pub(crate) fn draw_sys(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f32,
     if w < 88.0 || h < 72.0 {
         return;
     }
-    let a = bg_a(cfg[WidgetId::Sys].bg);
+    let a = background_alpha(cfg[WidgetId::Sys].bg);
     fill_round(px, x, y, w, h, 6.0, Color::from_rgba8(10, 10, 10, a));
     if a > 0 {
         if let Some(frame) = round_rect_path(x + 0.5, y + 0.5, w - 1.0, h - 1.0, 5.5) {
@@ -297,11 +297,11 @@ pub(crate) fn draw_sys(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f32,
     let body_h = (inner_h - foot_h - 1.0).max(40.0);
     let mid = x + pad + col_w + gap * 0.5;
     let hair = Color::from_rgba8(42, 42, 46, a.max(90));
-    if let Some(line) = rr(mid.floor(), y + pad, 1.0, body_h + foot_h + 1.0) {
+    if let Some(line) = try_rect(mid.floor(), y + pad, 1.0, body_h + foot_h + 1.0) {
         fill_rect(px, line, hair);
     }
     let foot_y = y + pad + body_h;
-    if let Some(line) = rr(x + pad, foot_y.floor(), inner_w, 1.0) {
+    if let Some(line) = try_rect(x + pad, foot_y.floor(), inner_w, 1.0) {
         fill_rect(px, line, hair);
     }
 

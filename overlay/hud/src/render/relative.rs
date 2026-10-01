@@ -20,7 +20,7 @@ pub(crate) fn draw_relative(
     let mut uniq: Vec<usize> = Vec::new();
     for i in 0..n {
         let rider = &s.riders[i];
-        let empty = rider.race_num <= 0 && cstr(&rider.name).is_empty();
+        let empty = rider.race_num <= 0 && bytes_as_text(&rider.name).is_empty();
         if empty {
             continue;
         }
@@ -56,13 +56,13 @@ pub(crate) fn draw_relative(
         &cols,
         TableLook {
             bg: cfg[WidgetId::Relative].bg,
-            hl: cfg.rel_hl,
-            text: cfg.rel_text,
-            stripe: cfg.rel_stripe,
-            plaque_text: cfg.rel_plaque_text,
-            show_plaque: cfg.rel_plaque,
-            head: &cfg.rel_head,
-            foot: &cfg.rel_foot,
+            hl: cfg.relative.rel_hl,
+            text: cfg.relative.rel_text,
+            stripe: cfg.relative.rel_stripe,
+            plaque_text: cfg.relative.rel_plaque_text,
+            show_plaque: cfg.relative.rel_plaque,
+            head: &cfg.relative.rel_head,
+            foot: &cfg.relative.rel_foot,
         },
         vis,
         n,
@@ -108,7 +108,7 @@ pub(crate) fn draw_relative(
                 };
                 let speed = s.local_speed.max(4.0);
                 let ids = row_ids(show.iter().map(|oi| s.riders[order[*oi].0].race_num));
-                let hl = cfg.rel_hl;
+                let hl = cfg.relative.rel_hl;
                 REL_SLIDE.with(|a| {
                     tbl.rows(&ids, &mut a.borrow_mut(), |px, fonts, row| {
                         let oi = show[row.vis_i];
@@ -119,8 +119,8 @@ pub(crate) fn draw_relative(
                         let st = race_row
                             .map(|r| &r.standing)
                             .or_else(|| standing_of(s, rider.race_num));
-                        let cat = st.map(|r| cstr(&r.category)).unwrap_or_default();
-                        let bike_name = st.map(|r| cstr(&r.bike)).unwrap_or_default();
+                        let cat = st.map(|r| bytes_as_text(&r.category)).unwrap_or_default();
+                        let bike_name = st.map(|r| bytes_as_text(&r.bike)).unwrap_or_default();
                         let accent_c = bike_color(&bike_name, &cat);
                         let out = rider.crashed != 0
                             || st.is_some_and(|r| r.crashed != 0 || matches!(r.state, 1 | 3 | 4));
@@ -156,7 +156,7 @@ pub(crate) fn draw_relative(
                                     true,
                                 ),
                                 RelField::Num => (format!("{}", rider.race_num), row.ink_dim, true),
-                                RelField::Name => (cstr(&rider.name).to_string(), row.ink, false),
+                                RelField::Name => (bytes_as_text(&rider.name).to_string(), row.ink, false),
                                 RelField::Bike => (bike_name.to_string(), name_c, false),
                                 RelField::Gap => (
                                     if is_self {

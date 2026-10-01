@@ -25,7 +25,7 @@ Status labels: `1` DNS, `3` OUT, `4` DSQ, else PIT if `pit != 0`.
 ## Behavior
 
 - Height grows with visible rows, even when the saved widget box is shorter (a Ctrl+move can write a hugged 1-row `standings_h`). If the field is larger than **Rows**, the window centers on you.
-- Your row is highlighted. OUT / DNS / DSQ rows dim. **Row highlight** opacity is adjustable in settings (`st_hl`). **Text color** is White or Black (`st_text`); bike pills keep brand colors. **Alternating rows** (`st_stripe`, default on) paints every other row near-black. On a solid panel the stripe lifts to a slightly lighter charcoal so it still reads; at lower background opacity it darkens (game shows through even rows). **Plaque text** is Black or White on the orange rider-count / track-name skews (`st_plaque_text`, default Black). **Show plaques** (`st_plaque`, default on) hides those skews and collapses their band.
+- Your row is a left-to-right fade of the accent with a 1px line on the top and bottom edges. OUT / DNS / DSQ rows dim. **Row highlight** opacity is adjustable in settings (`st_hl`) and scales that fade and those lines. **Text color** is White or Black (`st_text`); bike pills keep brand colors. **Alternating rows** (`st_stripe`, default on) paints every other row near-black. On a solid panel the stripe lifts to a slightly lighter charcoal so it still reads; at lower background opacity it darkens (game shows through even rows). **Plaque text** is Black or White on the orange rider-count / track-name skews (`st_plaque_text`, default Black). **Show plaques** (`st_plaque`, default on) hides those skews and collapses their band.
 - In replay / spectate, clicking a rider's **name** moves the game camera to them (`SpectateVehicles`). The overlay only captures that click while hovering a name; riding is not affected.
 - Best lap in the field is purple.
 - Bike column is a colored badge (`bike_color` from bike name + category). A skew bar after **Position** uses the same accent.
@@ -62,6 +62,8 @@ Default columns on: Position, Number, Name, Gap to leader, Fastest, Last lap.
 
 ## Change log
 
+- 2026-10-01 — Your row is a left-to-right accent fade with a 1px line on the top and bottom. **Row highlight** still scales it. Alternating rows stay a flat wash.
+- 2026-10-01 — Lap 1 places move at S1 and S2, and between those gates, before the finish. See [live race order](../live-order.md).
 - 2026-09-25 — **Last lap diff** (`BoardField::LapDiff`, column `st_lapdiff` default off). Last completed lap minus the previous one. Green is faster, red is slower, `0.000` is the same time. Not Delta versus best.
 - 2026-09-25 — Header/footer **BoardField** options: Delta, Last, Current, Gap to leader, Engine, Penalty, Server. Optional **Category** column (`st_category`, default off).
 - 2026-09-24 — Live order ranks the whole field by track progress minus each rider's own penalty, so several penalties stack in one tick. See `wiki/live-order.md`.

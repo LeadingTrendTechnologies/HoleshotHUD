@@ -51,18 +51,18 @@ fn main() {
         ("map.png", W, H, |c| size_show(c, "map", 0.48, 0.72)),
         ("map-follow.png", W, H, |c| {
             size_show(c, "map", 0.48, 0.72);
-            c.map_follow = true;
+            c.map.map_follow = true;
         }),
         ("minimap.png", W, H, |c| size_show(c, "minimap", 0.34, 0.58)),
         ("radar.png", W, H, |c| size_show(c, "radar", 0.24, 0.42)),
         ("radar-arrows.png", W, H, |c| {
             size_show(c, "radar", 0.24, 0.42);
-            c.radar_style = RadarStyle::Arrows;
+            c.radar.radar_style = RadarStyle::Arrows;
         }),
         ("dash.png", W, H, |c| size_show(c, "dash", 0.22, 0.14)),
         ("dash-simple.png", W, H, |c| {
             size_show(c, "dash", 0.22, 0.14);
-            c.dash_simple = true;
+            c.dash.dash_simple = true;
         }),
         ("flag.png", W, H, |c| {
             size_show(c, "flag", 0.107, 0.019);
@@ -73,7 +73,7 @@ fn main() {
         ("sector.png", W, H, |c| {
             size_show(c, "sector", 0.42, 0.28);
             c[WidgetId::Sector].show = true;
-            c.sector_live = true;
+            c.sector.sector_live = true;
             mxbo_hud::delta::set_preview(Some(mxbo_hud::delta::DeltaView {
                 ready: true,
                 recording: false,
@@ -110,7 +110,7 @@ fn main() {
         ("lean.png", W, H, |c| size_show(c, "lean", 0.16, 0.32)),
         ("lean-min.png", W, H, |c| {
             size_show(c, "lean", 0.16, 0.32);
-            c.lean_style = LeanStyle::Minimal;
+            c.lean.lean_style = LeanStyle::Minimal;
         }),
         ("gamepad.png", W, H, |c| {
             size_show(c, "gamepad", 0.28, 0.22);
@@ -118,7 +118,7 @@ fn main() {
         }),
         ("gamepad-dark.png", W, H, |c| {
             size_show(c, "gamepad", 0.28, 0.22);
-            c.gamepad_theme = GamepadTheme::Dark;
+            c.gamepad.gamepad_theme = GamepadTheme::Dark;
             mxbo_hud::gamepad::set(mxbo_hud::gamepad::demo_sony());
         }),
         ("telemetry.png", W, H, |c| {
@@ -127,7 +127,7 @@ fn main() {
         }),
         ("pitboard.png", W, H, |c| {
             size_show(c, "pitboard", 0.28, 0.26);
-            c.pit_sponsor = "HOLESHOT".into();
+            c.pit.pit_sponsor = "HOLESHOT".into();
             mxbo_hud::delta::set_preview(Some(mxbo_hud::delta::DeltaView {
                 ready: true,
                 recording: false,
@@ -284,17 +284,17 @@ fn base_cfg() -> HudConfig {
     cfg.font_family = FontFamily::Exo2;
     cfg.units = UnitPrefs::all(Units::Imperial);
     // Showcase latest table styling.
-    cfg.st_bike = true;
-    cfg.rel_bike = true;
-    cfg.st_hl = 50;
-    cfg.rel_hl = 50;
-    cfg.st_stripe = true;
-    cfg.rel_stripe = true;
-    cfg.map_sectors = true;
-    cfg.st_w_name = 100;
-    cfg.rel_w_name = 100;
-    cfg.st_w_bike = 64;
-    cfg.rel_w_bike = 64;
+    cfg.standings.st_bike = true;
+    cfg.relative.rel_bike = true;
+    cfg.standings.st_hl = 50;
+    cfg.relative.rel_hl = 50;
+    cfg.standings.st_stripe = true;
+    cfg.relative.rel_stripe = true;
+    cfg.map.map_sectors = true;
+    cfg.standings.st_w_name = 100;
+    cfg.relative.rel_w_name = 100;
+    cfg.standings.st_w_bike = 64;
+    cfg.relative.rel_w_bike = 64;
     cfg
 }
 
@@ -575,6 +575,7 @@ fn refresh_standings(s: &mut Snapshot) {
             bike: [0; 32],
             last_lap_ms: 72_400 + ri as i32 * 180,
             category: [0; 32],
+            sector_gate: 0,
         };
         write_name(&mut s.standings[i].name, name);
         write_name(&mut s.standings[i].bike, bike);

@@ -56,6 +56,7 @@ int main()
     FIELD(MxboShmStanding, bike);
     FIELD(MxboShmStanding, lastLapMs);
     FIELD(MxboShmStanding, category);
+    FIELD(MxboShmStanding, sectorGate);
 
     std::printf("MxboShmRect.size %zu\n", sizeof(MxboShmRect));
     FIELD(MxboShmRect, x);

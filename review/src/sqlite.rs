@@ -7,7 +7,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 const FIELD_EVERY_MS: u64 = 2000;
 
 use mxbo_hud::location_tape::{self, ChannelBin, CommittedLap, CrashMark, BINS};
-use mxbo_hud::snapshot::{cstr, Snapshot};
+use mxbo_hud::snapshot::{bytes_as_text, Snapshot};
 use rusqlite::{params, Connection, OptionalExtension};
 
 const WEEK_SECS: i64 = 7 * 24 * 3600;
@@ -168,7 +168,7 @@ fn apply_field(d: &mut SessionDetail, s: &Snapshot, you: i32, fastest: i32) {
         d.poly = next;
     }
     d.row.rider_count = n as i32;
-    d.row.server_name = cstr(&s.server_name);
+    d.row.server_name = bytes_as_text(&s.server_name);
     d.row.ranked = lobby_id_from_server_name(&d.row.server_name)
         .is_some_and(|id| RANKED_LOBBY_IDS.contains(&id));
     let prev: Vec<(i32, bool, i32)> = d
@@ -195,8 +195,8 @@ fn apply_field(d: &mut SessionDetail, s: &Snapshot, you: i32, fastest: i32) {
             };
             RiderRow {
                 race_num: row.race_num,
-                name: cstr(&row.name),
-                bike: cstr(&row.bike),
+                name: bytes_as_text(&row.name),
+                bike: bytes_as_text(&row.bike),
                 position: row.position,
                 best_ms,
                 last_ms: row.last_lap_ms,
@@ -547,7 +547,7 @@ pub fn tick(s: &Snapshot, in_session: bool) {
         }
         return;
     }
-    let track = cstr(&s.track_name);
+    let track = bytes_as_text(&s.track_name);
     if track.is_empty() {
         return;
     }
@@ -596,7 +596,7 @@ pub fn tick(s: &Snapshot, in_session: bool) {
                 bump(&mut st, Some(old.id));
             }
             if let Some(c) = st.conn.as_ref() {
-                let server = cstr(&s.server_name);
+                let server = bytes_as_text(&s.server_name);
                 if let Ok(id) =
                     open_session(c, &track, s.session_kind, you, fastest, false, &server)
                 {
@@ -1666,7 +1666,7 @@ fn upsert_field(
             pack_poly(s),
             s.sf_meters,
             if mxbo_hud::is_practice_session(s) { 1 } else { 0 },
-            cstr(&s.server_name),
+            bytes_as_text(&s.server_name),
             id
         ],
     )?;
@@ -1688,8 +1688,8 @@ fn upsert_field(
             params![
                 id,
                 row.race_num,
-                cstr(&row.name),
-                cstr(&row.bike),
+                bytes_as_text(&row.name),
+                bytes_as_text(&row.bike),
                 row.position,
                 row.best_lap_ms,
                 row.last_lap_ms,

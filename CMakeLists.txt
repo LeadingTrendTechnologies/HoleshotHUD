@@ -9,13 +9,20 @@ add_library(mxbo SHARED
     src/state.cpp
     src/config.cpp
     src/shm_writer.cpp
-    src/hud/draw_list.cpp
-    src/hud/map_hud.cpp
-    src/hud/widgets.cpp
-    src/hud/font_atlas.cpp
-    src/layout.cpp
     mxbo.def
 )
+
+option(MXBO_INGAME_HUD "Link the frozen in-game standings, relative, and map" OFF)
+if(MXBO_INGAME_HUD)
+    target_sources(mxbo PRIVATE
+        src/hud/draw_list.cpp
+        src/hud/map_hud.cpp
+        src/hud/widgets.cpp
+        src/hud/font_atlas.cpp
+        src/layout.cpp
+    )
+    target_compile_definitions(mxbo PRIVATE MXBO_INGAME_HUD)
+endif()
 
 target_include_directories(mxbo PRIVATE src)
 

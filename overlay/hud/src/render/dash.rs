@@ -70,7 +70,7 @@ pub(crate) fn dash_layout(
 ) -> DashLay {
     let x0 = cfg[WidgetId::Dash].rect.x * sw;
     let y = cfg[WidgetId::Dash].rect.y * sh;
-    if cfg.dash_simple {
+    if cfg.dash.dash_simple {
         return dash_layout_simple(fonts, s, cfg, sw, sh, x0, y, flag, grow);
     }
 
@@ -97,7 +97,7 @@ pub(crate) fn dash_layout(
     let lap_txt = race_progress_text(s);
     let lapped = lapped(s);
     let foot: Vec<(char, String, Option<Color>, Option<Color>)> =
-        [cfg.dash_left, cfg.dash_mid, cfg.dash_right]
+        [cfg.dash.dash_left, cfg.dash.dash_mid, cfg.dash.dash_right]
             .into_iter()
             .filter_map(|field| {
                 let (icon_ch, label, star) = dash_foot_item(s, cfg, field)?;
@@ -124,7 +124,7 @@ pub(crate) fn dash_layout(
     let has_foot = !foot.is_empty();
     let footer_h = if has_foot { 23.0 * k } else { 0.0 };
     let mid_gap = if has_foot { 5.0 * k } else { 0.0 };
-    let (rev_h, rev_lead, rev_to_main) = if cfg.dash_rev {
+    let (rev_h, rev_lead, rev_to_main) = if cfg.dash.dash_rev {
         (16.0 * k, 5.0 * k, 9.0 * k)
     } else {
         (0.0, pad, 0.0)
@@ -141,7 +141,7 @@ pub(crate) fn dash_layout(
     };
     let flag_h = flag_full * grow;
     let rev_y = y + rev_lead;
-    let main_y = if cfg.dash_rev {
+    let main_y = if cfg.dash.dash_rev {
         rev_y + rev_h + rev_to_main
     } else {
         y + pad
@@ -539,11 +539,11 @@ pub(crate) fn dash_foot_item(
             DashField::Session => race_progress_text(s),
             DashField::LocalTime => local_clock(),
             DashField::Bike => st
-                .map(|r| cstr(&r.bike))
+                .map(|r| bytes_as_text(&r.bike))
                 .filter(|v| !v.is_empty())
                 .unwrap_or_else(|| "--".into()),
             DashField::Class => st
-                .map(|r| cstr(&r.category))
+                .map(|r| bytes_as_text(&r.category))
                 .filter(|v| !v.is_empty())
                 .unwrap_or_else(|| "--".into()),
             DashField::Fuel => cfg.units.format_fuel(s.fuel, s.max_fuel),
@@ -775,12 +775,12 @@ pub(crate) fn draw_dash(
             px,
             fonts,
             &d,
-            bg_a(cfg[WidgetId::Dash].bg),
-            cfg.dash_shift_color && crate::telemetry::shift_warn(s),
+            background_alpha(cfg[WidgetId::Dash].bg),
+            cfg.dash.dash_shift_color && crate::telemetry::shift_warn(s),
         );
         return;
     }
-    let a = bg_a(cfg[WidgetId::Dash].bg);
+    let a = background_alpha(cfg[WidgetId::Dash].bg);
     if let Some(path) = chamfer_path(d.x, d.y, d.w, d.h, d.cut) {
         if a > 0 {
             fill_path(px, &path, Color::from_rgba8(18, 18, 20, a));
@@ -821,7 +821,7 @@ pub(crate) fn draw_dash(
         }
     }
 
-    if cfg.dash_rev {
+    if cfg.dash.dash_rev {
         draw_rev_bar(
             px,
             d.rev_x,
@@ -846,7 +846,7 @@ pub(crate) fn draw_dash(
         d.gear_n,
         d.gear_x + d.gear_w * 0.5,
         d.main_y + (d.main_h - d.gear_n) * 0.42,
-        shift_gear_col(s, cfg.dash_shift_color, white),
+        shift_gear_col(s, cfg.dash.dash_shift_color, white),
         true,
     );
 
@@ -870,7 +870,7 @@ pub(crate) fn draw_dash(
         white,
         false,
     );
-    if let Some(line) = rr(d.mid_x, d.main_y + d.main_h * 0.48, d.mid_w, 1.0) {
+    if let Some(line) = try_rect(d.mid_x, d.main_y + d.main_h * 0.48, d.mid_w, 1.0) {
         fill_rect(px, line, Color::from_rgba8(200, 200, 206, 70));
     }
     text(

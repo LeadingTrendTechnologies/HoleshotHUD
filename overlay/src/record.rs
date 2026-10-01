@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Instant;
 
-use mxbo_hud::snapshot::{cstr, Snapshot};
+use mxbo_hud::snapshot::{bytes_as_text, Snapshot};
 use mxbo_hud::{clock_sample, ClockSample};
 
 use crate::util::json_escape;
@@ -93,7 +93,7 @@ impl ClockLog {
     }
 
     pub fn tick(&mut self, snap: &Snapshot) {
-        let track = cstr(&snap.track_name);
+        let track = bytes_as_text(&snap.track_name);
         match self.gate.update(
             &track,
             snap.session_laps,
@@ -237,7 +237,7 @@ impl ClockLog {
 
     fn write_line(&mut self, snap: &Snapshot, s: &ClockSample) {
         let t = self.started.elapsed().as_secs_f32();
-        let track = cstr(&snap.track_name);
+        let track = bytes_as_text(&snap.track_name);
         let line = format!(
             "{{\"t\":{t:.2},\"seq\":{},\"track\":\"{}\",\"len\":{},\"laps\":{},\"time\":{},\"cur\":{},\"lap_ms\":{},\"last_ms\":{},\"spd\":{:.1},\"pos\":{:.3},\"on\":{},\"ll\":{},\"ld\":{},\"n\":{},\"dash\":\"{}\",\"rem\":{},\"mode\":{},\"gate\":{},\"arm\":{},\"exp\":{},\"saw\":{},\"lock\":{},\"otl\":{},\"otb\":{},\"flag\":{},\"left\":{}}}",
             s.seq,

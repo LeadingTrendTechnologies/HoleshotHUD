@@ -46,13 +46,13 @@ pub(crate) fn draw_standings(
             &cols,
             TableLook {
                 bg: cfg[WidgetId::Standings].bg,
-                hl: cfg.st_hl,
-                text: cfg.st_text,
-                stripe: cfg.st_stripe,
-                plaque_text: cfg.st_plaque_text,
-                show_plaque: cfg.st_plaque,
-                head: &cfg.st_head,
-                foot: &cfg.st_foot,
+                hl: cfg.standings.st_hl,
+                text: cfg.standings.st_text,
+                stripe: cfg.standings.st_stripe,
+                plaque_text: cfg.standings.st_plaque_text,
+                show_plaque: cfg.standings.st_plaque,
+                head: &cfg.standings.st_head,
+                foot: &cfg.standings.st_foot,
             },
             slice.len().max(1),
             n,
@@ -73,8 +73,8 @@ pub(crate) fn draw_standings(
                 ST_SLIDE.with(|a| {
                     tbl.rows(&ids, &mut a.borrow_mut(), |px, fonts, row| {
                         let standing = &slice[row.vis_i];
-                        let cat = cstr(&standing.category);
-                        let accent_c = bike_color(&cstr(&standing.bike), &cat);
+                        let cat = bytes_as_text(&standing.category);
+                        let accent_c = bike_color(&bytes_as_text(&standing.bike), &cat);
                         let is_focus = standing.race_num == focus;
                         let out = standing_status(standing).is_some()
                             && standing_status(standing) != Some("PIT");
@@ -95,8 +95,8 @@ pub(crate) fn draw_standings(
                                     true,
                                 ),
                                 StField::Num => (format!("{}", standing.race_num), dim, true),
-                                StField::Name => (cstr(&standing.name).to_string(), name_c, false),
-                                StField::Bike => (cstr(&standing.bike).to_string(), name_c, false),
+                                StField::Name => (bytes_as_text(&standing.name).to_string(), name_c, false),
+                                StField::Bike => (bytes_as_text(&standing.bike).to_string(), name_c, false),
                                 StField::Gap => (
                                     format_board_gap(
                                         standing.gap_ms,
@@ -173,7 +173,7 @@ pub(crate) fn draw_standings(
                                     (format_penalty(standing.penalty_ms), dim, true)
                                 }
                                 StField::Category => {
-                                    (cstr(&standing.category).to_string(), dim, false)
+                                    (bytes_as_text(&standing.category).to_string(), dim, false)
                                 }
                                 StField::Crashed => {
                                     if standing.crashed != 0 || rider_crashed(s, standing.race_num)

@@ -1,5 +1,5 @@
 MAGIC=0x4F42584D
-VERSION=18
+VERSION=19
 CMD_MAGIC=0x4342584D
 MAX_POLY=1024
 MAX_RIDERS=64
@@ -26,7 +26,7 @@ MxboShmRider.rpm 68 4
 MxboShmRider.gear 72 4
 MxboShmRider.throttle 76 4
 MxboShmRider.frontBrake 80 4
-MxboShmStanding.size 140
+MxboShmStanding.size 144
 MxboShmStanding.raceNum 0 4
 MxboShmStanding.position 4 4
 MxboShmStanding.state 8 4
@@ -41,12 +41,13 @@ MxboShmStanding.name 40 32
 MxboShmStanding.bike 72 32
 MxboShmStanding.lastLapMs 104 4
 MxboShmStanding.category 108 32
+MxboShmStanding.sectorGate 140 4
 MxboShmRect.size 16
 MxboShmRect.x 0 4
 MxboShmRect.y 4 4
 MxboShmRect.w 8 4
 MxboShmRect.h 12 4
-MxboShmSnapshot.size 19800
+MxboShmSnapshot.size 19960
 MxboShmSnapshot.magic 0 4
 MxboShmSnapshot.version 4 4
 MxboShmSnapshot.seq 8 4
@@ -72,54 +73,54 @@ MxboShmSnapshot.poly 148 8192
 MxboShmSnapshot.riderCount 8340 4
 MxboShmSnapshot.riders 8344 5376
 MxboShmSnapshot.standingCount 13720 4
-MxboShmSnapshot.standings 13724 5600
-MxboShmSnapshot.map 19324 16
-MxboShmSnapshot.standingsRect 19340 16
-MxboShmSnapshot.relative 19356 16
-MxboShmSnapshot.showMap 19372 4
-MxboShmSnapshot.showStandings 19376 4
-MxboShmSnapshot.showRelative 19380 4
-MxboShmSnapshot.standingsRows 19384 4
-MxboShmSnapshot.relativeCount 19388 4
-MxboShmSnapshot.localGear 19392 4
-MxboShmSnapshot.localRpm 19396 4
-MxboShmSnapshot.engineTemp 19400 4
-MxboShmSnapshot.airTemp 19404 4
-MxboShmSnapshot.lastLapMs 19408 4
-MxboShmSnapshot.currentLapMs 19412 4
-MxboShmSnapshot.currentLap 19416 4
-MxboShmSnapshot.sessionLaps 19420 4
-MxboShmSnapshot.onTrack 19424 4
-MxboShmSnapshot.maxRpm 19428 4
-MxboShmSnapshot.shiftRpm 19432 4
-MxboShmSnapshot.sessionTimeMs 19436 4
-MxboShmSnapshot.sessionLength 19440 4
-MxboShmSnapshot.bestLapMs 19444 4
-MxboShmSnapshot.sectorCount 19448 4
-MxboShmSnapshot.sectorLast 19452 4
-MxboShmSnapshot.sectorCur 19456 12
-MxboShmSnapshot.sectorLastLap 19468 12
-MxboShmSnapshot.sectorBest 19480 12
-MxboShmSnapshot.sectorDelta 19492 12
-MxboShmSnapshot.sectorDeltaValid 19504 4
-MxboShmSnapshot.sessionKind 19508 4
-MxboShmSnapshot.sessionState 19512 4
-MxboShmSnapshot.fuel 19516 4
-MxboShmSnapshot.maxFuel 19520 4
-MxboShmSnapshot.localRoll 19524 4
-MxboShmSnapshot.localPitch 19528 4
-MxboShmSnapshot.localSteer 19532 4
-MxboShmSnapshot.steerLock 19536 4
-MxboShmSnapshot.setupName 19540 64
-MxboShmSnapshot.localThrottle 19604 4
-MxboShmSnapshot.localFrontBrake 19608 4
-MxboShmSnapshot.localRearBrake 19612 4
-MxboShmSnapshot.localClutch 19616 4
-MxboShmSnapshot.holeshotRaceNum 19620 4
-MxboShmSnapshot.holeshotTime 19624 4
-MxboShmSnapshot.drawCount 19628 4
-MxboShmSnapshot.serverName 19632 64
-MxboShmSnapshot.eventGuid 19696 100
+MxboShmSnapshot.standings 13724 5760
+MxboShmSnapshot.map 19484 16
+MxboShmSnapshot.standingsRect 19500 16
+MxboShmSnapshot.relative 19516 16
+MxboShmSnapshot.showMap 19532 4
+MxboShmSnapshot.showStandings 19536 4
+MxboShmSnapshot.showRelative 19540 4
+MxboShmSnapshot.standingsRows 19544 4
+MxboShmSnapshot.relativeCount 19548 4
+MxboShmSnapshot.localGear 19552 4
+MxboShmSnapshot.localRpm 19556 4
+MxboShmSnapshot.engineTemp 19560 4
+MxboShmSnapshot.airTemp 19564 4
+MxboShmSnapshot.lastLapMs 19568 4
+MxboShmSnapshot.currentLapMs 19572 4
+MxboShmSnapshot.currentLap 19576 4
+MxboShmSnapshot.sessionLaps 19580 4
+MxboShmSnapshot.onTrack 19584 4
+MxboShmSnapshot.maxRpm 19588 4
+MxboShmSnapshot.shiftRpm 19592 4
+MxboShmSnapshot.sessionTimeMs 19596 4
+MxboShmSnapshot.sessionLength 19600 4
+MxboShmSnapshot.bestLapMs 19604 4
+MxboShmSnapshot.sectorCount 19608 4
+MxboShmSnapshot.sectorLast 19612 4
+MxboShmSnapshot.sectorCur 19616 12
+MxboShmSnapshot.sectorLastLap 19628 12
+MxboShmSnapshot.sectorBest 19640 12
+MxboShmSnapshot.sectorDelta 19652 12
+MxboShmSnapshot.sectorDeltaValid 19664 4
+MxboShmSnapshot.sessionKind 19668 4
+MxboShmSnapshot.sessionState 19672 4
+MxboShmSnapshot.fuel 19676 4
+MxboShmSnapshot.maxFuel 19680 4
+MxboShmSnapshot.localRoll 19684 4
+MxboShmSnapshot.localPitch 19688 4
+MxboShmSnapshot.localSteer 19692 4
+MxboShmSnapshot.steerLock 19696 4
+MxboShmSnapshot.setupName 19700 64
+MxboShmSnapshot.localThrottle 19764 4
+MxboShmSnapshot.localFrontBrake 19768 4
+MxboShmSnapshot.localRearBrake 19772 4
+MxboShmSnapshot.localClutch 19776 4
+MxboShmSnapshot.holeshotRaceNum 19780 4
+MxboShmSnapshot.holeshotTime 19784 4
+MxboShmSnapshot.drawCount 19788 4
+MxboShmSnapshot.serverName 19792 64
+MxboShmSnapshot.eventGuid 19856 100
 MxboShmCmd.size 12
 MxboShmCmd.magic 0 4
 MxboShmCmd.spectating 4 4

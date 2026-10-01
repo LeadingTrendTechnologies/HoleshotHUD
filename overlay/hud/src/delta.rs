@@ -5,7 +5,7 @@
 //! Best position→time tapes still persist via `track_pb`.
 
 use crate::race_store::norm_lap_pos;
-use crate::shm::{cstr, Snapshot};
+use crate::shm::{bytes_as_text, Snapshot};
 use crate::track_pb::{self, BINS};
 use std::sync::Mutex;
 use std::time::Instant;
@@ -421,7 +421,7 @@ impl DeltaEngine {
         if s.has_telemetry == 0 {
             return self.last_view;
         }
-        let track = cstr(&s.track_name).to_string();
+        let track = bytes_as_text(&s.track_name).to_string();
         let bike_now = track_pb::bike_class(&s.local_bike());
         if !track.is_empty() {
             let bike = if !bike_now.is_empty() {
@@ -450,7 +450,7 @@ impl DeltaEngine {
             .remount_at
             .is_some_and(|t| now.saturating_duration_since(t).as_secs_f32() < 2.0);
 
-        let wrap = sf_wrap(self.last_seen_pos, pos);
+        let wrap = wrapped_start_finish(self.last_seen_pos, pos);
         let clock_drop = self.last_cur_ms > 8_000 && cur_ms + 2_500 < self.last_cur_ms;
         let new_last = s.last_lap_ms > 0 && s.last_lap_ms != self.last_last_lap_ms;
         let lap_up = lap_num > self.last_lap_num && self.last_lap_num > 0;
@@ -661,12 +661,12 @@ fn too_fast(meters: f32, d_ms: i32) -> bool {
 }
 
 /// S/F wrap: large negative track-pos delta.
-fn sf_wrap(prev: f32, pos: f32) -> bool {
+fn wrapped_start_finish(prev: f32, pos: f32) -> bool {
     prev >= 0.0 && (pos - prev) < -WRAP_THRESHOLD
 }
 
 fn wrapped(prev: f32, pos: f32) -> bool {
-    sf_wrap(prev, pos)
+    wrapped_start_finish(prev, pos)
 }
 
 fn wrap_is_finish(st: &DeltaEngine, pos: f32, cur_ms: i32) -> bool {

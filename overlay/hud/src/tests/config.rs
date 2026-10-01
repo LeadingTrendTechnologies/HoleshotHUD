@@ -83,18 +83,18 @@ fn default_hud_hides_every_widget() {
     assert!(!cfg[WidgetId::Map].show);
     assert!(!cfg[WidgetId::Minimap].show);
     assert!(!cfg[WidgetId::Radar].show);
-    assert!(cfg.radar_rings);
-    assert_eq!(cfg.radar_range, 12);
-    assert_eq!(cfg.radar_style, crate::config::RadarStyle::Plaque);
+    assert!(cfg.radar.radar_rings);
+    assert_eq!(cfg.radar.radar_range, 12);
+    assert_eq!(cfg.radar.radar_style, crate::config::RadarStyle::Plaque);
     assert!(!cfg[WidgetId::Dash].show);
     assert!(!cfg[WidgetId::Ticker].show);
     assert!(!cfg[WidgetId::Sys].show);
     assert!(!cfg[WidgetId::Sector].show);
-    assert!(cfg.sector_live);
-    assert!(cfg.sector_hist);
-    assert_eq!(cfg.sector_hist_laps, 3);
-    assert!(!cfg.sector_session);
-    assert!(!cfg.delta_session);
+    assert!(cfg.sector.sector_live);
+    assert!(cfg.sector.sector_hist);
+    assert_eq!(cfg.sector.sector_hist_laps, 3);
+    assert!(!cfg.sector.sector_session);
+    assert!(!cfg.delta.delta_session);
     assert!(!cfg[WidgetId::Delta].show);
     assert!(!cfg[WidgetId::Stance].show);
     assert!(!cfg[WidgetId::Flag].show);
@@ -102,42 +102,42 @@ fn default_hud_hides_every_widget() {
     assert!(!cfg[WidgetId::Gamepad].show);
     assert!(!cfg[WidgetId::Telemetry].show);
     assert!(!cfg[WidgetId::Pitboard].show);
-    assert!(cfg.telemetry_traces);
-    assert!(cfg.telemetry_trace_throttle);
-    assert!(cfg.telemetry_trace_brake);
-    assert!(!cfg.telemetry_trace_steer);
-    assert!(cfg.telemetry_bars);
-    assert!(cfg.telemetry_bar_clutch);
-    assert!(cfg.telemetry_bar_brake);
-    assert!(cfg.telemetry_bar_throttle);
-    assert!(!cfg.telemetry_bar_steer);
-    assert!(cfg.telemetry_dial);
-    assert!(!cfg.flag_yellow);
-    assert!(!cfg.flag_blue);
-    assert!(!cfg.flag_red);
-    assert!(cfg.flag_text);
+    assert!(cfg.telemetry.telemetry_traces);
+    assert!(cfg.telemetry.telemetry_trace_throttle);
+    assert!(cfg.telemetry.telemetry_trace_brake);
+    assert!(!cfg.telemetry.telemetry_trace_steer);
+    assert!(cfg.telemetry.telemetry_bars);
+    assert!(cfg.telemetry.telemetry_bar_clutch);
+    assert!(cfg.telemetry.telemetry_bar_brake);
+    assert!(cfg.telemetry.telemetry_bar_throttle);
+    assert!(!cfg.telemetry.telemetry_bar_steer);
+    assert!(cfg.telemetry.telemetry_dial);
+    assert!(!cfg.flag.flag_yellow);
+    assert!(!cfg.flag.flag_blue);
+    assert!(!cfg.flag.flag_red);
+    assert!(cfg.flag.flag_text);
     assert!(!cfg.any_overlay_widget());
-    assert_eq!(cfg.stance_style, StanceStyle::Text);
-    assert_eq!(cfg.lean_style, LeanStyle::Figure);
-    assert_eq!(cfg.gamepad_style, GamepadStyle::Auto);
-    assert_eq!(cfg.gamepad_theme, GamepadTheme::Light);
-    assert!(!cfg.stance_show_sit);
+    assert_eq!(cfg.stance.stance_style, StanceStyle::Text);
+    assert_eq!(cfg.lean.lean_style, LeanStyle::Figure);
+    assert_eq!(cfg.gamepad.gamepad_style, GamepadStyle::Auto);
+    assert_eq!(cfg.gamepad.gamepad_theme, GamepadTheme::Light);
+    assert!(!cfg.stance.stance_show_sit);
     assert!(!cfg.experimental);
     assert!(!cfg.review);
     assert!(!cfg.game_ui);
     assert!(!cfg.gamepad_visible());
     assert!(cfg.whats_new_seen.is_empty());
     assert!(cfg.first_install_version.is_empty());
-    assert!(cfg.ticker_title);
+    assert!(cfg.ticker.ticker_title);
     assert_eq!(cfg.font_family, FontFamily::Exo2);
     assert_eq!(cfg.primary, DEFAULT_PRIMARY);
     assert_eq!(cfg.units, UnitPrefs::all(Units::Metric));
-    assert!(cfg.st_stripe);
-    assert!(cfg.rel_stripe);
-    assert_eq!(cfg.st_plaque_text, TableText::Black);
-    assert!(cfg.st_plaque);
-    assert_eq!(cfg.rel_plaque_text, TableText::Black);
-    assert!(cfg.rel_plaque);
+    assert!(cfg.standings.st_stripe);
+    assert!(cfg.relative.rel_stripe);
+    assert_eq!(cfg.standings.st_plaque_text, TableText::Black);
+    assert!(cfg.standings.st_plaque);
+    assert_eq!(cfg.relative.rel_plaque_text, TableText::Black);
+    assert!(cfg.relative.rel_plaque);
     assert_eq!(
         cfg[WidgetId::Standings].rect,
         crate::shm::Rect {
@@ -150,14 +150,14 @@ fn default_hud_hides_every_widget() {
     assert_eq!(cfg[WidgetId::Relative].rect.w, 0.20);
     assert_eq!(cfg[WidgetId::Dash].rect.w, 0.111);
     assert_eq!(cfg[WidgetId::Dash].rect.h, 0.115);
-    assert!(!cfg.dash_simple);
-    assert!(!cfg.dash_shift_color);
-    assert!(!cfg.dash_yellow);
-    assert!(!cfg.dash_blue);
-    assert!(!cfg.dash_red);
-    assert_eq!(cfg.dash_left, DashField::Engine);
-    assert_eq!(cfg.dash_mid, DashField::Air);
-    assert_eq!(cfg.dash_right, DashField::Best);
+    assert!(!cfg.dash.dash_simple);
+    assert!(!cfg.dash.dash_shift_color);
+    assert!(!cfg.dash.dash_yellow);
+    assert!(!cfg.dash.dash_blue);
+    assert!(!cfg.dash.dash_red);
+    assert_eq!(cfg.dash.dash_left, DashField::Engine);
+    assert_eq!(cfg.dash.dash_mid, DashField::Air);
+    assert_eq!(cfg.dash.dash_right, DashField::Best);
     assert!(BoardField::any(&BoardField::DEFAULT_HEAD));
     assert!(!BoardField::any(&BoardField::DEFAULT_FOOT));
     assert!(!cfg.standings_cols().is_empty());
@@ -549,18 +549,18 @@ fn per_measurement_units_override_legacy_and_round_trip() {
 #[test]
 fn disabled_columns_drop_from_widget_layout() {
     let mut cfg = HudConfig::new();
-    cfg.st_name = false;
-    cfg.st_pos = false;
-    cfg.st_num = false;
-    cfg.st_gap = false;
-    cfg.st_best = false;
-    cfg.st_last = false;
+    cfg.standings.st_name = false;
+    cfg.standings.st_pos = false;
+    cfg.standings.st_num = false;
+    cfg.standings.st_gap = false;
+    cfg.standings.st_best = false;
+    cfg.standings.st_last = false;
     assert_eq!(cfg.standings_cols(), vec![StField::Name]);
-    cfg.rel_name = false;
-    cfg.rel_num = false;
-    cfg.rel_gap = false;
-    cfg.rel_best = false;
-    cfg.rel_last = false;
+    cfg.relative.rel_name = false;
+    cfg.relative.rel_num = false;
+    cfg.relative.rel_gap = false;
+    cfg.relative.rel_best = false;
+    cfg.relative.rel_last = false;
     assert_eq!(cfg.relative_cols(), vec![RelField::Name]);
 }
 
@@ -682,7 +682,7 @@ fn flag_text_defaults_on_and_ini_can_turn_it_off() {
     std::env::set_var("MXBO_TEST_INI", &path);
     let cfg = HudConfig::load_file();
     assert!(
-        cfg.flag_text,
+        cfg.flag.flag_text,
         "old ini without flag_text keeps the caption on"
     );
     std::fs::write(
@@ -693,7 +693,7 @@ fn flag_text_defaults_on_and_ini_can_turn_it_off() {
     let cfg = HudConfig::load_file();
     std::env::remove_var("MXBO_TEST_INI");
     let _ = std::fs::remove_dir_all(&dir);
-    assert!(!cfg.flag_text);
+    assert!(!cfg.flag.flag_text);
 }
 
 #[test]
@@ -709,10 +709,10 @@ fn telemetry_toggles_default_on_and_ini_can_turn_them_off() {
     .unwrap();
     std::env::set_var("MXBO_TEST_INI", &path);
     let cfg = HudConfig::load_file();
-    assert!(cfg.telemetry_traces);
+    assert!(cfg.telemetry.telemetry_traces);
     assert!(cfg.telemetry_draw_traces());
     assert!(cfg.telemetry_draw_bars());
-    assert!(cfg.telemetry_dial);
+    assert!(cfg.telemetry.telemetry_dial);
     std::fs::write(
         &path,
         "telemetry_traces=0\ntelemetry_trace_brake=0\ntelemetry_bar_clutch=0\ntelemetry_dial=0\nfirst_install_version=0.1.0\nst_last=1\nrel_last=1\n",
@@ -721,16 +721,16 @@ fn telemetry_toggles_default_on_and_ini_can_turn_them_off() {
     let cfg = HudConfig::load_file();
     std::env::remove_var("MXBO_TEST_INI");
     let _ = std::fs::remove_dir_all(&dir);
-    assert!(!cfg.telemetry_traces);
+    assert!(!cfg.telemetry.telemetry_traces);
     assert!(!cfg.telemetry_draw_traces());
-    assert!(cfg.telemetry_trace_throttle);
-    assert!(!cfg.telemetry_trace_brake);
-    assert!(!cfg.telemetry_trace_steer);
-    assert!(!cfg.telemetry_bar_steer);
-    assert!(cfg.telemetry_bars);
-    assert!(!cfg.telemetry_bar_clutch);
+    assert!(cfg.telemetry.telemetry_trace_throttle);
+    assert!(!cfg.telemetry.telemetry_trace_brake);
+    assert!(!cfg.telemetry.telemetry_trace_steer);
+    assert!(!cfg.telemetry.telemetry_bar_steer);
+    assert!(cfg.telemetry.telemetry_bars);
+    assert!(!cfg.telemetry.telemetry_bar_clutch);
     assert!(cfg.telemetry_draw_bars());
-    assert!(!cfg.telemetry_dial);
+    assert!(!cfg.telemetry.telemetry_dial);
 }
 
 #[test]
@@ -811,9 +811,9 @@ fn widget_prefs_round_trip_keeps_legacy_keys() {
 #[test]
 fn sys_apps_default_includes_obs() {
     let cfg = HudConfig::new();
-    let keys: Vec<&str> = cfg.sys_apps.iter().map(|a| a.key.as_str()).collect();
+    let keys: Vec<&str> = cfg.sys.sys_apps.iter().map(|a| a.key.as_str()).collect();
     assert_eq!(keys, ["hud", "mxbikes", "mxbapp", "reshade", "obs"]);
-    assert!(cfg.sys_apps.iter().all(|a| a.show && !a.removable()));
+    assert!(cfg.sys.sys_apps.iter().all(|a| a.show && !a.removable()));
 }
 
 #[test]
@@ -822,10 +822,10 @@ fn sys_apps_encode_round_trip_and_custom_exe() {
     cfg.add_sys_preset("discord");
     cfg.add_sys_exe("MyCapture.exe");
     cfg.toggle_sys_app(1);
-    assert!(!cfg.sys_apps[1].show);
-    assert!(cfg.sys_apps.iter().any(|a| a.key == "discord" && a.show));
+    assert!(!cfg.sys.sys_apps[1].show);
+    assert!(cfg.sys.sys_apps.iter().any(|a| a.key == "discord" && a.show));
     let custom = cfg
-        .sys_apps
+        .sys.sys_apps
         .iter()
         .find(|a| a.key == "exe:mycapture.exe")
         .expect("custom");
@@ -833,25 +833,25 @@ fn sys_apps_encode_round_trip_and_custom_exe() {
     assert!(custom.removable());
 
     cfg.add_sys_exe("obs64.exe");
-    assert_eq!(cfg.sys_apps.iter().filter(|a| a.key == "obs").count(), 1);
-    assert!(cfg.sys_apps.iter().find(|a| a.key == "obs").unwrap().show);
+    assert_eq!(cfg.sys.sys_apps.iter().filter(|a| a.key == "obs").count(), 1);
+    assert!(cfg.sys.sys_apps.iter().find(|a| a.key == "obs").unwrap().show);
 
-    let encoded = encode_sys_apps(&cfg.sys_apps);
+    let encoded = encode_sys_apps(&cfg.sys.sys_apps);
     let parsed = parse_sys_apps(&encoded);
-    assert_eq!(parsed, cfg.sys_apps);
+    assert_eq!(parsed, cfg.sys.sys_apps);
 
     cfg.remove_sys_app(0);
-    assert_eq!(cfg.sys_apps[0].key, "hud");
-    let obs_i = cfg.sys_apps.iter().position(|a| a.key == "obs").unwrap();
+    assert_eq!(cfg.sys.sys_apps[0].key, "hud");
+    let obs_i = cfg.sys.sys_apps.iter().position(|a| a.key == "obs").unwrap();
     cfg.remove_sys_app(obs_i);
-    assert!(cfg.sys_apps.iter().any(|a| a.key == "obs"));
+    assert!(cfg.sys.sys_apps.iter().any(|a| a.key == "obs"));
     let discord_i = cfg
-        .sys_apps
+        .sys.sys_apps
         .iter()
         .position(|a| a.key == "discord")
         .unwrap();
     cfg.remove_sys_app(discord_i);
-    assert!(cfg.sys_apps.iter().all(|a| a.key != "discord"));
+    assert!(cfg.sys.sys_apps.iter().all(|a| a.key != "discord"));
 }
 
 #[test]
@@ -1287,7 +1287,7 @@ fn radar_style_round_trips_and_expands_default_plaque() {
     std::env::set_var("MXBO_TEST_INI", &path);
     let mut cfg = HudConfig::new();
     cfg.first_install_version = "0.1.0".into();
-    cfg.radar_style = crate::config::RadarStyle::Arrows;
+    cfg.radar.radar_style = crate::config::RadarStyle::Arrows;
     crate::config::maybe_expand_radar_for_arrows(&mut cfg);
     assert_eq!(
         cfg[WidgetId::Radar].rect,
@@ -1298,7 +1298,7 @@ fn radar_style_round_trips_and_expands_default_plaque() {
     let text = std::fs::read_to_string(&path).unwrap();
     std::env::remove_var("MXBO_TEST_INI");
     let _ = std::fs::remove_dir_all(&dir);
-    assert_eq!(loaded.radar_style, crate::config::RadarStyle::Arrows);
+    assert_eq!(loaded.radar.radar_style, crate::config::RadarStyle::Arrows);
     assert!(text.contains("radar_style=arrows"));
 }
 
@@ -1311,7 +1311,7 @@ fn radar_arrows_does_not_shrink_a_custom_rect() {
         w: 0.5,
         h: 0.5,
     };
-    cfg.radar_style = crate::config::RadarStyle::Arrows;
+    cfg.radar.radar_style = crate::config::RadarStyle::Arrows;
     crate::config::maybe_expand_radar_for_arrows(&mut cfg);
     assert!((cfg[WidgetId::Radar].rect.w - 0.5).abs() < 0.0001);
 }
@@ -1325,14 +1325,14 @@ fn gamepad_theme_round_trips_and_light_fills() {
     std::env::set_var("MXBO_TEST_INI", &path);
     let mut cfg = HudConfig::new();
     cfg.first_install_version = "0.1.0".into();
-    cfg.gamepad_theme = GamepadTheme::Dark;
+    cfg.gamepad.gamepad_theme = GamepadTheme::Dark;
     cfg.save();
     let loaded = HudConfig::load_file();
     let text = std::fs::read_to_string(&path).unwrap();
     std::env::remove_var("MXBO_TEST_INI");
     let _ = std::fs::remove_dir_all(&dir);
     assert!(text.contains("gamepad_theme=dark"));
-    assert_eq!(loaded.gamepad_theme, GamepadTheme::Dark);
+    assert_eq!(loaded.gamepad.gamepad_theme, GamepadTheme::Dark);
 
     assert_eq!(GamepadTheme::parse("DARK"), GamepadTheme::Dark);
     assert_eq!(GamepadTheme::parse("bogus"), GamepadTheme::Light);
@@ -1343,8 +1343,8 @@ fn gamepad_theme_round_trips_and_light_fills() {
 #[test]
 fn old_plate_colors_follow_the_accent() {
     let fresh = HudConfig::new();
-    assert_eq!(fresh.pit_yellow, crate::config::DEFAULT_PRIMARY);
-    assert_eq!(fresh.pit_blue, [0, 0, 0]);
+    assert_eq!(fresh.pit.pit_yellow, crate::config::DEFAULT_PRIMARY);
+    assert_eq!(fresh.pit.pit_blue, [0, 0, 0]);
 
     let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let dir = std::env::temp_dir().join(format!("mxbo-ini-plate-{}", std::process::id()));
@@ -1354,24 +1354,24 @@ fn old_plate_colors_follow_the_accent() {
     let mut cfg = HudConfig::new();
     cfg.first_install_version = "0.1.0".into();
     cfg.primary = [10, 20, 30];
-    cfg.pit_yellow = crate::pitboard::PLATE_YELLOW;
-    cfg.pit_blue = crate::pitboard::PLATE_NAVY;
+    cfg.pit.pit_yellow = crate::pitboard::PLATE_YELLOW;
+    cfg.pit.pit_blue = crate::pitboard::PLATE_NAVY;
     cfg.save();
     let loaded = HudConfig::load_file();
-    assert_eq!(loaded.pit_yellow, [10, 20, 30]);
-    assert_eq!(loaded.pit_blue, [0, 0, 0]);
+    assert_eq!(loaded.pit.pit_yellow, [10, 20, 30]);
+    assert_eq!(loaded.pit.pit_blue, [0, 0, 0]);
 
     let mut custom = HudConfig::new();
     custom.first_install_version = "0.1.0".into();
     custom.primary = [10, 20, 30];
-    custom.pit_yellow = [1, 2, 3];
-    custom.pit_blue = [4, 5, 6];
+    custom.pit.pit_yellow = [1, 2, 3];
+    custom.pit.pit_blue = [4, 5, 6];
     custom.save();
     let kept = HudConfig::load_file();
     std::env::remove_var("MXBO_TEST_INI");
     let _ = std::fs::remove_dir_all(&dir);
-    assert_eq!(kept.pit_yellow, [1, 2, 3]);
-    assert_eq!(kept.pit_blue, [4, 5, 6]);
+    assert_eq!(kept.pit.pit_yellow, [1, 2, 3]);
+    assert_eq!(kept.pit.pit_blue, [4, 5, 6]);
 }
 
 #[test]
@@ -1387,59 +1387,63 @@ fn widget_look_tracks_visual_fields_not_rect() {
     assert_ne!(background.widget_look(WidgetId::Standings), standings);
 
     let mut changed = base.clone();
-    changed.rel_stripe = !changed.rel_stripe;
+    changed.relative.rel_stripe = !changed.relative.rel_stripe;
     assert_ne!(changed.widget_look(WidgetId::Relative), base.widget_look(WidgetId::Relative));
 
     let mut changed = base.clone();
-    changed.map_follow = !changed.map_follow;
+    changed.map.map_follow = !changed.map.map_follow;
     assert_ne!(changed.widget_look(WidgetId::Map), base.widget_look(WidgetId::Map));
 
     let mut changed = base.clone();
-    changed.mini_zoom += 1;
+    changed.map.map_zoom += 1;
+    assert_ne!(changed.widget_look(WidgetId::Map), base.widget_look(WidgetId::Map));
+
+    let mut changed = base.clone();
+    changed.mini.mini_zoom += 1;
     assert_ne!(changed.widget_look(WidgetId::Minimap), base.widget_look(WidgetId::Minimap));
 
     let mut changed = base.clone();
-    changed.radar_range += 1;
+    changed.radar.radar_range += 1;
     assert_ne!(changed.widget_look(WidgetId::Radar), base.widget_look(WidgetId::Radar));
 
     let mut changed = base.clone();
-    changed.dash_simple = !changed.dash_simple;
+    changed.dash.dash_simple = !changed.dash.dash_simple;
     assert_ne!(changed.widget_look(WidgetId::Dash), base.widget_look(WidgetId::Dash));
 
     let mut changed = base.clone();
-    changed.ticker_hl += 1;
+    changed.ticker.ticker_hl += 1;
     assert_ne!(changed.widget_look(WidgetId::Ticker), base.widget_look(WidgetId::Ticker));
 
     let mut changed = base.clone();
-    changed.sys_apps[0].show = !changed.sys_apps[0].show;
+    changed.sys.sys_apps[0].show = !changed.sys.sys_apps[0].show;
     assert_ne!(changed.widget_look(WidgetId::Sys), base.widget_look(WidgetId::Sys));
 
     let mut changed = base.clone();
-    changed.sector_live = !changed.sector_live;
+    changed.sector.sector_live = !changed.sector.sector_live;
     assert_ne!(changed.widget_look(WidgetId::Sector), base.widget_look(WidgetId::Sector));
 
     let mut changed = base.clone();
-    changed.delta_session = !changed.delta_session;
+    changed.delta.delta_session = !changed.delta.delta_session;
     assert_ne!(changed.widget_look(WidgetId::Delta), base.widget_look(WidgetId::Delta));
 
     let mut changed = base.clone();
-    changed.flag_text = !changed.flag_text;
+    changed.flag.flag_text = !changed.flag.flag_text;
     assert_ne!(changed.widget_look(WidgetId::Flag), base.widget_look(WidgetId::Flag));
 
     let mut changed = base.clone();
-    changed.stance_style = StanceStyle::Icon;
+    changed.stance.stance_style = StanceStyle::Icon;
     assert_ne!(changed.widget_look(WidgetId::Stance), base.widget_look(WidgetId::Stance));
 
     let mut changed = base.clone();
-    changed.lean_style = LeanStyle::Minimal;
+    changed.lean.lean_style = LeanStyle::Minimal;
     assert_ne!(changed.widget_look(WidgetId::Lean), base.widget_look(WidgetId::Lean));
 
     let mut changed = base.clone();
-    changed.gamepad_theme = GamepadTheme::Dark;
+    changed.gamepad.gamepad_theme = GamepadTheme::Dark;
     assert_ne!(changed.widget_look(WidgetId::Gamepad), base.widget_look(WidgetId::Gamepad));
 
     let mut changed = base.clone();
-    changed.telemetry_traces = !changed.telemetry_traces;
+    changed.telemetry.telemetry_traces = !changed.telemetry.telemetry_traces;
     assert_ne!(
         changed.widget_look(WidgetId::Telemetry),
         base.widget_look(WidgetId::Telemetry)
@@ -1447,7 +1451,7 @@ fn widget_look_tracks_visual_fields_not_rect() {
 
     let pit = base.widget_look(WidgetId::Pitboard);
     let mut plate = base.clone();
-    plate.pit_when = PitWhen::Lap;
+    plate.pit.pit_when = PitWhen::Lap;
     assert_ne!(plate.widget_look(WidgetId::Pitboard), pit);
     let mut ignored = base.clone();
     ignored[WidgetId::Pitboard].bg += 1;
@@ -1461,12 +1465,12 @@ fn seed_stream_widget_copies_factory_settings_once() {
     let mut cfg = HudConfig::new();
     let preset = SessionPreset::Race;
     cfg[WidgetId::Standings].bg = 80;
-    cfg.st_pos = false;
+    cfg.standings.st_pos = false;
     cfg.stream_slot_mut(preset)[WidgetId::Standings].rect.x = 0.4;
 
     cfg.seed_stream_widget_from_game(preset, WidgetId::Standings);
     assert_eq!(cfg.stream_slot(preset)[WidgetId::Standings].bg, 80);
-    assert!(!cfg.stream_slot(preset).st_pos);
+    assert!(!cfg.stream_slot(preset).standings.st_pos);
     assert!((cfg.stream_slot(preset)[WidgetId::Standings].rect.x - 0.4).abs() < 0.0001);
     assert!(!cfg.stream_slot(preset)[WidgetId::Standings].show);
 
@@ -1478,8 +1482,12 @@ fn seed_stream_widget_copies_factory_settings_once() {
     cfg.seed_stream_widget_from_game(preset, WidgetId::Standings);
     assert_eq!(cfg.stream_slot(preset)[WidgetId::Standings].bg, 33);
 
-    cfg.mini_zoom = 40;
+    cfg.mini.mini_zoom = 40;
     cfg.seed_stream_widget_from_game(preset, WidgetId::Minimap);
-    assert_eq!(cfg.stream_slot(preset).mini_zoom, 40);
+    assert_eq!(cfg.stream_slot(preset).mini.mini_zoom, 40);
+
+    cfg.map.map_zoom = 40;
+    cfg.seed_stream_widget_from_game(preset, WidgetId::Map);
+    assert_eq!(cfg.stream_slot(preset).map.map_zoom, 40);
     assert_eq!(cfg.stream_slot(preset)[WidgetId::Standings].bg, 33);
 }

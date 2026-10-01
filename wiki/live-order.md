@@ -21,7 +21,7 @@ Each placed rider's score, high to low:
 
 | Rule | Why |
 | --- | --- |
-| Metres into the lap | Tracker distance since the gate or their last crossing, when armed. Otherwise metres past a known start/finish (`SF_FRAC_LEARNED`, or `sf_meters` when it is set). With neither, only a same-lap pair inside 250 m can move. |
+| Metres into the lap | On lap 1 (`num_laps` still 0), known S1 and S2 fractions: forward distance from those gates (`split_fracs`, wrap like sectors). The arc from S2 back to S1 stays S1 unless that rider's sector gate is already 2. Without saved fractions, a published sector gate (1 after S1, 2 after S2) plus travel since that gate. After a lap is complete, tracker distance since the gate or their last crossing, when armed. Otherwise metres past a known start/finish (`SF_FRAC_LEARNED`, or `sf_meters` when it is set). With neither, only a same-lap pair inside 250 m can move. |
 | Their own penalty | The game only applies `penalty_ms` to the results. Live, each rider's seconds are metres at session-best pace (`track_length / best_lap`, or 15 m/s before anyone has a lap). Place does not matter: a 10 s penalty and a 5 s penalty are both subtracted from that rider, and the field is sorted once. |
 | No `track_pos`, or DNS / OUT / DSQ | Stay in the scored slot. The bubble steps over them. |
 | Ahead by `PASS_M` (3 m), or `HOLD_M` (0.5 m) if they already hold the place | Only a tie break so two bikes on the same stretch do not swap every frame. |
@@ -48,6 +48,9 @@ each tick) and where their current lap started:
   riders down in turn one are soon more than 250 m back.
 - When a rider's `num_laps` rises the lap base moves to the current distance and they are
   armed. Spectating / joining mid-race arms each rider on their first crossing we see.
+- When their sector gate rises (S1, then S2) the lap base moves the same way and a corrupt
+  pin clears. That is lap 1 before the finish, and a stuck rider later in the race. The
+  gate count dropping at the next lap does not disarm them.
 - A step over `MAX_STEP_M` (80 m) is a reset / shortcut / teleport and adds nothing.
   Dropping out of `riders[]` freezes distance and keeps `armed`; on reappear travel
   resumes without inventing a teleport step.
@@ -87,9 +90,16 @@ each tick) and where their current lap started:
 - When the line is unknown, cold-arm on the first real motion step after the race goes
   live (missed gate). Do not arm on a zero step — that invents equal travel for riders
   already spread out.
+- Lap 1 uses sector gates so far pairs move before the finish. Do not treat track
+  fraction 0 as S1. After `num_laps` has risen, the armed tracker wins — do not keep
+  scoring that lap from sector geometry.
 
 ## Change log
 
+- 2026-10-01 — Lap 1 places use S1/S2 when those gates are known, and every rider's sector
+  split when they are not. A pass between gates still follows track position. After a
+  lap is complete the tracker wins. A later sector gate clears a rider pinned to the
+  game place.
 - 2026-09-26 — First-lap places after start crashes: keep `armed` across brief track-pos
   gaps; cold-arm on first real step when the race is live and the line is unknown so
   far passes show without waiting for S/F.

@@ -2,11 +2,13 @@
 #include "config.h"
 #include "crash_log.h"
 #include "state.h"
+#if defined(MXBO_INGAME_HUD)
 #include "hud/draw_list.h"
 #include "hud/map_hud.h"
 #include "hud/widgets.h"
 #include "hud/font_atlas.h"
 #include "layout.h"
+#endif
 #include "shm_writer.h"
 
 #ifndef NOMINMAX
@@ -28,13 +30,15 @@ namespace
 
     PluginState g_state;
     PluginConfig g_config;
+#if defined(MXBO_INGAME_HUD)
     DrawList g_draw;
     MapHud g_map;
     LayoutEditor g_layout;
+    bool g_layoutDirty = true;
+#endif
     ShmWriter g_shm;
     std::string g_savePath;
     std::string g_iniPath;
-    bool g_layoutDirty = true;
 
     template <typename T>
     bool copySized(T& dest, const void* src, int size)
@@ -143,7 +147,9 @@ namespace
         }
         g_iniWriteTime = fad.ftLastWriteTime;
         g_config.load(g_iniPath);
+#if defined(MXBO_INGAME_HUD)
         g_layoutDirty = true;
+#endif
     }
 
     void stampIniWriteTime()
@@ -233,7 +239,9 @@ __declspec(dllexport) int Startup(char* _szSavePath)
         }
         g_config.load(loadPath);
         stampIniWriteTime();
+#if defined(MXBO_INGAME_HUD)
         g_layoutDirty = true;
+#endif
         g_shm.open();
         ensureOverlayCompat();
         crash_log::install(&g_state);
@@ -260,7 +268,9 @@ __declspec(dllexport) void Shutdown()
             }
         }
         g_state.clearEvent();
+#if defined(MXBO_INGAME_HUD)
         g_draw.clear();
+#endif
         g_shm.close();
     });
 }
@@ -272,7 +282,9 @@ __declspec(dllexport) void EventInit(void* _pData, int _iDataSize)
         SPluginsBikeEvent_t data{};
         copySized(data, _pData, _iDataSize);
         g_state.setEvent(data);
+#if defined(MXBO_INGAME_HUD)
         g_layoutDirty = true;
+#endif
     });
     crash_log::flushTrail();
 }
@@ -282,7 +294,9 @@ __declspec(dllexport) void EventDeinit()
     breadcrumb("EventDeinit");
     safeCall([] {
         g_state.clearEvent();
+#if defined(MXBO_INGAME_HUD)
         g_layoutDirty = true;
+#endif
         publishHud();
     });
     crash_log::flushTrail();
@@ -374,7 +388,9 @@ __declspec(dllexport) int DrawInit(int* _piNumSprites, char** _pszSpriteName, in
     {
         *_pszFontName = nullptr;
     }
+#if defined(MXBO_INGAME_HUD)
     FontAtlas::get().ensure();
+#endif
     return 0;
 }
 
@@ -390,9 +406,14 @@ __declspec(dllexport) void Draw(int _iState, int* _piNumQuads, void** _ppQuad, i
     {
         (void)_iState;
         reloadConfigIfChanged();
+#if defined(MXBO_INGAME_HUD)
         g_layout.update(g_config, g_layoutDirty, g_iniPath);
+#endif
+        // A 19960-byte seqlock store is about 0.3µs. Draw and RaceVehicleData both
+        // publish; that copy is not the frame.
         g_shm.publish(g_state, g_config, true);
 
+#if defined(MXBO_INGAME_HUD)
         // Frozen: standings, relative, and map only. Overlay widgets stay in Rust.
         if (!g_config.ingameHud)
         {
@@ -442,6 +463,7 @@ __declspec(dllexport) void Draw(int _iState, int* _piNumQuads, void** _ppQuad, i
         {
             *_ppString = g_draw.strings.empty() ? nullptr : g_draw.strings.data();
         }
+#endif
     }
     catch (...)
     {
@@ -457,7 +479,9 @@ __declspec(dllexport) void TrackCenterline(int _iNumSegments, SPluginsTrackSegme
             return;
         }
         g_state.setCenterline(_iNumSegments, _pasSegment, static_cast<const float*>(_pRaceData));
+#if defined(MXBO_INGAME_HUD)
         g_layoutDirty = true;
+#endif
     });
 }
 
@@ -476,7 +500,9 @@ __declspec(dllexport) void RaceDeinit()
     safeCall([] {
         g_state.endRun();
         g_state.clearRace();
+#if defined(MXBO_INGAME_HUD)
         g_layoutDirty = true;
+#endif
         publishHud();
     });
 }
@@ -525,7 +551,7 @@ __declspec(dllexport) void RaceSplit(void* _pData, int _iDataSize)
 {
     breadcrumb("RaceSplit");
     onCopied<SPluginsRaceSplit_t>(_pData, _iDataSize, [](const SPluginsRaceSplit_t& data) {
-        g_state.setRaceSplit(data.m_iRaceNum, data.m_iSplit, data.m_iSplitTime);
+        g_state.setRaceSplit(data.m_iRaceNum, data.m_iLapNum, data.m_iSplit, data.m_iSplitTime);
     });
 }
 

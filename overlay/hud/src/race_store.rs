@@ -5,7 +5,7 @@
 //! a clone for tests and clock logs.
 
 use crate::config::SessionPreset;
-use crate::shm::{cstr, Snapshot, Standing, MAX_STANDINGS};
+use crate::shm::{bytes_as_text, Snapshot, Standing, MAX_STANDINGS};
 use std::cell::Cell;
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicI32, Ordering};
@@ -130,6 +130,9 @@ impl RaceField {
 pub struct RaceStore {
     pub clock: SessionClock,
     pub field: RaceField,
+    /// Race flag from the last [`RaceStore::refresh`]. Render draws this; it does not
+    /// re-run the start/finish machine.
+    pub race_flag: i32,
 }
 
 static VIEW: Mutex<RaceStore> = Mutex::new(RaceStore {
@@ -149,6 +152,7 @@ static VIEW: Mutex<RaceStore> = Mutex::new(RaceStore {
         leader: None,
         session_best_ms: 0,
     },
+    race_flag: 0,
 });
 
 thread_local! {
@@ -210,8 +214,10 @@ struct RiderProgress {
     /// We saw where this lap started: gate, race-go cold arm, or a line crossing.
     armed: bool,
     /// Armed travel grew more than a lap + slack without a `num_laps` rise. Pin to the
-    /// game place (no S/F fallback) until the next crossing or gate.
+    /// game place (no S/F fallback) until the next crossing or sector gate.
     corrupt: bool,
+    /// Highest sector gate applied to this lap's base. A rise rebases travel.
+    gates_seen: i32,
 }
 
 static PROGRESS: Mutex<Vec<RiderProgress>> = Mutex::new(Vec::new());
@@ -241,6 +247,7 @@ fn note_progress(s: &Snapshot, clock: &SessionClock, n: usize) {
                     laps_at_base: standing.num_laps,
                     armed: false,
                     corrupt: false,
+                    gates_seen: 0,
                 });
                 tracked.len() - 1
             }
@@ -255,6 +262,7 @@ fn note_progress(s: &Snapshot, clock: &SessionClock, n: usize) {
                 laps_at_base: standing.num_laps,
                 armed: true,
                 corrupt: false,
+                gates_seen: 0,
             };
             continue;
         }
@@ -282,10 +290,21 @@ fn note_progress(s: &Snapshot, clock: &SessionClock, n: usize) {
             progress.laps_at_base = standing.num_laps;
             progress.armed = progress.last_frac.is_some();
             progress.corrupt = false;
+            progress.gates_seen = standing.sector_gate.max(0);
         } else if standing.num_laps < progress.laps_at_base {
             progress.laps_at_base = standing.num_laps;
             progress.armed = false;
             progress.corrupt = false;
+            progress.gates_seen = standing.sector_gate.max(0);
+        } else if standing.sector_gate > progress.gates_seen {
+            // S1 / S2 is the same kind of checkpoint as the finish: rebase travel,
+            // arm, and drop a pin that was waiting for the line.
+            progress.lap_base_m = progress.travelled_m;
+            progress.gates_seen = standing.sector_gate;
+            progress.armed = progress.last_frac.is_some();
+            progress.corrupt = false;
+        } else if standing.sector_gate < progress.gates_seen {
+            progress.gates_seen = standing.sector_gate.max(0);
         }
         let into_lap = progress.travelled_m - progress.lap_base_m;
         if progress.armed && into_lap > s.track_length + LAP_OVERFLOW_SLACK_M {
@@ -392,11 +411,11 @@ fn prev_rank(prev: &[i32], race_num: i32) -> usize {
 /// `sf_meters == 0` with nothing learned is "unknown", not the origin: the centerline
 /// fraction is not measured from the line.
 fn line_known(s: &Snapshot) -> bool {
-    SF_FRAC_LEARNED.load(Ordering::Relaxed) >= 0 || s.sf_meters > 0.0
+    START_FINISH_FRACTION_LEARNED.load(Ordering::Relaxed) >= 0 || s.sf_meters > 0.0
 }
 
-fn sf_frac(s: &Snapshot) -> f32 {
-    let learned = SF_FRAC_LEARNED.load(Ordering::Relaxed);
+fn start_finish_fraction(s: &Snapshot) -> f32 {
+    let learned = START_FINISH_FRACTION_LEARNED.load(Ordering::Relaxed);
     if learned >= 0 {
         return (learned as f32 / 10_000.0).rem_euclid(1.0);
     }
@@ -407,11 +426,73 @@ fn sf_frac(s: &Snapshot) -> f32 {
     }
 }
 
+/// Forward distance along the lap, wrapping at the centerline origin. Same rule as sectors.
+fn forward_frac(from: f32, to: f32) -> f32 {
+    (to - from).rem_euclid(1.0)
+}
+
+/// Lap 1, before a finish arms the tracker. Known S1/S2 fractions order the whole
+/// field from track position. Without those fractions, a published sector gate plus
+/// travel since that gate does the same job until the line.
+fn open_lap_sector_metres(s: &Snapshot, tracked: &[RiderProgress], st: &Standing) -> Option<f32> {
+    if st.num_laps > 0 || out_of_race(st) {
+        return None;
+    }
+    let ends = crate::sector::split_fracs();
+    if ends[0] > 0.05 && ends[1] > 0.05 {
+        let frac = rider_lap_pos(s, st.race_num)?;
+        return Some(geometric_open_lap_metres(
+            s.track_length,
+            st.sector_gate,
+            frac,
+            ends[0],
+            ends[1],
+        ));
+    }
+    let gate = st.sector_gate.clamp(0, 2);
+    if gate <= 0 {
+        return None;
+    }
+    let span = s.track_length / 3.0;
+    let since = lap_progress_m(tracked, st, s.track_length)
+        .unwrap_or(0.0)
+        .clamp(0.0, (span - PASS_M).max(0.0));
+    Some(gate as f32 * span + since)
+}
+
+/// Metres from the start of the open lap using S1 (and S2 when known). The arc from
+/// S2 back to S1 is still S1 unless a split says they already reached S2 — that arc
+/// also holds the run to the line, and the origin is not the line.
+fn geometric_open_lap_metres(
+    track_length: f32,
+    published: i32,
+    frac: f32,
+    s1: f32,
+    s2: f32,
+) -> f32 {
+    let published = published.clamp(0, 2);
+    let s1_to_s2 = forward_frac(s1, s2);
+    let from_s1 = forward_frac(s1, frac);
+    if from_s1 > 0.0 && from_s1 < s1_to_s2 {
+        return from_s1 * track_length;
+    }
+    if published >= 2 {
+        return (s1_to_s2 + forward_frac(s2, frac)) * track_length;
+    }
+    -forward_frac(frac, s1) * track_length
+}
+
 /// Metres into the lap when we know where it started: the tracker after the gate or a
 /// crossing, otherwise metres past a known start/finish.
 /// Runaway/corrupt riders return `None` so they keep their game place (no S/F collapse
-/// to ~0 just after a wrap before `num_laps` bumps).
+/// to ~0 just after a wrap before `num_laps` bumps). Lap 1 with a known sector gate
+/// is scored before that, so a pin cannot freeze the start.
 fn lap_metres(s: &Snapshot, tracked: &[RiderProgress], st: &Standing) -> Option<f32> {
+    if st.num_laps == 0 {
+        if let Some(metres) = open_lap_sector_metres(s, tracked, st) {
+            return Some(metres);
+        }
+    }
     if progress_corrupt(tracked, st.race_num) {
         return None;
     }
@@ -422,7 +503,7 @@ fn lap_metres(s: &Snapshot, tracked: &[RiderProgress], st: &Standing) -> Option<
         return None;
     }
     let frac = rider_lap_pos(s, st.race_num)?;
-    Some((frac - sf_frac(s)).rem_euclid(1.0) * s.track_length)
+    Some((frac - start_finish_fraction(s)).rem_euclid(1.0) * s.track_length)
 }
 
 /// Laps completed, plus metres into this lap, minus this rider's own penalty.
@@ -614,7 +695,7 @@ fn class_rank_in_order(s: &Snapshot, order: &[i32], race_num: i32, category: &st
         let Some(row) = standing_of(s, num) else {
             continue;
         };
-        if cstr(&row.category) != category {
+        if bytes_as_text(&row.category) != category {
             continue;
         }
         rank += 1;
@@ -630,7 +711,7 @@ pub fn penalty_class_place_delta(s: &Snapshot, race_num: i32) -> Option<i32> {
     let Some(st) = standing_of(s, race_num) else {
         return None;
     };
-    let cat = cstr(&st.category);
+    let cat = bytes_as_text(&st.category);
     if cat.is_empty() {
         return penalty_place_delta(race_num);
     }
@@ -818,6 +899,12 @@ impl RaceStore {
         if let Ok(mut g) = VIEW.lock() {
             g.clock = clock;
             g.field = field;
+        }
+        // Flag, start/finish, and run-in advance once with the session, after the clock
+        // is visible to `dash_race_flag`.
+        let race_flag = crate::render::session_race_flag(s);
+        if let Ok(mut g) = VIEW.lock() {
+            g.race_flag = race_flag;
         }
     }
 
@@ -1043,14 +1130,21 @@ pub(crate) static RUN_IN_FLAG: AtomicI32 = AtomicI32::new(0);
 /// Your completed laps when the leader took the finish. The race is over for you on
 /// your next crossing, even a lap down. `-1` until the leader finishes.
 pub(crate) static LEADER_FIN_LOCAL_BASE: AtomicI32 = AtomicI32::new(-1);
+/// Timed +1, still on the uncounted lap, and a lap down when the leader finished.
+/// That line is the checkered. Stays set so the crossing still reads `laps_left == 0`
+/// after their lead shrinks by one. `0` until then.
+static PLUS_ONE_WAVE_OFF: AtomicI32 = AtomicI32::new(0);
+/// Timed +2, lapped before `2/2` starts. The line that would start that extra is the
+/// checkered. `0` until a real pass on `0/2` or `1/2`.
+static PLUS_TWO_WAVE_OFF: AtomicI32 = AtomicI32::new(0);
 /// Start/finish position in ten-thousandths of a lap, learned from your own crossings.
 /// `-1` until confirmed; beats `sf_meters`, which is 0 without a centerline.
-pub(crate) static SF_FRAC_LEARNED: AtomicI32 = AtomicI32::new(-1);
+pub(crate) static START_FINISH_FRACTION_LEARNED: AtomicI32 = AtomicI32::new(-1);
 /// First unconfirmed sighting of the line. Two crossings must agree before we trust it,
 /// so a rejoin or a stray lap increment cannot move the flag window.
-pub(crate) static SF_FRAC_CAND: AtomicI32 = AtomicI32::new(-1);
+pub(crate) static START_FINISH_FRACTION_CANDIDATE: AtomicI32 = AtomicI32::new(-1);
 /// Your completed laps last frame — detects a crossing for the S/F calibration.
-pub(crate) static SF_LEARN_LAPS: AtomicI32 = AtomicI32::new(-1);
+pub(crate) static START_FINISH_LEARN_LAPS: AtomicI32 = AtomicI32::new(-1);
 /// Prior distance to S/F in metres, so the run-in must actually be closing.
 pub(crate) static LAST_SF_METERS: AtomicI32 = AtomicI32::new(-1);
 /// Set once you are ~half a lap from S/F, cleared on each crossing. Stops track-position
@@ -1222,9 +1316,9 @@ pub(crate) fn reset_session_clock_track() {
     WHITE_WAVE_LAP.store(-1, Ordering::Relaxed);
     RUN_IN_FLAG.store(0, Ordering::Relaxed);
     LEADER_FIN_LOCAL_BASE.store(-1, Ordering::Relaxed);
-    SF_FRAC_LEARNED.store(-1, Ordering::Relaxed);
-    SF_FRAC_CAND.store(-1, Ordering::Relaxed);
-    SF_LEARN_LAPS.store(-1, Ordering::Relaxed);
+    START_FINISH_FRACTION_LEARNED.store(-1, Ordering::Relaxed);
+    START_FINISH_FRACTION_CANDIDATE.store(-1, Ordering::Relaxed);
+    START_FINISH_LEARN_LAPS.store(-1, Ordering::Relaxed);
     LAST_SF_METERS.store(-1, Ordering::Relaxed);
     LAP_MID_SEEN.store(0, Ordering::Relaxed);
     CLOSING_ON_LINE.store(0, Ordering::Relaxed);
@@ -1241,6 +1335,8 @@ pub(crate) fn reset_session_clock_track() {
     TIMED_EXTRAS_HINT.store(0, Ordering::Relaxed);
     LAP_MOTO_GATE.store(0, Ordering::Relaxed);
     LAPPED_LATCH.store(0, Ordering::Relaxed);
+    PLUS_ONE_WAVE_OFF.store(0, Ordering::Relaxed);
+    PLUS_TWO_WAVE_OFF.store(0, Ordering::Relaxed);
     LEADER_BEHIND.store(0, Ordering::Relaxed);
     LAST_LEAD_FRAC.store(-1, Ordering::Relaxed);
     if let Ok(mut g) = LIVE_ORDER.lock() {
@@ -2367,10 +2463,20 @@ pub(crate) fn laps_left(s: &Snapshot) -> Option<i32> {
         // Count down to the extras you will run. Deriving this from
         // `local_overtime_done` instead would lose a lap: its `max(0)` clamp reports 0
         // both on the lap that does not count and on your first extra.
-        // The leader finishing does not cut this short — checkered is when you
-        // complete the extra, not when they do.
+        // The leader finishing does not cut a lap you have already started.
+        // Timed +1 still on `0/1` is the checkered once a real pass happened and
+        // the leader has finished. Timed +2 lapped before `2/2` ends on the line
+        // that would start that extra.
         let extras = extra_laps(s).max(1);
         let taken = local_overtime_taken(s);
+        note_plus_one_wave_off(s);
+        note_plus_two_wave_off(s);
+        if PLUS_ONE_WAVE_OFF.load(Ordering::Relaxed) == 1 {
+            return Some((1 - raw_overtime_taken(s)).max(0));
+        }
+        if PLUS_TWO_WAVE_OFF.load(Ordering::Relaxed) == 1 && raw_overtime_taken(s) > 0 {
+            return Some((2 - raw_overtime_taken(s)).max(0));
+        }
         return Some((extras + 1 - taken).max(0));
     }
     None
@@ -2393,12 +2499,60 @@ fn remaining_laps_collapsed(left: i32) -> bool {
     prev >= 0 && left < prev && prev - left >= 2
 }
 
+/// The leader actually went past, or classification already has a lap on you.
+/// A leader finish with a lead of 2 on `0/1` is their extra crossing, not this.
+fn passed_a_lap(s: &Snapshot) -> bool {
+    let _ = lapped(s);
+    LAPPED_LATCH.load(Ordering::Relaxed) == 1
+        || focus_standing(s).is_some_and(|row| row.gap_laps >= 1)
+}
+
+/// Timed +1: the leader finished the lap that put you a lap down before you started
+/// the extra. Latch it — after you cross, their lead shrinks by one and `lapped` can
+/// go quiet, but this line is still the finish.
+fn note_plus_one_wave_off(s: &Snapshot) {
+    if PLUS_ONE_WAVE_OFF.load(Ordering::Relaxed) == 1 || extra_laps(s) != 1 {
+        return;
+    }
+    note_leader_finish(s);
+    let fin = LEADER_FIN_LOCAL_BASE.load(Ordering::Relaxed);
+    let local0 = OVERTIME_LOCAL_BASE.load(Ordering::Relaxed);
+    if fin < 0 || local0 < 0 || fin > local0 {
+        return;
+    }
+    if passed_a_lap(s) {
+        PLUS_ONE_WAVE_OFF.store(1, Ordering::Relaxed);
+    }
+}
+
+/// Timed +2: a real lap-down on `0/2` or `1/2`. The line that would start `2/2` is
+/// the checkered. Stays set after the lead shrinks so that crossing still finishes.
+fn note_plus_two_wave_off(s: &Snapshot) {
+    if PLUS_TWO_WAVE_OFF.load(Ordering::Relaxed) == 1 || extra_laps(s) != 2 {
+        return;
+    }
+    if raw_overtime_taken(s) > 1 {
+        return;
+    }
+    if passed_a_lap(s) {
+        PLUS_TWO_WAVE_OFF.store(1, Ordering::Relaxed);
+    }
+}
+
 /// White is the last-lap wave for a rider still running the full distance.
 /// A first-lap `session_laps` drop that collapses remaining laps is not a last lap.
+/// A +1 wave-off (`PLUS_ONE_WAVE_OFF`) or a +2 wave-off onto the cancelled `2/2`
+/// (`PLUS_TWO_WAVE_OFF`) is checkered on the run-in only — no white flash mid-lap.
 pub(crate) fn skip_last_lap_white(s: &Snapshot, left: Option<i32>) -> bool {
     let Some(n) = left else {
         return false;
     };
+    if n <= 1
+        && (PLUS_ONE_WAVE_OFF.load(Ordering::Relaxed) == 1
+            || PLUS_TWO_WAVE_OFF.load(Ordering::Relaxed) == 1)
+    {
+        return true;
+    }
     if remaining_laps_collapsed(n) {
         return true;
     }
@@ -2574,13 +2728,13 @@ pub(crate) fn class_position(s: &Snapshot) -> i32 {
     };
     let live = live_position(st.race_num);
     let overall = if live > 0 { live } else { st.position.max(0) };
-    let cat = cstr(&st.category);
+    let cat = bytes_as_text(&st.category);
     if cat.is_empty() {
         return overall;
     }
     ordered_standings(s)
         .iter()
-        .filter(|row| cstr(&row.category) == cat)
+        .filter(|row| bytes_as_text(&row.category) == cat)
         .position(|row| row.race_num == st.race_num)
         .map(|i| i as i32 + 1)
         .unwrap_or(overall)

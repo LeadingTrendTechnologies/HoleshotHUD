@@ -250,9 +250,9 @@ impl Sampler {
                 return self.cpu;
             }
         }
-        let idle = ft(idle);
-        let kern = ft(kern);
-        let user = ft(user);
+        let idle = filetime_ticks(idle);
+        let kern = filetime_ticks(kern);
+        let user = filetime_ticks(user);
         let di = idle.saturating_sub(self.last_idle);
         let dk = kern.saturating_sub(self.last_kern);
         let du = user.saturating_sub(self.last_user);
@@ -413,7 +413,7 @@ fn query_handle(proc: windows::Win32::Foundation::HANDLE) -> Option<(u64, f32)> 
             return None;
         }
         Some((
-            ft(kern).saturating_add(ft(user)),
+            filetime_ticks(kern).saturating_add(filetime_ticks(user)),
             mem.WorkingSetSize as f32 / (1024.0 * 1024.0),
         ))
     }
@@ -518,7 +518,7 @@ fn reshade_game_dir_mb(pid: u32) -> Option<f32> {
     Some((bytes as f32 / (1024.0 * 1024.0)).max(0.1))
 }
 
-fn ft(t: FILETIME) -> u64 {
+fn filetime_ticks(t: FILETIME) -> u64 {
     ((t.dwHighDateTime as u64) << 32) | t.dwLowDateTime as u64
 }
 

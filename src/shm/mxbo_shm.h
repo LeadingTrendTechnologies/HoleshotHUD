@@ -7,11 +7,11 @@ extern "C" {
 #endif
 
 #define MXBO_SHM_MAGIC 0x4F42584Du /* 'MXBO' */
-#define MXBO_SHM_VERSION 18
+#define MXBO_SHM_VERSION 19
 /* Layout lock: src/shm/abi.txt — tools/shm-abi.cpp and Rust Snapshot/CmdView. */
 /* Versioned name so a leftover smaller mapping cannot be remapped and overrun. */
-#define MXBO_SHM_NAME L"Local\\MXBOHudV18"
-#define MXBO_SHM_NAME_A "Local\\MXBOHudV18"
+#define MXBO_SHM_NAME L"Local\\MXBOHudV19"
+#define MXBO_SHM_NAME_A "Local\\MXBOHudV19"
 #define MXBO_CMD_MAGIC 0x4342584Du /* 'MXBC' */
 #define MXBO_CMD_NAME L"Local\\MXBOHudCmdV1"
 #define MXBO_CMD_NAME_A "Local\\MXBOHudCmdV1"
@@ -63,6 +63,8 @@ typedef struct MxboShmStanding
     char bike[MXBO_NAME];
     int32_t lastLapMs;
     char category[MXBO_NAME];
+    /* Gates crossed this lap: 0, 1 after S1, 2 after S2. Not the finish. */
+    int32_t sectorGate;
 } MxboShmStanding;
 
 typedef struct MxboShmRect

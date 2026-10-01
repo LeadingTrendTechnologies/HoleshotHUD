@@ -1,15 +1,16 @@
 use std::cell::{Cell, RefCell};
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use crate::config::{
-    accent_rgb, BoardField, DashField, DotLabel, EditSurface, FontFamily, HudConfig, LeanStyle,
+    accent_rgb, BoardField, DashField, DotLabel, EditSurface, HudConfig, LeanStyle,
     RelField, StField, StanceStyle, TableText, WidgetId, SYS_PROC_MAX,
 };
 pub use crate::race_store::{clock_sample, ClockSample};
-use crate::shm::{cstr, Rider, Snapshot, MAX_STANDINGS};
+use crate::shm::{bytes_as_text, Rider, Snapshot, MAX_STANDINGS};
 // Re-export clock / field helpers for `render_tests` (`use super::*`).
 #[allow(unused_imports)]
 pub(crate) use crate::race_store::{
@@ -26,10 +27,9 @@ pub(crate) use crate::race_store::{
     standing_of, ticker_delta_from_row, timed_clock_live, timed_race_flag, track_position,
     RaceFlag, RaceStore, CHECKERED_LATCH, CLOSING_ON_LINE, IN_GATE, LAPS_TO_RUN_AT, LAP_GREEN,
     LAP_MID_SEEN, LAST_CUR_LAP, LAST_SESSION_SIG, LAST_SF_METERS, LEADER_FIN_LOCAL_BASE,
-    OVERTIME_LOCAL_BASE, POST_GATE, RUN_IN_FLAG, SESSION_EXPIRED, SF_FRAC_CAND, SF_FRAC_LEARNED,
-    SF_LEARN_LAPS, WHITE_WAVE_AT, WHITE_WAVE_LAP,
+    OVERTIME_LOCAL_BASE, POST_GATE, RUN_IN_FLAG, SESSION_EXPIRED, START_FINISH_FRACTION_CANDIDATE, START_FINISH_FRACTION_LEARNED,
+    START_FINISH_LEARN_LAPS, WHITE_WAVE_AT, WHITE_WAVE_LAP,
 };
-use fontdue::Font;
 use tiny_skia::{
     Color, FillRule, FilterQuality, GradientStop, LineCap, LineJoin, LinearGradient, Mask, Paint,
     Path, PathBuilder, Pixmap, PixmapPaint, Point as SkPoint, PremultipliedColorU8, Rect,
@@ -70,6 +70,13 @@ pub use sys::{set_sys_procs, set_sys_stats, SysProc};
 pub(crate) use telemetry::*;
 pub(crate) use ticker::*;
 pub(crate) use pitboard::*;
+
+mod table;
+mod text;
+pub use table::{click_rider_at, click_rider_hits, table_layout_rect, ClickRider};
+pub(crate) use table::*;
+pub use text::{icon, measure, text, text_bold, Fonts};
+pub(crate) use text::*;
 
 pub fn painted_factory_plate(art: &str, main: [u8; 3], secondary: [u8; 3]) -> Option<Pixmap> {
     pitboard::factory_plate_image(art, main, secondary)
@@ -250,12 +257,6 @@ fn telemetry_steer_col() -> Color {
     Color::from_rgba8(214, 214, 220, 230)
 }
 
-pub struct Fonts {
-    pub ui: Font,
-    pub bold: Font,
-    pub icons: Font,
-    bold_is_fake: bool,
-}
 
 #[derive(Clone, Copy)]
 struct MapFollowEase {
@@ -265,9 +266,6 @@ struct MapFollowEase {
 }
 
 thread_local! {
-    static FACE: Cell<*const Font> = Cell::new(std::ptr::null());
-    static SCALE: Cell<f32> = Cell::new(1.0);
-    static FAKE_BOLD: Cell<bool> = Cell::new(false);
     static MAP_LAYER: RefCell<Option<(u64, Pixmap)>> = RefCell::new(None);
     static MAP_FOLLOW: Cell<MapFollowEase> = Cell::new(MapFollowEase {
         angle: 0.0,
@@ -275,304 +273,9 @@ thread_local! {
         live: false,
     });
     static MINI_PX: RefCell<Option<Pixmap>> = RefCell::new(None);
-    static ST_SLIDE: RefCell<TableSlides> = RefCell::new(TableSlides { rows: Vec::new() });
-    static REL_SLIDE: RefCell<TableSlides> = RefCell::new(TableSlides { rows: Vec::new() });
-    static HS_SCROLL: RefCell<IndexSlide> = RefCell::new(IndexSlide {
-        from: 0.0,
-        to: 0.0,
-        start: 0.0,
-        init: false,
-    });
-    static HS_SLIDE: RefCell<TableSlides> = RefCell::new(TableSlides { rows: Vec::new() });
-    static CLICK_RIDERS: RefCell<Vec<ClickRider>> = RefCell::new(Vec::new());
 }
 
-struct IndexSlide {
-    from: f32,
-    to: f32,
-    start: f32,
-    init: bool,
-}
 
-#[derive(Clone, Copy, Debug)]
-pub struct ClickRider {
-    pub race_num: i32,
-    pub x: f32,
-    pub y: f32,
-    pub w: f32,
-    pub h: f32,
-}
-
-fn push_click_rider(race_num: i32, x: f32, y: f32, w: f32, h: f32) {
-    if race_num <= 0 || w <= 1.0 || h <= 1.0 {
-        return;
-    }
-    CLICK_RIDERS.with(|v| {
-        v.borrow_mut().push(ClickRider {
-            race_num,
-            x,
-            y,
-            w,
-            h,
-        });
-    });
-}
-
-fn clear_click_riders() {
-    CLICK_RIDERS.with(|v| v.borrow_mut().clear());
-}
-
-pub fn click_rider_hits() -> Vec<ClickRider> {
-    CLICK_RIDERS.with(|v| v.borrow().clone())
-}
-
-pub fn click_rider_at(px: f32, py: f32) -> Option<i32> {
-    CLICK_RIDERS.with(|v| {
-        v.borrow()
-            .iter()
-            .rev()
-            .find(|h| px >= h.x && px < h.x + h.w && py >= h.y && py < h.y + h.h)
-            .map(|h| h.race_num)
-    })
-}
-
-impl IndexSlide {
-    fn step(&mut self, target: f32, now: f32) -> f32 {
-        const DUR: f32 = 0.38;
-        if !self.init {
-            self.from = target;
-            self.to = target;
-            self.start = now;
-            self.init = true;
-            return target;
-        }
-        if (self.to - target).abs() > 0.02 {
-            let t = ((now - self.start) / DUR).clamp(0.0, 1.0);
-            self.from += (self.to - self.from) * ease_out_cubic(t);
-            self.to = target;
-            self.start = now;
-        }
-        let t = ((now - self.start) / DUR).clamp(0.0, 1.0);
-        self.from + (self.to - self.from) * ease_out_cubic(t)
-    }
-}
-
-struct RowSlide {
-    id: i32,
-    from: f32,
-    to: f32,
-    start: f32,
-}
-
-struct TableSlides {
-    rows: Vec<RowSlide>,
-}
-
-fn anim_now() -> f32 {
-    #[cfg(target_arch = "wasm32")]
-    {
-        thread_local! {
-            static T: Cell<f32> = const { Cell::new(0.0) };
-        }
-        T.with(|c| {
-            let v = c.get() + 1.0 / 60.0;
-            c.set(v);
-            v
-        })
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        thread_local! {
-            static ORIGIN: std::time::Instant = std::time::Instant::now();
-        }
-        ORIGIN.with(|o| o.elapsed().as_secs_f32())
-    }
-}
-
-fn ease_out_cubic(t: f32) -> f32 {
-    let u = 1.0 - t.clamp(0.0, 1.0);
-    1.0 - u * u * u
-}
-
-impl TableSlides {
-    fn indices(&mut self, ids: &[i32], now: f32) -> Vec<f32> {
-        const DUR: f32 = 0.30;
-        let displayed = |e: &RowSlide| {
-            let t = ((now - e.start) / DUR).clamp(0.0, 1.0);
-            e.from + (e.to - e.from) * ease_out_cubic(t)
-        };
-        let mut out = Vec::with_capacity(ids.len());
-        for (i, &id) in ids.iter().enumerate() {
-            let target = i as f32;
-            if let Some(idx) = self.rows.iter().position(|e| e.id == id) {
-                let cur = displayed(&self.rows[idx]);
-                let e = &mut self.rows[idx];
-                if (e.to - target).abs() > 0.05 {
-                    e.from = cur;
-                    e.to = target;
-                    e.start = now;
-                }
-                out.push(displayed(e));
-            } else {
-                self.rows.push(RowSlide {
-                    id,
-                    from: target,
-                    to: target,
-                    start: now,
-                });
-                out.push(target);
-            }
-        }
-        self.rows.retain(|e| ids.contains(&e.id));
-        out
-    }
-
-    fn step(&mut self, ids: &[i32], body_y: f32, row_h: f32, now: f32) -> Vec<f32> {
-        self.indices(ids, now)
-            .into_iter()
-            .map(|i| body_y + i * row_h)
-            .collect()
-    }
-}
-
-fn row_ids(ids: impl IntoIterator<Item = i32>) -> Vec<i32> {
-    ids.into_iter()
-        .enumerate()
-        .map(|(i, id)| if id > 0 { id } else { -(i as i32 + 1) })
-        .collect()
-}
-
-struct StyleGuard;
-
-impl Drop for StyleGuard {
-    fn drop(&mut self) {
-        FACE.with(|c| c.set(std::ptr::null()));
-        SCALE.with(|c| c.set(1.0));
-        FAKE_BOLD.with(|c| c.set(false));
-    }
-}
-
-fn push_style(fonts: &Fonts, bold: bool, pct: i32) -> StyleGuard {
-    let face = if bold { &fonts.bold } else { &fonts.ui };
-    FACE.with(|c| c.set(face as *const Font));
-    SCALE.with(|c| c.set((pct.clamp(70, 160) as f32) / 100.0));
-    FAKE_BOLD.with(|c| c.set(bold && fonts.bold_is_fake));
-    StyleGuard
-}
-
-fn style_k() -> f32 {
-    SCALE.with(|c| c.get())
-}
-
-fn style_font(fonts: &Fonts) -> &Font {
-    let ptr = FACE.with(|c| c.get());
-    if ptr.is_null() {
-        &fonts.ui
-    } else {
-        unsafe { &*ptr }
-    }
-}
-
-fn font_from(bytes: &[u8]) -> Option<Font> {
-    Font::from_bytes(bytes, fontdue::FontSettings::default()).ok()
-}
-
-impl Fonts {
-    pub fn load() -> Option<Self> {
-        Self::for_family(FontFamily::Exo2)
-    }
-
-    pub fn for_family(family: FontFamily) -> Option<Self> {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            if let Some(loaded) = Self::from_windows(family) {
-                return Some(loaded);
-            }
-        }
-        if let Some(loaded) = Self::from_bundled(family) {
-            return Some(loaded);
-        }
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            for fallback in [FontFamily::Segoe, FontFamily::Arial, FontFamily::Tahoma] {
-                if fallback == family {
-                    continue;
-                }
-                if let Some(loaded) = Self::from_windows(fallback) {
-                    return Some(loaded);
-                }
-            }
-        }
-        Self::from_bundled(FontFamily::Roboto)
-    }
-
-    fn icons() -> Option<Font> {
-        font_from(include_bytes!("../../fonts/fa-solid-900.ttf").as_slice())
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn from_windows(family: FontFamily) -> Option<Self> {
-        let (reg, bld) = family.windows_files()?;
-        let bytes = std::fs::read(reg).ok()?;
-        let ui = font_from(&bytes)?;
-        let (bold, bold_is_fake) = match std::fs::read(bld).ok().and_then(|b| font_from(&b)) {
-            Some(bold) => (bold, false),
-            None => (font_from(&bytes)?, true),
-        };
-        Some(Self {
-            ui,
-            bold,
-            icons: Self::icons()?,
-            bold_is_fake,
-        })
-    }
-
-    fn from_bundled(family: FontFamily) -> Option<Self> {
-        let icons = Self::icons()?;
-        match family {
-            FontFamily::Roboto => Self::embedded(
-                include_bytes!("../../fonts/Roboto-Regular.ttf"),
-                None,
-                icons,
-            ),
-            FontFamily::Exo2 => Self::embedded(
-                include_bytes!("../../fonts/Exo2-ExtraBoldItalic.ttf"),
-                Some(include_bytes!("../../fonts/Exo2-BlackItalic.ttf")),
-                icons,
-            ),
-            FontFamily::Teko => Self::embedded(
-                include_bytes!("../../fonts/Teko-SemiBold.ttf"),
-                Some(include_bytes!("../../fonts/Teko-Bold.ttf")),
-                icons,
-            ),
-            FontFamily::Goldman => Self::embedded(
-                include_bytes!("../../fonts/Goldman-Regular.ttf"),
-                Some(include_bytes!("../../fonts/Goldman-Bold.ttf")),
-                icons,
-            ),
-            FontFamily::Montserrat => Self::embedded(
-                include_bytes!("../../fonts/Montserrat-ExtraBold.ttf"),
-                Some(include_bytes!("../../fonts/Montserrat-Black.ttf")),
-                icons,
-            ),
-            _ => None,
-        }
-    }
-
-    fn embedded(regular: &[u8], bold: Option<&[u8]>, icons: Font) -> Option<Self> {
-        let ui = font_from(regular)?;
-        let (bold, bold_is_fake) = match bold.and_then(|b| font_from(b)) {
-            Some(bold) => (bold, false),
-            None => (font_from(regular)?, true),
-        };
-        Some(Self {
-            ui,
-            bold,
-            icons,
-            bold_is_fake,
-        })
-    }
-}
 
 pub fn draw(
     px: &mut Pixmap,
@@ -643,12 +346,12 @@ pub fn draw(
             let (flag, flag_grow) = if cfg[WidgetId::Dash].show || cfg[WidgetId::Flag].show {
                 tick_display_flag(
                     s,
-                    (cfg[WidgetId::Flag].show && cfg.flag_yellow)
-                        || (cfg[WidgetId::Dash].show && cfg.dash_yellow),
-                    (cfg[WidgetId::Flag].show && cfg.flag_blue)
-                        || (cfg[WidgetId::Dash].show && cfg.dash_blue),
-                    (cfg[WidgetId::Flag].show && cfg.flag_red)
-                        || (cfg[WidgetId::Dash].show && cfg.dash_red),
+                    (cfg[WidgetId::Flag].show && cfg.flag.flag_yellow)
+                        || (cfg[WidgetId::Dash].show && cfg.dash.dash_yellow),
+                    (cfg[WidgetId::Flag].show && cfg.flag.flag_blue)
+                        || (cfg[WidgetId::Dash].show && cfg.dash.dash_blue),
+                    (cfg[WidgetId::Flag].show && cfg.flag.flag_red)
+                        || (cfg[WidgetId::Dash].show && cfg.dash.dash_red),
                 )
             } else {
                 (DashFlag::None, 0.0)
@@ -743,12 +446,12 @@ pub fn draw_each<After>(
     let (flag, flag_grow) = if cfg[WidgetId::Dash].show || cfg[WidgetId::Flag].show {
         tick_display_flag(
             s,
-            (cfg[WidgetId::Flag].show && cfg.flag_yellow)
-                || (cfg[WidgetId::Dash].show && cfg.dash_yellow),
-            (cfg[WidgetId::Flag].show && cfg.flag_blue)
-                || (cfg[WidgetId::Dash].show && cfg.dash_blue),
-            (cfg[WidgetId::Flag].show && cfg.flag_red)
-                || (cfg[WidgetId::Dash].show && cfg.dash_red),
+            (cfg[WidgetId::Flag].show && cfg.flag.flag_yellow)
+                || (cfg[WidgetId::Dash].show && cfg.dash.dash_yellow),
+            (cfg[WidgetId::Flag].show && cfg.flag.flag_blue)
+                || (cfg[WidgetId::Dash].show && cfg.dash.dash_blue),
+            (cfg[WidgetId::Flag].show && cfg.flag.flag_red)
+                || (cfg[WidgetId::Dash].show && cfg.dash.dash_red),
         )
     } else {
         (DashFlag::None, 0.0)
@@ -788,7 +491,7 @@ fn draw_widgets<After>(
     After: FnMut(WidgetId, &mut Pixmap) -> bool,
 {
     let included = |id: WidgetId| include.is_none_or(|mask| mask[id.idx()]);
-    let delta = crate::delta::view_for(cfg.delta_session);
+    let delta = crate::delta::view_for(cfg.delta.delta_session);
     if s.show_standings != 0 && included(WidgetId::Standings) {
         RaceStore::with(|_| {
             let _style = push_style(
@@ -852,9 +555,9 @@ fn draw_widgets<After>(
             let (dash_flag, dash_grow) = dash_wrap_flag(
                 flag,
                 flag_grow,
-                cfg.dash_yellow,
-                cfg.dash_blue,
-                cfg.dash_red,
+                cfg.dash.dash_yellow,
+                cfg.dash.dash_blue,
+                cfg.dash.dash_red,
             );
             draw_dash(px, fonts, s, cfg, sw, sh, dash_flag, dash_grow);
         });
@@ -912,9 +615,9 @@ fn draw_widgets<After>(
             let (flag, flag_grow) = flag_widget_flag(
                 flag,
                 flag_grow,
-                cfg.flag_yellow,
-                cfg.flag_blue,
-                cfg.flag_red,
+                cfg.flag.flag_yellow,
+                cfg.flag.flag_blue,
+                cfg.flag.flag_red,
             );
             draw_flag(px, fonts, cfg, sw, sh, flag, flag_grow);
         });
@@ -970,7 +673,7 @@ fn draw_widgets<After>(
             return;
         }
     }
-    if crate::pitboard::drawing(cfg[WidgetId::Pitboard].show, cfg.pit_when)
+    if crate::pitboard::drawing(cfg[WidgetId::Pitboard].show, cfg.pit.pit_when)
         && included(WidgetId::Pitboard)
     {
         RaceStore::with(|_| {
@@ -983,14 +686,14 @@ fn draw_widgets<After>(
     }
 }
 
-fn rr(x: f32, y: f32, w: f32, h: f32) -> Option<Rect> {
+fn try_rect(x: f32, y: f32, w: f32, h: f32) -> Option<Rect> {
     Rect::from_xywh(x, y, w, h)
 }
 
 fn top_banner(px: &mut Pixmap, fonts: &Fonts, w: u32, msg: &str) {
     let cx = w as f32 * 0.5;
     let bw = 680.0;
-    if let Some(r) = rr(cx - bw * 0.5, 8.0, bw, 40.0) {
+    if let Some(r) = try_rect(cx - bw * 0.5, 8.0, bw, 40.0) {
         fill_rect(px, r, panel_col());
     }
     text(px, fonts, msg, 13.0, cx, 18.0, accent(), true);
@@ -1222,10 +925,10 @@ fn layout_box(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, ew_only: bool) {
         ]
     };
     for &(hx, hy) in handles {
-        if let Some(r) = rr(hx - 5.0, hy - 5.0, 10.0, 10.0) {
+        if let Some(r) = try_rect(hx - 5.0, hy - 5.0, 10.0, 10.0) {
             fill_rect(px, r, Color::from_rgba8(8, 8, 10, 230));
         }
-        if let Some(r) = rr(hx - 4.0, hy - 4.0, 8.0, 8.0) {
+        if let Some(r) = try_rect(hx - 4.0, hy - 4.0, 8.0, 8.0) {
             fill_rect(px, r, accent());
         }
     }
@@ -1239,177 +942,10 @@ pub fn fill_rect(px: &mut Pixmap, r: Rect, c: Color) {
     px.fill_rect(r, &p, Transform::identity(), None);
 }
 
-fn bg_a(pct: i32) -> u8 {
+fn background_alpha(pct: i32) -> u8 {
     ((pct.clamp(0, 100) as f32 / 100.0) * 255.0).round() as u8
 }
 
-pub fn text(
-    px: &mut Pixmap,
-    fonts: &Fonts,
-    s: &str,
-    size: f32,
-    x: f32,
-    y: f32,
-    color: Color,
-    center: bool,
-) {
-    draw_text(
-        px,
-        style_font(fonts),
-        s,
-        size,
-        x,
-        y,
-        color,
-        center,
-        FAKE_BOLD.with(|c| c.get()),
-    );
-}
-
-/// 1px night-ink border around glyphs. Not a drop-shadow: same 8-neighbor rim as radar numbers.
-fn text_halo(
-    px: &mut Pixmap,
-    fonts: &Fonts,
-    s: &str,
-    size: f32,
-    x: f32,
-    y: f32,
-    color: Color,
-    center: bool,
-    glass: bool,
-) {
-    if glass {
-        let ink = Color::from_rgba8(10, 10, 10, 230);
-        for (dx, dy) in [
-            (-1.0, 0.0),
-            (1.0, 0.0),
-            (0.0, -1.0),
-            (0.0, 1.0),
-            (-1.0, -1.0),
-            (1.0, -1.0),
-            (-1.0, 1.0),
-            (1.0, 1.0),
-        ] {
-            text(px, fonts, s, size, x + dx, y + dy, ink, center);
-        }
-    }
-    text(px, fonts, s, size, x, y, color, center);
-}
-
-pub fn text_bold(
-    px: &mut Pixmap,
-    fonts: &Fonts,
-    s: &str,
-    size: f32,
-    x: f32,
-    y: f32,
-    color: Color,
-    center: bool,
-) {
-    draw_text(
-        px,
-        &fonts.bold,
-        s,
-        size,
-        x,
-        y,
-        color,
-        center,
-        fonts.bold_is_fake,
-    );
-}
-
-fn draw_text(
-    px: &mut Pixmap,
-    font: &Font,
-    s: &str,
-    size: f32,
-    mut x: f32,
-    y: f32,
-    color: Color,
-    center: bool,
-    fake: bool,
-) {
-    let size = size * style_k();
-    if center {
-        x -= measure_font(font, s, size) * 0.5;
-    }
-    let rgba = [
-        (color.red() * 255.0) as u8,
-        (color.green() * 255.0) as u8,
-        (color.blue() * 255.0) as u8,
-        (color.alpha() * 255.0) as u8,
-    ];
-    let mut pen = x;
-    for ch in s.chars() {
-        if ch != ' ' && ch != '\t' && !font.has_glyph(ch) {
-            continue;
-        }
-        let (metrics, bitmap) = font.rasterize(ch, size);
-        let gx = pen + metrics.xmin as f32;
-        let gy = y + size - metrics.ymin as f32 - metrics.height as f32;
-        blit(px, &bitmap, metrics.width, metrics.height, gx, gy, rgba);
-        if fake {
-            blit(
-                px,
-                &bitmap,
-                metrics.width,
-                metrics.height,
-                gx + 0.7,
-                gy,
-                rgba,
-            );
-        }
-        pen += metrics.advance_width;
-    }
-}
-
-pub fn measure(fonts: &Fonts, s: &str, size: f32) -> f32 {
-    let extra = if FAKE_BOLD.with(|c| c.get()) {
-        0.7
-    } else {
-        0.0
-    };
-    measure_font(style_font(fonts), s, size * style_k()) + extra
-}
-
-fn measure_bold(fonts: &Fonts, s: &str, size: f32) -> f32 {
-    let extra = if fonts.bold_is_fake { 0.7 } else { 0.0 };
-    measure_font(&fonts.bold, s, size * style_k()) + extra
-}
-
-fn measure_font(font: &Font, s: &str, size: f32) -> f32 {
-    s.chars()
-        .filter(|ch| *ch == ' ' || *ch == '\t' || font.has_glyph(*ch))
-        .map(|ch| font.metrics(ch, size).advance_width)
-        .sum()
-}
-
-fn blit(px: &mut Pixmap, bitmap: &[u8], gw: usize, gh: usize, x: f32, y: f32, rgba: [u8; 4]) {
-    let pw = px.width() as i32;
-    let ph = px.height() as i32;
-    let data = px.data_mut();
-    for row in 0..gh {
-        for col in 0..gw {
-            let cov = bitmap[row * gw + col];
-            if cov < 8 {
-                continue;
-            }
-            let dx = x as i32 + col as i32;
-            let dy = y as i32 + row as i32;
-            if dx < 0 || dy < 0 || dx >= pw || dy >= ph {
-                continue;
-            }
-            let i = ((dy * pw + dx) * 4) as usize;
-            let a = (rgba[3] as u16 * cov as u16) / 255;
-            let ia = 255 - a;
-            data[i] = ((data[i] as u16 * ia + rgba[0] as u16 * a) / 255) as u8;
-            data[i + 1] = ((data[i + 1] as u16 * ia + rgba[1] as u16 * a) / 255) as u8;
-            data[i + 2] = ((data[i + 2] as u16 * ia + rgba[2] as u16 * a) / 255) as u8;
-            data[i + 3] = data[i + 3].saturating_add(a as u8);
-        }
-    }
-}
 
 fn standing_status(row: &crate::shm::Standing) -> Option<&'static str> {
     match row.state {
@@ -1439,188 +975,80 @@ fn format_penalty(ms: i32) -> String {
     }
 }
 
-fn col_slots<T: Copy>(
-    origin: f32,
-    pad: f32,
-    avail: f32,
-    cols: &[T],
-    mut width: impl FnMut(T) -> f32,
-    is_flex: impl Fn(T) -> bool,
-) -> Vec<(T, f32, f32)> {
-    if cols.is_empty() {
-        return Vec::new();
-    }
-    const GAP: f32 = 4.0;
-    const MIN_W: f32 = 18.0;
-    let mut widths: Vec<f32> = cols.iter().copied().map(&mut width).collect();
-    let gaps = GAP * (cols.len() - 1) as f32;
-    let inner = (avail - pad * 2.0).max(0.0);
-    let used: f32 = widths.iter().sum::<f32>() + gaps;
-    let leftover = inner - used;
-    // Honor configured widths when they fit. Only shrink on overflow so width
-    // sliders (especially Name) actually change how wide each column draws.
-    if leftover < -0.5 {
-        let flex = cols
-            .iter()
-            .position(|&c| is_flex(c))
-            .unwrap_or(cols.len() - 1);
-        let mut remain = -leftover;
-        let shrink = (widths[flex] - MIN_W).max(0.0).min(remain);
-        widths[flex] -= shrink;
-        remain -= shrink;
-        if remain > 0.5 {
-            let room: Vec<f32> = widths.iter().map(|w| (*w - MIN_W).max(0.0)).collect();
-            let total_room: f32 = room.iter().sum();
-            if total_room > 0.0 {
-                for (w, r) in widths.iter_mut().zip(room) {
-                    if r <= 0.0 {
-                        continue;
-                    }
-                    *w = (*w - remain * (r / total_room)).max(MIN_W);
-                }
-            }
-        }
-    }
-    let mut x = origin + pad;
-    let mut out = Vec::with_capacity(cols.len());
-    for (i, &col) in cols.iter().enumerate() {
-        out.push((col, x, widths[i]));
-        x += widths[i] + GAP;
-    }
-    out
-}
-
-fn hug_board_w<T>(origin: f32, pad: f32, max_w: f32, slots: &[(T, f32, f32)]) -> f32 {
-    let Some((_, x, cw)) = slots.last() else {
-        return max_w;
-    };
-    (x + cw - origin + pad).clamp(pad * 2.0 + 40.0, max_w)
-}
-
-fn table_font_k(pct: i32) -> f32 {
-    (pct.clamp(70, 160) as f32) / 100.0
-}
-
-fn table_stack_h(k: f32, vis_rows: usize, has_foot: bool, show_plaque: bool) -> f32 {
-    let head_h = 26.0 * k;
-    let col_h = 16.0 * k;
-    let track_h = if show_plaque { 20.0 * k } else { 0.0 };
-    let row_h = 22.0 * k;
-    let foot_h = if has_foot { 20.0 * k } else { 0.0 };
-    // Follow the row stack, not a stale widget box. Ctrl+move can save a
-    // hugged 1-row height; Rows can grow without rewriting standings_h.
-    head_h + col_h + track_h + vis_rows as f32 * row_h + foot_h + 8.0
-}
-
-fn standings_vis_rows(s: &Snapshot) -> usize {
-    let n = (s.standing_count.max(0) as usize).min(MAX_STANDINGS);
-    let max_rows = s.standings_rows.max(3) as usize;
-    n.min(max_rows).max(1)
-}
-
-fn relative_vis_rows(s: &Snapshot) -> usize {
-    let n = s.rider_count.max(0) as usize;
-    let focus = if s.focus_race_num > 0 {
-        s.focus_race_num
-    } else {
-        s.local_race_num
-    };
-    let mut have = s.has_telemetry != 0;
-    let mut uniq: Vec<usize> = Vec::new();
-    for i in 0..n {
-        let rider = &s.riders[i];
-        let empty = rider.race_num <= 0 && cstr(&rider.name).is_empty();
-        if empty {
-            continue;
-        }
-        if rider.race_num > 0 && uniq.iter().any(|&j| s.riders[j].race_num == rider.race_num) {
-            continue;
-        }
-        if rider.race_num == focus {
-            have = true;
-        }
-        uniq.push(i);
-    }
-    let side = s.relative_count.max(1) as usize;
-    if !have || uniq.is_empty() {
-        1
-    } else {
-        uniq.len().min(side * 2 + 1).max(1)
-    }
-}
-
-/// Painted standings / relative plaque in normalized overlay space (hugged columns, row stack).
-pub fn table_layout_rect(
-    s: &Snapshot,
-    cfg: &HudConfig,
-    id: WidgetId,
-    rect: crate::shm::Rect,
-    sw: f32,
-    sh: f32,
-) -> crate::shm::Rect {
-    if sw <= 0.0 || sh <= 0.0 {
-        return rect;
-    }
-    let (widths, flex, vis, has_foot, show_plaque) = match id {
-        WidgetId::Standings => {
-            let cols = cfg.standings_cols();
-            let flex = cols
-                .iter()
-                .position(|c| c.is_name())
-                .unwrap_or(cols.len().saturating_sub(1));
-            (
-                cols.iter().map(|c| c.width(cfg) as f32).collect::<Vec<_>>(),
-                flex,
-                standings_vis_rows(s),
-                BoardField::any(&cfg.st_foot),
-                cfg.st_plaque,
-            )
-        }
-        WidgetId::Relative => {
-            let cols = cfg.relative_cols();
-            let flex = cols
-                .iter()
-                .position(|c| c.is_name())
-                .unwrap_or(cols.len().saturating_sub(1));
-            (
-                cols.iter().map(|c| c.width(cfg) as f32).collect::<Vec<_>>(),
-                flex,
-                relative_vis_rows(s),
-                BoardField::any(&cfg.rel_foot),
-                cfg.rel_plaque,
-            )
-        }
-        _ => return rect,
-    };
-    let k = table_font_k(cfg[id].font);
-    let pad = 8.0;
-    let max_w = rect.w * sw;
-    let idxs: Vec<usize> = (0..widths.len()).collect();
-    let slots = col_slots(0.0, pad, max_w, &idxs, |i| widths[i], |i| i == flex);
-    let w = hug_board_w(0.0, pad, max_w, &slots);
-    let h = table_stack_h(k, vis, has_foot, show_plaque);
-    crate::shm::Rect {
-        x: rect.x,
-        y: rect.y,
-        w: w / sw,
-        h: h / sh,
-    }
-}
 
 fn fill_focus_row(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, c: Color) {
-    if let Some(rrt) = rr(x, y, w, h) {
+    if let Some(rrt) = try_rect(x, y, w, h) {
         fill_rect(px, rrt, c);
     }
 }
 
+/// Colored row: 1px lines on the top and bottom, interior fading left to right.
+/// `c`'s alpha is the left-edge wash (0 draws nothing). Lines are stronger and stay visible at the right.
+fn fill_fade_row(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, c: Color) {
+    let (r, g, b, wash) = color_bytes(c);
+    if wash == 0 || w < 1.0 || h < 1.0 {
+        return;
+    }
+    fill_h_fade(px, x, y, w, h, r, g, b, wash, 0);
+    let edge = 1.0;
+    let border_left = (wash as u32 * 3).min(255) as u8;
+    let border_right = (wash as u32 * 24 / 10).min(255) as u8;
+    fill_h_fade(px, x, y, w, edge, r, g, b, border_left, border_right);
+    fill_h_fade(
+        px,
+        x,
+        y + h - edge,
+        w,
+        edge,
+        r,
+        g,
+        b,
+        border_left,
+        border_right,
+    );
+}
+
+fn fill_h_fade(
+    px: &mut Pixmap,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    r: u8,
+    g: u8,
+    b: u8,
+    left: u8,
+    right: u8,
+) {
+    let Some(rrt) = try_rect(x, y, w, h) else {
+        return;
+    };
+    let Some(shader) = LinearGradient::new(
+        SkPoint::from_xy(x, y),
+        SkPoint::from_xy(x + w, y),
+        vec![
+            GradientStop::new(0.0, Color::from_rgba8(r, g, b, left)),
+            GradientStop::new(1.0, Color::from_rgba8(r, g, b, right)),
+        ],
+        SpreadMode::Pad,
+        Transform::identity(),
+    ) else {
+        return;
+    };
+    let mut paint = Paint::default();
+    paint.shader = shader;
+    paint.anti_alias = w >= 2.0 && h >= 2.0;
+    px.fill_rect(rrt, &paint, Transform::identity(), None);
+}
+
 /// Spider-scaled wash: full chroma, alpha 52 at default 50% highlight.
-fn wash_a(opacity_pct: i32) -> u8 {
+fn highlight_alpha(opacity_pct: i32) -> u8 {
     ((52u32 * opacity_pct.clamp(0, 100) as u32) / 50).min(255) as u8
 }
 
 fn you_row_bg(opacity_pct: i32) -> Color {
     let [r, g, b] = accent_rgb();
-    Color::from_rgba8(r, g, b, wash_a(opacity_pct))
+    Color::from_rgba8(r, g, b, highlight_alpha(opacity_pct))
 }
 
 /// Extra black only reads while the game still shows through. Opaque night-ink
@@ -1640,11 +1068,11 @@ fn stripe_row_bg(panel_a: u8) -> Color {
 }
 
 fn lapping_row_bg(opacity_pct: i32) -> Color {
-    Color::from_rgba8(59, 130, 246, wash_a(opacity_pct))
+    Color::from_rgba8(59, 130, 246, highlight_alpha(opacity_pct))
 }
 
 fn lapped_row_bg(opacity_pct: i32) -> Color {
-    Color::from_rgba8(239, 68, 68, wash_a(opacity_pct))
+    Color::from_rgba8(239, 68, 68, highlight_alpha(opacity_pct))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1854,98 +1282,6 @@ fn draw_count_track(
     text(px, fonts, track, 10.0, tx + 8.0, cy + 4.5, ink, false);
 }
 
-trait BoardCol: Copy + PartialEq {
-    fn header(self) -> &'static str;
-    fn width(self, cfg: &HudConfig) -> i32;
-    fn is_name(self) -> bool;
-    fn is_bike(self) -> bool;
-    fn is_pos(self) -> bool;
-    fn is_status(self) -> bool;
-}
-
-impl BoardCol for StField {
-    fn header(self) -> &'static str {
-        match self {
-            Self::Pos => "P",
-            Self::Num => "#",
-            Self::Name => "NAME",
-            Self::Laps => "Completed Laps",
-            Self::Current => "Current Lap",
-            Self::Best => "Fastest",
-            Self::Last => "Last",
-            Self::LapDiff => "DIFF",
-            Self::Status => "",
-            Self::Gap => "GAP",
-            Self::Interval => "INT",
-            Self::Bike => "BIKE",
-            Self::Penalty => "PEN",
-            Self::Crashed => "CR",
-            Self::Category => "CLASS",
-        }
-    }
-
-    fn width(self, cfg: &HudConfig) -> i32 {
-        StField::width(self, cfg)
-    }
-
-    fn is_name(self) -> bool {
-        matches!(self, Self::Name)
-    }
-
-    fn is_bike(self) -> bool {
-        matches!(self, Self::Bike)
-    }
-
-    fn is_pos(self) -> bool {
-        matches!(self, Self::Pos)
-    }
-
-    fn is_status(self) -> bool {
-        matches!(self, Self::Status)
-    }
-}
-
-impl BoardCol for RelField {
-    fn header(self) -> &'static str {
-        match self {
-            Self::Pos => "P",
-            Self::Num => "#",
-            Self::Name => "NAME",
-            Self::Gap => "Gap",
-            Self::Laps => "Completed Laps",
-            Self::Current => "Current Lap",
-            Self::Bike => "BIKE",
-            Self::Penalty => "Pen",
-            Self::Interval => "Int",
-            Self::Status => "",
-            Self::Best => "Fastest",
-            Self::Last => "Last",
-            Self::LapDiff => "DIFF",
-            Self::Category => "CLASS",
-            Self::Speed => "SPD",
-        }
-    }
-
-    fn width(self, cfg: &HudConfig) -> i32 {
-        RelField::width(self, cfg)
-    }
-
-    fn is_name(self) -> bool {
-        matches!(self, Self::Name)
-    }
-
-    fn is_bike(self) -> bool {
-        matches!(self, Self::Bike)
-    }
-
-    fn is_pos(self) -> bool {
-        matches!(self, Self::Pos)
-    }
-
-    fn is_status(self) -> bool {
-        matches!(self, Self::Status)
-    }
-}
 
 fn bike_color(bike: &str, extra: &str) -> Color {
     let hay = format!("{bike} {extra}")
@@ -1992,7 +1328,7 @@ fn bike_color(bike: &str, extra: &str) -> Color {
         let h = hay
             .bytes()
             .fold(2166136261u32, |a, b| a.wrapping_mul(16777619) ^ b as u32);
-        const PAL: [(u8, u8, u8); 6] = [
+        const PALETTE: [(u8, u8, u8); 6] = [
             (232, 196, 48),
             (48, 208, 232),
             (80, 214, 96),
@@ -2000,7 +1336,7 @@ fn bike_color(bike: &str, extra: &str) -> Color {
             (48, 128, 232),
             (168, 128, 255),
         ];
-        let (r, g, b) = PAL[h as usize % PAL.len()];
+        let (r, g, b) = PALETTE[h as usize % PALETTE.len()];
         Color::from_rgba8(r, g, b, 255)
     }
 }
@@ -2013,80 +1349,6 @@ fn ink_on(c: Color) -> Color {
     }
 }
 
-fn table_ink(mode: TableText) -> (Color, Color, Color, Color) {
-    match mode {
-        TableText::White => (
-            text_col(),
-            Color::from_rgba8(210, 210, 216, 255),
-            Color::from_rgba8(110, 110, 116, 255),
-            Color::from_rgba8(160, 160, 168, 220),
-        ),
-        TableText::Black => (
-            Color::from_rgba8(16, 16, 18, 255),
-            Color::from_rgba8(48, 48, 54, 255),
-            Color::from_rgba8(90, 90, 98, 255),
-            Color::from_rgba8(64, 64, 72, 220),
-        ),
-    }
-}
-
-fn plaque_ink(mode: TableText) -> Color {
-    match mode {
-        TableText::White => text_col(),
-        TableText::Black => Color::from_rgba8(12, 12, 14, 255),
-    }
-}
-
-const BIKE_BAR_W: f32 = 5.0;
-
-const BIKE_BAR_SKEW: f32 = 3.0;
-
-const BIKE_BAR_PAD: f32 = 5.0;
-
-const BIKE_PILL_PAD_X: f32 = 10.0;
-
-const BIKE_PILL_PAD_Y: f32 = 4.0;
-
-fn bike_bar_end(pos_cx: f32, pos_cw: f32) -> f32 {
-    pos_cx + pos_cw + 1.0 + BIKE_BAR_W + BIKE_BAR_SKEW
-}
-
-fn name_left_pad(cx: f32, bar_end: Option<f32>) -> f32 {
-    bar_end
-        .map(|end| (end + BIKE_BAR_PAD - cx).max(0.0))
-        .unwrap_or(0.0)
-}
-
-fn draw_bike_pill(
-    px: &mut Pixmap,
-    fonts: &Fonts,
-    label: &str,
-    cx: f32,
-    cy: f32,
-    cw: f32,
-    row_h: f32,
-    accent_c: Color,
-) {
-    let font_sz = 9.0;
-    let max_inner = (cw - BIKE_PILL_PAD_X * 2.0).max(8.0);
-    let badge = ellipsize(fonts, label, font_sz, max_inner);
-    let tw = measure(fonts, &badge, font_sz);
-    let bw = (tw + BIKE_PILL_PAD_X * 2.0).min(cw);
-    let bh = font_sz + BIKE_PILL_PAD_Y * 2.0;
-    let bx = cx + ((cw - bw) * 0.5).max(0.0);
-    let by = cy + ((row_h - bh) * 0.5).max(0.0);
-    fill_round(px, bx, by, bw, bh, 4.0, accent_c);
-    text(
-        px,
-        fonts,
-        &badge,
-        font_sz,
-        bx + BIKE_PILL_PAD_X,
-        by + BIKE_PILL_PAD_Y - 1.0,
-        ink_on(accent_c),
-        false,
-    );
-}
 
 fn fill_skew(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, skew: f32, c: Color) {
     let mut pb = PathBuilder::new();
@@ -2202,10 +1464,10 @@ fn lap_meters(s: &Snapshot) -> f32 {
     }
 }
 
-fn sf_frac(s: &Snapshot) -> f32 {
+fn start_finish_fraction(s: &Snapshot) -> f32 {
     // A crossing we watched beats `sf_meters`, which stays 0 when the game never
     // sends a centerline — that would park the flag window at the centerline origin.
-    let learned = SF_FRAC_LEARNED.load(Ordering::Relaxed);
+    let learned = START_FINISH_FRACTION_LEARNED.load(Ordering::Relaxed);
     if learned >= 0 {
         return (learned as f32 / 10_000.0).rem_euclid(1.0);
     }
@@ -2218,11 +1480,11 @@ fn sf_frac(s: &Snapshot) -> f32 {
 
 /// True when we have no idea where the line is: nothing learned, no centerline, and
 /// `sf_meters` still at its default.
-fn sf_uncalibrated(s: &Snapshot) -> bool {
-    SF_FRAC_LEARNED.load(Ordering::Relaxed) < 0 && s.poly_count <= 0 && s.sf_meters <= 0.0
+fn start_finish_uncalibrated(s: &Snapshot) -> bool {
+    START_FINISH_FRACTION_LEARNED.load(Ordering::Relaxed) < 0 && s.poly_count <= 0 && s.sf_meters <= 0.0
 }
 
-fn dist_to_sf(pos: f32, sf: f32) -> f32 {
+fn distance_to_start_finish(pos: f32, sf: f32) -> f32 {
     let d = sf - pos;
     if d <= 0.0 {
         d + 1.0
@@ -2231,12 +1493,12 @@ fn dist_to_sf(pos: f32, sf: f32) -> f32 {
     }
 }
 
-fn meters_to_sf(s: &Snapshot) -> Option<f32> {
+fn meters_to_start_finish(s: &Snapshot) -> Option<f32> {
     let pos = focus_track_pos(s);
     if pos < 0.0 {
         return None;
     }
-    Some(dist_to_sf(pos, sf_frac(s)) * lap_meters(s))
+    Some(distance_to_start_finish(pos, start_finish_fraction(s)) * lap_meters(s))
 }
 
 const FLAG_LINE_M: f32 = 80.0;
@@ -2258,11 +1520,11 @@ const FLAG_BLUE_SPAN_M: f32 = 40.0;
 const FLAG_RED_SPAN_M: f32 = 40.0;
 
 fn approaching_line(s: &Snapshot) -> bool {
-    meters_to_sf(s).is_some_and(|m| m > FLAG_LINE_MIN_M && m <= FLAG_LINE_M)
+    meters_to_start_finish(s).is_some_and(|m| m > FLAG_LINE_MIN_M && m <= FLAG_LINE_M)
 }
 
 #[cfg(test)]
-fn approaching_sf(s: &Snapshot) -> bool {
+fn approaching_start_finish(s: &Snapshot) -> bool {
     approaching_line(s)
 }
 
@@ -2277,25 +1539,25 @@ const SF_AGREE_FRAC: f32 = 0.05;
 /// other confirm the line; a lone odd one only replaces the candidate.
 fn note_line_sighting(frac: f32) {
     let ticks = (frac * 10_000.0).round() as i32;
-    let cand = SF_FRAC_CAND.swap(ticks, Ordering::Relaxed);
+    let cand = START_FINISH_FRACTION_CANDIDATE.swap(ticks, Ordering::Relaxed);
     if cand < 0 {
         return;
     }
     let d = (frac - cand as f32 / 10_000.0).abs();
     if d.min(1.0 - d) <= SF_AGREE_FRAC {
-        SF_FRAC_LEARNED.store(ticks, Ordering::Relaxed);
+        START_FINISH_FRACTION_LEARNED.store(ticks, Ordering::Relaxed);
     }
 }
 
 /// Watch the S/F line: learn where it is from your own crossings, remember whether you
 /// have been round the far side, and keep the previous distance so the run-in must close.
 fn note_line_progress(s: &Snapshot) {
-    let Some(remain) = meters_to_sf(s) else {
+    let Some(remain) = meters_to_start_finish(s) else {
         return;
     };
     let len = lap_meters(s);
     let laps = focus_num_laps(s);
-    let prev_laps = SF_LEARN_LAPS.swap(laps, Ordering::Relaxed);
+    let prev_laps = START_FINISH_LEARN_LAPS.swap(laps, Ordering::Relaxed);
     if prev_laps >= 0 && laps > prev_laps {
         LAP_MID_SEEN.store(0, Ordering::Relaxed);
         CLOSING_ON_LINE.store(0, Ordering::Relaxed);
@@ -2329,7 +1591,7 @@ fn closing_on_line() -> bool {
 /// decision that depends on track geometry, so it is heavily guarded and simply does not
 /// fire when the data is bad.
 fn line_approach(s: &Snapshot) -> bool {
-    if sf_uncalibrated(s) || !moving(s) || !approaching_line(s) {
+    if start_finish_uncalibrated(s) || !moving(s) || !approaching_line(s) {
         return false;
     }
     LAP_MID_SEEN.load(Ordering::Relaxed) == 1 && closing_on_line()
@@ -2339,10 +1601,10 @@ fn line_approach(s: &Snapshot) -> bool {
 /// stops at `FLAG_LINE_MIN_M`, so without this the banner is None for ~4 m (and a
 /// classification-lag beat past the line) — long enough for the hide animation to start.
 fn across_the_line(s: &Snapshot) -> bool {
-    if sf_uncalibrated(s) {
+    if start_finish_uncalibrated(s) {
         return false;
     }
-    meters_to_sf(s).is_some_and(|m| m <= FLAG_LINE_MIN_M || m >= lap_meters(s) - FLAG_LINE_M)
+    meters_to_start_finish(s).is_some_and(|m| m <= FLAG_LINE_MIN_M || m >= lap_meters(s) - FLAG_LINE_M)
 }
 
 fn reset_flag_state() -> DashFlag {
@@ -2433,8 +1695,10 @@ fn latch_checkered() -> DashFlag {
 /// One path for lap motos and timed extras. Both flags go up on the run-in to the line:
 /// white onto your final lap, checkered onto the finish. Only the crossing latches the
 /// checkered, and the white comes down a few seconds into the lap. Checkered is your
-/// finish — the leader taking the flag does not wave you off a lap short.
-fn dash_race_flag(s: &Snapshot) -> DashFlag {
+/// finish — the leader taking the flag does not wave you off a lap you have already
+/// started. Timed +1 still on the uncounted lap, and timed +2 before `2/2`, are the
+/// exceptions (`laps_left`).
+pub(crate) fn dash_race_flag(s: &Snapshot) -> DashFlag {
     if s.on_track == 0 {
         return reset_flag_state();
     }
@@ -2490,6 +1754,11 @@ fn dash_race_flag(s: &Snapshot) -> DashFlag {
     })
 }
 
+/// Flag code stored on [`crate::race_store::RaceStore::race_flag`].
+pub(crate) fn session_race_flag(s: &Snapshot) -> i32 {
+    flag_code(dash_race_flag(s))
+}
+
 /// Website demo: 0 none, 1 white, 2 checkered, 3 yellow, 4 blue, 5 red. Negative = live.
 static FLAG_PREVIEW: AtomicI32 = AtomicI32::new(-1);
 
@@ -2530,7 +1799,7 @@ fn wanted_flag(s: &Snapshot, yellow: bool, blue: bool, red: bool) -> DashFlag {
         4 => DashFlag::Blue,
         5 => DashFlag::Red,
         _ => {
-            let race = dash_race_flag(s);
+            let race = flag_from_code(RaceStore::with(|store| store.race_flag));
             if yellow || blue || red {
                 merge_caution(race, caution_flag(s, yellow, blue, red))
             } else {
@@ -2778,7 +2047,7 @@ pub(crate) fn board_item(s: &Snapshot, cfg: &HudConfig, field: BoardField) -> Op
             BoardField::Session | BoardField::RaceTime | BoardField::Lap => race_progress_text(s),
             BoardField::LapsLeft => race_laps_left_text(s),
             BoardField::Track => {
-                let t = cstr(&s.track_name);
+                let t = bytes_as_text(&s.track_name);
                 if t.is_empty() {
                     "TRACK".into()
                 } else {
@@ -2861,7 +2130,7 @@ pub(crate) fn board_item(s: &Snapshot, cfg: &HudConfig, field: BoardField) -> Op
             BoardField::Engine => cfg.units.format_temp(s.engine_temp),
             BoardField::Penalty => format_penalty(st.map(|r| r.penalty_ms).unwrap_or(0)),
             BoardField::Server => {
-                let name = cstr(&s.server_name);
+                let name = bytes_as_text(&s.server_name);
                 if name.is_empty() {
                     "--".into()
                 } else {
@@ -2924,424 +2193,7 @@ fn draw_board_bar(
     }
 }
 
-fn ellipsize(fonts: &Fonts, s: &str, size: f32, max_w: f32) -> String {
-    if measure(fonts, s, size) <= max_w {
-        return s.to_string();
-    }
-    let mut out = String::new();
-    for ch in s.chars() {
-        let next = format!("{out}{ch}…");
-        if measure(fonts, &next, size) > max_w {
-            if out.is_empty() {
-                return "…".into();
-            }
-            out.push('…');
-            return out;
-        }
-        out.push(ch);
-    }
-    out
-}
 
-struct TableLook<'a> {
-    bg: i32,
-    hl: i32,
-    text: TableText,
-    stripe: bool,
-    plaque_text: TableText,
-    show_plaque: bool,
-    head: &'a [BoardField; 3],
-    foot: &'a [BoardField; 3],
-}
-
-struct TableBoard<'a, C: BoardCol> {
-    px: &'a mut Pixmap,
-    fonts: &'a Fonts,
-    s: &'a Snapshot,
-    cfg: &'a HudConfig,
-    slots: Vec<(C, f32, f32)>,
-    x: f32,
-    y: f32,
-    w: f32,
-    h: f32,
-    row_h: f32,
-    body_y: f32,
-    foot_h: f32,
-    a: u8,
-    you_bg: Color,
-    stripe_c: Color,
-    stripe: bool,
-    bar_end: Option<f32>,
-    ink: Color,
-    ink_dim: Color,
-    out_c: Color,
-    foot: &'a [BoardField; 3],
-}
-
-struct TableRow<'a, C: BoardCol> {
-    vis_i: usize,
-    cy: f32,
-    x: f32,
-    w: f32,
-    row_h: f32,
-    slots: &'a [(C, f32, f32)],
-    bar_end: Option<f32>,
-    you_bg: Color,
-    ink: Color,
-    ink_dim: Color,
-    out_c: Color,
-}
-
-fn plaque_cap_a(a: u8) -> u8 {
-    ((a as u16 * 240) / 200).min(255) as u8
-}
-
-fn draw_table_board<C: BoardCol>(
-    px: &mut Pixmap,
-    fonts: &Fonts,
-    s: &Snapshot,
-    cfg: &HudConfig,
-    rect: crate::shm::Rect,
-    sw: f32,
-    sh: f32,
-    cols: &[C],
-    look: TableLook<'_>,
-    vis_rows: usize,
-    count_n: usize,
-    empty: Option<&'static str>,
-    body: impl FnOnce(&mut TableBoard<'_, C>),
-) {
-    let x = rect.x * sw;
-    let y = rect.y * sh;
-    let max_w = rect.w * sw;
-    let k = style_k();
-    let head_h = 26.0 * k;
-    let col_h = 16.0 * k;
-    let track_h = if look.show_plaque { 20.0 * k } else { 0.0 };
-    let row_h = 22.0 * k;
-    let foot_h = if BoardField::any(look.foot) {
-        20.0 * k
-    } else {
-        0.0
-    };
-    let h = table_stack_h(k, vis_rows, BoardField::any(look.foot), look.show_plaque);
-    let pad = 8.0;
-    let slots = col_slots(
-        x,
-        pad,
-        max_w,
-        cols,
-        |c| c.width(cfg) as f32,
-        |c| c.is_name(),
-    );
-    let w = hug_board_w(x, pad, max_w, &slots);
-    let a = bg_a(look.bg);
-    if a > 0 {
-        fill_round(px, x, y, w, h, 6.0, Color::from_rgba8(8, 8, 10, a));
-        fill_round(
-            px,
-            x,
-            y,
-            w,
-            head_h,
-            6.0,
-            Color::from_rgba8(4, 4, 6, plaque_cap_a(a)),
-        );
-        if let Some(rrt) = rr(x, y + head_h - 6.0, w, 6.0) {
-            fill_rect(px, rrt, Color::from_rgba8(4, 4, 6, plaque_cap_a(a)));
-        }
-    }
-    draw_board_bar(px, fonts, s, cfg, look.head, x, y, w, head_h);
-    if let Some(msg) = empty {
-        text(
-            px,
-            fonts,
-            msg,
-            12.0,
-            x + 12.0,
-            y + head_h + 10.0,
-            text_dim(),
-            false,
-        );
-        paint_table_footer(px, fonts, s, cfg, look.foot, x, y, w, h, foot_h, a);
-        return;
-    }
-
-    let (ink, ink_dim, out_c, hdr_c) = table_ink(look.text);
-    let bar_end = slots
-        .iter()
-        .find(|(c, _, _)| c.is_pos())
-        .map(|(_, cx, cw)| bike_bar_end(*cx, *cw));
-    let mut cy = y + head_h;
-    if look.show_plaque {
-        let track = {
-            let t = cstr(&s.track_name);
-            if t.is_empty() {
-                "TRACK".into()
-            } else {
-                t.to_uppercase()
-            }
-        };
-        draw_count_track(
-            px,
-            fonts,
-            x,
-            cy,
-            count_n,
-            &track,
-            plaque_ink(look.plaque_text),
-        );
-        if let Some(line) = rr(x + 8.0, cy + 18.0, w - 16.0, 1.2) {
-            fill_rect(px, line, accent());
-        }
-        cy += track_h;
-    }
-    let hdr_y = cy + 2.0;
-    for (col, cx, cw) in &slots {
-        let right = !col.is_name() && !col.is_bike();
-        let pad = if col.is_name() {
-            name_left_pad(*cx, bar_end)
-        } else {
-            0.0
-        };
-        col_text(
-            px,
-            fonts,
-            col.header(),
-            10.0,
-            *cx + pad,
-            (*cw - pad).max(8.0),
-            hdr_y,
-            hdr_c,
-            right,
-        );
-    }
-    cy += col_h;
-
-    let mut board = TableBoard {
-        px,
-        fonts,
-        s,
-        cfg,
-        slots,
-        x,
-        y,
-        w,
-        h,
-        row_h,
-        body_y: cy,
-        foot_h,
-        a,
-        you_bg: you_row_bg(look.hl),
-        stripe_c: stripe_row_bg(a),
-        stripe: look.stripe,
-        bar_end,
-        ink,
-        ink_dim,
-        out_c,
-        foot: look.foot,
-    };
-    body(&mut board);
-    paint_table_footer(
-        board.px,
-        board.fonts,
-        board.s,
-        board.cfg,
-        board.foot,
-        board.x,
-        board.y,
-        board.w,
-        board.h,
-        board.foot_h,
-        board.a,
-    );
-}
-
-fn paint_table_footer(
-    px: &mut Pixmap,
-    fonts: &Fonts,
-    s: &Snapshot,
-    cfg: &HudConfig,
-    foot: &[BoardField; 3],
-    x: f32,
-    y: f32,
-    w: f32,
-    h: f32,
-    foot_h: f32,
-    a: u8,
-) {
-    if foot_h <= 0.0 {
-        return;
-    }
-    if a > 0 {
-        if let Some(rrt) = rr(x, y + h - foot_h, w, foot_h) {
-            fill_rect(px, rrt, Color::from_rgba8(4, 4, 6, plaque_cap_a(a)));
-        }
-    }
-    draw_board_bar(px, fonts, s, cfg, foot, x, y + h - foot_h, w, foot_h);
-}
-
-impl<C: BoardCol> TableBoard<'_, C> {
-    fn rows(
-        &mut self,
-        ids: &[i32],
-        slides: &mut TableSlides,
-        mut each: impl FnMut(&mut Pixmap, &Fonts, TableRow<'_, C>),
-    ) {
-        let row_ys = slides.step(ids, self.body_y, self.row_h, anim_now());
-        let x = self.x;
-        let w = self.w;
-        let row_h = self.row_h;
-        let body_y = self.body_y;
-        let a = self.a;
-        let stripe_c = self.stripe_c;
-        let bar_end = self.bar_end;
-        let you_bg = self.you_bg;
-        let ink = self.ink;
-        let ink_dim = self.ink_dim;
-        let out_c = self.out_c;
-        if self.stripe && a > 0 {
-            for vis_i in 0..ids.len() {
-                if vis_i % 2 == 1 {
-                    fill_focus_row(
-                        self.px,
-                        x,
-                        body_y + vis_i as f32 * row_h,
-                        w,
-                        row_h,
-                        stripe_c,
-                    );
-                }
-            }
-        }
-        let px = &mut *self.px;
-        let fonts = self.fonts;
-        let slots = self.slots.as_slice();
-        for vis_i in 0..ids.len() {
-            each(
-                px,
-                fonts,
-                TableRow {
-                    vis_i,
-                    cy: row_ys[vis_i],
-                    x,
-                    w,
-                    row_h,
-                    slots,
-                    bar_end,
-                    you_bg,
-                    ink,
-                    ink_dim,
-                    out_c,
-                },
-            );
-        }
-    }
-}
-
-impl<C: BoardCol> TableRow<'_, C> {
-    fn fill_you(&self, px: &mut Pixmap) {
-        fill_focus_row(px, self.x, self.cy, self.w, self.row_h, self.you_bg);
-    }
-
-    fn fill(&self, px: &mut Pixmap, c: Color) {
-        fill_focus_row(px, self.x, self.cy, self.w, self.row_h, c);
-    }
-
-    fn paint(
-        &self,
-        px: &mut Pixmap,
-        fonts: &Fonts,
-        accent: Color,
-        click: Option<i32>,
-        mut cell: impl FnMut(C) -> (String, Color, bool),
-    ) {
-        paint_table_row(px, fonts, self, accent, click, &mut cell);
-    }
-}
-
-fn paint_table_row<C: BoardCol>(
-    px: &mut Pixmap,
-    fonts: &Fonts,
-    row: &TableRow<'_, C>,
-    accent: Color,
-    click: Option<i32>,
-    cell: &mut impl FnMut(C) -> (String, Color, bool),
-) {
-    let mut named = false;
-    for (kind, cx, cw) in row.slots {
-        if kind.is_pos() {
-            fill_skew(
-                px,
-                *cx + *cw + 1.0,
-                row.cy + 4.0,
-                BIKE_BAR_W,
-                row.row_h - 8.0,
-                BIKE_BAR_SKEW,
-                accent,
-            );
-        }
-        let (val, color, right) = cell(*kind);
-        let pad = if kind.is_name() {
-            name_left_pad(*cx, row.bar_end)
-        } else {
-            0.0
-        };
-        if kind.is_name() {
-            named = true;
-            if let Some(num) = click {
-                push_click_rider(num, *cx + pad, row.cy, (*cw - pad).max(8.0), row.row_h);
-            }
-        }
-        if kind.is_bike() && !val.is_empty() {
-            draw_bike_pill(px, fonts, &val, *cx, row.cy, *cw, row.row_h, accent);
-        } else if kind.is_status() {
-            let mark = mark_from_key(&val);
-            if !matches!(mark, RiderMark::None) {
-                let r = (row.row_h * 0.32).clamp(7.0, 11.0);
-                draw_state_mark(
-                    px,
-                    fonts,
-                    *cx + (*cw - r * 2.0) * 0.5,
-                    row.cy + (row.row_h - r * 2.0) * 0.5,
-                    r,
-                    mark,
-                );
-            }
-        } else if kind.is_pos() {
-            let star = click.and_then(|num| place_star_col(penalty_place_delta(num)));
-            col_place_text(
-                px,
-                fonts,
-                &val,
-                12.0,
-                *cx + pad,
-                (*cw - pad).max(8.0),
-                row.cy + 4.0,
-                color,
-                star,
-                right,
-            );
-        } else {
-            col_text(
-                px,
-                fonts,
-                &val,
-                12.0,
-                *cx + pad,
-                (*cw - pad).max(8.0),
-                row.cy + 4.0,
-                color,
-                right,
-            );
-        }
-    }
-    if !named {
-        if let Some(num) = click {
-            push_click_rider(num, row.x, row.cy, row.w, row.row_h);
-        }
-    }
-}
 
 fn format_signed_delta(ms: i32, laps: i32) -> String {
     if laps != 0 {
@@ -3513,11 +2365,6 @@ fn flag_anim_step(wanted: DashFlag) -> (DashFlag, f32) {
     }
 }
 
-fn max_digit_w(fonts: &Fonts, size: f32) -> f32 {
-    ('0'..='9')
-        .map(|d| measure(fonts, d.encode_utf8(&mut [0; 4]), size))
-        .fold(0.0, f32::max)
-}
 
 fn chamfer_path(x: f32, y: f32, w: f32, h: f32, cut: f32) -> Option<Path> {
     let cut = cut.min(w * 0.45).min(h * 0.45).max(2.0);
@@ -3590,15 +2437,6 @@ fn push_chamfer_tb(
     pb.close();
 }
 
-pub(crate) fn format_clock(ms: i32) -> String {
-    if ms <= 0 {
-        return "--:--.---".into();
-    }
-    let t = ms as f32 / 1000.0;
-    let m = (t / 60.0) as i32;
-    let s = t - m as f32 * 60.0;
-    format!("{m:02}:{:06.3}", s)
-}
 
 fn draw_diag_stripes_masked(
     px: &mut Pixmap,
@@ -4038,7 +2876,7 @@ fn numbered_dot(
     let Some((min_x, min_y, max_x, max_y)) = ink_bounds(fonts, &label, size) else {
         return;
     };
-    let extra_x = if FAKE_BOLD.with(|c| c.get()) {
+    let extra_x = if fake_bold() {
         0.7
     } else {
         0.0
@@ -4054,110 +2892,6 @@ fn numbered_dot(
     text(px, fonts, &label, size, tx, ty, ink, false);
 }
 
-fn ink_bounds(fonts: &Fonts, s: &str, size: f32) -> Option<(f32, f32, f32, f32)> {
-    let mut min_x = f32::MAX;
-    let mut min_y = f32::MAX;
-    let mut max_x = f32::MIN;
-    let mut max_y = f32::MIN;
-    let mut pen = 0.0;
-    let mut any = false;
-    let size = size * style_k();
-    let font = style_font(fonts);
-    for ch in s.chars() {
-        let m = font.metrics(ch, size);
-        if m.width > 0 && m.height > 0 {
-            any = true;
-            let gx0 = pen + m.xmin as f32;
-            let gy0 = size - m.ymin as f32 - m.height as f32;
-            min_x = min_x.min(gx0);
-            min_y = min_y.min(gy0);
-            max_x = max_x.max(gx0 + m.width as f32);
-            max_y = max_y.max(gy0 + m.height as f32);
-        }
-        pen += m.advance_width;
-    }
-    any.then_some((min_x, min_y, max_x, max_y))
-}
-
-pub fn icon(
-    px: &mut Pixmap,
-    fonts: &Fonts,
-    ch: char,
-    size: f32,
-    mut x: f32,
-    y: f32,
-    color: Color,
-    center: bool,
-) {
-    let size = size * style_k();
-    if center {
-        x -= fonts.icons.metrics(ch, size).advance_width * 0.5;
-    }
-    let rgba = [
-        (color.red() * 255.0) as u8,
-        (color.green() * 255.0) as u8,
-        (color.blue() * 255.0) as u8,
-        (color.alpha() * 255.0) as u8,
-    ];
-    let (metrics, bitmap) = fonts.icons.rasterize(ch, size);
-    if metrics.width == 0 || metrics.height == 0 {
-        return;
-    }
-    blit(
-        px,
-        &bitmap,
-        metrics.width,
-        metrics.height,
-        x + metrics.xmin as f32,
-        y + size - metrics.ymin as f32 - metrics.height as f32,
-        rgba,
-    );
-}
-
-fn icon_over_dot(px: &mut Pixmap, fonts: &Fonts, x: f32, y: f32, r: f32, ch: char, col: Color) {
-    icon_over_dot_scaled(px, fonts, x, y, r, ch, col, 1.0);
-}
-
-fn icon_over_dot_scaled(
-    px: &mut Pixmap,
-    fonts: &Fonts,
-    x: f32,
-    y: f32,
-    r: f32,
-    ch: char,
-    col: Color,
-    scale: f32,
-) {
-    let k = style_k().max(0.01);
-    let vis = (r * 1.85 * scale).clamp(11.0 * k * scale, 20.0 * k * scale);
-    let size = vis / k;
-    let metrics = fonts.icons.metrics(ch, vis);
-    let gap = (r * 0.22).max(2.5);
-    let cy = y - r - gap - vis + metrics.ymin as f32;
-    icon(
-        px,
-        fonts,
-        ch,
-        size,
-        x + 0.8,
-        cy + 0.8,
-        Color::from_rgba8(8, 8, 10, 220),
-        true,
-    );
-    icon(px, fonts, ch, size, x, cy, col, true);
-}
-
-fn crown_over_dot(px: &mut Pixmap, fonts: &Fonts, x: f32, y: f32, r: f32) {
-    icon_over_dot(
-        px,
-        fonts,
-        x,
-        y,
-        r,
-        '\u{f521}',
-        Color::from_rgba8(255, 196, 48, 255),
-    );
-}
 
 fn place_rings_for_session(s: &Snapshot) -> bool {
     !is_warmup(s) && !is_practice_session(s)
@@ -4784,33 +3518,104 @@ struct RiderMapPose {
     yaw: f32,
 }
 
-/// World XZ for a map/minimap dot: prefer the centerline from live `track_pos`
-/// (same idea as C++ `MapHud::sampleTrackPos`), else fall back to rider XZ.
-/// At the gate / prestart, keep world XZ so stalls do not pile onto one poly point.
-fn rider_map_pose(s: &Snapshot, rider: &Rider) -> RiderMapPose {
-    let n = s.poly_count.max(0) as usize;
-    if rider.track_pos >= 0.0 && !prestart(s) {
-        let frac = norm_track_pos(s, rider.track_pos);
-        if let Some(hit) = poly_at_frac(s, n, frac) {
-            let dx = hit.bx - hit.ax;
-            let dz = hit.bz - hit.az;
-            let yaw = if dx * dx + dz * dz > 1.0e-8 {
-                dx.atan2(dz)
-            } else {
-                rider.yaw
-            };
-            return RiderMapPose {
-                x: hit.wx,
-                z: hit.wz,
-                yaw,
-            };
-        }
-    }
+/// Last world XZ that actually moved, and the `track_pos` at that moment.
+#[derive(Clone, Copy)]
+struct MapXzSample {
+    x: f32,
+    z: f32,
+    track_pos: f32,
+}
+
+thread_local! {
+    static MAP_XZ_WATCH: RefCell<HashMap<i32, MapXzSample>> = RefCell::new(HashMap::new());
+}
+
+/// World XZ has to move this far before the dot trusts a new coordinate.
+const MAP_XZ_MOVE_M: f32 = 0.5;
+/// Stuck XZ with this much along-track progress goes back to the centerline.
+const MAP_XZ_STUCK_M: f32 = 8.0;
+
+#[cfg(test)]
+fn clear_map_xz_watch() {
+    MAP_XZ_WATCH.with(|watch| watch.borrow_mut().clear());
+}
+
+fn world_map_pose(rider: &Rider) -> RiderMapPose {
     RiderMapPose {
         x: rider.x,
         z: rider.z,
         yaw: rider.yaw,
     }
+}
+
+fn centerline_map_pose(snapshot: &Snapshot, rider: &Rider) -> Option<RiderMapPose> {
+    let point_count = snapshot.poly_count.max(0) as usize;
+    let fraction = norm_track_pos(snapshot, rider.track_pos);
+    let hit = poly_at_frac(snapshot, point_count, fraction)?;
+    let step_x = hit.bx - hit.ax;
+    let step_z = hit.bz - hit.az;
+    let yaw = if step_x * step_x + step_z * step_z > 1.0e-8 {
+        step_x.atan2(step_z)
+    } else {
+        rider.yaw
+    };
+    Some(RiderMapPose {
+        x: hit.wx,
+        z: hit.wz,
+        yaw,
+    })
+}
+
+/// Metres of lap between two `track_pos` samples, the short way around.
+fn map_progress_m(snapshot: &Snapshot, from_pos: f32, to_pos: f32) -> f32 {
+    let from_frac = norm_track_pos(snapshot, from_pos);
+    let to_frac = norm_track_pos(snapshot, to_pos);
+    if from_frac < 0.0 || to_frac < 0.0 {
+        return 0.0;
+    }
+    let mut lap_fraction = (to_frac - from_frac).rem_euclid(1.0);
+    if lap_fraction > 0.5 {
+        lap_fraction = 1.0 - lap_fraction;
+    }
+    lap_fraction * lap_meters(snapshot)
+}
+
+/// True when world XZ is still a believable bike position. A coordinate that
+/// sits still while `track_pos` runs on is frozen, and the dot should follow
+/// the centerline instead.
+fn map_xz_is_live(snapshot: &Snapshot, rider: &Rider) -> bool {
+    MAP_XZ_WATCH.with(|watch| {
+        let mut samples = watch.borrow_mut();
+        if let Some(sample) = samples.get(&rider.race_num).copied() {
+            let step_x = rider.x - sample.x;
+            let step_z = rider.z - sample.z;
+            let moved = (step_x * step_x + step_z * step_z).sqrt() >= MAP_XZ_MOVE_M;
+            if !moved {
+                return map_progress_m(snapshot, sample.track_pos, rider.track_pos) < MAP_XZ_STUCK_M;
+            }
+        }
+        samples.insert(
+            rider.race_num,
+            MapXzSample {
+                x: rider.x,
+                z: rider.z,
+                track_pos: rider.track_pos,
+            },
+        );
+        true
+    })
+}
+
+/// World XZ for a map/minimap dot when that coordinate is live, so a cut or an
+/// off-track bike shows. Centerline from `track_pos` only when XZ is stuck
+/// while progress keeps moving. At the gate / prestart, keep world XZ so
+/// stalls do not pile onto one poly point.
+fn rider_map_pose(snapshot: &Snapshot, rider: &Rider) -> RiderMapPose {
+    let live = map_xz_is_live(snapshot, rider);
+    if rider.track_pos < 0.0 || prestart(snapshot) || live {
+        return world_map_pose(rider);
+    }
+    centerline_map_pose(snapshot, rider).unwrap_or_else(|| world_map_pose(rider))
 }
 
 fn poly_length(s: &Snapshot, n: usize) -> (f32, Vec<f32>) {
@@ -4910,18 +3715,18 @@ fn draw_sf(
     let len = (tx * tx + ty * ty).sqrt().max(1.0e-4);
     let pxn = -ty / len;
     let pyn = tx / len;
-    let half = (track_px * 1.15).max(7.0);
+    let half = track_px * 0.5;
     let mut pb = PathBuilder::new();
     pb.move_to(hx - pxn * half, hy - pyn * half);
     pb.line_to(hx + pxn * half, hy + pyn * half);
     if let Some(path) = pb.finish() {
-        stroke_path(
+        stroke_path_butt(
             px,
             &path,
             Color::from_rgba8(8, 8, 10, 220),
             (track_px * 0.55).clamp(5.0, 9.0),
         );
-        stroke_path(px, &path, accent(), (track_px * 0.38).clamp(3.5, 6.5));
+        stroke_path_butt(px, &path, accent(), (track_px * 0.38).clamp(3.5, 6.5));
     }
 }
 
@@ -5025,6 +3830,19 @@ fn stroke_dashed(px: &mut Pixmap, path: &Path, color: Color, width: f32, dash: f
 
 fn stroke_path(px: &mut Pixmap, path: &Path, color: Color, width: f32) {
     stroke_path_clip(px, path, color, width, None);
+}
+
+fn stroke_path_butt(px: &mut Pixmap, path: &Path, color: Color, width: f32) {
+    let mut paint = Paint::default();
+    paint.set_color(color);
+    paint.anti_alias = true;
+    let stroke = Stroke {
+        width,
+        line_cap: LineCap::Butt,
+        line_join: LineJoin::Miter,
+        ..Stroke::default()
+    };
+    px.stroke_path(path, &paint, &stroke, Transform::identity(), None);
 }
 
 fn stroke_path_clip(px: &mut Pixmap, path: &Path, color: Color, width: f32, clip: Option<&Mask>) {
@@ -5233,6 +4051,41 @@ fn stroke_smooth_minimap_track(
 }
 
 #[cfg(test)]
-mod render_tests {
-    include!("../tests/render.rs");
-}
+#[path = "../tests/render_support.rs"]
+mod render_support;
+#[cfg(test)]
+#[path = "../tests/render_chrome.rs"]
+mod render_chrome;
+#[cfg(test)]
+#[path = "../tests/render_dash.rs"]
+mod render_dash;
+#[cfg(test)]
+#[path = "../tests/render_standings.rs"]
+mod render_standings;
+#[cfg(test)]
+#[path = "../tests/render_session.rs"]
+mod render_session;
+#[cfg(test)]
+#[path = "../tests/render_flag.rs"]
+mod render_flag;
+#[cfg(test)]
+#[path = "../tests/render_map.rs"]
+mod render_map;
+#[cfg(test)]
+#[path = "../tests/render_radar.rs"]
+mod render_radar;
+#[cfg(test)]
+#[path = "../tests/render_sector.rs"]
+mod render_sector;
+#[cfg(test)]
+#[path = "../tests/render_gamepad.rs"]
+mod render_gamepad;
+#[cfg(test)]
+#[path = "../tests/render_telemetry.rs"]
+mod render_telemetry;
+#[cfg(test)]
+#[path = "../tests/render_lean.rs"]
+mod render_lean;
+#[cfg(test)]
+#[path = "../tests/render_pitboard.rs"]
+mod render_pitboard;

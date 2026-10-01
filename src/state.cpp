@@ -82,6 +82,7 @@ void PluginState::clearRace()
     m_entries.clear();
     m_vehicles.clear();
     m_standings.clear();
+    m_sectorGates.clear();
     m_trackPos.clear();
     m_focusRaceNum = -1;
     m_lastSpectate = 0.0;
@@ -540,6 +541,12 @@ void PluginState::setRaceLap(int raceNum, int lapNum, int lapMs, int split0, int
     {
         m_lastLaps[raceNum] = lapMs;
     }
+    if (raceNum > 0)
+    {
+        SectorGateProgress& gate = m_sectorGates[raceNum];
+        gate.lap = lapNum + 1;
+        gate.gates = 0;
+    }
     const int focus = focusRaceNum();
     if (raceNum != focus && raceNum != m_localRaceNum)
     {
@@ -562,8 +569,38 @@ void PluginState::setLocalSplit(int split, int timeMs, int bestDiff)
     recordSector(mapSplitIndex(split), timeMs, bestDiff);
 }
 
-void PluginState::setRaceSplit(int raceNum, int split, int timeMs)
+void PluginState::noteSectorGate(int raceNum, int lapNum, int split)
 {
+    if (raceNum <= 0)
+    {
+        return;
+    }
+    const int reached = split <= 0 ? 1 : 2;
+    SectorGateProgress& gate = m_sectorGates[raceNum];
+    if (gate.lap != lapNum)
+    {
+        gate.lap = lapNum;
+        gate.gates = 0;
+    }
+    if (reached > gate.gates)
+    {
+        gate.gates = reached;
+    }
+}
+
+int PluginState::sectorGate(int raceNum) const
+{
+    const auto it = m_sectorGates.find(raceNum);
+    if (it == m_sectorGates.end())
+    {
+        return 0;
+    }
+    return it->second.gates;
+}
+
+void PluginState::setRaceSplit(int raceNum, int lapNum, int split, int timeMs)
+{
+    noteSectorGate(raceNum, lapNum, split);
     const int focus = focusRaceNum();
     if (raceNum != focus && raceNum != m_localRaceNum)
     {

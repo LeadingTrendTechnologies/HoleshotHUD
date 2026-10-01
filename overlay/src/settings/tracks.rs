@@ -63,7 +63,7 @@ pub(crate) fn pane_tracks(
         text(
             px,
             fonts,
-            &fmt_lap(row.best_ms),
+            &format_lap(row.best_ms),
             13.0,
             x + w * 0.46,
             ty,
@@ -73,7 +73,7 @@ pub(crate) fn pane_tracks(
         text(
             px,
             fonts,
-            &fmt_lap(row.ideal_ms),
+            &format_lap(row.ideal_ms),
             13.0,
             x + w * 0.62,
             ty,
@@ -81,7 +81,7 @@ pub(crate) fn pane_tracks(
             false,
         );
         let gap = if row.best_ms > 0 && row.ideal_ms > 0 && row.best_ms > row.ideal_ms {
-            format!("−{}", fmt_lap(row.best_ms - row.ideal_ms))
+            format!("−{}", format_lap(row.best_ms - row.ideal_ms))
         } else {
             "—".into()
         };
@@ -134,10 +134,10 @@ fn pane_track_detail(
         return y + 40.0;
     };
 
-    let best = fmt_lap(detail.best_ms);
-    let ideal = fmt_lap(detail.ideal_ms);
+    let best = format_lap(detail.best_ms);
+    let ideal = format_lap(detail.ideal_ms);
     let gap = if detail.best_ms > 0 && detail.ideal_ms > 0 && detail.best_ms > detail.ideal_ms {
-        format!("gap {}", fmt_lap(detail.best_ms - detail.ideal_ms))
+        format!("gap {}", format_lap(detail.best_ms - detail.ideal_ms))
     } else {
         "gap —".into()
     };
@@ -186,7 +186,7 @@ fn pane_track_detail(
     y + map_h + 16.0
 }
 
-fn fmt_lap(ms: i32) -> String {
+fn format_lap(ms: i32) -> String {
     if ms <= 0 {
         return "—".into();
     }

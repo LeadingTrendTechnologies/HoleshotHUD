@@ -16,11 +16,11 @@ pub(crate) fn draw_map(
     let w = r.w * sw;
     let h = r.h * sh;
     if cfg[WidgetId::Map].bg > 0 {
-        if let Some(rect) = rr(x, y, w, h) {
+        if let Some(rect) = try_rect(x, y, w, h) {
             fill_rect(
                 px,
                 rect,
-                Color::from_rgba8(10, 10, 10, bg_a(cfg[WidgetId::Map].bg)),
+                Color::from_rgba8(10, 10, 10, background_alpha(cfg[WidgetId::Map].bg)),
             );
         }
     }
@@ -42,9 +42,9 @@ pub(crate) fn draw_map(
 
     let subject = camera_subject(s);
     let you = subject_pose(s, age);
-    let follow = if cfg.map_follow {
+    let follow = if cfg.map.map_follow {
         you.as_ref()
-            .map(|pose| follow_frame(s, n, pose, subject, w, h))
+            .map(|pose| follow_frame(s, n, pose, subject, w, h, cfg.map.map_zoom))
     } else {
         None
     };
@@ -56,7 +56,7 @@ pub(crate) fn draw_map(
         if let Some(mut layer) = Pixmap::new(lw, lh) {
             paint_follow_track(&mut layer, s, cfg, n, &frame, track_px);
             let to_px = |wx: f32, wz: f32| frame.to_px(wx, wz);
-            if cfg.map_sectors {
+            if cfg.map.map_sectors {
                 draw_sector_lines(&mut layer, fonts, s, n, &to_px, track_px, None);
             }
             paint_map_riders(&mut layer, fonts, s, cfg, you.as_ref(), subject, &to_px);
@@ -101,7 +101,7 @@ pub(crate) fn draw_map(
     let track_px = (8.0 * scale).clamp(5.5, 26.0);
     let lw = w.ceil().max(1.0) as u32;
     let lh = h.ceil().max(1.0) as u32;
-    let key = track_layer_key(s, n, lw, lh, cfg.map_sf, cfg.map_arrows);
+    let key = track_layer_key(s, n, lw, lh, cfg.map.map_sf, cfg.map.map_arrows);
     MAP_LAYER.with(|slot| {
         let mut slot = slot.borrow_mut();
         let stale = slot.as_ref().map(|(k, _)| *k != key).unwrap_or(true);
@@ -132,10 +132,10 @@ pub(crate) fn draw_map(
                     );
                     stroke_path(&mut layer, &path, track_col(), track_px);
                 }
-                if n >= 2 && s.sf_meters >= 0.0 && cfg.map_sf {
+                if n >= 2 && s.sf_meters >= 0.0 && cfg.map.map_sf {
                     draw_sf(&mut layer, s, n, to_local, track_px);
                 }
-                if cfg.map_arrows {
+                if cfg.map.map_arrows {
                     draw_track_arrows(&mut layer, s, n, to_local, track_px, None, false);
                 }
                 *slot = Some((key, layer));
@@ -153,7 +153,7 @@ pub(crate) fn draw_map(
         }
     });
 
-    if cfg.map_sectors {
+    if cfg.map.map_sectors {
         draw_sector_lines(px, fonts, s, n, &to_px, track_px, None);
     }
     paint_map_riders(px, fonts, s, cfg, you.as_ref(), subject, &to_px);
@@ -191,9 +191,9 @@ fn paint_map_riders(
     to_px: &impl Fn(f32, f32) -> (f32, f32),
 ) {
     let leader = leader_num(s);
-    let other_r = (if cfg.map_numbers { 6.8 } else { 4.6 }) * style_k();
+    let other_r = (if cfg.map.map_numbers { 6.8 } else { 4.6 }) * style_k();
 
-    if cfg.map_others {
+    if cfg.map.map_others {
         for i in 0..s.rider_count.max(0) as usize {
             let rider = &s.riders[i];
             if you.is_some() && rider.race_num == subject {
@@ -209,8 +209,8 @@ fn paint_map_riders(
                 hy,
                 other_r,
                 fill,
-                rider_dot_num(s, rider.race_num, cfg.map_dot),
-                cfg.map_numbers,
+                rider_dot_num(s, rider.race_num, cfg.map.map_dot),
+                cfg.map.map_numbers,
                 false,
             );
             let (fwx, fwz) = yaw_forward(pose.yaw);
@@ -226,8 +226,8 @@ fn paint_map_riders(
                 other_r,
                 subject,
                 leader,
-                cfg.map_crown,
-                cfg.map_place,
+                cfg.map.map_crown,
+                cfg.map.map_place,
             );
             draw_state_mark(
                 px,
@@ -249,8 +249,8 @@ fn paint_map_riders(
             hy,
             local_r,
             you_col(),
-            rider_dot_num(s, subject, cfg.map_dot),
-            cfg.map_numbers,
+            rider_dot_num(s, subject, cfg.map.map_dot),
+            cfg.map.map_numbers,
             true,
         );
         let (fwx, fwz) = if pose.from_local {
@@ -260,7 +260,7 @@ fn paint_map_riders(
         };
         let (sdx, sdy) = screen_dir(to_px, pose.x, pose.z, fwx, fwz);
         draw_dot_chevron(px, hx, hy, local_r, sdx, sdy, you_col(), true);
-        if cfg.map_crown && leader > 0 && subject == leader {
+        if cfg.map.map_crown && leader > 0 && subject == leader {
             crown_over_dot(px, fonts, hx, hy, local_r);
         }
         draw_state_mark(
@@ -285,6 +285,25 @@ fn reset_map_follow() {
 fn angle_delta(from: f32, to: f32) -> f32 {
     let pi = std::f32::consts::PI;
     (to - from + pi).rem_euclid(2.0 * pi) - pi
+}
+
+/// Closest Follow-me view: 80 m across the padded shorter side.
+/// The minimap keeps zooming from there down to a 44 m window.
+pub(crate) const MAP_ZOOM_WINDOW_M: f32 = 80.0;
+
+/// Whole-track fit at 0%. At 100%, the shorter side shows [`MAP_ZOOM_WINDOW_M`].
+/// A track that already fits inside that window stays at `fit_scale`.
+pub(crate) fn map_follow_scale(fit_scale: f32, zoom: i32, w: f32, h: f32) -> f32 {
+    let t = zoom.clamp(0, 100) as f32 / 100.0;
+    if t <= 0.0 {
+        return fit_scale;
+    }
+    let usable = w.min(h) * 0.8;
+    let close_scale = usable / MAP_ZOOM_WINDOW_M;
+    if close_scale <= fit_scale {
+        return fit_scale;
+    }
+    fit_scale + t * (close_scale - fit_scale)
 }
 
 fn unrotated_fit_scale(s: &Snapshot, n: usize, w: f32, h: f32) -> f32 {
@@ -313,9 +332,10 @@ fn follow_frame(
     subject: i32,
     w: f32,
     h: f32,
+    zoom: i32,
 ) -> FollowFrame {
     let travel = track_forward(s, n, pose.x, pose.z);
-    let scale = unrotated_fit_scale(s, n, w, h);
+    let scale = map_follow_scale(unrotated_fit_scale(s, n, w, h), zoom, w, h);
     MAP_FOLLOW.with(|cell| {
         let prev = cell.get();
         let subject_changed = !prev.live || prev.subject != subject;
@@ -391,10 +411,10 @@ fn paint_follow_track(
         );
         stroke_path(px, &path, track_col(), track_px);
     }
-    if n >= 2 && s.sf_meters >= 0.0 && cfg.map_sf {
+    if n >= 2 && s.sf_meters >= 0.0 && cfg.map.map_sf {
         draw_sf(px, s, n, |wx, wz| frame.to_px(wx, wz), track_px);
     }
-    if cfg.map_arrows {
+    if cfg.map.map_arrows {
         draw_track_arrows(
             px,
             s,

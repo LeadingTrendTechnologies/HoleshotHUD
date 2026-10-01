@@ -33,7 +33,7 @@ pub(crate) fn draw_telemetry(
     let y = r.y * sh;
     let w = (r.w * sw).max(220.0);
     let h = (r.h * sh).max(64.0);
-    let a = bg_a(cfg[WidgetId::Telemetry].bg);
+    let a = background_alpha(cfg[WidgetId::Telemetry].bg);
     if let Some(body) = telemetry_body_path(x, y, w, h) {
         if a > 0 {
             let mut paint = Paint::default();
@@ -52,7 +52,7 @@ pub(crate) fn draw_telemetry(
     }
 
     let pad = (h * 0.10).clamp(6.0, 12.0);
-    let show_dial = cfg.telemetry_dial;
+    let show_dial = cfg.telemetry.telemetry_dial;
     let show_traces = cfg.telemetry_draw_traces();
     let show_bars = cfg.telemetry_draw_bars();
     let dial_d = (h - pad * 2.0).max(40.0);
@@ -69,10 +69,10 @@ pub(crate) fn draw_telemetry(
         (0.0, 0.0)
     };
     let bar_n = [
-        cfg.telemetry_bar_clutch,
-        cfg.telemetry_bar_brake,
-        cfg.telemetry_bar_throttle,
-        cfg.telemetry_bar_steer,
+        cfg.telemetry.telemetry_bar_clutch,
+        cfg.telemetry.telemetry_bar_brake,
+        cfg.telemetry.telemetry_bar_throttle,
+        cfg.telemetry.telemetry_bar_steer,
     ]
     .iter()
     .filter(|on| **on)
@@ -134,7 +134,7 @@ pub(crate) fn draw_telemetry(
         };
         for i in 1..4 {
             let gy = well_y + well_h * (i as f32 / 4.0);
-            if let Some(line) = rr(well_x + 4.0, gy, well_w - 8.0, 1.0) {
+            if let Some(line) = try_rect(well_x + 4.0, gy, well_w - 8.0, 1.0) {
                 fill_rect(px, line, Color::from_rgba8(42, 42, 46, grid_a));
             }
         }
@@ -159,7 +159,7 @@ pub(crate) fn draw_telemetry(
                     brk_pts.push((tx, y_hi - amp * sample.brake));
                     str_pts.push((tx, mid - steer_amp * sample.steer));
                 }
-                if cfg.telemetry_trace_steer {
+                if cfg.telemetry.telemetry_trace_steer {
                     stroke_smooth_series(
                         px,
                         &str_pts,
@@ -169,10 +169,10 @@ pub(crate) fn draw_telemetry(
                         y_hi,
                     );
                 }
-                if cfg.telemetry_trace_brake {
+                if cfg.telemetry.telemetry_trace_brake {
                     stroke_smooth_series(px, &brk_pts, behind_col(), ink_w, y_lo, y_hi);
                 }
-                if cfg.telemetry_trace_throttle {
+                if cfg.telemetry.telemetry_trace_throttle {
                     stroke_smooth_series(px, &thr_pts, ahead_col(), ink_w, y_lo, y_hi);
                 }
             }
@@ -183,16 +183,16 @@ pub(crate) fn draw_telemetry(
     let str = crate::telemetry::steer(s);
     if show_bars {
         let mut bars: Vec<(f32, Color, bool)> = Vec::with_capacity(4);
-        if cfg.telemetry_bar_clutch {
+        if cfg.telemetry.telemetry_bar_clutch {
             bars.push((clu, Color::from_rgba8(48, 52, 64, 255), false));
         }
-        if cfg.telemetry_bar_brake {
+        if cfg.telemetry.telemetry_bar_brake {
             bars.push((brk, behind_col(), false));
         }
-        if cfg.telemetry_bar_throttle {
+        if cfg.telemetry.telemetry_bar_throttle {
             bars.push((thr, ahead_col(), false));
         }
-        if cfg.telemetry_bar_steer {
+        if cfg.telemetry.telemetry_bar_steer {
             bars.push((str, telemetry_steer_col(), true));
         }
         let n = bars.len().max(1) as f32;
@@ -219,7 +219,7 @@ pub(crate) fn draw_telemetry(
                     let fy = if *level >= 0.0 { mid - fh } else { mid };
                     fill_round(px, bx, fy, bar_w, fh, 2.0, *fill);
                 }
-                if let Some(tick) = rr(bx + 1.0, mid - 0.5, (bar_w - 2.0).max(1.0), 1.0) {
+                if let Some(tick) = try_rect(bx + 1.0, mid - 0.5, (bar_w - 2.0).max(1.0), 1.0) {
                     fill_rect(px, tick, Color::from_rgba8(90, 90, 96, 200));
                 }
                 if level.abs() > 0.04 {

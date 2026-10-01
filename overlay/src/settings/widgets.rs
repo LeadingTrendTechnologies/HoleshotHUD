@@ -241,21 +241,21 @@ pub(crate) fn pane_standings(
                 x,
                 y,
                 w,
-                cfg.st_hl,
+                cfg.standings.st_hl,
                 Hit::StHl,
-                cfg.st_text,
+                cfg.standings.st_text,
                 Drop::StText,
                 Hit::StTextOpen,
                 Hit::StTextWhite,
                 Hit::StTextBlack,
-                cfg.st_stripe,
+                cfg.standings.st_stripe,
                 Hit::StStripe,
-                cfg.st_plaque_text,
+                cfg.standings.st_plaque_text,
                 Drop::StPlaqueText,
                 Hit::StPlaqueTextOpen,
                 Hit::StPlaqueTextWhite,
                 Hit::StPlaqueTextBlack,
-                cfg.st_plaque,
+                cfg.standings.st_plaque,
                 Hit::StPlaque,
             );
             let mut g = PairGrid::new(x, y, w);
@@ -267,7 +267,7 @@ pub(crate) fn pane_standings(
                     cy,
                     cw,
                     "Rows",
-                    &cfg.standings_rows.to_string(),
+                    &cfg.standings.standings_rows.to_string(),
                     Hit::StDec,
                     Hit::StInc,
                     hover,
@@ -283,7 +283,7 @@ pub(crate) fn pane_standings(
                 w,
                 "Header",
                 InfoBar::StHead,
-                cfg.st_head,
+                cfg.standings.st_head,
                 open_drop,
                 hover,
                 hits,
@@ -296,7 +296,7 @@ pub(crate) fn pane_standings(
                 w,
                 "Footer",
                 InfoBar::StFoot,
-                cfg.st_foot,
+                cfg.standings.st_foot,
                 open_drop,
                 hover,
                 hits,
@@ -312,7 +312,7 @@ pub(crate) fn pane_standings(
                 px,
                 fonts,
                 cfg,
-                &cfg.st_order,
+                &cfg.standings.st_order,
                 DragKind::St,
                 drag,
                 hover,
@@ -371,21 +371,21 @@ pub(crate) fn pane_relative(
                 x,
                 y,
                 w,
-                cfg.rel_hl,
+                cfg.relative.rel_hl,
                 Hit::RelHl,
-                cfg.rel_text,
+                cfg.relative.rel_text,
                 Drop::RelText,
                 Hit::RelTextOpen,
                 Hit::RelTextWhite,
                 Hit::RelTextBlack,
-                cfg.rel_stripe,
+                cfg.relative.rel_stripe,
                 Hit::RelStripe,
-                cfg.rel_plaque_text,
+                cfg.relative.rel_plaque_text,
                 Drop::RelPlaqueText,
                 Hit::RelPlaqueTextOpen,
                 Hit::RelPlaqueTextWhite,
                 Hit::RelPlaqueTextBlack,
-                cfg.rel_plaque,
+                cfg.relative.rel_plaque,
                 Hit::RelPlaque,
             );
             let mut g = PairGrid::new(x, y, w);
@@ -397,7 +397,7 @@ pub(crate) fn pane_relative(
                     cy,
                     cw,
                     "Nearby riders",
-                    &cfg.relative_count.to_string(),
+                    &cfg.relative.relative_count.to_string(),
                     Hit::RelDec,
                     Hit::RelInc,
                     hover,
@@ -413,7 +413,7 @@ pub(crate) fn pane_relative(
                 w,
                 "Header",
                 InfoBar::RelHead,
-                cfg.rel_head,
+                cfg.relative.rel_head,
                 open_drop,
                 hover,
                 hits,
@@ -426,7 +426,7 @@ pub(crate) fn pane_relative(
                 w,
                 "Footer",
                 InfoBar::RelFoot,
-                cfg.rel_foot,
+                cfg.relative.rel_foot,
                 open_drop,
                 hover,
                 hits,
@@ -442,7 +442,7 @@ pub(crate) fn pane_relative(
                 px,
                 fonts,
                 cfg,
-                &cfg.rel_order,
+                &cfg.relative.rel_order,
                 DragKind::Rel,
                 drag,
                 hover,
@@ -498,11 +498,28 @@ pub(crate) fn pane_map(
                 y,
                 w,
                 "Follow me",
-                cfg.map_follow,
+                cfg.map.map_follow,
                 Hit::MapFollow,
                 hover,
                 hits,
             );
+            if cfg.map.map_follow {
+                y = slider_row(
+                    px,
+                    fonts,
+                    x,
+                    y,
+                    w,
+                    "Zoom",
+                    cfg.map.map_zoom,
+                    0,
+                    100,
+                    "%",
+                    Hit::MapZoom,
+                    hover,
+                    hits,
+                );
+            }
             y = toggle_row(
                 px,
                 fonts,
@@ -510,7 +527,7 @@ pub(crate) fn pane_map(
                 y,
                 w,
                 "Other riders",
-                cfg.map_others,
+                cfg.map.map_others,
                 Hit::MapOthers,
                 hover,
                 hits,
@@ -522,7 +539,7 @@ pub(crate) fn pane_map(
                 y,
                 w,
                 "Start / finish",
-                cfg.map_sf,
+                cfg.map.map_sf,
                 Hit::MapSf,
                 hover,
                 hits,
@@ -534,7 +551,7 @@ pub(crate) fn pane_map(
                 y,
                 w,
                 "Sector lines",
-                cfg.map_sectors,
+                cfg.map.map_sectors,
                 Hit::MapSectors,
                 hover,
                 hits,
@@ -546,7 +563,7 @@ pub(crate) fn pane_map(
                 y,
                 w,
                 "Track arrows",
-                cfg.map_arrows,
+                cfg.map.map_arrows,
                 Hit::MapArrows,
                 hover,
                 hits,
@@ -558,7 +575,7 @@ pub(crate) fn pane_map(
                 y,
                 w,
                 "Leader crown",
-                cfg.map_crown,
+                cfg.map.map_crown,
                 Hit::MapCrown,
                 hover,
                 hits,
@@ -570,7 +587,7 @@ pub(crate) fn pane_map(
                 y,
                 w,
                 "Nearest ahead / behind",
-                cfg.map_place,
+                cfg.map.map_place,
                 Hit::MapPlace,
                 hover,
                 hits,
@@ -582,12 +599,12 @@ pub(crate) fn pane_map(
                 y,
                 w,
                 "Numbers in dots",
-                cfg.map_numbers,
+                cfg.map.map_numbers,
                 Hit::MapNumbers,
                 hover,
                 hits,
             );
-            if cfg.map_numbers {
+            if cfg.map.map_numbers {
                 y = dropdown_row(
                     px,
                     fonts,
@@ -595,15 +612,15 @@ pub(crate) fn pane_map(
                     y,
                     w,
                     "Dot number",
-                    cfg.map_dot.label(),
+                    cfg.map.map_dot.label(),
                     open_drop == Some(Drop::MapDot),
                     Hit::MapDotOpen,
                     &[
-                        (Hit::MapDotNum, "Number", cfg.map_dot == DotLabel::Number),
+                        (Hit::MapDotNum, "Number", cfg.map.map_dot == DotLabel::Number),
                         (
                             Hit::MapDotPos,
                             "Position",
-                            cfg.map_dot == DotLabel::Position,
+                            cfg.map.map_dot == DotLabel::Position,
                         ),
                     ],
                     hover,
@@ -650,7 +667,7 @@ pub(crate) fn pane_minimap(
                 y,
                 w,
                 "Other riders",
-                cfg.mini_others,
+                cfg.mini.mini_others,
                 Hit::MiniOthers,
                 hover,
                 hits,
@@ -662,7 +679,7 @@ pub(crate) fn pane_minimap(
                 y,
                 w,
                 "Start / finish",
-                cfg.mini_sf,
+                cfg.mini.mini_sf,
                 Hit::MiniSf,
                 hover,
                 hits,
@@ -674,7 +691,7 @@ pub(crate) fn pane_minimap(
                 y,
                 w,
                 "Sector lines",
-                cfg.mini_sectors,
+                cfg.mini.mini_sectors,
                 Hit::MiniSectors,
                 hover,
                 hits,
@@ -686,7 +703,7 @@ pub(crate) fn pane_minimap(
                 y,
                 w,
                 "Track arrows",
-                cfg.mini_arrows,
+                cfg.mini.mini_arrows,
                 Hit::MiniArrows,
                 hover,
                 hits,
@@ -698,7 +715,7 @@ pub(crate) fn pane_minimap(
                 y,
                 w,
                 "Leader crown",
-                cfg.mini_crown,
+                cfg.mini.mini_crown,
                 Hit::MiniCrown,
                 hover,
                 hits,
@@ -710,7 +727,7 @@ pub(crate) fn pane_minimap(
                 y,
                 w,
                 "Nearest ahead / behind",
-                cfg.mini_place,
+                cfg.mini.mini_place,
                 Hit::MiniPlace,
                 hover,
                 hits,
@@ -722,12 +739,12 @@ pub(crate) fn pane_minimap(
                 y,
                 w,
                 "Numbers in dots",
-                cfg.mini_numbers,
+                cfg.mini.mini_numbers,
                 Hit::MiniNumbers,
                 hover,
                 hits,
             );
-            if cfg.mini_numbers {
+            if cfg.mini.mini_numbers {
                 y = dropdown_row(
                     px,
                     fonts,
@@ -735,15 +752,15 @@ pub(crate) fn pane_minimap(
                     y,
                     w,
                     "Dot number",
-                    cfg.mini_dot.label(),
+                    cfg.mini.mini_dot.label(),
                     open_drop == Some(Drop::MiniDot),
                     Hit::MiniDotOpen,
                     &[
-                        (Hit::MiniDotNum, "Number", cfg.mini_dot == DotLabel::Number),
+                        (Hit::MiniDotNum, "Number", cfg.mini.mini_dot == DotLabel::Number),
                         (
                             Hit::MiniDotPos,
                             "Position",
-                            cfg.mini_dot == DotLabel::Position,
+                            cfg.mini.mini_dot == DotLabel::Position,
                         ),
                     ],
                     hover,
@@ -757,7 +774,7 @@ pub(crate) fn pane_minimap(
                 y,
                 w,
                 "Zoom",
-                cfg.mini_zoom,
+                cfg.mini.mini_zoom,
                 0,
                 100,
                 "%",
@@ -803,19 +820,19 @@ pub(crate) fn pane_radar(
                 y,
                 w,
                 "Look",
-                cfg.radar_style.label(),
+                cfg.radar.radar_style.label(),
                 open_drop == Some(Drop::RadarStyle),
                 Hit::RadarStyleOpen,
                 &[
                     (
                         Hit::RadarStylePick(RadarStyle::Plaque),
                         "Plaque",
-                        cfg.radar_style == RadarStyle::Plaque,
+                        cfg.radar.radar_style == RadarStyle::Plaque,
                     ),
                     (
                         Hit::RadarStylePick(RadarStyle::Arrows),
                         "Arrows",
-                        cfg.radar_style == RadarStyle::Arrows,
+                        cfg.radar.radar_style == RadarStyle::Arrows,
                     ),
                 ],
                 hover,
@@ -829,7 +846,7 @@ pub(crate) fn pane_radar(
                 y,
                 w,
                 "Range",
-                cfg.radar_range,
+                cfg.radar.radar_range,
                 RADAR_RANGE_MIN,
                 RADAR_RANGE_MAX,
                 "m",
@@ -844,7 +861,7 @@ pub(crate) fn pane_radar(
                 y,
                 w,
                 "Side proximity",
-                cfg.radar_sides,
+                cfg.radar.radar_sides,
                 Hit::RadarSides,
                 hover,
                 hits,
@@ -856,12 +873,12 @@ pub(crate) fn pane_radar(
                 y,
                 w,
                 "Rear proximity",
-                cfg.radar_rear,
+                cfg.radar.radar_rear,
                 Hit::RadarRear,
                 hover,
                 hits,
             );
-            if cfg.radar_style == RadarStyle::Plaque {
+            if cfg.radar.radar_style == RadarStyle::Plaque {
                 y = toggle_row(
                     px,
                     fonts,
@@ -869,7 +886,7 @@ pub(crate) fn pane_radar(
                     y,
                     w,
                     "Range rings",
-                    cfg.radar_rings,
+                    cfg.radar.radar_rings,
                     Hit::RadarRings,
                     hover,
                     hits,
@@ -914,7 +931,7 @@ pub(crate) fn pane_dash(
                 y,
                 w,
                 "Simple dash",
-                cfg.dash_simple,
+                cfg.dash.dash_simple,
                 Hit::DashSimple,
                 hover,
                 hits,
@@ -926,7 +943,7 @@ pub(crate) fn pane_dash(
                 y,
                 w,
                 "Shift color",
-                cfg.dash_shift_color,
+                cfg.dash.dash_shift_color,
                 Hit::DashShiftColor,
                 hover,
                 hits,
@@ -938,7 +955,7 @@ pub(crate) fn pane_dash(
                 y,
                 w,
                 "Yellow flag",
-                cfg.dash_yellow,
+                cfg.dash.dash_yellow,
                 Hit::DashYellow,
                 hover,
                 hits,
@@ -950,7 +967,7 @@ pub(crate) fn pane_dash(
                 y,
                 w,
                 "Blue flag",
-                cfg.dash_blue,
+                cfg.dash.dash_blue,
                 Hit::DashBlue,
                 hover,
                 hits,
@@ -962,12 +979,12 @@ pub(crate) fn pane_dash(
                 y,
                 w,
                 "Red flag",
-                cfg.dash_red,
+                cfg.dash.dash_red,
                 Hit::DashRed,
                 hover,
                 hits,
             );
-            if !cfg.dash_simple {
+            if !cfg.dash.dash_simple {
                 y = toggle_row(
                     px,
                     fonts,
@@ -975,7 +992,7 @@ pub(crate) fn pane_dash(
                     y,
                     w,
                     "Rev indicator",
-                    cfg.dash_rev,
+                    cfg.dash.dash_rev,
                     Hit::DashRev,
                     hover,
                     hits,
@@ -988,9 +1005,9 @@ pub(crate) fn pane_dash(
                     w,
                     "Footer  ·  3 slots",
                     [
-                        dash_slot(0, cfg.dash_left, open_drop),
-                        dash_slot(1, cfg.dash_mid, open_drop),
-                        dash_slot(2, cfg.dash_right, open_drop),
+                        dash_slot(0, cfg.dash.dash_left, open_drop),
+                        dash_slot(1, cfg.dash.dash_mid, open_drop),
+                        dash_slot(2, cfg.dash.dash_right, open_drop),
                     ],
                     hover,
                     hits,
@@ -1035,7 +1052,7 @@ pub(crate) fn pane_ticker(
                 y,
                 w,
                 "Row highlight",
-                cfg.ticker_hl,
+                cfg.ticker.ticker_hl,
                 0,
                 100,
                 "%",
@@ -1050,7 +1067,7 @@ pub(crate) fn pane_ticker(
                 y,
                 w,
                 "Track name",
-                cfg.ticker_title,
+                cfg.ticker.ticker_title,
                 Hit::TickerTitle,
                 hover,
                 hits,
@@ -1062,7 +1079,7 @@ pub(crate) fn pane_ticker(
                 y,
                 w,
                 "Autoscroll",
-                cfg.ticker_autoscroll,
+                cfg.ticker.ticker_autoscroll,
                 Hit::TickerAutoscroll,
                 hover,
                 hits,
@@ -1074,7 +1091,7 @@ pub(crate) fn pane_ticker(
                 y,
                 w,
                 "Slide on pass",
-                cfg.ticker_slide,
+                cfg.ticker.ticker_slide,
                 Hit::TickerSlide,
                 hover,
                 hits,
@@ -1086,7 +1103,7 @@ pub(crate) fn pane_ticker(
                 y,
                 w,
                 "Status",
-                cfg.ticker_status,
+                cfg.ticker.ticker_status,
                 Hit::TickerStatus,
                 hover,
                 hits,
@@ -1099,7 +1116,7 @@ pub(crate) fn pane_ticker(
                 y,
                 w,
                 "Left",
-                cfg.ticker_left,
+                cfg.ticker.ticker_left,
                 0,
                 open_drop,
                 hover,
@@ -1112,7 +1129,7 @@ pub(crate) fn pane_ticker(
                 y,
                 w,
                 "Right",
-                cfg.ticker_right,
+                cfg.ticker.ticker_right,
                 1,
                 open_drop,
                 hover,
@@ -1125,7 +1142,7 @@ pub(crate) fn pane_ticker(
                 y,
                 w,
                 "Riders shown",
-                &cfg.ticker_count.to_string(),
+                &cfg.ticker.ticker_count.to_string(),
                 Hit::TickerDec,
                 Hit::TickerInc,
                 hover,
@@ -1170,7 +1187,7 @@ pub(crate) fn pane_sys(
             w,
             &format!("Up to {SYS_PROC_MAX} on the overlay. Matched by .exe name, not install folder. Hide a row with the switch; extras can be removed."),
         );
-            for (i, app) in cfg.sys_apps.iter().enumerate() {
+            for (i, app) in cfg.sys.sys_apps.iter().enumerate() {
                 let i = i as u8;
                 y = sys_app_row(
                     px,
@@ -1190,7 +1207,7 @@ pub(crate) fn pane_sys(
             let add: Vec<(Hit, &'static str, bool)> = SYS_PRESETS
                 .iter()
                 .enumerate()
-                .filter(|(_, p)| p.addable() && !cfg.sys_apps.iter().any(|a| a.key == p.key))
+                .filter(|(_, p)| p.addable() && !cfg.sys.sys_apps.iter().any(|a| a.key == p.key))
                 .map(|(i, p)| (Hit::SysAddPick(i as u8), p.label, false))
                 .collect();
             if !add.is_empty() {
@@ -1264,7 +1281,7 @@ pub(crate) fn pane_sector(
                 y,
                 w,
                 "Live sector",
-                cfg.sector_live,
+                cfg.sector.sector_live,
                 Hit::SectorLive,
                 hover,
                 hits,
@@ -1276,7 +1293,7 @@ pub(crate) fn pane_sector(
                 y,
                 w,
                 "Compare to session best",
-                cfg.sector_session,
+                cfg.sector.sector_session,
                 Hit::SectorSession,
                 hover,
                 hits,
@@ -1288,12 +1305,12 @@ pub(crate) fn pane_sector(
                 y,
                 w,
                 "Lap log",
-                cfg.sector_hist,
+                cfg.sector.sector_hist,
                 Hit::SectorHist,
                 hover,
                 hits,
             );
-            if cfg.sector_hist {
+            if cfg.sector.sector_hist {
                 y = stepper_row(
                     px,
                     fonts,
@@ -1367,7 +1384,7 @@ pub(crate) fn pane_delta(
                 y,
                 w,
                 "Compare to session best",
-                cfg.delta_session,
+                cfg.delta.delta_session,
                 Hit::DeltaSession,
                 hover,
                 hits,
@@ -1457,19 +1474,19 @@ pub(crate) fn pane_stance(
                 y,
                 w,
                 "Sit mode",
-                cfg.stance_mode.label(),
+                cfg.stance.stance_mode.label(),
                 open_drop == Some(Drop::StanceMode),
                 Hit::StanceModeOpen,
                 &[
                     (
                         Hit::StanceModePick(StanceMode::Toggle),
                         "Toggle",
-                        cfg.stance_mode == StanceMode::Toggle,
+                        cfg.stance.stance_mode == StanceMode::Toggle,
                     ),
                     (
                         Hit::StanceModePick(StanceMode::Hold),
                         "Hold to sit",
-                        cfg.stance_mode == StanceMode::Hold,
+                        cfg.stance.stance_mode == StanceMode::Hold,
                     ),
                 ],
                 hover,
@@ -1482,19 +1499,19 @@ pub(crate) fn pane_stance(
                 y,
                 w,
                 "Look",
-                cfg.stance_style.label(),
+                cfg.stance.stance_style.label(),
                 open_drop == Some(Drop::StanceStyle),
                 Hit::StanceStyleOpen,
                 &[
                     (
                         Hit::StanceStylePick(StanceStyle::Text),
                         "Text",
-                        cfg.stance_style == StanceStyle::Text,
+                        cfg.stance.stance_style == StanceStyle::Text,
                     ),
                     (
                         Hit::StanceStylePick(StanceStyle::Icon),
                         "Icon",
-                        cfg.stance_style == StanceStyle::Icon,
+                        cfg.stance.stance_style == StanceStyle::Icon,
                     ),
                 ],
                 hover,
@@ -1507,7 +1524,7 @@ pub(crate) fn pane_stance(
                 y,
                 w,
                 "Show sitting",
-                cfg.stance_show_sit,
+                cfg.stance.stance_show_sit,
                 Hit::StanceShowSit,
                 hover,
                 hits,
@@ -1583,7 +1600,7 @@ pub(crate) fn pane_telemetry(
                 y,
                 w,
                 "Traces",
-                cfg.telemetry_traces,
+                cfg.telemetry.telemetry_traces,
                 Hit::TelemetryTraces,
                 hover,
                 hits,
@@ -1595,7 +1612,7 @@ pub(crate) fn pane_telemetry(
                 y,
                 w,
                 "Bars",
-                cfg.telemetry_bars,
+                cfg.telemetry.telemetry_bars,
                 Hit::TelemetryBars,
                 hover,
                 hits,
@@ -1607,12 +1624,12 @@ pub(crate) fn pane_telemetry(
                 y,
                 w,
                 "Gear / speed",
-                cfg.telemetry_dial,
+                cfg.telemetry.telemetry_dial,
                 Hit::TelemetryDial,
                 hover,
                 hits,
             );
-            if cfg.telemetry_traces {
+            if cfg.telemetry.telemetry_traces {
                 y = section(px, fonts, x, y, "Traces");
                 y = toggle_nested(
                     px,
@@ -1621,7 +1638,7 @@ pub(crate) fn pane_telemetry(
                     y,
                     w,
                     "Throttle",
-                    cfg.telemetry_trace_throttle,
+                    cfg.telemetry.telemetry_trace_throttle,
                     Hit::TelemetryTraceThrottle,
                     hover,
                     hits,
@@ -1633,7 +1650,7 @@ pub(crate) fn pane_telemetry(
                     y,
                     w,
                     "Brake",
-                    cfg.telemetry_trace_brake,
+                    cfg.telemetry.telemetry_trace_brake,
                     Hit::TelemetryTraceBrake,
                     hover,
                     hits,
@@ -1645,13 +1662,13 @@ pub(crate) fn pane_telemetry(
                     y,
                     w,
                     "Steer",
-                    cfg.telemetry_trace_steer,
+                    cfg.telemetry.telemetry_trace_steer,
                     Hit::TelemetryTraceSteer,
                     hover,
                     hits,
                 );
             }
-            if cfg.telemetry_bars {
+            if cfg.telemetry.telemetry_bars {
                 y = section(px, fonts, x, y, "Bars");
                 y = toggle_nested(
                     px,
@@ -1660,7 +1677,7 @@ pub(crate) fn pane_telemetry(
                     y,
                     w,
                     "Clutch",
-                    cfg.telemetry_bar_clutch,
+                    cfg.telemetry.telemetry_bar_clutch,
                     Hit::TelemetryBarClutch,
                     hover,
                     hits,
@@ -1672,7 +1689,7 @@ pub(crate) fn pane_telemetry(
                     y,
                     w,
                     "Brake",
-                    cfg.telemetry_bar_brake,
+                    cfg.telemetry.telemetry_bar_brake,
                     Hit::TelemetryBarBrake,
                     hover,
                     hits,
@@ -1684,7 +1701,7 @@ pub(crate) fn pane_telemetry(
                     y,
                     w,
                     "Throttle",
-                    cfg.telemetry_bar_throttle,
+                    cfg.telemetry.telemetry_bar_throttle,
                     Hit::TelemetryBarThrottle,
                     hover,
                     hits,
@@ -1696,7 +1713,7 @@ pub(crate) fn pane_telemetry(
                     y,
                     w,
                     "Steer",
-                    cfg.telemetry_bar_steer,
+                    cfg.telemetry.telemetry_bar_steer,
                     Hit::TelemetryBarSteer,
                     hover,
                     hits,
@@ -1993,32 +2010,32 @@ pub(crate) fn pane_pitboard(
             hover,
             hits,
         );
-        seed_pit_name(&cfg.pit_board);
-        let factory = cfg.pit_board.is_empty() && (cfg.pit_art.is_empty() || cfg.pit_art == FACTORY_ART);
+        seed_pit_name(&cfg.pit.pit_board);
+        let factory = cfg.pit.pit_board.is_empty() && (cfg.pit.pit_art.is_empty() || cfg.pit.pit_art == FACTORY_ART);
         if factory && pit_name_focused() {
             set_pit_name_focus(false);
         }
         let boards = mxbo_hud::pitboard::saved_boards();
-        let current = if !cfg.pit_board.is_empty() {
-            cfg.pit_board.clone()
-        } else if cfg.pit_art.is_empty() || cfg.pit_art == FACTORY_ART {
+        let current = if !cfg.pit.pit_board.is_empty() {
+            cfg.pit.pit_board.clone()
+        } else if cfg.pit.pit_art.is_empty() || cfg.pit.pit_art == FACTORY_ART {
             "Holeshot".to_string()
         } else {
-            cfg.pit_art.clone()
+            cfg.pit.pit_art.clone()
         };
         let mut board_options = vec![(
             Hit::PitBoardFactory,
             "Holeshot".to_string(),
-            cfg.pit_board.is_empty() && (cfg.pit_art.is_empty() || cfg.pit_art == FACTORY_ART),
+            cfg.pit.pit_board.is_empty() && (cfg.pit.pit_art.is_empty() || cfg.pit.pit_art == FACTORY_ART),
         )];
         for (index, name) in boards.iter().take(255).enumerate() {
             board_options.push((
                 Hit::PitBoardPick(index as u8),
                 name.clone(),
-                cfg.pit_board == *name,
+                cfg.pit.pit_board == *name,
             ));
         }
-        let saved_board = !cfg.pit_board.is_empty();
+        let saved_board = !cfg.pit.pit_board.is_empty();
         let row_gap = 8.0;
         let when_w = 228.0_f32.min(w * 0.4);
         let board_w = (w - when_w - row_gap).max(160.0);
@@ -2038,9 +2055,9 @@ pub(crate) fn pane_pitboard(
             hits,
         );
         let when_options = [
-            (Hit::PitWhenAlways, PitWhen::Always.label(), cfg.pit_when == PitWhen::Always),
-            (Hit::PitWhenSector, PitWhen::Sector.label(), cfg.pit_when == PitWhen::Sector),
-            (Hit::PitWhenLap, PitWhen::Lap.label(), cfg.pit_when == PitWhen::Lap),
+            (Hit::PitWhenAlways, PitWhen::Always.label(), cfg.pit.pit_when == PitWhen::Always),
+            (Hit::PitWhenSector, PitWhen::Sector.label(), cfg.pit.pit_when == PitWhen::Sector),
+            (Hit::PitWhenLap, PitWhen::Lap.label(), cfg.pit.pit_when == PitWhen::Lap),
         ];
         let when_bottom = dropdown_row(
             px,
@@ -2049,7 +2066,7 @@ pub(crate) fn pane_pitboard(
             board_y,
             when_w,
             "When",
-            cfg.pit_when.label(),
+            cfg.pit.pit_when.label(),
             open_drop == Some(Drop::PitWhen),
             Hit::PitWhenOpen,
             &when_options,
@@ -2113,10 +2130,10 @@ pub(crate) fn pane_pitboard(
             y = note_lines(px, fonts, x, y, w, &notice);
         }
 
-        let slots = if cfg.pit_vars.len() >= LEGACY_CATALOG {
+        let slots = if cfg.pit.pit_vars.len() >= LEGACY_CATALOG {
             factory_places()
         } else {
-            cfg.pit_vars.clone()
+            cfg.pit.pit_vars.clone()
         };
         let selected = if slots.is_empty() {
             0
@@ -2126,7 +2143,7 @@ pub(crate) fn pane_pitboard(
         if pit_selected() != selected {
             set_pit_selected(selected);
         }
-        let names = pack_slot_names(&cfg.pit_art);
+        let names = pack_slot_names(&cfg.pit.pit_art);
         let menu = slot_menu();
         if let Some(place) = slots.get(selected as usize) {
             let title = names
@@ -2188,14 +2205,14 @@ pub(crate) fn pane_pitboard(
         if slots.len() >= MAX_DESIGN_SLOTS {
             y = note_lines(px, fonts, x, y, w, "12 slots is the limit.");
         }
-        if cfg.pit_art.is_empty() || cfg.pit_art == FACTORY_ART {
+        if cfg.pit.pit_art.is_empty() || cfg.pit.pit_art == FACTORY_ART {
             y = color_row(
                 px,
                 fonts,
                 x,
                 y,
                 w,
-                cfg.pit_yellow,
+                cfg.pit.pit_yellow,
                 open_drop == Some(Drop::PitYellow),
                 ColorPickKind::PitYellow,
                 hover,
@@ -2207,7 +2224,7 @@ pub(crate) fn pane_pitboard(
                 x,
                 y,
                 w,
-                cfg.pit_blue,
+                cfg.pit.pit_blue,
                 open_drop == Some(Drop::PitBlue),
                 ColorPickKind::PitBlue,
                 hover,
@@ -2388,16 +2405,16 @@ fn with_plate<T>(cfg: &HudConfig, f: impl FnOnce(Option<&tiny_skia::Pixmap>) -> 
         static CACHE: RefCell<(u32, String, [u8; 3], [u8; 3], Option<tiny_skia::Pixmap>)> =
             RefCell::new((u32::MAX, String::new(), [0, 0, 0], [0, 0, 0], None));
     }
-    let art = cfg.pit_art.as_str();
+    let art = cfg.pit.pit_art.as_str();
     let factory = art.is_empty() || art == FACTORY_ART;
-    let main = if factory { cfg.pit_yellow } else { [0, 0, 0] };
-    let secondary = if factory { cfg.pit_blue } else { [0, 0, 0] };
+    let main = if factory { cfg.pit.pit_yellow } else { [0, 0, 0] };
+    let secondary = if factory { cfg.pit.pit_blue } else { [0, 0, 0] };
     let gen = plate_preview_gen();
     CACHE.with(|slot| {
         let mut slot = slot.borrow_mut();
         if slot.0 != gen || slot.1 != art || slot.2 != main || slot.3 != secondary {
             let decoded = if factory {
-                mxbo_hud::render::painted_factory_plate(art, cfg.pit_yellow, cfg.pit_blue)
+                mxbo_hud::render::painted_factory_plate(art, cfg.pit.pit_yellow, cfg.pit.pit_blue)
             } else {
                 mxbo_hud::pitboard::art_bytes(art)
                     .and_then(|bytes| tiny_skia::Pixmap::decode_png(&bytes).ok())
@@ -2449,19 +2466,19 @@ pub(crate) fn pane_lean(
                 y,
                 w,
                 "Look",
-                cfg.lean_style.label(),
+                cfg.lean.lean_style.label(),
                 open_drop == Some(Drop::LeanStyle),
                 Hit::LeanStyleOpen,
                 &[
                     (
                         Hit::LeanStylePick(LeanStyle::Figure),
                         "Figure",
-                        cfg.lean_style == LeanStyle::Figure,
+                        cfg.lean.lean_style == LeanStyle::Figure,
                     ),
                     (
                         Hit::LeanStylePick(LeanStyle::Minimal),
                         "Minimal",
-                        cfg.lean_style == LeanStyle::Minimal,
+                        cfg.lean.lean_style == LeanStyle::Minimal,
                     ),
                 ],
                 hover,
@@ -2513,24 +2530,24 @@ pub(crate) fn pane_gamepad(
                 y,
                 w,
                 "Pad",
-                cfg.gamepad_style.label(),
+                cfg.gamepad.gamepad_style.label(),
                 open_drop == Some(Drop::GamepadStyle),
                 Hit::GamepadStyleOpen,
                 &[
                     (
                         Hit::GamepadStylePick(GamepadStyle::Auto),
                         "Auto",
-                        cfg.gamepad_style == GamepadStyle::Auto,
+                        cfg.gamepad.gamepad_style == GamepadStyle::Auto,
                     ),
                     (
                         Hit::GamepadStylePick(GamepadStyle::PlayStation),
                         "PlayStation",
-                        cfg.gamepad_style == GamepadStyle::PlayStation,
+                        cfg.gamepad.gamepad_style == GamepadStyle::PlayStation,
                     ),
                     (
                         Hit::GamepadStylePick(GamepadStyle::Xbox),
                         "Xbox",
-                        cfg.gamepad_style == GamepadStyle::Xbox,
+                        cfg.gamepad.gamepad_style == GamepadStyle::Xbox,
                     ),
                 ],
                 hover,
@@ -2543,19 +2560,19 @@ pub(crate) fn pane_gamepad(
                 y,
                 w,
                 "Theme",
-                cfg.gamepad_theme.label(),
+                cfg.gamepad.gamepad_theme.label(),
                 open_drop == Some(Drop::GamepadTheme),
                 Hit::GamepadThemeOpen,
                 &[
                     (
                         Hit::GamepadThemePick(GamepadTheme::Light),
                         "Light",
-                        cfg.gamepad_theme == GamepadTheme::Light,
+                        cfg.gamepad.gamepad_theme == GamepadTheme::Light,
                     ),
                     (
                         Hit::GamepadThemePick(GamepadTheme::Dark),
                         "Dark",
-                        cfg.gamepad_theme == GamepadTheme::Dark,
+                        cfg.gamepad.gamepad_theme == GamepadTheme::Dark,
                     ),
                 ],
                 hover,
@@ -2598,7 +2615,7 @@ pub(crate) fn pane_flag(
                 y,
                 w,
                 "Text",
-                cfg.flag_text,
+                cfg.flag.flag_text,
                 Hit::FlagText,
                 hover,
                 hits,
@@ -2610,7 +2627,7 @@ pub(crate) fn pane_flag(
                 y,
                 w,
                 "Yellow flag",
-                cfg.flag_yellow,
+                cfg.flag.flag_yellow,
                 Hit::FlagYellow,
                 hover,
                 hits,
@@ -2622,7 +2639,7 @@ pub(crate) fn pane_flag(
                 y,
                 w,
                 "Blue flag",
-                cfg.flag_blue,
+                cfg.flag.flag_blue,
                 Hit::FlagBlue,
                 hover,
                 hits,
@@ -2634,7 +2651,7 @@ pub(crate) fn pane_flag(
                 y,
                 w,
                 "Red flag",
-                cfg.flag_red,
+                cfg.flag.flag_red,
                 Hit::FlagRed,
                 hover,
                 hits,
@@ -2710,10 +2727,10 @@ pub(crate) fn dash_slot(slot: u8, value: DashField, open_drop: Option<Drop>) -> 
 
 pub(crate) fn set_info_slot(c: &mut HudConfig, bar: InfoBar, slot: u8, field: BoardField) {
     let slots = match bar {
-        InfoBar::StHead => &mut c.st_head,
-        InfoBar::StFoot => &mut c.st_foot,
-        InfoBar::RelHead => &mut c.rel_head,
-        InfoBar::RelFoot => &mut c.rel_foot,
+        InfoBar::StHead => &mut c.standings.st_head,
+        InfoBar::StFoot => &mut c.standings.st_foot,
+        InfoBar::RelHead => &mut c.relative.rel_head,
+        InfoBar::RelFoot => &mut c.relative.rel_foot,
     };
     if let Some(dst) = slots.get_mut(slot as usize) {
         *dst = field;

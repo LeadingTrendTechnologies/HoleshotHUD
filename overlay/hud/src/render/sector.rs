@@ -128,7 +128,7 @@ pub(crate) fn sector_col_need(
 ) -> [f32; 4] {
     let mut need = [0.0; 4];
     for i in 0..3 {
-        let row = sector_row(s, i, cfg.sector_live, cfg.sector_session);
+        let row = sector_row(s, i, cfg.sector.sector_live, cfg.sector.sector_session);
         let (label_fs, delta_fs, time_fs) = sector_live_type(live_h, row.fresh);
         let plaque = if row.fresh { 22.0 } else { 0.0 };
         let mut w = measure(fonts, row.label, label_fs) + plaque;
@@ -203,7 +203,7 @@ pub(crate) fn draw_sector(
     if w < 88.0 || h < 44.0 {
         return;
     }
-    let a = bg_a(cfg[WidgetId::Sector].bg);
+    let a = background_alpha(cfg[WidgetId::Sector].bg);
     let glass = cfg[WidgetId::Sector].bg < 40;
     let n = 3usize;
     let pad_x = (w * 0.03).clamp(6.0, 12.0);
@@ -228,7 +228,7 @@ pub(crate) fn draw_sector(
         }
     }
     let inner_w = (w - pad_x * 2.0).max(60.0);
-    let cap = if cfg.sector_session {
+    let cap = if cfg.sector.sector_session {
         "vs. session best"
     } else {
         "vs. your best"
@@ -254,20 +254,20 @@ pub(crate) fn draw_sector(
     // Caption glyphs are `cap_fs * style_k`. Spacing from the raw size left
     // "vs. your best" sitting on S2/S3 when Settings font went up.
     let body_y = cap_y + cap_fs * style_k() + 4.0;
-    let want = if cfg.sector_hist {
+    let want = if cfg.sector.sector_hist {
         cfg.sector_hist_count()
     } else {
         0
     };
     let hist = if want > 0 {
-        crate::sector::history_board(s, cfg.sector_session, want)
+        crate::sector::history_board(s, cfg.sector.sector_session, want)
     } else {
         Vec::new()
     };
     let has_hist = hist
         .first()
         .is_some_and(|r| r.cells.iter().any(|c| c.time_ms > 0));
-    let ideal = crate::sector::ideal(s, cfg.sector_session);
+    let ideal = crate::sector::ideal(s, cfg.sector.sector_session);
     let k = style_k();
     // LAST stacks lap time over delta. Row height must follow the scaled type
     // or 1:24.171 / +5.316 land on the next sector time.
@@ -314,18 +314,18 @@ pub(crate) fn draw_sector(
         acc += col_w[i];
     }
     for i in 1..4 {
-        if let Some(line) = rr(col_x[i], body_y, 1.0, live_h) {
+        if let Some(line) = try_rect(col_x[i], body_y, 1.0, live_h) {
             fill_rect(px, line, Color::from_rgba8(42, 42, 46, a.max(90)));
         }
     }
     let ink = Color::from_rgba8(12, 12, 14, 255);
     for i in 0..n {
-        let row = sector_row(s, i, cfg.sector_live, cfg.sector_session);
+        let row = sector_row(s, i, cfg.sector.sector_live, cfg.sector.sector_session);
         let cx = col_x[i];
         let cw = col_w[i];
         let hero = row.fresh;
         if hero {
-            if let Some(wash) = rr(cx + 1.0, body_y, (cw - 2.0).max(4.0), live_h) {
+            if let Some(wash) = try_rect(cx + 1.0, body_y, (cw - 2.0).max(4.0), live_h) {
                 fill_rect(px, wash, accent_a(28));
             }
         }
@@ -408,7 +408,7 @@ pub(crate) fn draw_sector(
     if !show_hist {
         return;
     }
-    if let Some(rule) = rr(x + pad_x, live_bottom, inner_w, 1.0) {
+    if let Some(rule) = try_rect(x + pad_x, live_bottom, inner_w, 1.0) {
         fill_rect(px, rule, Color::from_rgba8(42, 42, 46, a.max(90)));
     }
     let mut row_i = 0usize;
@@ -432,7 +432,7 @@ pub(crate) fn draw_sector(
     for (ri, row) in hist.iter().take(n_hist).enumerate() {
         let ry = live_bottom + 4.0 + (row_i + ri) as f32 * hist_row_h;
         if row.fastest {
-            if let Some(wash) = rr(x + pad_x, ry, inner_w, hist_row_h - 1.0) {
+            if let Some(wash) = try_rect(x + pad_x, ry, inner_w, hist_row_h - 1.0) {
                 fill_rect(px, wash, you_row_bg(72));
             }
         }
@@ -548,7 +548,7 @@ pub(crate) fn draw_sector_lap_live(
     ideal: crate::sector::IdealLap,
     glass: bool,
 ) {
-    let lap = crate::sector::live_lap(s, cfg.sector_session);
+    let lap = crate::sector::live_lap(s, cfg.sector.sector_session);
     let mid = cx + cw * 0.5;
     let label_fs = (live_h * 0.16).clamp(9.0, 12.0);
     text_halo(

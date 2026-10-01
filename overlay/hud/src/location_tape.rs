@@ -1,7 +1,7 @@
 //! Per-rider line + channel tapes at track position (live ghosts + review commits).
 
 use crate::race_store::{norm_lap_pos, skip_warmup_laps};
-use crate::shm::{cstr, Snapshot};
+use crate::shm::{bytes_as_text, Snapshot};
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Instant;
@@ -439,7 +439,7 @@ pub fn tick(s: &Snapshot) {
                     work.line.len(),
                 );
                 if keep {
-                    let name = cstr(&r.name);
+                    let name = bytes_as_text(&r.name);
                     let bike = standing_bike(s, r.race_num);
                     let sectors = if r.race_num == you {
                         s.sector_last_lap
@@ -540,7 +540,7 @@ fn crash_mark(s: &Snapshot, you: i32, x: f32, y: f32, z: f32) -> CrashMark {
         if d2 <= best_d2 {
             best_d2 = d2;
             contact_num = r.race_num;
-            contact_name = cstr(&r.name);
+            contact_name = bytes_as_text(&r.name);
         }
     }
     CrashMark {
@@ -568,7 +568,7 @@ fn standing_bike(s: &Snapshot, race_num: i32) -> String {
         .iter()
         .take(n)
         .find(|st| st.race_num == race_num)
-        .map(|st| cstr(&st.bike))
+        .map(|st| bytes_as_text(&st.bike))
         .unwrap_or_default()
 }
 

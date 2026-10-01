@@ -80,6 +80,11 @@
       <ImportLibrary>$(OutDir)Holeshot-HUD.lib</ImportLibrary>
     </Link>
   </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(MXBO_INGAME_HUD)'=='1'">
+    <ClCompile>
+      <PreprocessorDefinitions>MXBO_INGAME_HUD;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\plugin.cpp" />
     <ClCompile Include="src\crash_log.cpp" />
@@ -87,11 +92,12 @@
     <ClCompile Include="src\config.cpp" />
     <ClCompile Include="src\shm_writer.cpp" />
     <ClCompile Include="src\shm_publish.cpp" />
-    <ClCompile Include="src\hud\draw_list.cpp" />
-    <ClCompile Include="src\hud\map_hud.cpp" />
-    <ClCompile Include="src\hud\widgets.cpp" />
-    <ClCompile Include="src\hud\font_atlas.cpp" />
-    <ClCompile Include="src\layout.cpp" />
+    <!-- Frozen in-game HUD. Default DLL omits it. msbuild /p:MXBO_INGAME_HUD=1 links it back. -->
+    <ClCompile Include="src\hud\draw_list.cpp" Condition="'$(MXBO_INGAME_HUD)'=='1'" />
+    <ClCompile Include="src\hud\map_hud.cpp" Condition="'$(MXBO_INGAME_HUD)'=='1'" />
+    <ClCompile Include="src\hud\widgets.cpp" Condition="'$(MXBO_INGAME_HUD)'=='1'" />
+    <ClCompile Include="src\hud\font_atlas.cpp" Condition="'$(MXBO_INGAME_HUD)'=='1'" />
+    <ClCompile Include="src\layout.cpp" Condition="'$(MXBO_INGAME_HUD)'=='1'" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\vendor\piboso\mxb_api.h" />

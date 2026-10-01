@@ -43,6 +43,12 @@ struct StandingRow
     int lastLapMs = 0;
 };
 
+struct SectorGateProgress
+{
+    int lap = -1;
+    int gates = 0;
+};
+
 struct TrackPos
 {
     int raceNum = 0;
@@ -93,7 +99,8 @@ public:
     void setLocalLap(int lapNum, int lapMs);
     void setLocalSplit(int split, int timeMs, int bestDiff);
     void setRaceLap(int raceNum, int lapNum, int lapMs, int split0, int split1);
-    void setRaceSplit(int raceNum, int split, int timeMs);
+    void setRaceSplit(int raceNum, int lapNum, int split, int timeMs);
+    int sectorGate(int raceNum) const;
     void setRaceHoleshot(int raceNum, int timeMs);
     void finishLapSectors(int lapNum, int lapMs, int split0, int split1);
     void addEntry(const SPluginsRaceAddEntry_t& e);
@@ -197,6 +204,7 @@ private:
     void applySessionLength(int len);
     int remainToMs() const;
     void recordSector(int idx, int timeMs, int bestDiff);
+    void noteSectorGate(int raceNum, int lapNum, int split);
     int mapSplitIndex(int split) const;
     static int sectorAt(const int* values, int i);
 
@@ -262,6 +270,7 @@ private:
     int m_sessionLength = kSessionLengthUnset;
     int m_sessionRemain = 0;
     std::unordered_map<int, int> m_lastLaps;
+    std::unordered_map<int, SectorGateProgress> m_sectorGates;
 
     int m_sectorCur[3] = {};
     int m_sectorLastLap[3] = {};

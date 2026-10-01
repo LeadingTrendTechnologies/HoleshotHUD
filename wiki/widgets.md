@@ -2,7 +2,7 @@
 
 Agent context for every HUD widget. Plugin field inventory lives in [Home.md](Home.md). These pages track **what each widget does, why it looks the way it does, and what changed**.
 
-Wishlist (not shipped): [future.md](widgets/future.md). Streaming (OBS Browser Source + stream layouts): [streaming.md](streaming.md). Post-race library: [review.md](review.md).
+Wishlist (not shipped): [future.md](widgets/future.md). Streaming (OBS Browser Source + stream layouts): [streaming.md](streaming.md). Broadcast gaps: [stream-broadcast.md](stream-broadcast.md). Post-race library: [review.md](review.md).
 
 When you change a widget, append a dated entry to that widget’s **Change log**. Do not only update `CHANGELOG.md`.
 
@@ -54,6 +54,7 @@ Add a bullet under **Change log** on the widget page:
 
 ## Change log
 
+- 2026-10-01 — Broadcast gaps live on [stream-broadcast.md](stream-broadcast.md), so streaming is not treated as “no new widgets.”
 - 2026-09-24 — Red is pairwise only: leader lapping someone behind you no longer paints them red; `gap_laps` only forces blue when they are ahead of you.
 - 2026-09-24 — Shared rider colors: same-race S/F straddles no longer flash blue/red; `other_laps_ahead` rounds continuous `num_laps + track_pos` when `gap_laps` match.
 - 2026-09-22 — Shared rider colors: blue/red hold through a pass while still within catch span (either side). Flags stay closing-only.

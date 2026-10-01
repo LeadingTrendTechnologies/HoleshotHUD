@@ -37,7 +37,7 @@ pub(crate) fn draw_delta(
     if w < 160.0 || h < 44.0 {
         return;
     }
-    let a = bg_a(cfg[WidgetId::Delta].bg);
+    let a = background_alpha(cfg[WidgetId::Delta].bg);
     if a > 0 {
         fill_round(px, x, y, w, h, 6.0, Color::from_rgba8(10, 10, 10, a));
     }
@@ -92,7 +92,7 @@ pub(crate) fn draw_delta(
     let line_w = (w - pad_x * 2.0).max(48.0);
     let line_y = gy + num_fs + line_gap;
     let mid = line_x + line_w * 0.5;
-    if let Some(track) = rr(line_x, line_y, line_w, line_h) {
+    if let Some(track) = try_rect(line_x, line_y, line_w, line_h) {
         fill_rect(px, track, Color::from_rgba8(58, 58, 64, 220));
     }
     if view.ready && view.has_delta {
@@ -105,17 +105,17 @@ pub(crate) fn draw_delta(
                 Color::from_rgba8(48, 220, 88, 255)
             };
             let fx = if t < 0.0 { mid - fill_w } else { mid };
-            if let Some(fill) = rr(fx, line_y - 1.0, fill_w, 4.0) {
+            if let Some(fill) = try_rect(fx, line_y - 1.0, fill_w, 4.0) {
                 fill_rect(px, fill, fill_col);
             }
         }
     } else if view.recording && view.cover > 0 {
         let fill_w = (line_w * (view.cover as f32 / 100.0)).max(3.0);
-        if let Some(fill) = rr(line_x, line_y - 1.0, fill_w, 4.0) {
+        if let Some(fill) = try_rect(line_x, line_y - 1.0, fill_w, 4.0) {
             fill_rect(px, fill, accent_a(200));
         }
     }
-    if let Some(tick) = rr(mid - 0.5, line_y - 4.0, 1.0, 10.0) {
+    if let Some(tick) = try_rect(mid - 0.5, line_y - 4.0, 1.0, 10.0) {
         fill_rect(px, tick, Color::from_rgba8(200, 200, 204, 230));
     }
 
@@ -136,7 +136,7 @@ pub(crate) fn draw_delta(
             draw_delta_lap_chip(
                 px,
                 fonts,
-                if cfg.delta_session { "SESSION" } else { "BEST" },
+                if cfg.delta.delta_session { "SESSION" } else { "BEST" },
                 &best,
                 line_x,
                 cap_y,

@@ -26,6 +26,7 @@ fn dummy_ui(open: bool) -> SettingsUi {
         nav_bottom: 0.0,
         banner_dismissed: false,
         whats_new_open: open,
+        pit_help_open: false,
         whats_new_scroll: 0.0,
         whats_new_scroll_max: 0.0,
         reply_id: None,
@@ -551,12 +552,12 @@ fn gamepad_theme_row_opens_for_every_pad() {
     let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
     let saved = {
         let mut g = crate::config::CONFIG.lock().unwrap();
-        let saved = (g[WidgetId::Gamepad].show, g.gamepad_style);
+        let saved = (g[WidgetId::Gamepad].show, g.gamepad.gamepad_style);
         g[WidgetId::Gamepad].show = true;
         saved
     };
     let theme_hits = |style: GamepadStyle| {
-        crate::config::CONFIG.lock().unwrap().gamepad_style = style;
+        crate::config::CONFIG.lock().unwrap().gamepad.gamepad_style = style;
         let mut ui = dummy_ui(false);
         ui.tab = Tab::Gamepad;
         ui.banner_dismissed = true;
@@ -574,7 +575,7 @@ fn gamepad_theme_row_opens_for_every_pad() {
     let auto = theme_hits(GamepadStyle::Auto);
     {
         let mut g = crate::config::CONFIG.lock().unwrap();
-        (g[WidgetId::Gamepad].show, g.gamepad_style) = saved;
+        (g[WidgetId::Gamepad].show, g.gamepad.gamepad_style) = saved;
     }
     assert!(playstation > 0, "Theme should open for PlayStation");
     assert!(xbox > 0, "Theme should open for Xbox");

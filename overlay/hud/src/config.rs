@@ -929,7 +929,7 @@ pub fn radar_rect_is_default_plaque(rect: Rect) -> bool {
 
 /// Expand the Radar rect once when switching to Arrows if it is still the default plaque.
 pub fn maybe_expand_radar_for_arrows(cfg: &mut HudConfig) {
-    if cfg.radar_style != RadarStyle::Arrows {
+    if cfg.radar.radar_style != RadarStyle::Arrows {
         return;
     }
     if radar_rect_is_default_plaque(cfg[WidgetId::Radar].rect) {
@@ -1422,41 +1422,41 @@ impl StField {
 
     pub fn enabled(self, c: &HudConfig) -> bool {
         match self {
-            Self::Pos => c.st_pos,
-            Self::Num => c.st_num,
-            Self::Name => c.st_name,
-            Self::Gap => c.st_gap,
-            Self::Interval => c.st_interval,
-            Self::Laps => c.st_laps,
-            Self::Current => c.st_current,
-            Self::Best => c.st_best,
-            Self::Last => c.st_last,
-            Self::LapDiff => c.st_lapdiff,
-            Self::Status => c.st_status,
-            Self::Bike => c.st_bike,
-            Self::Penalty => c.st_penalty,
-            Self::Crashed => c.st_crashed,
-            Self::Category => c.st_category,
+            Self::Pos => c.standings.st_pos,
+            Self::Num => c.standings.st_num,
+            Self::Name => c.standings.st_name,
+            Self::Gap => c.standings.st_gap,
+            Self::Interval => c.standings.st_interval,
+            Self::Laps => c.standings.st_laps,
+            Self::Current => c.standings.st_current,
+            Self::Best => c.standings.st_best,
+            Self::Last => c.standings.st_last,
+            Self::LapDiff => c.standings.st_lapdiff,
+            Self::Status => c.standings.st_status,
+            Self::Bike => c.standings.st_bike,
+            Self::Penalty => c.standings.st_penalty,
+            Self::Crashed => c.standings.st_crashed,
+            Self::Category => c.standings.st_category,
         }
     }
 
     pub fn width(self, c: &HudConfig) -> i32 {
         match self {
-            Self::Pos => c.st_w_pos,
-            Self::Num => c.st_w_num,
-            Self::Name => c.st_w_name,
-            Self::Gap => c.st_w_gap,
-            Self::Interval => c.st_w_interval,
-            Self::Laps => c.st_w_laps,
-            Self::Current => c.st_w_current,
-            Self::Best => c.st_w_best,
-            Self::Last => c.st_w_last,
-            Self::LapDiff => c.st_w_lapdiff,
-            Self::Status => c.st_w_status,
-            Self::Bike => c.st_w_bike,
-            Self::Penalty => c.st_w_penalty,
-            Self::Crashed => c.st_w_crashed,
-            Self::Category => c.st_w_category,
+            Self::Pos => c.standings.st_w_pos,
+            Self::Num => c.standings.st_w_num,
+            Self::Name => c.standings.st_w_name,
+            Self::Gap => c.standings.st_w_gap,
+            Self::Interval => c.standings.st_w_interval,
+            Self::Laps => c.standings.st_w_laps,
+            Self::Current => c.standings.st_w_current,
+            Self::Best => c.standings.st_w_best,
+            Self::Last => c.standings.st_w_last,
+            Self::LapDiff => c.standings.st_w_lapdiff,
+            Self::Status => c.standings.st_w_status,
+            Self::Bike => c.standings.st_w_bike,
+            Self::Penalty => c.standings.st_w_penalty,
+            Self::Crashed => c.standings.st_w_crashed,
+            Self::Category => c.standings.st_w_category,
         }
     }
 
@@ -1474,21 +1474,21 @@ impl StField {
     pub fn add_width(self, c: &mut HudConfig, d: i32) {
         let next = (self.width(c) + d).clamp(COL_W_MIN, self.width_max());
         match self {
-            Self::Pos => c.st_w_pos = next,
-            Self::Num => c.st_w_num = next,
-            Self::Name => c.st_w_name = next,
-            Self::Gap => c.st_w_gap = next,
-            Self::Interval => c.st_w_interval = next,
-            Self::Laps => c.st_w_laps = next,
-            Self::Current => c.st_w_current = next,
-            Self::Best => c.st_w_best = next,
-            Self::Last => c.st_w_last = next,
-            Self::LapDiff => c.st_w_lapdiff = next,
-            Self::Status => c.st_w_status = next,
-            Self::Bike => c.st_w_bike = next,
-            Self::Penalty => c.st_w_penalty = next,
-            Self::Crashed => c.st_w_crashed = next,
-            Self::Category => c.st_w_category = next,
+            Self::Pos => c.standings.st_w_pos = next,
+            Self::Num => c.standings.st_w_num = next,
+            Self::Name => c.standings.st_w_name = next,
+            Self::Gap => c.standings.st_w_gap = next,
+            Self::Interval => c.standings.st_w_interval = next,
+            Self::Laps => c.standings.st_w_laps = next,
+            Self::Current => c.standings.st_w_current = next,
+            Self::Best => c.standings.st_w_best = next,
+            Self::Last => c.standings.st_w_last = next,
+            Self::LapDiff => c.standings.st_w_lapdiff = next,
+            Self::Status => c.standings.st_w_status = next,
+            Self::Bike => c.standings.st_w_bike = next,
+            Self::Penalty => c.standings.st_w_penalty = next,
+            Self::Crashed => c.standings.st_w_crashed = next,
+            Self::Category => c.standings.st_w_category = next,
         }
     }
 }
@@ -1623,41 +1623,41 @@ impl RelField {
 
     pub fn enabled(self, c: &HudConfig) -> bool {
         match self {
-            Self::Num => c.rel_num,
-            Self::Name => c.rel_name,
-            Self::Gap => c.rel_gap,
-            Self::Laps => c.rel_laps,
-            Self::Current => c.rel_current,
-            Self::Pos => c.rel_pos,
-            Self::Bike => c.rel_bike,
-            Self::Penalty => c.rel_penalty,
-            Self::Interval => c.rel_interval,
-            Self::Status => c.rel_status,
-            Self::Best => c.rel_best,
-            Self::Last => c.rel_last,
-            Self::LapDiff => c.rel_lapdiff,
-            Self::Category => c.rel_category,
-            Self::Speed => c.rel_speed,
+            Self::Num => c.relative.rel_num,
+            Self::Name => c.relative.rel_name,
+            Self::Gap => c.relative.rel_gap,
+            Self::Laps => c.relative.rel_laps,
+            Self::Current => c.relative.rel_current,
+            Self::Pos => c.relative.rel_pos,
+            Self::Bike => c.relative.rel_bike,
+            Self::Penalty => c.relative.rel_penalty,
+            Self::Interval => c.relative.rel_interval,
+            Self::Status => c.relative.rel_status,
+            Self::Best => c.relative.rel_best,
+            Self::Last => c.relative.rel_last,
+            Self::LapDiff => c.relative.rel_lapdiff,
+            Self::Category => c.relative.rel_category,
+            Self::Speed => c.relative.rel_speed,
         }
     }
 
     pub fn width(self, c: &HudConfig) -> i32 {
         match self {
-            Self::Num => c.rel_w_num,
-            Self::Name => c.rel_w_name,
-            Self::Gap => c.rel_w_gap,
-            Self::Laps => c.rel_w_laps,
-            Self::Current => c.rel_w_current,
-            Self::Pos => c.rel_w_pos,
-            Self::Bike => c.rel_w_bike,
-            Self::Penalty => c.rel_w_penalty,
-            Self::Interval => c.rel_w_interval,
-            Self::Status => c.rel_w_status,
-            Self::Best => c.rel_w_best,
-            Self::Last => c.rel_w_last,
-            Self::LapDiff => c.rel_w_lapdiff,
-            Self::Category => c.rel_w_category,
-            Self::Speed => c.rel_w_speed,
+            Self::Num => c.relative.rel_w_num,
+            Self::Name => c.relative.rel_w_name,
+            Self::Gap => c.relative.rel_w_gap,
+            Self::Laps => c.relative.rel_w_laps,
+            Self::Current => c.relative.rel_w_current,
+            Self::Pos => c.relative.rel_w_pos,
+            Self::Bike => c.relative.rel_w_bike,
+            Self::Penalty => c.relative.rel_w_penalty,
+            Self::Interval => c.relative.rel_w_interval,
+            Self::Status => c.relative.rel_w_status,
+            Self::Best => c.relative.rel_w_best,
+            Self::Last => c.relative.rel_w_last,
+            Self::LapDiff => c.relative.rel_w_lapdiff,
+            Self::Category => c.relative.rel_w_category,
+            Self::Speed => c.relative.rel_w_speed,
         }
     }
 
@@ -1675,21 +1675,21 @@ impl RelField {
     pub fn add_width(self, c: &mut HudConfig, d: i32) {
         let next = (self.width(c) + d).clamp(COL_W_MIN, self.width_max());
         match self {
-            Self::Num => c.rel_w_num = next,
-            Self::Name => c.rel_w_name = next,
-            Self::Gap => c.rel_w_gap = next,
-            Self::Laps => c.rel_w_laps = next,
-            Self::Current => c.rel_w_current = next,
-            Self::Pos => c.rel_w_pos = next,
-            Self::Bike => c.rel_w_bike = next,
-            Self::Penalty => c.rel_w_penalty = next,
-            Self::Interval => c.rel_w_interval = next,
-            Self::Status => c.rel_w_status = next,
-            Self::Best => c.rel_w_best = next,
-            Self::Last => c.rel_w_last = next,
-            Self::LapDiff => c.rel_w_lapdiff = next,
-            Self::Category => c.rel_w_category = next,
-            Self::Speed => c.rel_w_speed = next,
+            Self::Num => c.relative.rel_w_num = next,
+            Self::Name => c.relative.rel_w_name = next,
+            Self::Gap => c.relative.rel_w_gap = next,
+            Self::Laps => c.relative.rel_w_laps = next,
+            Self::Current => c.relative.rel_w_current = next,
+            Self::Pos => c.relative.rel_w_pos = next,
+            Self::Bike => c.relative.rel_w_bike = next,
+            Self::Penalty => c.relative.rel_w_penalty = next,
+            Self::Interval => c.relative.rel_w_interval = next,
+            Self::Status => c.relative.rel_w_status = next,
+            Self::Best => c.relative.rel_w_best = next,
+            Self::Last => c.relative.rel_w_last = next,
+            Self::LapDiff => c.relative.rel_w_lapdiff = next,
+            Self::Category => c.relative.rel_w_category = next,
+            Self::Speed => c.relative.rel_w_speed = next,
         }
     }
 }
@@ -1935,34 +1935,8 @@ fn ensure_sys_builtins(apps: &mut Vec<SysApp>) {
 }
 
 #[derive(Clone)]
-pub struct HudLayout {
-    widgets: [WidgetPrefs; WidgetId::COUNT],
-    /// Tick the current sector live. Off: times only after the split.
-    pub sector_live: bool,
-    /// Compare Sectors to this session's best splits instead of the saved tape.
-    pub sector_session: bool,
-    /// Draw LAST / -2 / … under the live strip.
-    pub sector_hist: bool,
-    /// How many completed laps the underboard shows (1–5).
-    pub sector_hist_laps: i32,
-    /// Compare Delta Bar to this session's fastest decent lap instead of the saved tape.
-    pub delta_session: bool,
-    /// Nearby crash. Flags widget only. Off by default. Dash has `dash_yellow`.
-    pub flag_yellow: bool,
-    /// Someone a lap up closing from behind. Flags widget only. Off by default. Dash has `dash_blue`.
-    pub flag_blue: bool,
-    /// Someone you are coming to lap. Flags widget only. Off by default. Dash has `dash_red`.
-    pub flag_red: bool,
-    /// Caption on the Flags cloth (WHITE FLAG / …). On by default.
-    pub flag_text: bool,
+pub struct StandingsLayout {
     pub standings_rows: i32,
-    pub relative_count: i32,
-    pub ticker_count: i32,
-    pub ticker_title: bool,
-    pub ticker_autoscroll: bool,
-    pub ticker_status: bool,
-    pub ticker_slide: bool,
-    pub ticker_hl: i32,
     pub st_pos: bool,
     pub st_num: bool,
     pub st_name: bool,
@@ -1978,48 +1952,6 @@ pub struct HudLayout {
     pub st_crashed: bool,
     pub st_category: bool,
     pub st_lapdiff: bool,
-    pub rel_num: bool,
-    pub rel_name: bool,
-    pub rel_gap: bool,
-    pub rel_laps: bool,
-    pub rel_current: bool,
-    pub rel_pos: bool,
-    pub rel_bike: bool,
-    pub rel_penalty: bool,
-    pub rel_interval: bool,
-    pub rel_status: bool,
-    pub rel_best: bool,
-    pub rel_last: bool,
-    pub rel_category: bool,
-    pub rel_speed: bool,
-    pub rel_lapdiff: bool,
-    pub map_others: bool,
-    pub map_sf: bool,
-    pub map_sectors: bool,
-    pub map_name: bool,
-    pub map_numbers: bool,
-    pub map_arrows: bool,
-    /// Heading-up map: you stay centered, nose up, whole track still fits. Off by default.
-    pub map_follow: bool,
-    pub map_crown: bool,
-    pub map_place: bool,
-    pub map_dot: DotLabel,
-    pub mini_others: bool,
-    pub mini_sf: bool,
-    pub mini_sectors: bool,
-    pub mini_numbers: bool,
-    pub mini_arrows: bool,
-    pub mini_crown: bool,
-    pub mini_place: bool,
-    pub mini_dot: DotLabel,
-    pub radar_sides: bool,
-    pub radar_rear: bool,
-    pub radar_rings: bool,
-    /// Plaque (range arcs + blips) or Arrows (edge indicators on the widget frame).
-    pub radar_style: RadarStyle,
-    /// How far beside and behind, in meters, the radar shows other riders.
-    /// Rings stay at 3 / 6 / 12 m; a longer range places dots outside the 12 m ring.
-    pub radar_range: i32,
     pub st_hl: i32,
     pub st_text: TableText,
     pub st_stripe: bool,
@@ -2027,69 +1959,9 @@ pub struct HudLayout {
     pub st_plaque_text: TableText,
     /// Draw the orange rider-count / track-name plaques. Default on.
     pub st_plaque: bool,
-    pub rel_hl: i32,
-    pub rel_text: TableText,
-    pub rel_stripe: bool,
-    /// Ink on the orange rider-count / track-name plaques. Default black.
-    pub rel_plaque_text: TableText,
-    /// Draw the orange rider-count / track-name plaques. Default on.
-    pub rel_plaque: bool,
-    pub mini_zoom: i32,
-    pub dash_rev: bool,
-    /// Nearby crash wrap on Dash. Off by default.
-    pub dash_yellow: bool,
-    /// Someone a lap up closing from behind, wrap on Dash. Off by default.
-    pub dash_blue: bool,
-    /// Someone you are coming to lap, wrap on Dash. Off by default.
-    pub dash_red: bool,
-    /// Gear + speed lockup; hides RPM, place, footer, and the rev bar.
-    pub dash_simple: bool,
-    /// Flush Dash gear faint red at the shift light or limiter. Off by default.
-    pub dash_shift_color: bool,
-    pub dash_left: DashField,
-    pub dash_mid: DashField,
-    pub dash_right: DashField,
-    pub ticker_left: BoardField,
-    pub ticker_right: BoardField,
     pub st_head: [BoardField; 3],
     pub st_foot: [BoardField; 3],
-    pub rel_head: [BoardField; 3],
-    pub rel_foot: [BoardField; 3],
-    pub stance_mode: StanceMode,
-    pub stance_style: StanceStyle,
-    pub stance_show_sit: bool,
-    pub lean_style: LeanStyle,
-    pub gamepad_style: GamepadStyle,
-    pub gamepad_theme: GamepadTheme,
-    /// Throttle / brake history well.
-    pub telemetry_traces: bool,
-    pub telemetry_trace_throttle: bool,
-    pub telemetry_trace_brake: bool,
-    pub telemetry_trace_steer: bool,
-    /// Clutch / brake / throttle analog bars.
-    pub telemetry_bars: bool,
-    pub telemetry_bar_clutch: bool,
-    pub telemetry_bar_brake: bool,
-    pub telemetry_bar_throttle: bool,
-    pub telemetry_bar_steer: bool,
-    /// Gear, speed, and RPM dial.
-    pub telemetry_dial: bool,
-    pub pit_sponsor: String,
-    pub pit_art: String,
-    /// Saved board folder under `pitboards`. Empty is the Holeshot plate.
-    pub pit_board: String,
-    pub pit_text: TableText,
-    pub pit_vars: Vec<PitPlace>,
-    /// Always, or flash 5s at each sector end / lap start.
-    pub pit_when: PitWhen,
-    /// Factory plate Main. Starts as the accent. Ignored for a browsed PNG.
-    pub pit_yellow: [u8; 3],
-    /// Factory plate Secondary. The word follows this. Starts black.
-    pub pit_blue: [u8; 3],
-    /// Process rows on Systems. Built-ins stay; extras can be added and removed.
-    pub sys_apps: Vec<SysApp>,
     pub st_order: Vec<StField>,
-    pub rel_order: Vec<RelField>,
     pub st_w_pos: i32,
     pub st_w_num: i32,
     pub st_w_name: i32,
@@ -2105,6 +1977,36 @@ pub struct HudLayout {
     pub st_w_crashed: i32,
     pub st_w_category: i32,
     pub st_w_lapdiff: i32,
+}
+
+#[derive(Clone)]
+pub struct RelativeLayout {
+    pub relative_count: i32,
+    pub rel_num: bool,
+    pub rel_name: bool,
+    pub rel_gap: bool,
+    pub rel_laps: bool,
+    pub rel_current: bool,
+    pub rel_pos: bool,
+    pub rel_bike: bool,
+    pub rel_penalty: bool,
+    pub rel_interval: bool,
+    pub rel_status: bool,
+    pub rel_best: bool,
+    pub rel_last: bool,
+    pub rel_category: bool,
+    pub rel_speed: bool,
+    pub rel_lapdiff: bool,
+    pub rel_hl: i32,
+    pub rel_text: TableText,
+    pub rel_stripe: bool,
+    /// Ink on the orange rider-count / track-name plaques. Default black.
+    pub rel_plaque_text: TableText,
+    /// Draw the orange rider-count / track-name plaques. Default on.
+    pub rel_plaque: bool,
+    pub rel_head: [BoardField; 3],
+    pub rel_foot: [BoardField; 3],
+    pub rel_order: Vec<RelField>,
     pub rel_w_num: i32,
     pub rel_w_name: i32,
     pub rel_w_gap: i32,
@@ -2122,163 +2024,376 @@ pub struct HudLayout {
     pub rel_w_lapdiff: i32,
 }
 
+#[derive(Clone)]
+pub struct TickerLayout {
+    pub ticker_count: i32,
+    pub ticker_title: bool,
+    pub ticker_autoscroll: bool,
+    pub ticker_status: bool,
+    pub ticker_slide: bool,
+    pub ticker_hl: i32,
+    pub ticker_left: BoardField,
+    pub ticker_right: BoardField,
+}
+
+#[derive(Clone)]
+pub struct MapLayout {
+    pub map_others: bool,
+    pub map_sf: bool,
+    pub map_sectors: bool,
+    pub map_name: bool,
+    pub map_numbers: bool,
+    pub map_arrows: bool,
+    /// Heading-up map: you stay centered, nose up. Off by default.
+    pub map_follow: bool,
+    /// Follow-me zoom percent. 0 fits the whole track. 100 shows 80 m across. Ignored unless Follow me is on.
+    pub map_zoom: i32,
+    pub map_crown: bool,
+    pub map_place: bool,
+    pub map_dot: DotLabel,
+}
+
+#[derive(Clone)]
+pub struct MiniLayout {
+    pub mini_others: bool,
+    pub mini_sf: bool,
+    pub mini_sectors: bool,
+    pub mini_numbers: bool,
+    pub mini_arrows: bool,
+    pub mini_crown: bool,
+    pub mini_place: bool,
+    pub mini_dot: DotLabel,
+    pub mini_zoom: i32,
+}
+
+#[derive(Clone)]
+pub struct RadarLayout {
+    pub radar_sides: bool,
+    pub radar_rear: bool,
+    pub radar_rings: bool,
+    /// Plaque (range arcs + blips) or Arrows (edge indicators on the widget frame).
+    pub radar_style: RadarStyle,
+    /// How far beside and behind, in meters, the radar shows other riders.
+    /// Rings stay at 3 / 6 / 12 m; a longer range places dots outside the 12 m ring.
+    pub radar_range: i32,
+}
+
+#[derive(Clone)]
+pub struct DashLayout {
+    pub dash_rev: bool,
+    /// Nearby crash wrap on Dash. Off by default.
+    pub dash_yellow: bool,
+    /// Someone a lap up closing from behind, wrap on Dash. Off by default.
+    pub dash_blue: bool,
+    /// Someone you are coming to lap, wrap on Dash. Off by default.
+    pub dash_red: bool,
+    /// Gear + speed lockup; hides RPM, place, footer, and the rev bar.
+    pub dash_simple: bool,
+    /// Flush Dash gear faint red at the shift light or limiter. Off by default.
+    pub dash_shift_color: bool,
+    pub dash_left: DashField,
+    pub dash_mid: DashField,
+    pub dash_right: DashField,
+}
+
+#[derive(Clone)]
+pub struct FlagLayout {
+    /// Nearby crash. Flags widget only. Off by default. Dash has `dash_yellow`.
+    pub flag_yellow: bool,
+    /// Someone a lap up closing from behind. Flags widget only. Off by default. Dash has `dash_blue`.
+    pub flag_blue: bool,
+    /// Someone you are coming to lap. Flags widget only. Off by default. Dash has `dash_red`.
+    pub flag_red: bool,
+    /// Caption on the Flags cloth (WHITE FLAG / …). On by default.
+    pub flag_text: bool,
+}
+
+#[derive(Clone)]
+pub struct SectorLayout {
+    /// Tick the current sector live. Off: times only after the split.
+    pub sector_live: bool,
+    /// Compare Sectors to this session's best splits instead of the saved tape.
+    pub sector_session: bool,
+    /// Draw LAST / -2 / … under the live strip.
+    pub sector_hist: bool,
+    /// How many completed laps the underboard shows (1–5).
+    pub sector_hist_laps: i32,
+}
+
+#[derive(Clone)]
+pub struct DeltaLayout {
+    /// Compare Delta Bar to this session's fastest decent lap instead of the saved tape.
+    pub delta_session: bool,
+}
+
+#[derive(Clone)]
+pub struct StanceLayout {
+    pub stance_mode: StanceMode,
+    pub stance_style: StanceStyle,
+    pub stance_show_sit: bool,
+}
+
+#[derive(Clone)]
+pub struct LeanLayout {
+    pub lean_style: LeanStyle,
+}
+
+#[derive(Clone)]
+pub struct GamepadLayout {
+    pub gamepad_style: GamepadStyle,
+    pub gamepad_theme: GamepadTheme,
+}
+
+#[derive(Clone)]
+pub struct TelemetryLayout {
+    /// Throttle / brake history well.
+    pub telemetry_traces: bool,
+    pub telemetry_trace_throttle: bool,
+    pub telemetry_trace_brake: bool,
+    pub telemetry_trace_steer: bool,
+    /// Clutch / brake / throttle analog bars.
+    pub telemetry_bars: bool,
+    pub telemetry_bar_clutch: bool,
+    pub telemetry_bar_brake: bool,
+    pub telemetry_bar_throttle: bool,
+    pub telemetry_bar_steer: bool,
+    /// Gear, speed, and RPM dial.
+    pub telemetry_dial: bool,
+}
+
+#[derive(Clone)]
+pub struct PitLayout {
+    pub pit_sponsor: String,
+    pub pit_art: String,
+    /// Saved board folder under `pitboards`. Empty is the Holeshot plate.
+    pub pit_board: String,
+    pub pit_text: TableText,
+    pub pit_vars: Vec<PitPlace>,
+    /// Always, or flash 5s at each sector end / lap start.
+    pub pit_when: PitWhen,
+    /// Factory plate Main. Starts as the accent. Ignored for a browsed PNG.
+    pub pit_yellow: [u8; 3],
+    /// Factory plate Secondary. The word follows this. Starts black.
+    pub pit_blue: [u8; 3],
+}
+
+#[derive(Clone)]
+pub struct SysLayout {
+    /// Process rows on Systems. Built-ins stay; extras can be added and removed.
+    pub sys_apps: Vec<SysApp>,
+}
+
+#[derive(Clone)]
+pub struct HudLayout {
+    widgets: [WidgetPrefs; WidgetId::COUNT],
+    pub standings: StandingsLayout,
+    pub relative: RelativeLayout,
+    pub ticker: TickerLayout,
+    pub map: MapLayout,
+    pub mini: MiniLayout,
+    pub radar: RadarLayout,
+    pub dash: DashLayout,
+    pub flag: FlagLayout,
+    pub sector: SectorLayout,
+    pub delta: DeltaLayout,
+    pub stance: StanceLayout,
+    pub lean: LeanLayout,
+    pub gamepad: GamepadLayout,
+    pub telemetry: TelemetryLayout,
+    pub pit: PitLayout,
+    pub sys: SysLayout,
+}
+
 impl HudLayout {
     pub fn new() -> Self {
         Self {
             widgets: std::array::from_fn(|i| WidgetId::ALL[i].default_prefs()),
-            sector_live: true,
-            sector_session: false,
-            sector_hist: true,
-            sector_hist_laps: 3,
-            delta_session: false,
-            flag_yellow: false,
-            flag_blue: false,
-            flag_red: false,
-            flag_text: true,
-            standings_rows: 12,
-            relative_count: 3,
-            ticker_count: 7,
-            ticker_title: true,
-            ticker_autoscroll: false,
-            ticker_status: false,
-            ticker_slide: true,
-            ticker_hl: 50,
-            st_pos: true,
-            st_num: true,
-            st_name: true,
-            st_gap: true,
-            st_interval: false,
-            st_laps: false,
-            st_current: false,
-            st_best: true,
-            st_last: true,
-            st_status: false,
-            st_bike: false,
-            st_penalty: false,
-            st_crashed: false,
-            st_category: false,
-            st_lapdiff: false,
-            rel_num: true,
-            rel_name: true,
-            rel_gap: true,
-            rel_laps: false,
-            rel_current: false,
-            rel_pos: false,
-            rel_bike: false,
-            rel_penalty: false,
-            rel_interval: false,
-            rel_status: false,
-            rel_best: true,
-            rel_last: true,
-            rel_category: false,
-            rel_speed: false,
-            rel_lapdiff: false,
-            map_others: true,
-            map_sf: true,
-            map_sectors: true,
-            map_name: true,
-            map_numbers: true,
-            map_arrows: true,
-            map_follow: false,
-            map_crown: true,
-            map_place: true,
-            map_dot: DotLabel::Position,
-            mini_others: true,
-            mini_sf: true,
-            mini_sectors: true,
-            mini_numbers: true,
-            mini_arrows: true,
-            mini_crown: true,
-            mini_place: true,
-            mini_dot: DotLabel::Number,
-            radar_sides: true,
-            radar_rear: true,
-            radar_rings: true,
-            radar_style: RadarStyle::Plaque,
-            radar_range: RADAR_RANGE_DEFAULT,
-            st_hl: 50,
-            st_text: TableText::White,
-            st_stripe: true,
-            st_plaque_text: TableText::Black,
-            st_plaque: true,
-            rel_hl: 50,
-            rel_text: TableText::White,
-            rel_stripe: true,
-            rel_plaque_text: TableText::Black,
-            rel_plaque: true,
-            mini_zoom: 70,
-            dash_rev: true,
-            dash_yellow: false,
-            dash_blue: false,
-            dash_red: false,
-            dash_simple: false,
-            dash_shift_color: false,
-            dash_left: DashField::Engine,
-            dash_mid: DashField::Air,
-            dash_right: DashField::Best,
-            ticker_left: BoardField::Lap,
-            ticker_right: BoardField::Air,
-            st_head: BoardField::DEFAULT_HEAD,
-            st_foot: BoardField::DEFAULT_FOOT,
-            rel_head: BoardField::DEFAULT_HEAD,
-            rel_foot: BoardField::DEFAULT_FOOT,
-            stance_mode: StanceMode::Toggle,
-            stance_style: StanceStyle::Text,
-            stance_show_sit: false,
-            lean_style: LeanStyle::Figure,
-            gamepad_style: GamepadStyle::Auto,
-            gamepad_theme: GamepadTheme::Light,
-            telemetry_traces: true,
-            telemetry_trace_throttle: true,
-            telemetry_trace_brake: true,
-            telemetry_trace_steer: false,
-            telemetry_bars: true,
-            telemetry_bar_clutch: true,
-            telemetry_bar_brake: true,
-            telemetry_bar_throttle: true,
-            telemetry_bar_steer: false,
-            telemetry_dial: true,
-            pit_sponsor: factory_pack().1,
-            pit_art: FACTORY_ART.into(),
-            pit_board: String::new(),
-            pit_text: factory_pack().0,
-            pit_vars: factory_places(),
-            pit_when: PitWhen::Always,
-            pit_yellow: DEFAULT_PRIMARY,
-            pit_blue: [0, 0, 0],
-            sys_apps: default_sys_apps(),
-            st_order: StField::ALL.to_vec(),
-            rel_order: RelField::ALL.to_vec(),
-            st_w_pos: 26,
-            st_w_num: 30,
-            st_w_name: 80,
-            st_w_gap: 58,
-            st_w_interval: 58,
-            st_w_laps: 90,
-            st_w_current: 72,
-            st_w_best: 58,
-            st_w_last: 54,
-            st_w_status: 40,
-            st_w_bike: 56,
-            st_w_penalty: 48,
-            st_w_crashed: 44,
-            st_w_category: 48,
-            st_w_lapdiff: 58,
-            rel_w_num: 32,
-            rel_w_name: 80,
-            rel_w_gap: 58,
-            rel_w_laps: 90,
-            rel_w_current: 72,
-            rel_w_pos: 28,
-            rel_w_bike: 56,
-            rel_w_penalty: 48,
-            rel_w_interval: 58,
-            rel_w_status: 40,
-            rel_w_best: 54,
-            rel_w_last: 54,
-            rel_w_category: 48,
-            rel_w_speed: 56,
-            rel_w_lapdiff: 58,
+            standings: StandingsLayout {
+                standings_rows: 12,
+                st_pos: true,
+                st_num: true,
+                st_name: true,
+                st_gap: true,
+                st_interval: false,
+                st_laps: false,
+                st_current: false,
+                st_best: true,
+                st_last: true,
+                st_status: false,
+                st_bike: false,
+                st_penalty: false,
+                st_crashed: false,
+                st_category: false,
+                st_lapdiff: false,
+                st_hl: 50,
+                st_text: TableText::White,
+                st_stripe: true,
+                st_plaque_text: TableText::Black,
+                st_plaque: true,
+                st_head: BoardField::DEFAULT_HEAD,
+                st_foot: BoardField::DEFAULT_FOOT,
+                st_order: StField::ALL.to_vec(),
+                st_w_pos: 26,
+                st_w_num: 30,
+                st_w_name: 80,
+                st_w_gap: 58,
+                st_w_interval: 58,
+                st_w_laps: 90,
+                st_w_current: 72,
+                st_w_best: 58,
+                st_w_last: 54,
+                st_w_status: 40,
+                st_w_bike: 56,
+                st_w_penalty: 48,
+                st_w_crashed: 44,
+                st_w_category: 48,
+                st_w_lapdiff: 58,
+            },
+            relative: RelativeLayout {
+                relative_count: 3,
+                rel_num: true,
+                rel_name: true,
+                rel_gap: true,
+                rel_laps: false,
+                rel_current: false,
+                rel_pos: false,
+                rel_bike: false,
+                rel_penalty: false,
+                rel_interval: false,
+                rel_status: false,
+                rel_best: true,
+                rel_last: true,
+                rel_category: false,
+                rel_speed: false,
+                rel_lapdiff: false,
+                rel_hl: 50,
+                rel_text: TableText::White,
+                rel_stripe: true,
+                rel_plaque_text: TableText::Black,
+                rel_plaque: true,
+                rel_head: BoardField::DEFAULT_HEAD,
+                rel_foot: BoardField::DEFAULT_FOOT,
+                rel_order: RelField::ALL.to_vec(),
+                rel_w_num: 32,
+                rel_w_name: 80,
+                rel_w_gap: 58,
+                rel_w_laps: 90,
+                rel_w_current: 72,
+                rel_w_pos: 28,
+                rel_w_bike: 56,
+                rel_w_penalty: 48,
+                rel_w_interval: 58,
+                rel_w_status: 40,
+                rel_w_best: 54,
+                rel_w_last: 54,
+                rel_w_category: 48,
+                rel_w_speed: 56,
+                rel_w_lapdiff: 58,
+            },
+            ticker: TickerLayout {
+                ticker_count: 7,
+                ticker_title: true,
+                ticker_autoscroll: false,
+                ticker_status: false,
+                ticker_slide: true,
+                ticker_hl: 50,
+                ticker_left: BoardField::Lap,
+                ticker_right: BoardField::Air,
+            },
+            map: MapLayout {
+                map_others: true,
+                map_sf: true,
+                map_sectors: true,
+                map_name: true,
+                map_numbers: true,
+                map_arrows: true,
+                map_follow: false,
+                map_zoom: 0,
+                map_crown: true,
+                map_place: true,
+                map_dot: DotLabel::Position,
+            },
+            mini: MiniLayout {
+                mini_others: true,
+                mini_sf: true,
+                mini_sectors: true,
+                mini_numbers: true,
+                mini_arrows: true,
+                mini_crown: true,
+                mini_place: true,
+                mini_dot: DotLabel::Number,
+                mini_zoom: 70,
+            },
+            radar: RadarLayout {
+                radar_sides: true,
+                radar_rear: true,
+                radar_rings: true,
+                radar_style: RadarStyle::Plaque,
+                radar_range: RADAR_RANGE_DEFAULT,
+            },
+            dash: DashLayout {
+                dash_rev: true,
+                dash_yellow: false,
+                dash_blue: false,
+                dash_red: false,
+                dash_simple: false,
+                dash_shift_color: false,
+                dash_left: DashField::Engine,
+                dash_mid: DashField::Air,
+                dash_right: DashField::Best,
+            },
+            flag: FlagLayout {
+                flag_yellow: false,
+                flag_blue: false,
+                flag_red: false,
+                flag_text: true,
+            },
+            sector: SectorLayout {
+                sector_live: true,
+                sector_session: false,
+                sector_hist: true,
+                sector_hist_laps: 3,
+            },
+            delta: DeltaLayout {
+                delta_session: false,
+            },
+            stance: StanceLayout {
+                stance_mode: StanceMode::Toggle,
+                stance_style: StanceStyle::Text,
+                stance_show_sit: false,
+            },
+            lean: LeanLayout {
+                lean_style: LeanStyle::Figure,
+            },
+            gamepad: GamepadLayout {
+                gamepad_style: GamepadStyle::Auto,
+                gamepad_theme: GamepadTheme::Light,
+            },
+            telemetry: TelemetryLayout {
+                telemetry_traces: true,
+                telemetry_trace_throttle: true,
+                telemetry_trace_brake: true,
+                telemetry_trace_steer: false,
+                telemetry_bars: true,
+                telemetry_bar_clutch: true,
+                telemetry_bar_brake: true,
+                telemetry_bar_throttle: true,
+                telemetry_bar_steer: false,
+                telemetry_dial: true,
+            },
+            pit: PitLayout {
+                pit_sponsor: factory_pack().1,
+                pit_art: FACTORY_ART.into(),
+                pit_board: String::new(),
+                pit_text: factory_pack().0,
+                pit_vars: factory_places(),
+                pit_when: PitWhen::Always,
+                pit_yellow: DEFAULT_PRIMARY,
+                pit_blue: [0, 0, 0],
+            },
+            sys: SysLayout {
+                sys_apps: default_sys_apps(),
+            },
         }
     }
 
@@ -2446,6 +2561,8 @@ impl HudConfig {
         &mut self.stream_layouts[self.settings_preset.idx()]
     }
 
+    /// Clones all eight layouts. Release timing: about 18µs per call (7.4KB).
+    /// Skia owns the frame, so this stays a clone.
     pub fn for_overlay(&self) -> Self {
         let mut c = self.clone();
         c.settings_preset = c.active_preset;
@@ -2616,26 +2733,26 @@ impl HudConfig {
         apply_scanned_layouts(&mut cfg, scan);
         for layout in &mut cfg.layouts {
             layout.migrate_rects();
-            crate::pitboard::normalize_places(&mut layout.pit_vars);
+            crate::pitboard::normalize_places(&mut layout.pit.pit_vars);
             if crate::pitboard::previous_factory_slots(
-                &layout.pit_art,
-                layout.pit_text,
-                &layout.pit_vars,
+                &layout.pit.pit_art,
+                layout.pit.pit_text,
+                &layout.pit.pit_vars,
             ) {
                 let (text, _, places) = crate::pitboard::factory_pack();
-                layout.pit_text = text;
-                layout.pit_vars = places;
+                layout.pit.pit_text = text;
+                layout.pit.pit_vars = places;
                 if layout[WidgetId::Pitboard].bg == 86 {
                     layout[WidgetId::Pitboard].bg = 100;
                 }
             }
-            if crate::pitboard::stale_light_factory(&layout.pit_vars) {
+            if crate::pitboard::stale_light_factory(&layout.pit.pit_vars) {
                 let (text, _, places) = crate::pitboard::factory_pack();
-                layout.pit_text = text;
-                layout.pit_vars = places;
+                layout.pit.pit_text = text;
+                layout.pit.pit_vars = places;
             }
-            crate::pitboard::lift_low_factory(&mut layout.pit_vars);
-            crate::pitboard::apply_pack_colors(&layout.pit_art, &mut layout.pit_vars);
+            crate::pitboard::lift_low_factory(&mut layout.pit.pit_vars);
+            crate::pitboard::apply_pack_colors(&layout.pit.pit_art, &mut layout.pit.pit_vars);
             migrate_saved_plate(layout, cfg.primary);
         }
         for layout in &mut cfg.stream_layouts {
@@ -2649,11 +2766,11 @@ impl HudConfig {
 }
 
 fn migrate_saved_plate(layout: &mut HudLayout, accent: [u8; 3]) {
-    if layout.pit_yellow == crate::pitboard::PLATE_YELLOW
-        && layout.pit_blue == crate::pitboard::PLATE_NAVY
+    if layout.pit.pit_yellow == crate::pitboard::PLATE_YELLOW
+        && layout.pit.pit_blue == crate::pitboard::PLATE_NAVY
     {
-        layout.pit_yellow = accent;
-        layout.pit_blue = [0, 0, 0];
+        layout.pit.pit_yellow = accent;
+        layout.pit.pit_blue = [0, 0, 0];
     }
 }
 
@@ -2665,13 +2782,13 @@ impl HudConfig {
         let accent = self.primary;
         for layout in &mut self.layouts {
             layout.migrate_rects();
-            if crate::pitboard::stale_light_factory(&layout.pit_vars) {
+            if crate::pitboard::stale_light_factory(&layout.pit.pit_vars) {
                 let (text, _, places) = crate::pitboard::factory_pack();
-                layout.pit_text = text;
-                layout.pit_vars = places;
+                layout.pit.pit_text = text;
+                layout.pit.pit_vars = places;
             }
-            crate::pitboard::lift_low_factory(&mut layout.pit_vars);
-            crate::pitboard::apply_pack_colors(&layout.pit_art, &mut layout.pit_vars);
+            crate::pitboard::lift_low_factory(&mut layout.pit.pit_vars);
+            crate::pitboard::apply_pack_colors(&layout.pit.pit_art, &mut layout.pit.pit_vars);
             migrate_saved_plate(layout, accent);
         }
         for layout in &mut self.stream_layouts {
@@ -2700,14 +2817,14 @@ impl HudConfig {
     }
 
     pub fn add_sys_preset(&mut self, key: &str) {
-        if self.sys_apps.len() >= SYS_APP_MAX {
+        if self.sys.sys_apps.len() >= SYS_APP_MAX {
             return;
         }
-        if self.sys_apps.iter().any(|a| a.key == key) {
+        if self.sys.sys_apps.iter().any(|a| a.key == key) {
             return;
         }
         if let Some(p) = SYS_PRESETS.iter().find(|p| p.key == key && p.addable()) {
-            self.sys_apps.push(SysApp::from_preset(p, true));
+            self.sys.sys_apps.push(SysApp::from_preset(p, true));
         }
     }
 
@@ -2724,7 +2841,7 @@ impl HudConfig {
             .iter()
             .find(|p| p.names.iter().any(|n| *n == name))
         {
-            if let Some(a) = self.sys_apps.iter_mut().find(|a| a.key == p.key) {
+            if let Some(a) = self.sys.sys_apps.iter_mut().find(|a| a.key == p.key) {
                 a.show = true;
                 return;
             }
@@ -2732,12 +2849,12 @@ impl HudConfig {
             return;
         }
         if self
-            .sys_apps
+            .sys.sys_apps
             .iter()
             .any(|a| a.names.iter().any(|n| n == &name))
         {
             if let Some(a) = self
-                .sys_apps
+                .sys.sys_apps
                 .iter_mut()
                 .find(|a| a.names.iter().any(|n| n == &name))
             {
@@ -2745,7 +2862,7 @@ impl HudConfig {
             }
             return;
         }
-        if self.sys_apps.len() >= SYS_APP_MAX {
+        if self.sys.sys_apps.len() >= SYS_APP_MAX {
             return;
         }
         let stem = exe_name
@@ -2759,7 +2876,7 @@ impl HudConfig {
         } else {
             label
         };
-        self.sys_apps.push(SysApp {
+        self.sys.sys_apps.push(SysApp {
             key: format!("exe:{name}"),
             label,
             names: vec![name],
@@ -2769,14 +2886,14 @@ impl HudConfig {
     }
 
     pub fn toggle_sys_app(&mut self, i: usize) {
-        if let Some(a) = self.sys_apps.get_mut(i) {
+        if let Some(a) = self.sys.sys_apps.get_mut(i) {
             a.show = !a.show;
         }
     }
 
     pub fn remove_sys_app(&mut self, i: usize) {
-        if self.sys_apps.get(i).is_some_and(|a| a.removable()) {
-            self.sys_apps.remove(i);
+        if self.sys.sys_apps.get(i).is_some_and(|a| a.removable()) {
+            self.sys.sys_apps.remove(i);
         }
     }
 
@@ -2806,20 +2923,20 @@ impl HudConfig {
             self.settings_theme.key(),
             self.settings_x,
             self.settings_y,
-            b(self.start_with_windows),
-            b(self.minimize_on_close),
-            b(self.close_with_game),
-            b(self.open_with_game),
-            b(self.stream_enabled),
+            ini_flag(self.start_with_windows),
+            ini_flag(self.minimize_on_close),
+            ini_flag(self.close_with_game),
+            ini_flag(self.open_with_game),
+            ini_flag(self.stream_enabled),
             self.stream_port,
-            b(self.auto_update_on_launch),
+            ini_flag(self.auto_update_on_launch),
             self.whats_new_seen,
             self.first_install_version,
-            b(self.experimental),
-            b(self.review),
-            b(self.ingame_hud),
-            b(self.game_ui),
-            b(self.game_ui_match_primary),
+            ini_flag(self.experimental),
+            ini_flag(self.review),
+            ini_flag(self.ingame_hud),
+            ini_flag(self.game_ui),
+            ini_flag(self.game_ui_match_primary),
             format_primary_color(self.game_ui_primary),
             self.game_ui_splash_path,
             self.game_ui_loading_path,
@@ -2862,21 +2979,21 @@ impl HudConfig {
         s.show_standings = i32::from(lay[WidgetId::Standings].show);
         s.show_relative = i32::from(lay[WidgetId::Relative].show);
         s.show_map = i32::from(lay[WidgetId::Map].show);
-        s.standings_rows = lay.standings_rows;
-        s.relative_count = lay.relative_count;
+        s.standings_rows = lay.standings.standings_rows;
+        s.relative_count = lay.relative.relative_count;
     }
 
     pub fn move_st_to(&mut self, from: usize, to: usize) {
-        move_to(&mut self.st_order, from, to);
+        move_to(&mut self.standings.st_order, from, to);
     }
 
     pub fn move_rel_to(&mut self, from: usize, to: usize) {
-        move_to(&mut self.rel_order, from, to);
+        move_to(&mut self.relative.rel_order, from, to);
     }
 
     pub fn standings_cols(&self) -> Vec<StField> {
         let mut cols: Vec<_> = self
-            .st_order
+            .standings.st_order
             .iter()
             .copied()
             .filter(|c| c.enabled(self))
@@ -2927,7 +3044,7 @@ impl HudConfig {
 
     pub fn relative_cols(&self) -> Vec<RelField> {
         let mut cols: Vec<_> = self
-            .rel_order
+            .relative.rel_order
             .iter()
             .copied()
             .filter(|c| c.enabled(self))
@@ -2952,22 +3069,22 @@ impl HudConfig {
     }
 
     pub fn sector_hist_count(&self) -> usize {
-        self.sector_hist_laps.clamp(1, 5) as usize
+        self.sector.sector_hist_laps.clamp(1, 5) as usize
     }
 
     pub fn telemetry_draw_traces(&self) -> bool {
-        self.telemetry_traces
-            && (self.telemetry_trace_throttle
-                || self.telemetry_trace_brake
-                || self.telemetry_trace_steer)
+        self.telemetry.telemetry_traces
+            && (self.telemetry.telemetry_trace_throttle
+                || self.telemetry.telemetry_trace_brake
+                || self.telemetry.telemetry_trace_steer)
     }
 
     pub fn telemetry_draw_bars(&self) -> bool {
-        self.telemetry_bars
-            && (self.telemetry_bar_clutch
-                || self.telemetry_bar_brake
-                || self.telemetry_bar_throttle
-                || self.telemetry_bar_steer)
+        self.telemetry.telemetry_bars
+            && (self.telemetry.telemetry_bar_clutch
+                || self.telemetry.telemetry_bar_brake
+                || self.telemetry.telemetry_bar_throttle
+                || self.telemetry.telemetry_bar_steer)
     }
 
     pub fn delta_visible(&self) -> bool {
@@ -3156,19 +3273,19 @@ fn apply_scanned_layouts(cfg: &mut HudConfig, scan: IniScan) {
                 cfg.layouts[p.idx()] = donor.clone();
             }
             if !scan.saw_last_cols[p.idx()] && scan.saw_preset[p.idx()] {
-                cfg.layouts[p.idx()].st_best = true;
-                cfg.layouts[p.idx()].st_last = true;
-                cfg.layouts[p.idx()].rel_best = true;
-                cfg.layouts[p.idx()].rel_last = true;
+                cfg.layouts[p.idx()].standings.st_best = true;
+                cfg.layouts[p.idx()].standings.st_last = true;
+                cfg.layouts[p.idx()].relative.rel_best = true;
+                cfg.layouts[p.idx()].relative.rel_last = true;
             }
         }
     } else if scan.saw_legacy_layout {
         let mut legacy_layout = scan.legacy_layout;
         if !scan.legacy_last_cols {
-            legacy_layout.st_best = true;
-            legacy_layout.st_last = true;
-            legacy_layout.rel_best = true;
-            legacy_layout.rel_last = true;
+            legacy_layout.standings.st_best = true;
+            legacy_layout.standings.st_last = true;
+            legacy_layout.relative.rel_best = true;
+            legacy_layout.relative.rel_last = true;
         }
         cfg.layouts = [
             legacy_layout.clone(),
@@ -3180,10 +3297,10 @@ fn apply_scanned_layouts(cfg: &mut HudConfig, scan: IniScan) {
     // Missing stream sections stay HudLayout::new() (all Show off). Only fill last-cols defaults.
     for p in SessionPreset::ALL {
         if scan.saw_stream_preset[p.idx()] && !scan.saw_stream_last_cols[p.idx()] {
-            cfg.stream_layouts[p.idx()].st_best = true;
-            cfg.stream_layouts[p.idx()].st_last = true;
-            cfg.stream_layouts[p.idx()].rel_best = true;
-            cfg.stream_layouts[p.idx()].rel_last = true;
+            cfg.stream_layouts[p.idx()].standings.st_best = true;
+            cfg.stream_layouts[p.idx()].standings.st_last = true;
+            cfg.stream_layouts[p.idx()].relative.rel_best = true;
+            cfg.stream_layouts[p.idx()].relative.rel_last = true;
         }
     }
 }
@@ -3417,344 +3534,183 @@ impl HudLayout {
             self[id].show = show;
         }
         match id {
-            WidgetId::Standings => {
-                self.standings_rows = source.standings_rows;
-                self.st_hl = source.st_hl;
-                self.st_text = source.st_text;
-                self.st_stripe = source.st_stripe;
-                self.st_plaque_text = source.st_plaque_text;
-                self.st_plaque = source.st_plaque;
-                self.st_pos = source.st_pos;
-                self.st_num = source.st_num;
-                self.st_name = source.st_name;
-                self.st_gap = source.st_gap;
-                self.st_interval = source.st_interval;
-                self.st_laps = source.st_laps;
-                self.st_current = source.st_current;
-                self.st_best = source.st_best;
-                self.st_last = source.st_last;
-                self.st_status = source.st_status;
-                self.st_bike = source.st_bike;
-                self.st_penalty = source.st_penalty;
-                self.st_crashed = source.st_crashed;
-                self.st_category = source.st_category;
-                self.st_lapdiff = source.st_lapdiff;
-                self.st_w_pos = source.st_w_pos;
-                self.st_w_num = source.st_w_num;
-                self.st_w_name = source.st_w_name;
-                self.st_w_gap = source.st_w_gap;
-                self.st_w_interval = source.st_w_interval;
-                self.st_w_laps = source.st_w_laps;
-                self.st_w_current = source.st_w_current;
-                self.st_w_best = source.st_w_best;
-                self.st_w_last = source.st_w_last;
-                self.st_w_status = source.st_w_status;
-                self.st_w_bike = source.st_w_bike;
-                self.st_w_penalty = source.st_w_penalty;
-                self.st_w_crashed = source.st_w_crashed;
-                self.st_w_category = source.st_w_category;
-                self.st_w_lapdiff = source.st_w_lapdiff;
-                self.st_head = source.st_head;
-                self.st_foot = source.st_foot;
-                self.st_order = source.st_order.clone();
-            }
-            WidgetId::Relative => {
-                self.relative_count = source.relative_count;
-                self.rel_hl = source.rel_hl;
-                self.rel_text = source.rel_text;
-                self.rel_stripe = source.rel_stripe;
-                self.rel_plaque_text = source.rel_plaque_text;
-                self.rel_plaque = source.rel_plaque;
-                self.rel_num = source.rel_num;
-                self.rel_name = source.rel_name;
-                self.rel_gap = source.rel_gap;
-                self.rel_laps = source.rel_laps;
-                self.rel_current = source.rel_current;
-                self.rel_pos = source.rel_pos;
-                self.rel_bike = source.rel_bike;
-                self.rel_penalty = source.rel_penalty;
-                self.rel_interval = source.rel_interval;
-                self.rel_status = source.rel_status;
-                self.rel_best = source.rel_best;
-                self.rel_last = source.rel_last;
-                self.rel_category = source.rel_category;
-                self.rel_speed = source.rel_speed;
-                self.rel_lapdiff = source.rel_lapdiff;
-                self.rel_w_num = source.rel_w_num;
-                self.rel_w_name = source.rel_w_name;
-                self.rel_w_gap = source.rel_w_gap;
-                self.rel_w_laps = source.rel_w_laps;
-                self.rel_w_current = source.rel_w_current;
-                self.rel_w_pos = source.rel_w_pos;
-                self.rel_w_bike = source.rel_w_bike;
-                self.rel_w_penalty = source.rel_w_penalty;
-                self.rel_w_interval = source.rel_w_interval;
-                self.rel_w_status = source.rel_w_status;
-                self.rel_w_best = source.rel_w_best;
-                self.rel_w_last = source.rel_w_last;
-                self.rel_w_category = source.rel_w_category;
-                self.rel_w_speed = source.rel_w_speed;
-                self.rel_w_lapdiff = source.rel_w_lapdiff;
-                self.rel_head = source.rel_head;
-                self.rel_foot = source.rel_foot;
-                self.rel_order = source.rel_order.clone();
-            }
-            WidgetId::Map => {
-                self.map_others = source.map_others;
-                self.map_sf = source.map_sf;
-                self.map_sectors = source.map_sectors;
-                self.map_name = source.map_name;
-                self.map_numbers = source.map_numbers;
-                self.map_arrows = source.map_arrows;
-                self.map_follow = source.map_follow;
-                self.map_crown = source.map_crown;
-                self.map_place = source.map_place;
-                self.map_dot = source.map_dot;
-            }
-            WidgetId::Minimap => {
-                self.mini_others = source.mini_others;
-                self.mini_sf = source.mini_sf;
-                self.mini_sectors = source.mini_sectors;
-                self.mini_numbers = source.mini_numbers;
-                self.mini_arrows = source.mini_arrows;
-                self.mini_crown = source.mini_crown;
-                self.mini_place = source.mini_place;
-                self.mini_dot = source.mini_dot;
-                self.mini_zoom = source.mini_zoom;
-            }
-            WidgetId::Radar => {
-                self.radar_sides = source.radar_sides;
-                self.radar_rear = source.radar_rear;
-                self.radar_rings = source.radar_rings;
-                self.radar_style = source.radar_style;
-                self.radar_range = source.radar_range;
-            }
-            WidgetId::Dash => {
-                self.dash_rev = source.dash_rev;
-                self.dash_yellow = source.dash_yellow;
-                self.dash_blue = source.dash_blue;
-                self.dash_red = source.dash_red;
-                self.dash_simple = source.dash_simple;
-                self.dash_shift_color = source.dash_shift_color;
-                self.dash_left = source.dash_left;
-                self.dash_mid = source.dash_mid;
-                self.dash_right = source.dash_right;
-            }
-            WidgetId::Ticker => {
-                self.ticker_count = source.ticker_count;
-                self.ticker_title = source.ticker_title;
-                self.ticker_autoscroll = source.ticker_autoscroll;
-                self.ticker_status = source.ticker_status;
-                self.ticker_slide = source.ticker_slide;
-                self.ticker_hl = source.ticker_hl;
-                self.ticker_left = source.ticker_left;
-                self.ticker_right = source.ticker_right;
-            }
-            WidgetId::Sys => self.sys_apps = source.sys_apps.clone(),
-            WidgetId::Sector => {
-                self.sector_live = source.sector_live;
-                self.sector_session = source.sector_session;
-                self.sector_hist = source.sector_hist;
-                self.sector_hist_laps = source.sector_hist_laps;
-            }
-            WidgetId::Delta => self.delta_session = source.delta_session,
-            WidgetId::Stance => {
-                self.stance_style = source.stance_style;
-                self.stance_show_sit = source.stance_show_sit;
-            }
-            WidgetId::Flag => {
-                self.flag_text = source.flag_text;
-                self.flag_yellow = source.flag_yellow;
-                self.flag_blue = source.flag_blue;
-                self.flag_red = source.flag_red;
-            }
-            WidgetId::Lean => self.lean_style = source.lean_style,
-            WidgetId::Gamepad => {
-                self.gamepad_style = source.gamepad_style;
-                self.gamepad_theme = source.gamepad_theme;
-            }
-            WidgetId::Telemetry => {
-                self.telemetry_traces = source.telemetry_traces;
-                self.telemetry_trace_throttle = source.telemetry_trace_throttle;
-                self.telemetry_trace_brake = source.telemetry_trace_brake;
-                self.telemetry_trace_steer = source.telemetry_trace_steer;
-                self.telemetry_bars = source.telemetry_bars;
-                self.telemetry_bar_clutch = source.telemetry_bar_clutch;
-                self.telemetry_bar_brake = source.telemetry_bar_brake;
-                self.telemetry_bar_throttle = source.telemetry_bar_throttle;
-                self.telemetry_bar_steer = source.telemetry_bar_steer;
-                self.telemetry_dial = source.telemetry_dial;
-            }
-            WidgetId::Pitboard => {
-                self.pit_sponsor = source.pit_sponsor.clone();
-                self.pit_art = source.pit_art.clone();
-                self.pit_board = source.pit_board.clone();
-                self.pit_text = source.pit_text;
-                self.pit_when = source.pit_when;
-                self.pit_yellow = source.pit_yellow;
-                self.pit_blue = source.pit_blue;
-                self.pit_vars = source.pit_vars.clone();
-            }
+            WidgetId::Standings => self.standings = source.standings.clone(),
+            WidgetId::Relative => self.relative = source.relative.clone(),
+            WidgetId::Map => self.map = source.map.clone(),
+            WidgetId::Minimap => self.mini = source.mini.clone(),
+            WidgetId::Radar => self.radar = source.radar.clone(),
+            WidgetId::Dash => self.dash = source.dash.clone(),
+            WidgetId::Ticker => self.ticker = source.ticker.clone(),
+            WidgetId::Sys => self.sys = source.sys.clone(),
+            WidgetId::Sector => self.sector = source.sector.clone(),
+            WidgetId::Delta => self.delta = source.delta.clone(),
+            WidgetId::Stance => self.stance = source.stance.clone(),
+            WidgetId::Flag => self.flag = source.flag.clone(),
+            WidgetId::Lean => self.lean = source.lean.clone(),
+            WidgetId::Gamepad => self.gamepad = source.gamepad.clone(),
+            WidgetId::Telemetry => self.telemetry = source.telemetry.clone(),
+            WidgetId::Pitboard => self.pit = source.pit.clone(),
         }
     }
 
     fn mix_standings(&self, mix: &mut LookMix) {
         mix_style(mix, self, WidgetId::Standings);
-        mix.i32(self.standings_rows);
-        mix.i32(self.st_hl);
-        mix.text(self.st_text.key());
-        mix.flag(self.st_stripe);
-        mix.text(self.st_plaque_text.key());
-        mix.flag(self.st_plaque);
-        mix.flag(self.st_pos);
-        mix.flag(self.st_num);
-        mix.flag(self.st_name);
-        mix.flag(self.st_gap);
-        mix.flag(self.st_interval);
-        mix.flag(self.st_laps);
-        mix.flag(self.st_current);
-        mix.flag(self.st_best);
-        mix.flag(self.st_last);
-        mix.flag(self.st_status);
-        mix.flag(self.st_bike);
-        mix.flag(self.st_penalty);
-        mix.flag(self.st_crashed);
-        mix.flag(self.st_category);
-        mix.flag(self.st_lapdiff);
-        mix.i32(self.st_w_pos);
-        mix.i32(self.st_w_num);
-        mix.i32(self.st_w_name);
-        mix.i32(self.st_w_gap);
-        mix.i32(self.st_w_interval);
-        mix.i32(self.st_w_laps);
-        mix.i32(self.st_w_current);
-        mix.i32(self.st_w_best);
-        mix.i32(self.st_w_last);
-        mix.i32(self.st_w_status);
-        mix.i32(self.st_w_bike);
-        mix.i32(self.st_w_penalty);
-        mix.i32(self.st_w_crashed);
-        mix.i32(self.st_w_category);
-        mix.i32(self.st_w_lapdiff);
-        mix_board(mix, &self.st_head);
-        mix_board(mix, &self.st_foot);
-        mix.unit(self.st_order.len() as u64);
-        for field in &self.st_order {
+        mix.i32(self.standings.standings_rows);
+        mix.i32(self.standings.st_hl);
+        mix.text(self.standings.st_text.key());
+        mix.flag(self.standings.st_stripe);
+        mix.text(self.standings.st_plaque_text.key());
+        mix.flag(self.standings.st_plaque);
+        mix.flag(self.standings.st_pos);
+        mix.flag(self.standings.st_num);
+        mix.flag(self.standings.st_name);
+        mix.flag(self.standings.st_gap);
+        mix.flag(self.standings.st_interval);
+        mix.flag(self.standings.st_laps);
+        mix.flag(self.standings.st_current);
+        mix.flag(self.standings.st_best);
+        mix.flag(self.standings.st_last);
+        mix.flag(self.standings.st_status);
+        mix.flag(self.standings.st_bike);
+        mix.flag(self.standings.st_penalty);
+        mix.flag(self.standings.st_crashed);
+        mix.flag(self.standings.st_category);
+        mix.flag(self.standings.st_lapdiff);
+        mix.i32(self.standings.st_w_pos);
+        mix.i32(self.standings.st_w_num);
+        mix.i32(self.standings.st_w_name);
+        mix.i32(self.standings.st_w_gap);
+        mix.i32(self.standings.st_w_interval);
+        mix.i32(self.standings.st_w_laps);
+        mix.i32(self.standings.st_w_current);
+        mix.i32(self.standings.st_w_best);
+        mix.i32(self.standings.st_w_last);
+        mix.i32(self.standings.st_w_status);
+        mix.i32(self.standings.st_w_bike);
+        mix.i32(self.standings.st_w_penalty);
+        mix.i32(self.standings.st_w_crashed);
+        mix.i32(self.standings.st_w_category);
+        mix.i32(self.standings.st_w_lapdiff);
+        mix_board(mix, &self.standings.st_head);
+        mix_board(mix, &self.standings.st_foot);
+        mix.unit(self.standings.st_order.len() as u64);
+        for field in &self.standings.st_order {
             mix.text(field.key());
         }
     }
 
     fn mix_relative(&self, mix: &mut LookMix) {
         mix_style(mix, self, WidgetId::Relative);
-        mix.i32(self.relative_count);
-        mix.i32(self.rel_hl);
-        mix.text(self.rel_text.key());
-        mix.flag(self.rel_stripe);
-        mix.text(self.rel_plaque_text.key());
-        mix.flag(self.rel_plaque);
-        mix.flag(self.rel_num);
-        mix.flag(self.rel_name);
-        mix.flag(self.rel_gap);
-        mix.flag(self.rel_laps);
-        mix.flag(self.rel_current);
-        mix.flag(self.rel_pos);
-        mix.flag(self.rel_bike);
-        mix.flag(self.rel_penalty);
-        mix.flag(self.rel_interval);
-        mix.flag(self.rel_status);
-        mix.flag(self.rel_best);
-        mix.flag(self.rel_last);
-        mix.flag(self.rel_category);
-        mix.flag(self.rel_speed);
-        mix.flag(self.rel_lapdiff);
-        mix.i32(self.rel_w_num);
-        mix.i32(self.rel_w_name);
-        mix.i32(self.rel_w_gap);
-        mix.i32(self.rel_w_laps);
-        mix.i32(self.rel_w_current);
-        mix.i32(self.rel_w_pos);
-        mix.i32(self.rel_w_bike);
-        mix.i32(self.rel_w_penalty);
-        mix.i32(self.rel_w_interval);
-        mix.i32(self.rel_w_status);
-        mix.i32(self.rel_w_best);
-        mix.i32(self.rel_w_last);
-        mix.i32(self.rel_w_category);
-        mix.i32(self.rel_w_speed);
-        mix.i32(self.rel_w_lapdiff);
-        mix_board(mix, &self.rel_head);
-        mix_board(mix, &self.rel_foot);
-        mix.unit(self.rel_order.len() as u64);
-        for field in &self.rel_order {
+        mix.i32(self.relative.relative_count);
+        mix.i32(self.relative.rel_hl);
+        mix.text(self.relative.rel_text.key());
+        mix.flag(self.relative.rel_stripe);
+        mix.text(self.relative.rel_plaque_text.key());
+        mix.flag(self.relative.rel_plaque);
+        mix.flag(self.relative.rel_num);
+        mix.flag(self.relative.rel_name);
+        mix.flag(self.relative.rel_gap);
+        mix.flag(self.relative.rel_laps);
+        mix.flag(self.relative.rel_current);
+        mix.flag(self.relative.rel_pos);
+        mix.flag(self.relative.rel_bike);
+        mix.flag(self.relative.rel_penalty);
+        mix.flag(self.relative.rel_interval);
+        mix.flag(self.relative.rel_status);
+        mix.flag(self.relative.rel_best);
+        mix.flag(self.relative.rel_last);
+        mix.flag(self.relative.rel_category);
+        mix.flag(self.relative.rel_speed);
+        mix.flag(self.relative.rel_lapdiff);
+        mix.i32(self.relative.rel_w_num);
+        mix.i32(self.relative.rel_w_name);
+        mix.i32(self.relative.rel_w_gap);
+        mix.i32(self.relative.rel_w_laps);
+        mix.i32(self.relative.rel_w_current);
+        mix.i32(self.relative.rel_w_pos);
+        mix.i32(self.relative.rel_w_bike);
+        mix.i32(self.relative.rel_w_penalty);
+        mix.i32(self.relative.rel_w_interval);
+        mix.i32(self.relative.rel_w_status);
+        mix.i32(self.relative.rel_w_best);
+        mix.i32(self.relative.rel_w_last);
+        mix.i32(self.relative.rel_w_category);
+        mix.i32(self.relative.rel_w_speed);
+        mix.i32(self.relative.rel_w_lapdiff);
+        mix_board(mix, &self.relative.rel_head);
+        mix_board(mix, &self.relative.rel_foot);
+        mix.unit(self.relative.rel_order.len() as u64);
+        for field in &self.relative.rel_order {
             mix.text(field.key());
         }
     }
 
     fn mix_map(&self, mix: &mut LookMix) {
         mix_style(mix, self, WidgetId::Map);
-        mix.flag(self.map_others);
-        mix.flag(self.map_sf);
-        mix.flag(self.map_sectors);
-        mix.flag(self.map_name);
-        mix.flag(self.map_numbers);
-        mix.flag(self.map_arrows);
-        mix.flag(self.map_follow);
-        mix.flag(self.map_crown);
-        mix.flag(self.map_place);
-        mix.text(self.map_dot.key());
+        mix.flag(self.map.map_others);
+        mix.flag(self.map.map_sf);
+        mix.flag(self.map.map_sectors);
+        mix.flag(self.map.map_name);
+        mix.flag(self.map.map_numbers);
+        mix.flag(self.map.map_arrows);
+        mix.flag(self.map.map_follow);
+        mix.i32(self.map.map_zoom);
+        mix.flag(self.map.map_crown);
+        mix.flag(self.map.map_place);
+        mix.text(self.map.map_dot.key());
     }
 
     fn mix_minimap(&self, mix: &mut LookMix) {
         mix_style(mix, self, WidgetId::Minimap);
-        mix.flag(self.mini_others);
-        mix.flag(self.mini_sf);
-        mix.flag(self.mini_sectors);
-        mix.flag(self.mini_numbers);
-        mix.flag(self.mini_arrows);
-        mix.flag(self.mini_crown);
-        mix.flag(self.mini_place);
-        mix.text(self.mini_dot.key());
-        mix.i32(self.mini_zoom);
+        mix.flag(self.mini.mini_others);
+        mix.flag(self.mini.mini_sf);
+        mix.flag(self.mini.mini_sectors);
+        mix.flag(self.mini.mini_numbers);
+        mix.flag(self.mini.mini_arrows);
+        mix.flag(self.mini.mini_crown);
+        mix.flag(self.mini.mini_place);
+        mix.text(self.mini.mini_dot.key());
+        mix.i32(self.mini.mini_zoom);
     }
 
     fn mix_radar(&self, mix: &mut LookMix) {
         mix_style(mix, self, WidgetId::Radar);
-        mix.flag(self.radar_sides);
-        mix.flag(self.radar_rear);
-        mix.flag(self.radar_rings);
-        mix.text(self.radar_style.key());
-        mix.i32(self.radar_range);
+        mix.flag(self.radar.radar_sides);
+        mix.flag(self.radar.radar_rear);
+        mix.flag(self.radar.radar_rings);
+        mix.text(self.radar.radar_style.key());
+        mix.i32(self.radar.radar_range);
     }
 
     fn mix_dash(&self, mix: &mut LookMix) {
         mix_style(mix, self, WidgetId::Dash);
-        mix.flag(self.dash_rev);
-        mix.flag(self.dash_yellow);
-        mix.flag(self.dash_blue);
-        mix.flag(self.dash_red);
-        mix.flag(self.dash_simple);
-        mix.flag(self.dash_shift_color);
-        mix.text(self.dash_left.key());
-        mix.text(self.dash_mid.key());
-        mix.text(self.dash_right.key());
+        mix.flag(self.dash.dash_rev);
+        mix.flag(self.dash.dash_yellow);
+        mix.flag(self.dash.dash_blue);
+        mix.flag(self.dash.dash_red);
+        mix.flag(self.dash.dash_simple);
+        mix.flag(self.dash.dash_shift_color);
+        mix.text(self.dash.dash_left.key());
+        mix.text(self.dash.dash_mid.key());
+        mix.text(self.dash.dash_right.key());
     }
 
     fn mix_ticker(&self, mix: &mut LookMix) {
         mix_style(mix, self, WidgetId::Ticker);
-        mix.i32(self.ticker_count);
-        mix.flag(self.ticker_title);
-        mix.flag(self.ticker_autoscroll);
-        mix.flag(self.ticker_status);
-        mix.flag(self.ticker_slide);
-        mix.i32(self.ticker_hl);
-        mix.text(self.ticker_left.key());
-        mix.text(self.ticker_right.key());
+        mix.i32(self.ticker.ticker_count);
+        mix.flag(self.ticker.ticker_title);
+        mix.flag(self.ticker.ticker_autoscroll);
+        mix.flag(self.ticker.ticker_status);
+        mix.flag(self.ticker.ticker_slide);
+        mix.i32(self.ticker.ticker_hl);
+        mix.text(self.ticker.ticker_left.key());
+        mix.text(self.ticker.ticker_right.key());
     }
 
     fn mix_sys(&self, mix: &mut LookMix) {
         mix_style(mix, self, WidgetId::Sys);
-        mix.unit(self.sys_apps.len() as u64);
-        for app in &self.sys_apps {
+        mix.unit(self.sys.sys_apps.len() as u64);
+        for app in &self.sys.sys_apps {
             mix.text(&app.key);
             mix.text(&app.label);
             mix.text(sys_kind_key(app.kind));
@@ -3768,66 +3724,66 @@ impl HudLayout {
 
     fn mix_sector(&self, mix: &mut LookMix) {
         mix_style(mix, self, WidgetId::Sector);
-        mix.flag(self.sector_live);
-        mix.flag(self.sector_session);
-        mix.flag(self.sector_hist);
-        mix.i32(self.sector_hist_laps);
+        mix.flag(self.sector.sector_live);
+        mix.flag(self.sector.sector_session);
+        mix.flag(self.sector.sector_hist);
+        mix.i32(self.sector.sector_hist_laps);
     }
 
     fn mix_delta(&self, mix: &mut LookMix) {
         mix_style(mix, self, WidgetId::Delta);
-        mix.flag(self.delta_session);
+        mix.flag(self.delta.delta_session);
     }
 
     fn mix_stance(&self, mix: &mut LookMix) {
         mix_style(mix, self, WidgetId::Stance);
-        mix.text(self.stance_style.key());
-        mix.flag(self.stance_show_sit);
+        mix.text(self.stance.stance_style.key());
+        mix.flag(self.stance.stance_show_sit);
     }
 
     fn mix_flag(&self, mix: &mut LookMix) {
         mix_style(mix, self, WidgetId::Flag);
-        mix.flag(self.flag_text);
-        mix.flag(self.flag_yellow);
-        mix.flag(self.flag_blue);
-        mix.flag(self.flag_red);
+        mix.flag(self.flag.flag_text);
+        mix.flag(self.flag.flag_yellow);
+        mix.flag(self.flag.flag_blue);
+        mix.flag(self.flag.flag_red);
     }
 
     fn mix_lean(&self, mix: &mut LookMix) {
         mix_style(mix, self, WidgetId::Lean);
-        mix.text(self.lean_style.key());
+        mix.text(self.lean.lean_style.key());
     }
 
     fn mix_gamepad(&self, mix: &mut LookMix) {
         mix_style(mix, self, WidgetId::Gamepad);
-        mix.text(self.gamepad_style.key());
-        mix.text(self.gamepad_theme.key());
+        mix.text(self.gamepad.gamepad_style.key());
+        mix.text(self.gamepad.gamepad_theme.key());
     }
 
     fn mix_telemetry(&self, mix: &mut LookMix) {
         mix_style(mix, self, WidgetId::Telemetry);
-        mix.flag(self.telemetry_traces);
-        mix.flag(self.telemetry_trace_throttle);
-        mix.flag(self.telemetry_trace_brake);
-        mix.flag(self.telemetry_trace_steer);
-        mix.flag(self.telemetry_bars);
-        mix.flag(self.telemetry_bar_clutch);
-        mix.flag(self.telemetry_bar_brake);
-        mix.flag(self.telemetry_bar_throttle);
-        mix.flag(self.telemetry_bar_steer);
-        mix.flag(self.telemetry_dial);
+        mix.flag(self.telemetry.telemetry_traces);
+        mix.flag(self.telemetry.telemetry_trace_throttle);
+        mix.flag(self.telemetry.telemetry_trace_brake);
+        mix.flag(self.telemetry.telemetry_trace_steer);
+        mix.flag(self.telemetry.telemetry_bars);
+        mix.flag(self.telemetry.telemetry_bar_clutch);
+        mix.flag(self.telemetry.telemetry_bar_brake);
+        mix.flag(self.telemetry.telemetry_bar_throttle);
+        mix.flag(self.telemetry.telemetry_bar_steer);
+        mix.flag(self.telemetry.telemetry_dial);
     }
 
     fn mix_pit(&self, mix: &mut LookMix) {
-        mix.text(&self.pit_sponsor);
-        mix.text(&self.pit_art);
-        mix.text(&self.pit_board);
-        mix.text(self.pit_text.key());
-        mix.text(self.pit_when.key());
-        mix.unit(rgb_key(self.pit_yellow));
-        mix.unit(rgb_key(self.pit_blue));
-        mix.unit(self.pit_vars.len() as u64);
-        for place in &self.pit_vars {
+        mix.text(&self.pit.pit_sponsor);
+        mix.text(&self.pit.pit_art);
+        mix.text(&self.pit.pit_board);
+        mix.text(self.pit.pit_text.key());
+        mix.text(self.pit.pit_when.key());
+        mix.unit(rgb_key(self.pit.pit_yellow));
+        mix.unit(rgb_key(self.pit.pit_blue));
+        mix.unit(self.pit.pit_vars.len() as u64);
+        for place in &self.pit.pit_vars {
             mix.text(place.var.key());
             mix.scalar(place.x);
             mix.scalar(place.y);
@@ -3853,184 +3809,374 @@ impl HudLayout {
     }
 }
 
-fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last_cols: &mut bool) {
-    match key {
-        "sector_live" => cfg.sector_live = b,
-        "sector_session" => cfg.sector_session = b,
-        "sector_hist" => cfg.sector_hist = b,
-        "sector_hist_laps" => cfg.sector_hist_laps = val.parse().unwrap_or(3).clamp(1, 5),
-        "delta_session" => cfg.delta_session = b,
-        "flag_caution" => {
-            cfg.flag_yellow = b;
-            cfg.flag_blue = b;
+impl SectorLayout {
+    fn apply_key(&mut self, key: &str, val: &str, b: bool) -> bool {
+        match key {
+        "sector_live" => self.sector_live = b,
+        "sector_session" => self.sector_session = b,
+        "sector_hist" => self.sector_hist = b,
+        "sector_hist_laps" => self.sector_hist_laps = val.parse().unwrap_or(3).clamp(1, 5),
+            _ => return false,
         }
-        "flag_yellow" => cfg.flag_yellow = b,
-        "flag_blue" => cfg.flag_blue = b,
-        "flag_red" => cfg.flag_red = b,
-        "flag_text" => cfg.flag_text = b,
-        "standings_rows" => cfg.standings_rows = val.parse().unwrap_or(12).max(3),
-        "relative_count" => cfg.relative_count = val.parse().unwrap_or(3).max(1),
-        "ticker_count" => cfg.ticker_count = val.parse().unwrap_or(7).clamp(3, 15),
-        "ticker_title" => cfg.ticker_title = b,
-        "ticker_autoscroll" => cfg.ticker_autoscroll = b,
-        "ticker_status" => cfg.ticker_status = b,
-        "ticker_slide" => cfg.ticker_slide = b,
-        "ticker_hl" => cfg.ticker_hl = clamp_pct(val),
-        "st_pos" => cfg.st_pos = b,
-        "st_num" => cfg.st_num = b,
-        "st_name" => cfg.st_name = b,
-        "st_gap" => cfg.st_gap = b,
-        "st_interval" => cfg.st_interval = b,
-        "st_laps" => cfg.st_laps = b,
-        "st_current" => cfg.st_current = b,
-        "st_best" => cfg.st_best = b,
+        true
+    }
+}
+
+impl DeltaLayout {
+    fn apply_key(&mut self, key: &str, _val: &str, b: bool) -> bool {
+        match key {
+        "delta_session" => self.delta_session = b,
+            _ => return false,
+        }
+        true
+    }
+}
+
+impl FlagLayout {
+    fn apply_key(&mut self, key: &str, _val: &str, b: bool) -> bool {
+        match key {
+        "flag_caution" => {
+            self.flag_yellow = b;
+            self.flag_blue = b;
+        }
+        "flag_yellow" => self.flag_yellow = b,
+        "flag_blue" => self.flag_blue = b,
+        "flag_red" => self.flag_red = b,
+        "flag_text" => self.flag_text = b,
+            _ => return false,
+        }
+        true
+    }
+}
+
+impl StandingsLayout {
+    fn apply_key(&mut self, key: &str, val: &str, b: bool, saw_last_cols: &mut bool) -> bool {
+        match key {
+        "standings_rows" => self.standings_rows = val.parse().unwrap_or(12).max(3),
+        "st_pos" => self.st_pos = b,
+        "st_num" => self.st_num = b,
+        "st_name" => self.st_name = b,
+        "st_gap" => self.st_gap = b,
+        "st_interval" => self.st_interval = b,
+        "st_laps" => self.st_laps = b,
+        "st_current" => self.st_current = b,
+        "st_best" => self.st_best = b,
         "st_last" => {
-            cfg.st_last = b;
+            self.st_last = b;
             *saw_last_cols = true;
         }
-        "st_status" => cfg.st_status = b,
-        "st_bike" => cfg.st_bike = b,
-        "st_penalty" => cfg.st_penalty = b,
-        "st_crashed" => cfg.st_crashed = b,
-        "st_category" => cfg.st_category = b,
-        "st_lapdiff" => cfg.st_lapdiff = b,
-        "rel_num" => cfg.rel_num = b,
-        "rel_name" => cfg.rel_name = b,
-        "rel_gap" => cfg.rel_gap = b,
-        "rel_laps" => cfg.rel_laps = b,
-        "rel_current" => cfg.rel_current = b,
-        "rel_pos" => cfg.rel_pos = b,
-        "rel_bike" => cfg.rel_bike = b,
-        "rel_penalty" => cfg.rel_penalty = b,
-        "rel_interval" => cfg.rel_interval = b,
-        "rel_status" => cfg.rel_status = b,
-        "rel_best" => cfg.rel_best = b,
-        "rel_last" => cfg.rel_last = b,
-        "rel_category" => cfg.rel_category = b,
-        "rel_speed" => cfg.rel_speed = b,
-        "rel_lapdiff" => cfg.rel_lapdiff = b,
-        "map_others" => cfg.map_others = b,
-        "map_sf" => cfg.map_sf = b,
-        "map_sectors" => cfg.map_sectors = b,
-        "map_name" => cfg.map_name = b,
-        "map_numbers" => cfg.map_numbers = b,
-        "map_arrows" => cfg.map_arrows = b,
-        "map_follow" => cfg.map_follow = b,
-        "map_crown" => cfg.map_crown = b,
-        "map_place" => cfg.map_place = b,
-        "map_dot" => cfg.map_dot = DotLabel::parse(val),
-        "mini_others" => cfg.mini_others = b,
-        "mini_sf" => cfg.mini_sf = b,
-        "mini_sectors" => cfg.mini_sectors = b,
-        "mini_numbers" => cfg.mini_numbers = b,
-        "mini_arrows" => cfg.mini_arrows = b,
-        "mini_crown" => cfg.mini_crown = b,
-        "mini_place" => cfg.mini_place = b,
-        "mini_dot" => cfg.mini_dot = DotLabel::parse(val),
-        "radar_sides" => cfg.radar_sides = b,
-        "radar_rear" => cfg.radar_rear = b,
-        "radar_rings" => cfg.radar_rings = b,
-        "radar_style" => cfg.radar_style = RadarStyle::parse(val),
-        "radar_range" => cfg.radar_range = clamp_radar_range(val),
-        "st_hl" => cfg.st_hl = clamp_pct(val),
-        "st_text" => cfg.st_text = TableText::parse(val),
-        "st_stripe" => cfg.st_stripe = b,
-        "st_plaque_text" => cfg.st_plaque_text = TableText::parse(val),
-        "st_plaque" => cfg.st_plaque = b,
-        "rel_hl" => cfg.rel_hl = clamp_pct(val),
-        "rel_text" => cfg.rel_text = TableText::parse(val),
-        "rel_stripe" => cfg.rel_stripe = b,
-        "rel_plaque_text" => cfg.rel_plaque_text = TableText::parse(val),
-        "rel_plaque" => cfg.rel_plaque = b,
-        "mini_zoom" => cfg.mini_zoom = clamp_pct(val),
-        "dash_rev" => cfg.dash_rev = b,
-        "dash_yellow" => cfg.dash_yellow = b,
-        "dash_blue" => cfg.dash_blue = b,
-        "dash_red" => cfg.dash_red = b,
-        "dash_simple" => cfg.dash_simple = b,
-        "dash_shift_color" => cfg.dash_shift_color = b,
-        "dash_left" => cfg.dash_left = DashField::parse(val),
-        "dash_mid" => cfg.dash_mid = DashField::parse(val),
-        "dash_right" => cfg.dash_right = DashField::parse(val),
-        "ticker_left" => cfg.ticker_left = BoardField::parse(val),
-        "ticker_right" => cfg.ticker_right = BoardField::parse(val),
-        "st_head" => cfg.st_head = parse_board(val, BoardField::DEFAULT_HEAD),
-        "st_foot" => cfg.st_foot = parse_board(val, BoardField::DEFAULT_FOOT),
-        "rel_head" => cfg.rel_head = parse_board(val, BoardField::DEFAULT_HEAD),
-        "rel_foot" => cfg.rel_foot = parse_board(val, BoardField::DEFAULT_FOOT),
-        "stance_mode" => cfg.stance_mode = StanceMode::parse(val),
-        "stance_style" => cfg.stance_style = StanceStyle::parse(val),
-        "lean_style" => cfg.lean_style = LeanStyle::parse(val),
-        "gamepad_style" => cfg.gamepad_style = GamepadStyle::parse(val),
-        "gamepad_theme" => cfg.gamepad_theme = GamepadTheme::parse(val),
-        "sys_apps" => cfg.sys_apps = parse_sys_apps(val),
-        "stance_show_sit" => cfg.stance_show_sit = b,
+        "st_status" => self.st_status = b,
+        "st_bike" => self.st_bike = b,
+        "st_penalty" => self.st_penalty = b,
+        "st_crashed" => self.st_crashed = b,
+        "st_category" => self.st_category = b,
+        "st_lapdiff" => self.st_lapdiff = b,
+        "st_hl" => self.st_hl = clamp_pct(val),
+        "st_text" => self.st_text = TableText::parse(val),
+        "st_stripe" => self.st_stripe = b,
+        "st_plaque_text" => self.st_plaque_text = TableText::parse(val),
+        "st_plaque" => self.st_plaque = b,
+        "st_head" => self.st_head = parse_board(val, BoardField::DEFAULT_HEAD),
+        "st_foot" => self.st_foot = parse_board(val, BoardField::DEFAULT_FOOT),
+        "st_order" => self.st_order = parse_st_order(val),
+        "st_w_pos" => self.st_w_pos = clamp_w(val),
+        "st_w_num" => self.st_w_num = clamp_w(val),
+        "st_w_name" => self.st_w_name = clamp_name_w(val),
+        "st_w_gap" => self.st_w_gap = clamp_w(val),
+        "st_w_interval" => self.st_w_interval = clamp_w(val),
+        "st_w_laps" => self.st_w_laps = clamp_w(val),
+        "st_w_current" => self.st_w_current = clamp_w(val),
+        "st_w_best" => self.st_w_best = clamp_w(val),
+        "st_w_last" => self.st_w_last = clamp_w(val),
+        "st_w_status" => self.st_w_status = clamp_w(val),
+        "st_w_bike" => self.st_w_bike = clamp_w(val),
+        "st_w_penalty" => self.st_w_penalty = clamp_w(val),
+        "st_w_crashed" => self.st_w_crashed = clamp_w(val),
+        "st_w_category" => self.st_w_category = clamp_w(val),
+        "st_w_lapdiff" => self.st_w_lapdiff = clamp_w(val),
+            _ => return false,
+        }
+        true
+    }
+}
+
+impl RelativeLayout {
+    fn apply_key(&mut self, key: &str, val: &str, b: bool) -> bool {
+        match key {
+        "relative_count" => self.relative_count = val.parse().unwrap_or(3).max(1),
+        "rel_num" => self.rel_num = b,
+        "rel_name" => self.rel_name = b,
+        "rel_gap" => self.rel_gap = b,
+        "rel_laps" => self.rel_laps = b,
+        "rel_current" => self.rel_current = b,
+        "rel_pos" => self.rel_pos = b,
+        "rel_bike" => self.rel_bike = b,
+        "rel_penalty" => self.rel_penalty = b,
+        "rel_interval" => self.rel_interval = b,
+        "rel_status" => self.rel_status = b,
+        "rel_best" => self.rel_best = b,
+        "rel_last" => self.rel_last = b,
+        "rel_category" => self.rel_category = b,
+        "rel_speed" => self.rel_speed = b,
+        "rel_lapdiff" => self.rel_lapdiff = b,
+        "rel_hl" => self.rel_hl = clamp_pct(val),
+        "rel_text" => self.rel_text = TableText::parse(val),
+        "rel_stripe" => self.rel_stripe = b,
+        "rel_plaque_text" => self.rel_plaque_text = TableText::parse(val),
+        "rel_plaque" => self.rel_plaque = b,
+        "rel_head" => self.rel_head = parse_board(val, BoardField::DEFAULT_HEAD),
+        "rel_foot" => self.rel_foot = parse_board(val, BoardField::DEFAULT_FOOT),
+        "rel_order" => self.rel_order = parse_rel_order(val),
+        "rel_w_num" => self.rel_w_num = clamp_w(val),
+        "rel_w_name" => self.rel_w_name = clamp_name_w(val),
+        "rel_w_gap" => self.rel_w_gap = clamp_w(val),
+        "rel_w_laps" => self.rel_w_laps = clamp_w(val),
+        "rel_w_current" => self.rel_w_current = clamp_w(val),
+        "rel_w_pos" => self.rel_w_pos = clamp_w(val),
+        "rel_w_bike" => self.rel_w_bike = clamp_w(val),
+        "rel_w_penalty" => self.rel_w_penalty = clamp_w(val),
+        "rel_w_interval" => self.rel_w_interval = clamp_w(val),
+        "rel_w_status" => self.rel_w_status = clamp_w(val),
+        "rel_w_best" => self.rel_w_best = clamp_w(val),
+        "rel_w_last" => self.rel_w_last = clamp_w(val),
+        "rel_w_category" => self.rel_w_category = clamp_w(val),
+        "rel_w_speed" => self.rel_w_speed = clamp_w(val),
+        "rel_w_lapdiff" => self.rel_w_lapdiff = clamp_w(val),
+            _ => return false,
+        }
+        true
+    }
+}
+
+impl TickerLayout {
+    fn apply_key(&mut self, key: &str, val: &str, b: bool) -> bool {
+        match key {
+        "ticker_count" => self.ticker_count = val.parse().unwrap_or(7).clamp(3, 15),
+        "ticker_title" => self.ticker_title = b,
+        "ticker_autoscroll" => self.ticker_autoscroll = b,
+        "ticker_status" => self.ticker_status = b,
+        "ticker_slide" => self.ticker_slide = b,
+        "ticker_hl" => self.ticker_hl = clamp_pct(val),
+        "ticker_left" => self.ticker_left = BoardField::parse(val),
+        "ticker_right" => self.ticker_right = BoardField::parse(val),
+            _ => return false,
+        }
+        true
+    }
+}
+
+impl MapLayout {
+    fn apply_key(&mut self, key: &str, val: &str, b: bool) -> bool {
+        match key {
+        "map_others" => self.map_others = b,
+        "map_sf" => self.map_sf = b,
+        "map_sectors" => self.map_sectors = b,
+        "map_name" => self.map_name = b,
+        "map_numbers" => self.map_numbers = b,
+        "map_arrows" => self.map_arrows = b,
+        "map_follow" => self.map_follow = b,
+        "map_zoom" => self.map_zoom = clamp_pct(val),
+        "map_crown" => self.map_crown = b,
+        "map_place" => self.map_place = b,
+        "map_dot" => self.map_dot = DotLabel::parse(val),
+            _ => return false,
+        }
+        true
+    }
+}
+
+impl MiniLayout {
+    fn apply_key(&mut self, key: &str, val: &str, b: bool) -> bool {
+        match key {
+        "mini_others" => self.mini_others = b,
+        "mini_sf" => self.mini_sf = b,
+        "mini_sectors" => self.mini_sectors = b,
+        "mini_numbers" => self.mini_numbers = b,
+        "mini_arrows" => self.mini_arrows = b,
+        "mini_crown" => self.mini_crown = b,
+        "mini_place" => self.mini_place = b,
+        "mini_dot" => self.mini_dot = DotLabel::parse(val),
+        "mini_zoom" => self.mini_zoom = clamp_pct(val),
+            _ => return false,
+        }
+        true
+    }
+}
+
+impl RadarLayout {
+    fn apply_key(&mut self, key: &str, val: &str, b: bool) -> bool {
+        match key {
+        "radar_sides" => self.radar_sides = b,
+        "radar_rear" => self.radar_rear = b,
+        "radar_rings" => self.radar_rings = b,
+        "radar_style" => self.radar_style = RadarStyle::parse(val),
+        "radar_range" => self.radar_range = clamp_radar_range(val),
+            _ => return false,
+        }
+        true
+    }
+}
+
+impl DashLayout {
+    fn apply_key(&mut self, key: &str, val: &str, b: bool) -> bool {
+        match key {
+        "dash_rev" => self.dash_rev = b,
+        "dash_yellow" => self.dash_yellow = b,
+        "dash_blue" => self.dash_blue = b,
+        "dash_red" => self.dash_red = b,
+        "dash_simple" => self.dash_simple = b,
+        "dash_shift_color" => self.dash_shift_color = b,
+        "dash_left" => self.dash_left = DashField::parse(val),
+        "dash_mid" => self.dash_mid = DashField::parse(val),
+        "dash_right" => self.dash_right = DashField::parse(val),
+            _ => return false,
+        }
+        true
+    }
+}
+
+impl StanceLayout {
+    fn apply_key(&mut self, key: &str, val: &str, b: bool) -> bool {
+        match key {
+        "stance_mode" => self.stance_mode = StanceMode::parse(val),
+        "stance_style" => self.stance_style = StanceStyle::parse(val),
+        "stance_show_sit" => self.stance_show_sit = b,
         "stance_icon" => {
             if b {
-                cfg.stance_style = StanceStyle::Icon;
+                self.stance_style = StanceStyle::Icon;
             }
         }
-        "st_order" => cfg.st_order = parse_st_order(val),
-        "rel_order" => cfg.rel_order = parse_rel_order(val),
-        "st_w_pos" => cfg.st_w_pos = clamp_w(val),
-        "st_w_num" => cfg.st_w_num = clamp_w(val),
-        "st_w_name" => cfg.st_w_name = clamp_name_w(val),
-        "st_w_gap" => cfg.st_w_gap = clamp_w(val),
-        "st_w_interval" => cfg.st_w_interval = clamp_w(val),
-        "st_w_laps" => cfg.st_w_laps = clamp_w(val),
-        "st_w_current" => cfg.st_w_current = clamp_w(val),
-        "st_w_best" => cfg.st_w_best = clamp_w(val),
-        "st_w_last" => cfg.st_w_last = clamp_w(val),
-        "st_w_status" => cfg.st_w_status = clamp_w(val),
-        "st_w_bike" => cfg.st_w_bike = clamp_w(val),
-        "st_w_penalty" => cfg.st_w_penalty = clamp_w(val),
-        "st_w_crashed" => cfg.st_w_crashed = clamp_w(val),
-        "st_w_category" => cfg.st_w_category = clamp_w(val),
-        "st_w_lapdiff" => cfg.st_w_lapdiff = clamp_w(val),
-        "rel_w_num" => cfg.rel_w_num = clamp_w(val),
-        "rel_w_name" => cfg.rel_w_name = clamp_name_w(val),
-        "rel_w_gap" => cfg.rel_w_gap = clamp_w(val),
-        "rel_w_laps" => cfg.rel_w_laps = clamp_w(val),
-        "rel_w_current" => cfg.rel_w_current = clamp_w(val),
-        "rel_w_pos" => cfg.rel_w_pos = clamp_w(val),
-        "rel_w_bike" => cfg.rel_w_bike = clamp_w(val),
-        "rel_w_penalty" => cfg.rel_w_penalty = clamp_w(val),
-        "rel_w_interval" => cfg.rel_w_interval = clamp_w(val),
-        "rel_w_status" => cfg.rel_w_status = clamp_w(val),
-        "rel_w_best" => cfg.rel_w_best = clamp_w(val),
-        "rel_w_last" => cfg.rel_w_last = clamp_w(val),
-        "rel_w_category" => cfg.rel_w_category = clamp_w(val),
-        "rel_w_speed" => cfg.rel_w_speed = clamp_w(val),
-        "rel_w_lapdiff" => cfg.rel_w_lapdiff = clamp_w(val),
-        "telemetry_traces" => cfg.telemetry_traces = b,
-        "telemetry_trace_throttle" => cfg.telemetry_trace_throttle = b,
-        "telemetry_trace_brake" => cfg.telemetry_trace_brake = b,
-        "telemetry_trace_steer" => cfg.telemetry_trace_steer = b,
-        "telemetry_bars" => cfg.telemetry_bars = b,
-        "telemetry_bar_clutch" => cfg.telemetry_bar_clutch = b,
-        "telemetry_bar_brake" => cfg.telemetry_bar_brake = b,
-        "telemetry_bar_throttle" => cfg.telemetry_bar_throttle = b,
-        "telemetry_bar_steer" => cfg.telemetry_bar_steer = b,
-        "telemetry_dial" => cfg.telemetry_dial = b,
-        "pit_sponsor" => cfg.pit_sponsor = val.trim().to_string(),
-        "pit_art" => cfg.pit_art = val.trim().to_string(),
-        "pit_board" => cfg.pit_board = val.trim().to_string(),
-        "pit_text" => cfg.pit_text = TableText::parse(val),
-        "pit_vars" => cfg.pit_vars = parse_places(val),
-        "pit_when" => cfg.pit_when = PitWhen::parse(val),
+            _ => return false,
+        }
+        true
+    }
+}
+
+impl LeanLayout {
+    fn apply_key(&mut self, key: &str, val: &str, _b: bool) -> bool {
+        match key {
+        "lean_style" => self.lean_style = LeanStyle::parse(val),
+            _ => return false,
+        }
+        true
+    }
+}
+
+impl GamepadLayout {
+    fn apply_key(&mut self, key: &str, val: &str, _b: bool) -> bool {
+        match key {
+        "gamepad_style" => self.gamepad_style = GamepadStyle::parse(val),
+        "gamepad_theme" => self.gamepad_theme = GamepadTheme::parse(val),
+            _ => return false,
+        }
+        true
+    }
+}
+
+impl SysLayout {
+    fn apply_key(&mut self, key: &str, val: &str, _b: bool) -> bool {
+        match key {
+        "sys_apps" => self.sys_apps = parse_sys_apps(val),
+            _ => return false,
+        }
+        true
+    }
+}
+
+impl TelemetryLayout {
+    fn apply_key(&mut self, key: &str, _val: &str, b: bool) -> bool {
+        match key {
+        "telemetry_traces" => self.telemetry_traces = b,
+        "telemetry_trace_throttle" => self.telemetry_trace_throttle = b,
+        "telemetry_trace_brake" => self.telemetry_trace_brake = b,
+        "telemetry_trace_steer" => self.telemetry_trace_steer = b,
+        "telemetry_bars" => self.telemetry_bars = b,
+        "telemetry_bar_clutch" => self.telemetry_bar_clutch = b,
+        "telemetry_bar_brake" => self.telemetry_bar_brake = b,
+        "telemetry_bar_throttle" => self.telemetry_bar_throttle = b,
+        "telemetry_bar_steer" => self.telemetry_bar_steer = b,
+        "telemetry_dial" => self.telemetry_dial = b,
+            _ => return false,
+        }
+        true
+    }
+}
+
+impl PitLayout {
+    fn apply_key(&mut self, key: &str, val: &str, _b: bool) -> bool {
+        match key {
+        "pit_sponsor" => self.pit_sponsor = val.trim().to_string(),
+        "pit_art" => self.pit_art = val.trim().to_string(),
+        "pit_board" => self.pit_board = val.trim().to_string(),
+        "pit_text" => self.pit_text = TableText::parse(val),
+        "pit_vars" => self.pit_vars = parse_places(val),
+        "pit_when" => self.pit_when = PitWhen::parse(val),
         "pit_yellow" => {
             if let Some(rgb) = parse_primary_color(val) {
-                cfg.pit_yellow = rgb;
+                self.pit_yellow = rgb;
             }
         }
         "pit_blue" => {
             if let Some(rgb) = parse_primary_color(val) {
-                cfg.pit_blue = rgb;
+                self.pit_blue = rgb;
             }
+        }            _ => return false,
         }
-        _ => {}
+        true
     }
 }
+
+fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last_cols: &mut bool) {
+    if cfg.sector.apply_key(key, val, b) {
+        return;
+    }
+    if cfg.delta.apply_key(key, val, b) {
+        return;
+    }
+    if cfg.flag.apply_key(key, val, b) {
+        return;
+    }
+    if cfg.standings.apply_key(key, val, b, saw_last_cols) {
+        return;
+    }
+    if cfg.relative.apply_key(key, val, b) {
+        return;
+    }
+    if cfg.ticker.apply_key(key, val, b) {
+        return;
+    }
+    if cfg.map.apply_key(key, val, b) {
+        return;
+    }
+    if cfg.mini.apply_key(key, val, b) {
+        return;
+    }
+    if cfg.radar.apply_key(key, val, b) {
+        return;
+    }
+    if cfg.dash.apply_key(key, val, b) {
+        return;
+    }
+    if cfg.stance.apply_key(key, val, b) {
+        return;
+    }
+    if cfg.lean.apply_key(key, val, b) {
+        return;
+    }
+    if cfg.gamepad.apply_key(key, val, b) {
+        return;
+    }
+    if cfg.sys.apply_key(key, val, b) {
+        return;
+    }
+    if cfg.telemetry.apply_key(key, val, b) {
+        return;
+    }
+    if cfg.pit.apply_key(key, val, b) {
+        return;
+    }
+}
+
 
 fn apply_widget_prefs(cfg: &mut HudLayout, key: &str, val: &str, f: f32, b: bool) -> bool {
     for id in WidgetId::ALL {
@@ -4123,7 +4269,7 @@ fn layout_ini(l: &HudLayout) -> String {
          rel_w_bike={}\nrel_w_penalty={}\nrel_w_interval={}\nrel_w_status={}\nrel_w_best={}\nrel_w_last={}\nrel_w_category={}\nrel_w_speed={}\nrel_w_lapdiff={}\n\
          rel_bg={}\nrel_hl={}\nrel_text={}\nrel_stripe={}\nrel_plaque_text={}\nrel_plaque={}\nrel_font={}\nrel_bold={}\n\
          rel_head={}\nrel_foot={}\n\
-         map_others={}\nmap_sf={}\nmap_sectors={}\nmap_name={}\nmap_numbers={}\nmap_arrows={}\nmap_follow={}\n\
+         map_others={}\nmap_sf={}\nmap_sectors={}\nmap_name={}\nmap_numbers={}\nmap_arrows={}\nmap_follow={}\nmap_zoom={}\n\
          map_crown={}\nmap_place={}\nmap_dot={}\nmap_bg={}\nmap_font={}\nmap_bold={}\n\
          mini_others={}\nmini_sf={}\nmini_sectors={}\nmini_numbers={}\nmini_arrows={}\nmini_crown={}\n\
          mini_place={}\nmini_dot={}\nmini_bg={}\nmini_zoom={}\nmini_font={}\nmini_bold={}\n\
@@ -4164,65 +4310,65 @@ fn layout_ini(l: &HudLayout) -> String {
         gamepad.rect.x, gamepad.rect.y, gamepad.rect.w, gamepad.rect.h,
         telemetry.rect.x, telemetry.rect.y, telemetry.rect.w, telemetry.rect.h,
         pit.rect.x, pit.rect.y, pit.rect.w, pit.rect.h,
-        b(st.show), b(rel.show), b(map.show), b(mini.show), b(radar.show),
-        b(dash.show), b(ticker.show), b(sys.show), b(sector.show), b(delta.show),
-        b(stance.show), b(flag.show), b(lean.show), b(gamepad.show), b(telemetry.show), b(pit.show),
-        l.standings_rows, l.relative_count, l.ticker_count,
-        b(l.st_pos), b(l.st_num), b(l.st_name), b(l.st_gap), b(l.st_interval), b(l.st_laps), b(l.st_current),
-        b(l.st_best), b(l.st_last), b(l.st_status), b(l.st_bike), b(l.st_penalty), b(l.st_crashed), b(l.st_category), b(l.st_lapdiff),
-        join_st(&l.st_order),
-        l.st_w_pos, l.st_w_num, l.st_w_name, l.st_w_gap, l.st_w_interval, l.st_w_laps,
-        l.st_w_current, l.st_w_best, l.st_w_last, l.st_w_status, l.st_w_bike, l.st_w_penalty, l.st_w_crashed, l.st_w_category, l.st_w_lapdiff,
-        st.bg, l.st_hl, l.st_text.key(), b(l.st_stripe), l.st_plaque_text.key(), b(l.st_plaque), st.font, b(st.bold),
-        join_board(&l.st_head), join_board(&l.st_foot),
-        b(l.rel_num), b(l.rel_name), b(l.rel_gap), b(l.rel_laps), b(l.rel_current), b(l.rel_pos), b(l.rel_bike),
-        b(l.rel_penalty), b(l.rel_interval), b(l.rel_status), b(l.rel_best), b(l.rel_last), b(l.rel_category), b(l.rel_speed), b(l.rel_lapdiff),
-        join_rel(&l.rel_order),
-        l.rel_w_num, l.rel_w_name, l.rel_w_gap, l.rel_w_laps, l.rel_w_current, l.rel_w_pos,
-        l.rel_w_bike, l.rel_w_penalty, l.rel_w_interval, l.rel_w_status, l.rel_w_best, l.rel_w_last,
-        l.rel_w_category, l.rel_w_speed, l.rel_w_lapdiff,
-        rel.bg, l.rel_hl, l.rel_text.key(), b(l.rel_stripe), l.rel_plaque_text.key(), b(l.rel_plaque), rel.font, b(rel.bold),
-        join_board(&l.rel_head), join_board(&l.rel_foot),
-        b(l.map_others), b(l.map_sf), b(l.map_sectors), b(l.map_name), b(l.map_numbers), b(l.map_arrows),
-        b(l.map_follow),
-        b(l.map_crown), b(l.map_place), l.map_dot.key(), map.bg, map.font, b(map.bold),
-        b(l.mini_others), b(l.mini_sf), b(l.mini_sectors), b(l.mini_numbers), b(l.mini_arrows), b(l.mini_crown),
-        b(l.mini_place), l.mini_dot.key(), mini.bg, l.mini_zoom, mini.font, b(mini.bold),
-        b(l.radar_sides), b(l.radar_rear), b(l.radar_rings), l.radar_style.key(), l.radar_range, radar.bg, radar.font, b(radar.bold),
-        b(l.dash_rev), b(l.dash_yellow), b(l.dash_blue), b(l.dash_red), b(l.dash_simple), b(l.dash_shift_color), l.dash_left.key(), l.dash_mid.key(), l.dash_right.key(),
-        dash.bg, dash.font, b(dash.bold),
-        l.ticker_left.key(), l.ticker_right.key(), b(l.ticker_title), b(l.ticker_autoscroll), b(l.ticker_status), b(l.ticker_slide),
-        ticker.bg, l.ticker_hl, ticker.font, b(ticker.bold),
-        sys.bg, sys.font, b(sys.bold), encode_sys_apps(&l.sys_apps),
-        b(l.sector_live), b(l.sector_session), b(l.sector_hist), l.sector_hist_laps.clamp(1, 5),
-        sector.bg, sector.font, b(sector.bold),
-        b(l.delta_session), delta.bg, delta.font, b(delta.bold),
-        l.stance_mode.key(), l.stance_style.key(), b(l.stance_show_sit),
-        stance.bg, stance.font, b(stance.bold),
-        flag.bg, b(l.flag_yellow), b(l.flag_blue), b(l.flag_red), b(l.flag_text), flag.font, b(flag.bold),
-        l.lean_style.key(), lean.bg, lean.font, b(lean.bold),
-        l.gamepad_style.key(),
-        l.gamepad_theme.key(),
+        ini_flag(st.show), ini_flag(rel.show), ini_flag(map.show), ini_flag(mini.show), ini_flag(radar.show),
+        ini_flag(dash.show), ini_flag(ticker.show), ini_flag(sys.show), ini_flag(sector.show), ini_flag(delta.show),
+        ini_flag(stance.show), ini_flag(flag.show), ini_flag(lean.show), ini_flag(gamepad.show), ini_flag(telemetry.show), ini_flag(pit.show),
+        l.standings.standings_rows, l.relative.relative_count, l.ticker.ticker_count,
+        ini_flag(l.standings.st_pos), ini_flag(l.standings.st_num), ini_flag(l.standings.st_name), ini_flag(l.standings.st_gap), ini_flag(l.standings.st_interval), ini_flag(l.standings.st_laps), ini_flag(l.standings.st_current),
+        ini_flag(l.standings.st_best), ini_flag(l.standings.st_last), ini_flag(l.standings.st_status), ini_flag(l.standings.st_bike), ini_flag(l.standings.st_penalty), ini_flag(l.standings.st_crashed), ini_flag(l.standings.st_category), ini_flag(l.standings.st_lapdiff),
+        join_st(&l.standings.st_order),
+        l.standings.st_w_pos, l.standings.st_w_num, l.standings.st_w_name, l.standings.st_w_gap, l.standings.st_w_interval, l.standings.st_w_laps,
+        l.standings.st_w_current, l.standings.st_w_best, l.standings.st_w_last, l.standings.st_w_status, l.standings.st_w_bike, l.standings.st_w_penalty, l.standings.st_w_crashed, l.standings.st_w_category, l.standings.st_w_lapdiff,
+        st.bg, l.standings.st_hl, l.standings.st_text.key(), ini_flag(l.standings.st_stripe), l.standings.st_plaque_text.key(), ini_flag(l.standings.st_plaque), st.font, ini_flag(st.bold),
+        join_board(&l.standings.st_head), join_board(&l.standings.st_foot),
+        ini_flag(l.relative.rel_num), ini_flag(l.relative.rel_name), ini_flag(l.relative.rel_gap), ini_flag(l.relative.rel_laps), ini_flag(l.relative.rel_current), ini_flag(l.relative.rel_pos), ini_flag(l.relative.rel_bike),
+        ini_flag(l.relative.rel_penalty), ini_flag(l.relative.rel_interval), ini_flag(l.relative.rel_status), ini_flag(l.relative.rel_best), ini_flag(l.relative.rel_last), ini_flag(l.relative.rel_category), ini_flag(l.relative.rel_speed), ini_flag(l.relative.rel_lapdiff),
+        join_rel(&l.relative.rel_order),
+        l.relative.rel_w_num, l.relative.rel_w_name, l.relative.rel_w_gap, l.relative.rel_w_laps, l.relative.rel_w_current, l.relative.rel_w_pos,
+        l.relative.rel_w_bike, l.relative.rel_w_penalty, l.relative.rel_w_interval, l.relative.rel_w_status, l.relative.rel_w_best, l.relative.rel_w_last,
+        l.relative.rel_w_category, l.relative.rel_w_speed, l.relative.rel_w_lapdiff,
+        rel.bg, l.relative.rel_hl, l.relative.rel_text.key(), ini_flag(l.relative.rel_stripe), l.relative.rel_plaque_text.key(), ini_flag(l.relative.rel_plaque), rel.font, ini_flag(rel.bold),
+        join_board(&l.relative.rel_head), join_board(&l.relative.rel_foot),
+        ini_flag(l.map.map_others), ini_flag(l.map.map_sf), ini_flag(l.map.map_sectors), ini_flag(l.map.map_name), ini_flag(l.map.map_numbers), ini_flag(l.map.map_arrows),
+        ini_flag(l.map.map_follow), l.map.map_zoom,
+        ini_flag(l.map.map_crown), ini_flag(l.map.map_place), l.map.map_dot.key(), map.bg, map.font, ini_flag(map.bold),
+        ini_flag(l.mini.mini_others), ini_flag(l.mini.mini_sf), ini_flag(l.mini.mini_sectors), ini_flag(l.mini.mini_numbers), ini_flag(l.mini.mini_arrows), ini_flag(l.mini.mini_crown),
+        ini_flag(l.mini.mini_place), l.mini.mini_dot.key(), mini.bg, l.mini.mini_zoom, mini.font, ini_flag(mini.bold),
+        ini_flag(l.radar.radar_sides), ini_flag(l.radar.radar_rear), ini_flag(l.radar.radar_rings), l.radar.radar_style.key(), l.radar.radar_range, radar.bg, radar.font, ini_flag(radar.bold),
+        ini_flag(l.dash.dash_rev), ini_flag(l.dash.dash_yellow), ini_flag(l.dash.dash_blue), ini_flag(l.dash.dash_red), ini_flag(l.dash.dash_simple), ini_flag(l.dash.dash_shift_color), l.dash.dash_left.key(), l.dash.dash_mid.key(), l.dash.dash_right.key(),
+        dash.bg, dash.font, ini_flag(dash.bold),
+        l.ticker.ticker_left.key(), l.ticker.ticker_right.key(), ini_flag(l.ticker.ticker_title), ini_flag(l.ticker.ticker_autoscroll), ini_flag(l.ticker.ticker_status), ini_flag(l.ticker.ticker_slide),
+        ticker.bg, l.ticker.ticker_hl, ticker.font, ini_flag(ticker.bold),
+        sys.bg, sys.font, ini_flag(sys.bold), encode_sys_apps(&l.sys.sys_apps),
+        ini_flag(l.sector.sector_live), ini_flag(l.sector.sector_session), ini_flag(l.sector.sector_hist), l.sector.sector_hist_laps.clamp(1, 5),
+        sector.bg, sector.font, ini_flag(sector.bold),
+        ini_flag(l.delta.delta_session), delta.bg, delta.font, ini_flag(delta.bold),
+        l.stance.stance_mode.key(), l.stance.stance_style.key(), ini_flag(l.stance.stance_show_sit),
+        stance.bg, stance.font, ini_flag(stance.bold),
+        flag.bg, ini_flag(l.flag.flag_yellow), ini_flag(l.flag.flag_blue), ini_flag(l.flag.flag_red), ini_flag(l.flag.flag_text), flag.font, ini_flag(flag.bold),
+        l.lean.lean_style.key(), lean.bg, lean.font, ini_flag(lean.bold),
+        l.gamepad.gamepad_style.key(),
+        l.gamepad.gamepad_theme.key(),
         gamepad.bg,
         gamepad.font,
-        b(gamepad.bold),
-        b(l.telemetry_traces), b(l.telemetry_trace_throttle), b(l.telemetry_trace_brake), b(l.telemetry_trace_steer),
-        b(l.telemetry_bars), b(l.telemetry_bar_clutch), b(l.telemetry_bar_brake), b(l.telemetry_bar_throttle), b(l.telemetry_bar_steer),
-        b(l.telemetry_dial),
-        telemetry.bg, telemetry.font, b(telemetry.bold),
-        ini_line(&l.pit_sponsor),
-        ini_line(&l.pit_art),
-        ini_line(&l.pit_board),
-        l.pit_text.key(),
-        encode_places(&l.pit_vars),
-        l.pit_when.key(),
-        format_primary_color(l.pit_yellow),
-        format_primary_color(l.pit_blue),
-        pit.bg, pit.font, b(pit.bold),
+        ini_flag(gamepad.bold),
+        ini_flag(l.telemetry.telemetry_traces), ini_flag(l.telemetry.telemetry_trace_throttle), ini_flag(l.telemetry.telemetry_trace_brake), ini_flag(l.telemetry.telemetry_trace_steer),
+        ini_flag(l.telemetry.telemetry_bars), ini_flag(l.telemetry.telemetry_bar_clutch), ini_flag(l.telemetry.telemetry_bar_brake), ini_flag(l.telemetry.telemetry_bar_throttle), ini_flag(l.telemetry.telemetry_bar_steer),
+        ini_flag(l.telemetry.telemetry_dial),
+        telemetry.bg, telemetry.font, ini_flag(telemetry.bold),
+        ini_line(&l.pit.pit_sponsor),
+        ini_line(&l.pit.pit_art),
+        ini_line(&l.pit.pit_board),
+        l.pit.pit_text.key(),
+        encode_places(&l.pit.pit_vars),
+        l.pit.pit_when.key(),
+        format_primary_color(l.pit.pit_yellow),
+        format_primary_color(l.pit.pit_blue),
+        pit.bg, pit.font, ini_flag(pit.bold),
     )
 }
 
-fn b(v: bool) -> i32 {
+fn ini_flag(v: bool) -> i32 {
     i32::from(v)
 }
 

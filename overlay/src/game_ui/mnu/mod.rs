@@ -3204,7 +3204,7 @@ dialog
     )
 }
 
-pub(crate) fn ui_ui(accent: [u8; 3]) -> String {
+pub(crate) fn menu_index(accent: [u8; 3]) -> String {
     format!(
         r#"
 ratio 16:9

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.23.0
+
+### Live order
+
+- Lap 1 places update at each sector gate and keep moving between gates when someone passes. Standings, dash, relative, and the map follow that order before the finish. Restart MX Bikes after the plugin update (`Local\MXBOHudV19`).
+
+### Map
+
+- **Zoom** (only while **Follow me** is on) tightens the view around you. All the way in still shows about 80 m across, about twice the minimap's closest view. The minimap can keep going in from there.
+
+## 0.22.1
+
+- Map and Minimap start/finish bar spans only the track stroke.
+- Map and Minimap show a rider's real position, so you can see a cut across the track or someone off the racing line. Place, the leader crown, and ahead/behind marks stay on race order.
+- Timed +1: if the leader laps you on their final lap and finishes before you leave `0/1`, the finish line shows the checkered flag instead of the white. The leader finishing ahead, without passing you, still leaves you the extra.
+- Timed +2: if you are a lap down on `0/2` or `1/2`, the line that would start `2/2` is the checkered. You still take the line into `1/2`. You do not ride the last extra.
+
 ## 0.22.0
 
 Put your HUD on the stream. Lay the widgets out in the browser. The game window stays yours.

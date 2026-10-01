@@ -27,7 +27,7 @@ pub(crate) fn draw_lean(
     let y = r.y * sh;
     let w = (r.w * sw).max(64.0);
     let h = (r.h * sh).max(72.0);
-    let a = bg_a(cfg[WidgetId::Lean].bg);
+    let a = background_alpha(cfg[WidgetId::Lean].bg);
     if a > 0 {
         fill_round(px, x, y, w, h, 6.0, Color::from_rgba8(10, 10, 10, a));
         if let Some(frame) = round_rect_path(x + 0.5, y + 0.5, w - 1.0, h - 1.0, 5.5) {
@@ -37,7 +37,7 @@ pub(crate) fn draw_lean(
     }
 
     let view = crate::lean::view(s);
-    if cfg.lean_style == LeanStyle::Minimal {
+    if cfg.lean.lean_style == LeanStyle::Minimal {
         draw_lean_minimal(px, fonts, cfg, x, y, w, h, a, view);
         return;
     }

@@ -131,7 +131,7 @@ fn f9_dump_text(shm: Option<&Shm>, snap: Option<&Snapshot>) -> String {
         std::mem::size_of::<Snapshot>()
     ));
     match shm {
-        None => o.push_str("OpenFileMapping Local\\MXBOHudV18 failed. Start MX Bikes with Holeshot-HUD.dlo loaded.\n"),
+        None => o.push_str("OpenFileMapping Local\\MXBOHudV19 failed. Start MX Bikes with Holeshot-HUD.dlo loaded.\n"),
         Some(s) => match s.header() {
             Some((magic, version, seq, size)) => {
                 o.push_str(&format!(
@@ -394,7 +394,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         .unwrap_or_else(primary_screen);
     let mut hwnd = create_overlay(hinst, class, x, y, w, h);
 
-    let mut dib = Dib::new(w, h);
+    let mut dib = DeviceBitmap::new(w, h);
     let mut pixmap = Pixmap::new(w as u32, h as u32).unwrap();
     dib.present(hwnd, w, h, x, y);
     let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
@@ -446,7 +446,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
             w = r.2;
             h = r.3;
             hwnd = create_overlay(hinst, class, x, y, w, h);
-            dib = Dib::new(w, h);
+            dib = DeviceBitmap::new(w, h);
             pixmap = Pixmap::new(w as u32, h as u32).unwrap();
             placed = false;
         }
@@ -525,7 +525,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
                     y = ny;
                     w = nw;
                     h = nh;
-                    dib = Dib::new(w, h);
+                    dib = DeviceBitmap::new(w, h);
                     pixmap = Pixmap::new(w as u32, h as u32).unwrap();
                     placed = false;
                 }
@@ -740,20 +740,20 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
             match preview_cfg.as_ref() {
                 Some(cfg) => (
                     cfg[crate::config::WidgetId::Sys].show,
-                    cfg.sys_apps.clone(),
+                    cfg.sys.sys_apps.clone(),
                     cfg[crate::config::WidgetId::Stance].show,
                     cfg.stance_bind,
-                    cfg.stance_mode,
+                    cfg.stance.stance_mode,
                     cfg.gamepad_visible(),
                 ),
                 None => crate::config::with_config(|cfg| {
                     let cfg = cfg.for_overlay();
                     (
                         cfg[crate::config::WidgetId::Sys].show,
-                        cfg.sys_apps.clone(),
+                        cfg.sys.sys_apps.clone(),
                         cfg[crate::config::WidgetId::Stance].show,
                         cfg.stance_bind,
-                        cfg.stance_mode,
+                        cfg.stance.stance_mode,
                         cfg.gamepad_visible(),
                     )
                 }),
@@ -1002,7 +1002,7 @@ fn primary_screen() -> (i32, i32, i32, i32) {
     }
 }
 
-struct Dib {
+struct DeviceBitmap {
     hdc: HDC,
     bmp: HBITMAP,
     bits: *mut u8,
@@ -1010,7 +1010,7 @@ struct Dib {
     h: i32,
 }
 
-impl Dib {
+impl DeviceBitmap {
     fn new(w: i32, h: i32) -> Self {
         unsafe {
             let hdc = CreateCompatibleDC(None);
@@ -1099,7 +1099,7 @@ impl Dib {
     }
 }
 
-impl Drop for Dib {
+impl Drop for DeviceBitmap {
     fn drop(&mut self) {
         unsafe {
             let _ = DeleteObject(HGDIOBJ(self.bmp.0));

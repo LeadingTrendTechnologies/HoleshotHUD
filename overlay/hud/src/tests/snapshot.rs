@@ -41,9 +41,9 @@ fn setup_label_strips_path_and_extension() {
 fn write_and_read_cstr() {
     let mut buf = [0u8; NAME];
     write_name(&mut buf, "Troy");
-    assert_eq!(cstr(&buf), "Troy");
+    assert_eq!(bytes_as_text(&buf), "Troy");
     write_name(&mut buf, "");
-    assert_eq!(cstr(&buf), "");
+    assert_eq!(bytes_as_text(&buf), "");
 }
 
 #[test]
@@ -52,16 +52,16 @@ fn cstr_strips_windows1252_trademark() {
     let mut buf = [0u8; NAME];
     let raw = b"OEM YZ450F\x99";
     buf[..raw.len()].copy_from_slice(raw);
-    assert_eq!(cstr(&buf), "OEM YZ450F");
+    assert_eq!(bytes_as_text(&buf), "OEM YZ450F");
 }
 
 #[test]
 fn cstr_strips_registered_and_copyright() {
     let mut buf = [0u8; NAME];
     write_name(&mut buf, "YZ450F®");
-    assert_eq!(cstr(&buf), "YZ450F");
+    assert_eq!(bytes_as_text(&buf), "YZ450F");
     write_name(&mut buf, "Honda©");
-    assert_eq!(cstr(&buf), "Honda");
+    assert_eq!(bytes_as_text(&buf), "Honda");
 }
 
 #[test]

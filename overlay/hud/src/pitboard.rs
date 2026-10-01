@@ -214,7 +214,7 @@ pub fn tick(s: &Snapshot) {
 }
 
 fn capture_sector(s: &Snapshot, idx: usize, fallback: i32) -> FlashSnap {
-    let session = crate::config::with_config(|c| c.sector_session);
+    let session = crate::config::with_config(|c| c.sector.sector_session);
     let row = crate::sector::row_vs(s, idx, false, session);
     let time_ms = if row.time_ms > 0 { row.time_ms } else { fallback };
     FlashSnap {
@@ -225,7 +225,7 @@ fn capture_sector(s: &Snapshot, idx: usize, fallback: i32) -> FlashSnap {
 }
 
 fn capture_lap(s: &Snapshot) -> FlashSnap {
-    let session = crate::config::with_config(|c| c.delta_session);
+    let session = crate::config::with_config(|c| c.delta.delta_session);
     let view = crate::delta::view_for(session);
     let time_ms = if view.last_lap_ms > 0 {
         view.last_lap_ms

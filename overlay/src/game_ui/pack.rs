@@ -8,7 +8,7 @@ use super::io::{write_english_labels, write_text};
 use super::mnu::{
     main_mnu, splice_connection, splice_export, splice_garage, splice_hostsetup,
     splice_multiclient, splice_multijoin, splice_options, splice_profiles, splice_replay,
-    splice_test, splice_testsetup, splice_viewreplays, ui_ui,
+    splice_test, splice_testsetup, splice_viewreplays, menu_index,
 };
 use super::screens::{write_screen_images, LOADING_TGA, SPLASH_TGA};
 use super::sprites::{
@@ -202,7 +202,7 @@ pub(crate) fn apply_pack_inner(
     files.extend(SPRITES.iter().map(|s| (*s).to_string()));
 
     write_text(&ui.join("main.mnu"), &main_mnu(accent))?;
-    write_text(&ui.join("ui.ui"), &ui_ui(accent))?;
+    write_text(&ui.join("ui.ui"), &menu_index(accent))?;
     write_english_labels(ui, bak)?;
     ensure_stock_from_bak(ui, bak)?;
     write_screen_images(ui, bak, splash, loading)?;

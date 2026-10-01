@@ -50,15 +50,15 @@ pub(crate) fn draw_pitboard(
     if w < 80.0 || h < 48.0 {
         return;
     }
-    let a = bg_a(100);
+    let a = background_alpha(100);
     let ink_black = Color::from_rgba8(16, 16, 18, 255);
     if !draw_art(px, cfg, x, y, w, h) {
         draw_glass_plate(px, x, y, w, h, a);
     }
-    for (index, place) in cfg.pit_vars.iter().enumerate().filter(|(_, place)| place.show) {
+    for (index, place) in cfg.pit.pit_vars.iter().enumerate().filter(|(_, place)| place.show) {
         let authored = place
             .color
-            .or_else(|| crate::pitboard::pack_slot_color(&cfg.pit_art, index));
+            .or_else(|| crate::pitboard::pack_slot_color(&cfg.pit.pit_art, index));
         let rgb = crate::pitboard::place_ink(authored);
         let ink = Color::from_rgba8(rgb[0], rgb[1], rgb[2], 255);
         let (label, mut col) = shown_text(pit_value(s, cfg, place.var, ink_black, ink_black), ink_black);
@@ -77,10 +77,10 @@ pub(crate) fn draw_pitboard(
 }
 
 fn draw_art(px: &mut Pixmap, cfg: &HudConfig, x: f32, y: f32, w: f32, h: f32) -> bool {
-    if factory_plate(&cfg.pit_art) {
+    if factory_plate(&cfg.pit.pit_art) {
         return FACTORY_PLATE.with(|slot| {
             let mut cache = slot.borrow_mut();
-            if !cache.ensure(&cfg.pit_art, cfg.pit_yellow, cfg.pit_blue) {
+            if !cache.ensure(&cfg.pit.pit_art, cfg.pit.pit_yellow, cfg.pit.pit_blue) {
                 return false;
             }
             let img = cache.painted.as_ref().unwrap();
@@ -88,7 +88,7 @@ fn draw_art(px: &mut Pixmap, cfg: &HudConfig, x: f32, y: f32, w: f32, h: f32) ->
             true
         });
     }
-    let Some(bytes) = art_bytes(&cfg.pit_art) else {
+    let Some(bytes) = art_bytes(&cfg.pit.pit_art) else {
         return false;
     };
     let Ok(img) = Pixmap::decode_png(&bytes) else {
@@ -545,11 +545,11 @@ fn pit_value(
     ink: Color,
     _dim: Color,
 ) -> Option<(String, Color)> {
-    if let Some(snap) = crate::pitboard::time_snap(cfg.pit_when) {
+    if let Some(snap) = crate::pitboard::time_snap(cfg.pit.pit_when) {
         match var {
             PitVar::Last | PitVar::Cur => {
                 return if snap.time_ms > 0 {
-                    Some((snap_time_label(cfg.pit_when, snap.time_ms), ink))
+                    Some((snap_time_label(cfg.pit.pit_when, snap.time_ms), ink))
                 } else {
                     None
                 };
@@ -566,7 +566,7 @@ fn pit_value(
     }
     match var {
         PitVar::Sponsor => {
-            let t = cfg.pit_sponsor.trim();
+            let t = cfg.pit.pit_sponsor.trim();
             if t.is_empty() {
                 None
             } else {
@@ -575,7 +575,7 @@ fn pit_value(
         }
         PitVar::Name => {
             let st = focus_standing(s)?;
-            let n = crate::shm::cstr(&st.name);
+            let n = crate::shm::bytes_as_text(&st.name);
             if n.is_empty() {
                 None
             } else {
@@ -583,7 +583,7 @@ fn pit_value(
             }
         }
         PitVar::Delta => {
-            let view = crate::delta::view_for(cfg.delta_session);
+            let view = crate::delta::view_for(cfg.delta.delta_session);
             if view.ready && view.has_delta {
                 Some((format_delta_ms(view.delta_ms), snap_delta_col(view.delta_ms, ink)))
             } else {
@@ -591,7 +591,7 @@ fn pit_value(
             }
         }
         PitVar::Track => {
-            let n = crate::shm::cstr(&s.track_name);
+            let n = crate::shm::bytes_as_text(&s.track_name);
             if n.is_empty() {
                 None
             } else {

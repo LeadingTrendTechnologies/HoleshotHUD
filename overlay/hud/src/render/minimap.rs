@@ -55,13 +55,13 @@ pub(crate) fn draw_minimap(
             sdim * 0.5,
             sdim * 0.5,
             sdim * 0.5 - 0.5,
-            Color::from_rgba8(18, 18, 20, bg_a(cfg[WidgetId::Minimap].bg)),
+            Color::from_rgba8(18, 18, 20, background_alpha(cfg[WidgetId::Minimap].bg)),
         );
     }
 
     let subject = camera_subject(s);
     let you = subject_pose(s, age);
-    let radius_m = mini_view_radius(cfg.mini_zoom);
+    let radius_m = mini_view_radius(cfg.mini.mini_zoom);
     // On the line, keep the bike as the origin. Off the line, center the circle on the
     // nearest centerline so the stroke is in the view. Past 300 m, fit the whole track.
     let on_track = you.as_ref().and_then(|pose| {
@@ -137,13 +137,13 @@ pub(crate) fn draw_minimap(
     };
 
     let track_px = if north_up {
-        let radius_m = mini_view_radius(cfg.mini_zoom);
+        let radius_m = mini_view_radius(cfg.mini.mini_zoom);
         (sdim * 0.11 * (40.0 / radius_m)).clamp(16.0, 48.0)
     } else {
         (16.0 * scale).clamp(12.0, 28.0)
     };
     let visible_radius = if north_up {
-        Some(mini_view_radius(cfg.mini_zoom) * 2.25)
+        Some(mini_view_radius(cfg.mini.mini_zoom) * 2.25)
     } else {
         None
     };
@@ -158,10 +158,10 @@ pub(crate) fn draw_minimap(
         &to_px,
     );
 
-    if n >= 2 && s.sf_meters >= 0.0 && cfg.mini_sf {
+    if n >= 2 && s.sf_meters >= 0.0 && cfg.mini.mini_sf {
         draw_sf(mini, s, n, to_px, track_px);
     }
-    if cfg.mini_sectors {
+    if cfg.mini.mini_sectors {
         draw_sector_lines(
             mini,
             fonts,
@@ -172,7 +172,7 @@ pub(crate) fn draw_minimap(
             Some((mc, mc, sdim * 0.46)),
         );
     }
-    if cfg.mini_arrows {
+    if cfg.mini.mini_arrows {
         draw_track_arrows(mini, s, n, to_px, track_px, Some((mc, sdim)), north_up);
     }
 
@@ -180,7 +180,7 @@ pub(crate) fn draw_minimap(
     let other_r = (sdim * 0.028).clamp(7.0, 11.0) * style_k();
     let local_r = other_r * 1.22;
 
-    if cfg.mini_others {
+    if cfg.mini.mini_others {
         for i in 0..s.rider_count.max(0) as usize {
             let rider = &s.riders[i];
             if you.is_some() && rider.race_num == subject {
@@ -199,8 +199,8 @@ pub(crate) fn draw_minimap(
                 hy,
                 other_r,
                 fill,
-                rider_dot_num(s, rider.race_num, cfg.mini_dot),
-                cfg.mini_numbers,
+                rider_dot_num(s, rider.race_num, cfg.mini.mini_dot),
+                cfg.mini.mini_numbers,
                 false,
             );
             let (fwx, fwz) = yaw_forward(pose.yaw);
@@ -216,8 +216,8 @@ pub(crate) fn draw_minimap(
                 other_r,
                 subject,
                 leader,
-                cfg.mini_crown,
-                cfg.mini_place,
+                cfg.mini.mini_crown,
+                cfg.mini.mini_place,
             );
             draw_state_mark(
                 mini,
@@ -255,8 +255,8 @@ pub(crate) fn draw_minimap(
             hy,
             local_r,
             you_col(),
-            rider_dot_num(s, subject, cfg.mini_dot),
-            cfg.mini_numbers,
+            rider_dot_num(s, subject, cfg.mini.mini_dot),
+            cfg.mini.mini_numbers,
             true,
         );
         let (fwx, fwz) = if pose.from_local {
@@ -266,7 +266,7 @@ pub(crate) fn draw_minimap(
         };
         let (sdx, sdy) = screen_dir(&to_px, pose.x, pose.z, fwx, fwz);
         draw_dot_chevron(mini, hx, hy, local_r, sdx, sdy, you_col(), true);
-        if cfg.mini_crown && leader > 0 && subject == leader {
+        if cfg.mini.mini_crown && leader > 0 && subject == leader {
             crown_over_dot(mini, fonts, hx, hy, local_r);
         }
         draw_state_mark(

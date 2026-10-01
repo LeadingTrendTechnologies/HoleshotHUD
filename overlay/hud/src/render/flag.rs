@@ -21,7 +21,7 @@ pub(crate) fn draw_flag(
     if w < 48.0 || h < 10.0 {
         return;
     }
-    let a = ((bg_a(cfg[WidgetId::Flag].bg) as f32) * grow.clamp(0.0, 1.0)).round() as u8;
+    let a = ((background_alpha(cfg[WidgetId::Flag].bg) as f32) * grow.clamp(0.0, 1.0)).round() as u8;
     if a == 0 {
         return;
     }
@@ -37,7 +37,7 @@ pub(crate) fn draw_flag(
         return;
     };
     paint_flag_fill(px, &path, x, y, inner_w + skew, h, flag, a);
-    if !cfg.flag_text {
+    if !cfg.flag.flag_text {
         return;
     }
     let cx = x + skew * 0.35;

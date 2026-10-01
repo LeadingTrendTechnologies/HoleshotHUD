@@ -144,7 +144,7 @@ pub(crate) fn draw_gamepad(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: 
     let y = r.y * sh;
     let w = (r.w * sw).max(140.0);
     let h = (r.h * sh).max(88.0);
-    let a = bg_a(cfg[WidgetId::Gamepad].bg);
+    let a = background_alpha(cfg[WidgetId::Gamepad].bg);
     if a > 0 {
         fill_round(px, x, y, w, h, 6.0, Color::from_rgba8(10, 10, 10, a));
         if let Some(frame) = round_rect_path(x + 0.5, y + 0.5, w - 1.0, h - 1.0, 5.5) {
@@ -180,8 +180,8 @@ pub(crate) fn draw_gamepad(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: 
         return;
     }
 
-    let sony = cfg.gamepad_style.sony_art(pad.kind);
-    let filled = cfg.gamepad_theme.filled();
+    let sony = cfg.gamepad.gamepad_style.sony_art(pad.kind);
+    let filled = cfg.gamepad.gamepad_theme.filled();
     let well = Color::from_rgba8(22, 22, 24, 255);
     let cream = Color::from_rgba8(248, 248, 252, 255);
     let Some(art) = gamepad_art(sony, filled) else {
