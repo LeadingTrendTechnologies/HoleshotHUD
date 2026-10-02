@@ -20,12 +20,12 @@ Dots and chevrons place at world XZ via `rider_map_pose` when that coordinate is
 - Fits the whole polyline in the rect (10% pad). Y is unused; Z is the track plane.
 - **Follow me** (default off): pins the camera subject to the center. North is the centerline direction about 22 m ahead (`track_forward`), eased so a kink does not shake the track. A scrub or whip leaves the map put; the orange chevron still shows bike heading and can sit off north. At zoom 0, scale is the unrotated fit (10% pad) and does not change as you turn. **Zoom** (0–100%, only while Follow me is on) tightens that fit. 100% shows 80 m across the shorter side — about twice the minimap's closest view, not its 22 m close-up. A track that already fits inside 80 m does not zoom further. Overflow past the widget is clipped. Off, or no subject pose, keeps the fixed world-up fit and ignores zoom.
 - Track fill + stroke is cached in `MAP_LAYER` until poly / size / S/F / arrows change. Rider dots and sector lines are redrawn every frame.
-- You: larger orange dot on the camera subject (you while riding, the spectated rider in replay). Others: slate, or blue/red when lap-delta and within catch span either side (see [widgets.md](../widgets.md)). Two laps down is still blue if they are nearby.
+- You: larger orange dot on the camera subject (you while riding, the spectated rider in replay). Others: slate, or blue/red when lap-delta and within catch span either side (see [widgets.md](../widgets.md)). Two laps down is still blue if they are nearby. The disc is mostly solid, with a 1px ring in that color. **Dot opacity** (`map_dot_opacity`, default 78) scales that fill; 78 is today’s look and 100 is solid. Numbers in the dots use the app font at semibold (Exo 2 SemiBold Italic by default). **My number** (`map_you_text`, default Black) sets only your number to white or black. Other riders keep automatic contrast. The minimap keeps the default fill and automatic numbers.
 - Chevrons show heading. Optional: S/F, **sector lines**, track arrows, leader crown, nearest ahead/behind marks, numbers in dots (bike number or classification position).
 - **Sector lines** are thin violet dotted gates at where each sector **starts** (same tape as Sectors). **S1** is the start/finish line. **S2** / **S3** appear after those splits are known for this track. Do not mark the split that *ends* S1 as S1.
 - Missing poly (`< 2` points) shows “No track map”.
 
-Toggles: **Follow me** (default off), **Zoom** (shown only while Follow me is on, default 0), other riders, start/finish, sector lines, track arrows, leader crown, nearest ahead/behind, numbers in dots, dot number vs position. Default background opacity is **0** (transparent over the game). Sector lines default on, like S/F.
+Toggles: **Follow me** (default off), **Zoom** (shown only while Follow me is on, default 0), other riders, start/finish, sector lines, track arrows, leader crown, nearest ahead/behind, numbers in dots, dot number vs position, **My number** (White/Black, only while numbers are on), **Dot opacity** (0–100%, default 78). Default background opacity is **0** (transparent over the game). Sector lines default on, like S/F.
 
 ## Do not regress
 
@@ -40,6 +40,8 @@ Toggles: **Follow me** (default off), **Zoom** (shown only while Follow me is on
 - Red only when you gained a lap on them (pairwise). Leader lapping someone behind you is not red.
 - Same-race S/F straddles must not paint blue/red. When `num_laps` differ, `other_laps_ahead` requires continuous `num_laps + track_pos` to round non-zero.
 - Dot **Position** labels, leader crown and the nearest ahead / behind rings use live `RaceStore` rank during a race (`standing_pos` / `leader_num` prefer `live_position` / `live_leader`). See [live race order](../live-order.md).
+- Dot numbers use the app semibold face (Exo 2 SemiBold Italic by default), even when the Map or Minimap bold toggle is on. The widget UI face is ExtraBold.
+- Missing `map_you_text` stays Black. Missing `map_dot_opacity` stays 78. Neither setting changes the minimap.
 - Nearest ahead / behind rings stay off in warmup and practice (`place_rings_for_session`). Crowns and the settings toggle are unchanged.
 - No blue/red lapping dots in warmup; `lap_rel` is `Same` until the race starts. `session_kind` 5 wins even when extras leak.
 - Map uses snapshot rect `s.map` (copied from config), not only `cfg.map` at draw time.
@@ -49,6 +51,9 @@ Toggles: **Follow me** (default off), **Zoom** (shown only while Follow me is on
 
 ## Change log
 
+- 2026-10-02 — **My number** sets your map number to white or black (default Black). **Dot opacity** scales the map dots (default 78, today’s fill). Minimap is unchanged.
+- 2026-10-02 — Dot numbers use the app font at semibold (Exo 2 SemiBold Italic by default), not Roboto. Minimap shares them.
+- 2026-10-01 — Rider dots are a translucent disc with a 1px color ring. Minimap shares them. Chevrons stay solid.
 - 2026-10-01 — Lap 1 place labels move at S1 and S2, and between those gates, before the finish. See [live race order](../live-order.md).
 - 2026-10-01 — **Zoom** only while Follow me is on. 0% is the whole-track fit. 100% shows 80 m across the shorter side, wider than the minimap's closest view.
 - 2026-10-01 — The S/F bar spans only the track stroke. Minimap shares the same bar.

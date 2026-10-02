@@ -2051,7 +2051,14 @@ pub struct MapLayout {
     pub map_crown: bool,
     pub map_place: bool,
     pub map_dot: DotLabel,
+    /// Number color on your map dot only.
+    pub map_you_text: TableText,
+    /// 0–100. 78 matches the built-in dot wash. 100 is solid.
+    pub map_dot_opacity: i32,
 }
+
+/// Default map dot opacity. `base * pct / 78` reproduces today's wash, halo, and ring.
+pub const MAP_DOT_OPACITY_DEFAULT: i32 = 78;
 
 #[derive(Clone)]
 pub struct MiniLayout {
@@ -2312,6 +2319,8 @@ impl HudLayout {
                 map_crown: true,
                 map_place: true,
                 map_dot: DotLabel::Position,
+                map_you_text: TableText::Black,
+                map_dot_opacity: MAP_DOT_OPACITY_DEFAULT,
             },
             mini: MiniLayout {
                 mini_others: true,
@@ -3658,6 +3667,8 @@ impl HudLayout {
         mix.flag(self.map.map_crown);
         mix.flag(self.map.map_place);
         mix.text(self.map.map_dot.key());
+        mix.text(self.map.map_you_text.key());
+        mix.i32(self.map.map_dot_opacity);
     }
 
     fn mix_minimap(&self, mix: &mut LookMix) {
@@ -3979,6 +3990,13 @@ impl MapLayout {
         "map_crown" => self.map_crown = b,
         "map_place" => self.map_place = b,
         "map_dot" => self.map_dot = DotLabel::parse(val),
+        "map_you_text" => self.map_you_text = TableText::parse(val),
+        "map_dot_opacity" => {
+            self.map_dot_opacity = val
+                .parse()
+                .unwrap_or(MAP_DOT_OPACITY_DEFAULT)
+                .clamp(0, 100)
+        }
             _ => return false,
         }
         true
@@ -4270,7 +4288,7 @@ fn layout_ini(l: &HudLayout) -> String {
          rel_bg={}\nrel_hl={}\nrel_text={}\nrel_stripe={}\nrel_plaque_text={}\nrel_plaque={}\nrel_font={}\nrel_bold={}\n\
          rel_head={}\nrel_foot={}\n\
          map_others={}\nmap_sf={}\nmap_sectors={}\nmap_name={}\nmap_numbers={}\nmap_arrows={}\nmap_follow={}\nmap_zoom={}\n\
-         map_crown={}\nmap_place={}\nmap_dot={}\nmap_bg={}\nmap_font={}\nmap_bold={}\n\
+         map_crown={}\nmap_place={}\nmap_dot={}\nmap_you_text={}\nmap_dot_opacity={}\nmap_bg={}\nmap_font={}\nmap_bold={}\n\
          mini_others={}\nmini_sf={}\nmini_sectors={}\nmini_numbers={}\nmini_arrows={}\nmini_crown={}\n\
          mini_place={}\nmini_dot={}\nmini_bg={}\nmini_zoom={}\nmini_font={}\nmini_bold={}\n\
          radar_sides={}\nradar_rear={}\nradar_rings={}\nradar_style={}\nradar_range={}\nradar_bg={}\nradar_font={}\nradar_bold={}\n\
@@ -4331,7 +4349,7 @@ fn layout_ini(l: &HudLayout) -> String {
         join_board(&l.relative.rel_head), join_board(&l.relative.rel_foot),
         ini_flag(l.map.map_others), ini_flag(l.map.map_sf), ini_flag(l.map.map_sectors), ini_flag(l.map.map_name), ini_flag(l.map.map_numbers), ini_flag(l.map.map_arrows),
         ini_flag(l.map.map_follow), l.map.map_zoom,
-        ini_flag(l.map.map_crown), ini_flag(l.map.map_place), l.map.map_dot.key(), map.bg, map.font, ini_flag(map.bold),
+        ini_flag(l.map.map_crown), ini_flag(l.map.map_place), l.map.map_dot.key(), l.map.map_you_text.key(), l.map.map_dot_opacity, map.bg, map.font, ini_flag(map.bold),
         ini_flag(l.mini.mini_others), ini_flag(l.mini.mini_sf), ini_flag(l.mini.mini_sectors), ini_flag(l.mini.mini_numbers), ini_flag(l.mini.mini_arrows), ini_flag(l.mini.mini_crown),
         ini_flag(l.mini.mini_place), l.mini.mini_dot.key(), mini.bg, l.mini.mini_zoom, mini.font, ini_flag(mini.bold),
         ini_flag(l.radar.radar_sides), ini_flag(l.radar.radar_rear), ini_flag(l.radar.radar_rings), l.radar.radar_style.key(), l.radar.radar_range, radar.bg, radar.font, ini_flag(radar.bold),

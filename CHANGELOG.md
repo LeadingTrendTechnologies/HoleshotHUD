@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.23.2
+
+- Standings and Relative bike pills are a translucent brand wash with a 1px stronger brand border. Letters stay black or white from the brand.
+- Diagnostics shows the last crash dump's local time as mm/dd/yyyy hh:mm:ss.
+- Radar Arrows drop a crashed rider after 0.75 seconds. The flash was holding for 1.75 seconds.
+
+## 0.23.1
+
+### Live order
+
+- Places stay put when a rider reaches a sector. Crossing S1 or S2 no longer drops them behind the pack. A pass on the first lap still shows before the finish.
+
 ## 0.23.0
 
 ### Live order

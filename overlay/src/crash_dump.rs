@@ -19,6 +19,7 @@ const DECODE_WINDOW: u64 = 180;
 #[derive(Clone, Debug)]
 pub(crate) struct CrashReport {
     pub empty: bool,
+    pub when: String,
     pub name: String,
     pub summary: String,
     pub before_hex: String,
@@ -31,6 +32,7 @@ impl CrashReport {
     fn empty() -> Self {
         Self {
             empty: true,
+            when: String::new(),
             name: String::new(),
             summary: String::new(),
             before_hex: String::new(),
@@ -43,6 +45,9 @@ impl CrashReport {
     /// Full report for the clipboard. Not the ellipsized lines drawn on screen.
     pub(crate) fn plain_text(&self) -> String {
         let mut lines = Vec::new();
+        if !self.when.is_empty() {
+            lines.push(self.when.clone());
+        }
         if !self.name.is_empty() {
             lines.push(self.name.clone());
         }
@@ -110,6 +115,7 @@ pub(crate) fn latest_report() -> CrashReport {
         .and_then(|s| s.to_str())
         .unwrap_or("crash.dmp")
         .to_string();
+    report.when = crash_when(&report.name);
     if let Ok(mut guard) = CACHE.lock() {
         *guard = Some(Cache {
             path,
@@ -169,6 +175,29 @@ pub(crate) fn newest_crash_dump(dir: &Path) -> Option<PathBuf> {
     best.map(|(_, path)| path)
 }
 
+/// `crash-YYYYMMDD-HHMMSS.dmp` is local time from `GetLocalTime`. Shown as `mm/dd/yyyy hh:mm:ss`.
+fn crash_when(name: &str) -> String {
+    let Some(stamp) = name.strip_prefix("crash-").and_then(|rest| rest.strip_suffix(".dmp")) else {
+        return String::new();
+    };
+    let Some((date, time)) = stamp.split_once('-') else {
+        return String::new();
+    };
+    if date.len() != 8 || time.len() != 6 {
+        return String::new();
+    }
+    if !date.bytes().all(|b| b.is_ascii_digit()) || !time.bytes().all(|b| b.is_ascii_digit()) {
+        return String::new();
+    }
+    let year = &date[0..4];
+    let month = &date[4..6];
+    let day = &date[6..8];
+    let hour = &time[0..2];
+    let minute = &time[2..4];
+    let second = &time[4..6];
+    format!("{month}/{day}/{year} {hour}:{minute}:{second}")
+}
+
 pub(crate) fn decode_crash(data: &[u8], txt: Option<&str>) -> CrashReport {
     let Some(streams) = directory(data) else {
         return unreadable();
@@ -180,6 +209,7 @@ pub(crate) fn decode_crash(data: &[u8], txt: Option<&str>) -> CrashReport {
     let Some((before, at_rip)) = code_at_rip(data, &streams, fault.rip) else {
         return CrashReport {
             empty: false,
+            when: String::new(),
             name: String::new(),
             summary,
             before_hex: String::new(),
@@ -190,6 +220,7 @@ pub(crate) fn decode_crash(data: &[u8], txt: Option<&str>) -> CrashReport {
     };
     CrashReport {
         empty: false,
+        when: String::new(),
         name: String::new(),
         summary,
         before_hex: hex_bytes(&before),
@@ -202,6 +233,7 @@ pub(crate) fn decode_crash(data: &[u8], txt: Option<&str>) -> CrashReport {
 fn unreadable() -> CrashReport {
     CrashReport {
         empty: false,
+        when: String::new(),
         name: String::new(),
         summary: "Could not read this dump.".into(),
         before_hex: String::new(),
@@ -659,6 +691,13 @@ rip=0x0000000140001000
             report.summary,
             "0xC0000005  mxbikes.exe+0x1000  rip 0x0000000140001000"
         );
+    }
+
+    #[test]
+    fn crash_stamp_is_local_clock() {
+        assert_eq!(crash_when("crash-20261002-094345.dmp"), "10/02/2026 09:43:45");
+        assert_eq!(crash_when("notes.txt"), "");
+        assert_eq!(crash_when("crash-20261002.dmp"), "");
     }
 
     #[test]

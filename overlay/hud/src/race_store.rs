@@ -297,12 +297,15 @@ fn note_progress(s: &Snapshot, clock: &SessionClock, n: usize) {
             progress.corrupt = false;
             progress.gates_seen = standing.sector_gate.max(0);
         } else if standing.sector_gate > progress.gates_seen {
-            // S1 / S2 is the same kind of checkpoint as the finish: rebase travel,
-            // arm, and drop a pin that was waiting for the line.
-            progress.lap_base_m = progress.travelled_m;
+            // Lap 1 scores travel since this gate. A corrupt pin starts again from
+            // here too. A healthy armed rider already has the right metres; moving
+            // the base would drop them to 0 m and swap the field at every split.
+            if standing.num_laps == 0 || progress.corrupt {
+                progress.lap_base_m = progress.travelled_m;
+                progress.armed = progress.last_frac.is_some();
+                progress.corrupt = false;
+            }
             progress.gates_seen = standing.sector_gate;
-            progress.armed = progress.last_frac.is_some();
-            progress.corrupt = false;
         } else if standing.sector_gate < progress.gates_seen {
             progress.gates_seen = standing.sector_gate.max(0);
         }
@@ -461,8 +464,11 @@ fn open_lap_sector_metres(s: &Snapshot, tracked: &[RiderProgress], st: &Standing
 }
 
 /// Metres from the start of the open lap using S1 (and S2 when known). The arc from
-/// S2 back to S1 is still S1 unless a split says they already reached S2 — that arc
-/// also holds the run to the line, and the origin is not the line.
+/// S2 back to S1 also holds the run to the line, and the origin is not the line.
+/// Once the sector gate is 2, that whole arc counts as past S2. Until the gate
+/// publishes, only the half closer to S2 does — the half closer to S1 stays before
+/// S1, so the start grid is not scored as a finished sector. Those two halves meet
+/// the S1–S2 score at each gate, so a late split cannot drop a rider a full lap.
 fn geometric_open_lap_metres(
     track_length: f32,
     published: i32,
@@ -476,8 +482,9 @@ fn geometric_open_lap_metres(
     if from_s1 > 0.0 && from_s1 < s1_to_s2 {
         return from_s1 * track_length;
     }
-    if published >= 2 {
-        return (s1_to_s2 + forward_frac(s2, frac)) * track_length;
+    let after_s2 = forward_frac(s2, frac);
+    if published >= 2 || after_s2 <= forward_frac(frac, s1) {
+        return (s1_to_s2 + after_s2) * track_length;
     }
     -forward_frac(frac, s1) * track_length
 }

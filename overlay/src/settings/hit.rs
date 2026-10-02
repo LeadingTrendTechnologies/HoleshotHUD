@@ -320,6 +320,9 @@ pub(crate) enum Hit {
     MapDotOpen,
     MapDotNum,
     MapDotPos,
+    MapYouTextOpen,
+    MapYouTextWhite,
+    MapYouTextBlack,
     MiniOthers,
     MiniSf,
     MiniSectors,
@@ -356,6 +359,7 @@ pub(crate) enum Hit {
     RelPlaque,
     MapBg,
     MapZoom,
+    MapDotOpacity,
     MiniBg,
     MiniZoom,
     RadarBg,
@@ -511,6 +515,7 @@ pub(crate) struct HitBox {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Drop {
     MapDot,
+    MapYouText,
     MiniDot,
     FontFamily,
     Units(UnitKind),

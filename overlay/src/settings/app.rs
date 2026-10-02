@@ -1084,6 +1084,9 @@ fn diagnostic_rows(
         return vec![(fit("No crash dumps yet."), muted())];
     }
     let mut rows = Vec::new();
+    if !report.when.is_empty() {
+        rows.push((fit(&report.when), dim()));
+    }
     if !report.name.is_empty() {
         rows.push((fit(&report.name), dim()));
     }

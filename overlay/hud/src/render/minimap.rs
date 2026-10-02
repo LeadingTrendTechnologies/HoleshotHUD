@@ -202,6 +202,8 @@ pub(crate) fn draw_minimap(
                 rider_dot_num(s, rider.race_num, cfg.mini.mini_dot),
                 cfg.mini.mini_numbers,
                 false,
+                MAP_DOT_OPACITY_DEFAULT,
+                None,
             );
             let (fwx, fwz) = yaw_forward(pose.yaw);
             let (sdx, sdy) = screen_dir(&to_px, pose.x, pose.z, fwx, fwz);
@@ -258,6 +260,8 @@ pub(crate) fn draw_minimap(
             rider_dot_num(s, subject, cfg.mini.mini_dot),
             cfg.mini.mini_numbers,
             true,
+            MAP_DOT_OPACITY_DEFAULT,
+            None,
         );
         let (fwx, fwz) = if pose.from_local {
             local_forward(s)

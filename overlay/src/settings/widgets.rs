@@ -626,7 +626,47 @@ pub(crate) fn pane_map(
                     hover,
                     hits,
                 );
+                y = dropdown_row(
+                    px,
+                    fonts,
+                    x,
+                    y,
+                    w,
+                    "My number",
+                    cfg.map.map_you_text.label(),
+                    open_drop == Some(Drop::MapYouText),
+                    Hit::MapYouTextOpen,
+                    &[
+                        (
+                            Hit::MapYouTextWhite,
+                            "White",
+                            cfg.map.map_you_text == TableText::White,
+                        ),
+                        (
+                            Hit::MapYouTextBlack,
+                            "Black",
+                            cfg.map.map_you_text == TableText::Black,
+                        ),
+                    ],
+                    hover,
+                    hits,
+                );
             }
+            y = slider_row(
+                px,
+                fonts,
+                x,
+                y,
+                w,
+                "Dot opacity",
+                cfg.map.map_dot_opacity,
+                0,
+                100,
+                "%",
+                Hit::MapDotOpacity,
+                hover,
+                hits,
+            );
             y
         },
     )

@@ -163,7 +163,17 @@ fn map(list: &mut ControlList, lay: &HudLayout) {
     toggle(list, "map_crown", "Leader crown", lay.map.map_crown);
     toggle(list, "map_place", "Nearest ahead / behind", lay.map.map_place);
     toggle(list, "map_numbers", "Numbers in dots", lay.map.map_numbers);
-    choice(list, "map_dot", "Dot number", lay.map.map_dot.key(), &dot_options());
+    if lay.map.map_numbers {
+        choice(list, "map_dot", "Dot number", lay.map.map_dot.key(), &dot_options());
+        choice(
+            list,
+            "map_you_text",
+            "My number",
+            lay.map.map_you_text.key(),
+            &text_options(),
+        );
+    }
+    range(list, "map_dot_opacity", "Dot opacity", lay.map.map_dot_opacity, 0, 100);
 }
 
 fn minimap(list: &mut ControlList, lay: &HudLayout) {

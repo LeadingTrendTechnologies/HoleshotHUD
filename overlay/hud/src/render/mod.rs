@@ -7,6 +7,7 @@ use std::sync::{Mutex, OnceLock};
 
 use crate::config::{
     accent_rgb, BoardField, DashField, DotLabel, EditSurface, HudConfig, LeanStyle,
+    MAP_DOT_OPACITY_DEFAULT,
     RelField, StField, StanceStyle, TableText, WidgetId, SYS_PROC_MAX,
 };
 pub use crate::race_store::{clock_sample, ClockSample};
@@ -2812,41 +2813,46 @@ fn draw_rider_dot(
     num: i32,
     show_num: bool,
     you: bool,
+    opacity: i32,
+    num_ink: Option<Color>,
 ) {
     if show_num {
-        numbered_dot(px, fonts, x, y, r, fill, num, true, you);
+        numbered_dot(px, fonts, x, y, r, fill, num, true, you, opacity, num_ink);
     } else {
-        dot_body(px, x, y, r, fill, you);
+        dot_body(px, x, y, r, fill, you, opacity);
     }
 }
 
-fn fill_dot_glow(px: &mut Pixmap, x: f32, y: f32, r: f32, fill: Color, you: bool) {
-    fill_circle(
-        px,
-        x,
-        y,
-        r + if you { 5.6 } else { 4.2 },
-        Color::from_rgba8(0, 0, 0, if you { 48 } else { 32 }),
-    );
+/// `opacity` 78 reproduces `base`. 100 clamps toward solid.
+fn scaled_dot_alpha(base: u8, opacity: i32) -> u8 {
+    let pct = opacity.clamp(0, 100) as u32;
+    ((base as u32 * pct) / MAP_DOT_OPACITY_DEFAULT as u32).min(255) as u8
+}
+
+fn fill_dot_glow(px: &mut Pixmap, x: f32, y: f32, r: f32, fill: Color, you: bool, opacity: i32) {
+    let wash = scaled_dot_alpha(if you { 200 } else { 165 }, opacity);
+    let halo = scaled_dot_alpha(if you { 120 } else { 96 }, opacity);
+    let ring = scaled_dot_alpha(if you { 255 } else { 230 }, opacity);
     fill_circle(
         px,
         x,
         y,
         r + if you { 4.4 } else { 3.3 },
-        color_alpha(fill, if you { 52 } else { 34 }),
+        color_alpha(fill, halo),
     );
-    fill_circle(
-        px,
-        x,
-        y,
-        r + if you { 2.7 } else { 2.1 },
-        color_alpha(fill, if you { 86 } else { 58 }),
-    );
-    fill_circle(px, x, y, r, color_alpha(fill, 230));
+    fill_circle(px, x, y, r, color_alpha(fill, wash));
+    stroke_circle(px, x, y, r, color_alpha(fill, ring), 1.0);
 }
 
-fn dot_body(px: &mut Pixmap, x: f32, y: f32, r: f32, fill: Color, you: bool) {
-    fill_dot_glow(px, x, y, r, fill, you);
+fn dot_body(px: &mut Pixmap, x: f32, y: f32, r: f32, fill: Color, you: bool, opacity: i32) {
+    fill_dot_glow(px, x, y, r, fill, you, opacity);
+}
+
+fn you_dot_ink(mode: TableText) -> Color {
+    match mode {
+        TableText::White => Color::from_rgba8(248, 248, 250, 255),
+        TableText::Black => Color::from_rgba8(16, 16, 18, 255),
+    }
 }
 
 fn numbered_dot(
@@ -2859,37 +2865,39 @@ fn numbered_dot(
     num: i32,
     show_num: bool,
     you: bool,
+    opacity: i32,
+    num_ink: Option<Color>,
 ) {
-    dot_body(px, x, y, r, fill, you);
+    dot_body(px, x, y, r, fill, you, opacity);
     if !show_num || num <= 0 {
         return;
     }
     let label = format!("{num}");
+    let face = &fonts.semibold;
     let k = style_k().max(0.01);
     let size = if num >= 100 {
-        r * 0.82
+        r * 0.92
     } else if num >= 10 {
-        r * 0.98
+        r * 1.08
     } else {
-        r * 1.12
+        r * 1.22
     } / k;
-    let Some((min_x, min_y, max_x, max_y)) = ink_bounds(fonts, &label, size) else {
+    let Some((min_x, min_y, max_x, max_y)) = ink_bounds(face, &label, size) else {
         return;
     };
-    let extra_x = if fake_bold() {
-        0.7
-    } else {
-        0.0
-    };
-    let tx = (x - (min_x + max_x + extra_x) * 0.5).round();
+    let tx = (x - (min_x + max_x) * 0.5).round();
     let ty = (y - (min_y + max_y) * 0.5).round();
-    let ink = ink_on(fill);
-    let outline = Color::from_rgba8(8, 8, 10, 180);
-    text(px, fonts, &label, size, tx - 0.6, ty, outline, false);
-    text(px, fonts, &label, size, tx + 0.6, ty, outline, false);
-    text(px, fonts, &label, size, tx, ty - 0.6, outline, false);
-    text(px, fonts, &label, size, tx, ty + 0.6, outline, false);
-    text(px, fonts, &label, size, tx, ty, ink, false);
+    draw_text(
+        px,
+        face,
+        &label,
+        size,
+        tx,
+        ty,
+        num_ink.unwrap_or_else(|| ink_on(fill)),
+        false,
+        false,
+    );
 }
 
 

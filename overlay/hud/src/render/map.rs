@@ -212,6 +212,8 @@ fn paint_map_riders(
                 rider_dot_num(s, rider.race_num, cfg.map.map_dot),
                 cfg.map.map_numbers,
                 false,
+                cfg.map.map_dot_opacity,
+                None,
             );
             let (fwx, fwz) = yaw_forward(pose.yaw);
             let (sdx, sdy) = screen_dir(to_px, pose.x, pose.z, fwx, fwz);
@@ -252,6 +254,8 @@ fn paint_map_riders(
             rider_dot_num(s, subject, cfg.map.map_dot),
             cfg.map.map_numbers,
             true,
+            cfg.map.map_dot_opacity,
+            Some(you_dot_ink(cfg.map.map_you_text)),
         );
         let (fwx, fwz) = if pose.from_local {
             local_forward(s)

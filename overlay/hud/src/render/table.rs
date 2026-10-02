@@ -492,7 +492,22 @@ pub(crate) fn draw_bike_pill(
     let bh = font_sz + BIKE_PILL_PAD_Y * 2.0;
     let bx = cx + ((cw - bw) * 0.5).max(0.0);
     let by = cy + ((row_h - bh) * 0.5).max(0.0);
-    fill_round(px, bx, by, bw, bh, 4.0, accent_c);
+    // Same alphas as a default rider-row wash and its stronger edge.
+    let wash = 52u8;
+    let border_a = (wash as u32 * 3).min(255) as u8;
+    fill_round(px, bx, by, bw, bh, 4.0, color_alpha(accent_c, border_a));
+    let inset = 1.0;
+    if bw > inset * 2.0 && bh > inset * 2.0 {
+        fill_round(
+            px,
+            bx + inset,
+            by + inset,
+            bw - inset * 2.0,
+            bh - inset * 2.0,
+            3.0,
+            color_alpha(accent_c, wash),
+        );
+    }
     text(
         px,
         fonts,

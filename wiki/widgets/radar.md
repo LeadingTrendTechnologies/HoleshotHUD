@@ -31,7 +31,7 @@ Proximity beside and behind you. Settings subtitle: “Riders beside and behind 
 
 **Arrows:** Heat fill and glow match plaque blips; size is `0.032 + heat×0.024` of `min(w,h)`, clamped 28–56 px, with a night-ink border. Lapper blue/red strokes outside that border. Crash / state mark sits on the arrow (~0.45× tip). Switching to Arrows expands the rect once if it is still the default plaque (`RADAR_ARROWS_RECT` ≈ 2% inset full frame). Switching back to Plaque does not shrink a custom rect. Panel opacity does not fill a plaque in Arrows mode.
 
-**Arrows crash flash:** Sustained crashed riders are hidden (unlike Plaque). When a nearby rider’s crash bit rises, the arrow holds ~1.75 s at the last bearing with the crash icon, then drops.
+**Arrows crash flash:** Sustained crashed riders are hidden (unlike Plaque). When a nearby rider’s crash bit rises, the arrow holds 0.75 s at the last bearing with the crash icon, then drops.
 
 Local position is predicted with `age`, same as map/minimap. Requires telemetry; otherwise Plaque draws the empty panel + bike mark, Arrows draws nothing.
 
@@ -54,10 +54,11 @@ Local position is predicted with `age`, same as map/minimap. Requires telemetry;
 - Arrows ride the Radar widget rect edges and stay rear/side-only (`radar_in_view`). Do not pin to the full overlay when the rect is a small plaque.
 - Arrows must slide continuously with bearing — no snap to fixed compass ticks.
 - Expanding to `RADAR_ARROWS_RECT` happens only when the rect still matches the default plaque.
-- Arrows hide sustained crashed riders; only a ~1.75 s rising-edge flash (with crash icon) shows a nearby crash. Plaque still shows crashed blips.
+- Arrows hide sustained crashed riders; only a 0.75 s rising-edge flash (with crash icon) shows a nearby crash. Plaque still shows crashed blips.
 
 ## Change log
 
+- 2026-10-02 — Arrows crash flash holds 0.75 s, then drops. A downed rider behind you was lingering too long at 1.75 s, and 1 s was still long enough to stay on screen after the crash.
 - 2026-09-26 — Arrows larger (28–56 px) with night-ink border; crash icon bigger. Sustained crashed riders hidden; ~1.75 s flash when someone goes down nearby.
 - 2026-09-26 — Arrows are larger (22–48 px) with a wider glow so they read on bright track/sky.
 - 2026-09-26 — **Look**: Plaque (default) or Arrows. Arrows are edge indicators that track bike-frame bearing; shared filters with the plaque. Switching to Arrows expands the default plaque rect once.

@@ -1100,6 +1100,77 @@ fn a_finished_lap_ignores_sector_geometry() {
     assert_eq!(live_position(12), 2);
 }
 
+/// Just past the learned S2, before that split publishes, still beats a rider in S1.
+#[test]
+fn lap_one_just_past_s2_stays_ahead_before_the_gate() {
+    let _g = session_lock();
+    let _splits = ResetSplits;
+    reset_session();
+    crate::sector::set_split_fracs([0.40, 0.70]);
+    let mut s = live_snap();
+    s.track_length = 2000.0;
+    s.sf_meters = 0.0;
+    s.current_lap = 1;
+    s.standing_count = 2;
+    s.rider_count = 2;
+    s.standings[0] = standing(1, 1, 0);
+    s.standings[1] = standing(12, 2, 0);
+    s.standings[1].sector_gate = 1;
+    s.riders[0] = rider(1, 1.0, 0.0, 0.55);
+    s.riders[1] = rider(12, 2.0, 0.0, 0.71);
+    s.local_track_pos = 0.71;
+    let _ = RaceStore::tick(&s);
+    assert_eq!(live_position(12), 1, "just past S2, gate still 1");
+    assert_eq!(live_position(1), 2, "still between S1 and S2");
+}
+
+/// Gate 0, just before S1, stays behind a rider who has reached S1.
+#[test]
+fn lap_one_before_s1_stays_behind_a_rider_past_s1() {
+    let _g = session_lock();
+    let _splits = ResetSplits;
+    reset_session();
+    crate::sector::set_split_fracs([0.40, 0.70]);
+    let mut s = live_snap();
+    s.track_length = 2000.0;
+    s.sf_meters = 0.0;
+    s.current_lap = 1;
+    s.standing_count = 2;
+    s.rider_count = 2;
+    s.standings[0] = standing(1, 1, 0);
+    s.standings[1] = standing(12, 2, 0);
+    s.riders[0] = rider(1, 1.0, 0.0, 0.39);
+    s.riders[1] = rider(12, 2.0, 0.0, 0.42);
+    s.local_track_pos = 0.42;
+    let _ = RaceStore::tick(&s);
+    assert_eq!(live_position(12), 1, "40 m past S1");
+    assert_eq!(live_position(1), 2, "gate 0, just before S1");
+}
+
+/// A sector gate after the first lap must not zero the leader's metres.
+#[test]
+fn a_sector_gate_after_the_line_does_not_drop_the_leader() {
+    let _g = session_lock();
+    let _splits = ResetSplits;
+    reset_session();
+    crate::sector::set_split_fracs([0.40, 0.70]);
+    let mut s = gate_field(&[1, 12]);
+    for standing in &mut s.standings[..2] {
+        standing.num_laps = 1;
+    }
+    let _ = RaceStore::tick(&s);
+    ride_field_to(&mut s, &[(1, 0.20), (12, 0.21)]);
+    assert_eq!(live_position(12), 1, "10 m up the lap");
+    s.standings
+        .iter_mut()
+        .find(|st| st.race_num == 12)
+        .unwrap()
+        .sector_gate = 1;
+    let _ = RaceStore::tick(&s);
+    assert_eq!(live_position(12), 1, "S1 gate does not rebase a finished lap");
+    assert_eq!(live_position(1), 2);
+}
+
 /// A rider missing from `riders[]` keeps their scored slot, but the pass above them still
 /// shows.
 #[test]

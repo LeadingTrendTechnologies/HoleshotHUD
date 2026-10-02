@@ -119,6 +119,11 @@ fn overlay_stays_on_the_game_monitor() {
         rect(0, 0, 1920, 1079),
         game
     ));
+    assert_eq!(bottom_gap_rows(rect(0, 0, 1920, 1079), game), 1);
+    assert_eq!(bottom_gap_rows(rect(0, 0, 1920, 1078), game), 2);
+    assert_eq!(bottom_gap_rows(rect(0, 0, 1920, 1080), game), 0);
+    assert_eq!(bottom_gap_rows(rect(0, 0, 1920, 1077), game), 0);
+    assert_eq!(bottom_gap_rows(rect(100, 80, 1380, 900), game), 0);
     assert!(!flush_to_monitor_except_bottom_gap(
         rect(100, 80, 1380, 900),
         game

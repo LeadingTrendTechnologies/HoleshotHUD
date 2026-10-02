@@ -156,20 +156,43 @@ pub fn flush_to_monitor_except_bottom_gap(client: RECT, monitor: RECT) -> bool {
         && monitor.bottom - client.bottom <= 2
 }
 
-/// Game client in screen coords, clipped to the monitor MX Bikes is on.
-pub fn overlay_screen_rect(hwnd: HWND) -> Option<(i32, i32, i32, i32)> {
+/// Desktop rows under a borderless window kept 1–2px shy of the monitor.
+/// Windowed play, and a window that already meets the edge, return 0.
+pub fn bottom_gap_rows(client: RECT, monitor: RECT) -> i32 {
+    if flush_to_monitor_except_bottom_gap(client, monitor) {
+        (monitor.bottom - client.bottom).max(0)
+    } else {
+        0
+    }
+}
+
+fn client_on_screen(hwnd: HWND) -> Option<RECT> {
     unsafe {
         let mut cr = RECT::default();
         GetClientRect(hwnd, &mut cr).ok()?;
         let mut pt = POINT { x: 0, y: 0 };
         let _ = ClientToScreen(hwnd, &mut pt);
-        let client = RECT {
+        Some(RECT {
             left: pt.x,
             top: pt.y,
             right: pt.x + cr.right - cr.left,
             bottom: pt.y + cr.bottom - cr.top,
-        };
-        overlay_rect_on_monitor(client, monitor_rect(hwnd)?)
+        })
+    }
+}
+
+/// Game client in screen coords, clipped to the monitor MX Bikes is on.
+pub fn overlay_screen_rect(hwnd: HWND) -> Option<(i32, i32, i32, i32)> {
+    unsafe { overlay_rect_on_monitor(client_on_screen(hwnd)?, monitor_rect(hwnd)?) }
+}
+
+/// Rows to paint black under the game so the 1–2px shy strip is not a hole.
+pub fn overlay_bottom_gap(hwnd: HWND) -> i32 {
+    unsafe {
+        match (client_on_screen(hwnd), monitor_rect(hwnd)) {
+            (Some(client), Some(monitor)) => bottom_gap_rows(client, monitor),
+            _ => 0,
+        }
     }
 }
 

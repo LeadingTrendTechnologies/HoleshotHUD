@@ -42,6 +42,8 @@ Toggles match Map, plus **Zoom**. Default background 0.
 
 ## Change log
 
+- 2026-10-02 — Shares Map: dot numbers use the app font at semibold (Exo 2 SemiBold Italic by default).
+- 2026-10-01 — Shares Map: rider dots are a translucent disc with a 1px color ring.
 - 2026-10-01 — Shares Map: the S/F bar spans only the track stroke.
 - 2026-10-01 — Shares Map: other riders and the spectate marker use world XZ when it is live. A stuck XZ still falls back to the centerline.
 - 2026-09-29 — North-up stays on the bike when it is inside the zoom radius. Farther out, the circle centers on the nearest centerline so the track is in view. Past 300 m the circle fits the whole track instead of an empty crown.

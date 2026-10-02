@@ -14,6 +14,8 @@ thread_local! {
 pub struct Fonts {
     pub ui: Font,
     pub bold: Font,
+    /// App family at semibold when that file exists. Otherwise the UI face.
+    pub semibold: Font,
     pub icons: Font,
     bold_is_fake: bool,
 }
@@ -37,10 +39,6 @@ pub(crate) fn push_style(fonts: &Fonts, bold: bool, pct: i32) -> StyleGuard {
 
 pub(crate) fn style_k() -> f32 {
     SCALE.with(|c| c.get())
-}
-
-pub(crate) fn fake_bold() -> bool {
-    FAKE_BOLD.with(|c| c.get())
 }
 
 pub(crate) fn style_font(fonts: &Fonts) -> &Font {
@@ -98,9 +96,21 @@ impl Fonts {
             Some(bold) => (bold, false),
             None => (font_from(&bytes)?, true),
         };
+        let semibold = if family == FontFamily::Segoe {
+            std::fs::read(r"C:\Windows\Fonts\segoeuisb.ttf")
+                .ok()
+                .and_then(|b| font_from(&b))
+        } else {
+            None
+        };
+        let semibold = match semibold {
+            Some(face) => face,
+            None => font_from(&bytes)?,
+        };
         Some(Self {
             ui,
             bold,
+            semibold,
             icons: Self::icons()?,
             bold_is_fake,
         })
@@ -112,41 +122,56 @@ impl Fonts {
             FontFamily::Roboto => Self::embedded(
                 include_bytes!("../../fonts/Roboto-Regular.ttf"),
                 None,
+                None,
                 icons,
             ),
             FontFamily::Exo2 => Self::embedded(
                 include_bytes!("../../fonts/Exo2-ExtraBoldItalic.ttf"),
                 Some(include_bytes!("../../fonts/Exo2-BlackItalic.ttf")),
+                Some(include_bytes!("../../fonts/Exo2-SemiBoldItalic.ttf")),
                 icons,
             ),
             FontFamily::Teko => Self::embedded(
                 include_bytes!("../../fonts/Teko-SemiBold.ttf"),
                 Some(include_bytes!("../../fonts/Teko-Bold.ttf")),
+                None,
                 icons,
             ),
             FontFamily::Goldman => Self::embedded(
                 include_bytes!("../../fonts/Goldman-Regular.ttf"),
                 Some(include_bytes!("../../fonts/Goldman-Bold.ttf")),
+                None,
                 icons,
             ),
             FontFamily::Montserrat => Self::embedded(
                 include_bytes!("../../fonts/Montserrat-ExtraBold.ttf"),
                 Some(include_bytes!("../../fonts/Montserrat-Black.ttf")),
+                None,
                 icons,
             ),
             _ => None,
         }
     }
 
-    fn embedded(regular: &[u8], bold: Option<&[u8]>, icons: Font) -> Option<Self> {
+    fn embedded(
+        regular: &[u8],
+        bold: Option<&[u8]>,
+        semibold: Option<&[u8]>,
+        icons: Font,
+    ) -> Option<Self> {
         let ui = font_from(regular)?;
         let (bold, bold_is_fake) = match bold.and_then(|b| font_from(b)) {
             Some(bold) => (bold, false),
             None => (font_from(regular)?, true),
         };
+        let semibold = match semibold.and_then(font_from) {
+            Some(face) => face,
+            None => font_from(regular)?,
+        };
         Some(Self {
             ui,
             bold,
+            semibold,
             icons,
             bold_is_fake,
         })
@@ -351,7 +376,7 @@ pub(crate) fn format_clock(ms: i32) -> String {
     let s = t - m as f32 * 60.0;
     format!("{m:02}:{:06.3}", s)
 }
-pub(crate) fn ink_bounds(fonts: &Fonts, s: &str, size: f32) -> Option<(f32, f32, f32, f32)> {
+pub(crate) fn ink_bounds(font: &Font, s: &str, size: f32) -> Option<(f32, f32, f32, f32)> {
     let mut min_x = f32::MAX;
     let mut min_y = f32::MAX;
     let mut max_x = f32::MIN;
@@ -359,7 +384,6 @@ pub(crate) fn ink_bounds(fonts: &Fonts, s: &str, size: f32) -> Option<(f32, f32,
     let mut pen = 0.0;
     let mut any = false;
     let size = size * style_k();
-    let font = style_font(fonts);
     for ch in s.chars() {
         let m = font.metrics(ch, size);
         if m.width > 0 && m.height > 0 {

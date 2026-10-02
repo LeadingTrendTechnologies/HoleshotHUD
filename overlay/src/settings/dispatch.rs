@@ -407,6 +407,10 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             toggle_drop(Drop::MapDot);
             return;
         }
+        Hit::MapYouTextOpen => {
+            toggle_drop(Drop::MapYouText);
+            return;
+        }
         Hit::MiniDotOpen => {
             toggle_drop(Drop::MiniDot);
             return;
@@ -1249,6 +1253,8 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::MapNumbers => c.map.map_numbers = !c.map.map_numbers,
         Hit::MapDotNum => c.map.map_dot = DotLabel::Number,
         Hit::MapDotPos => c.map.map_dot = DotLabel::Position,
+        Hit::MapYouTextWhite => c.map.map_you_text = TableText::White,
+        Hit::MapYouTextBlack => c.map.map_you_text = TableText::Black,
         Hit::MiniOthers => c.mini.mini_others = !c.mini.mini_others,
         Hit::MiniSf => c.mini.mini_sf = !c.mini.mini_sf,
         Hit::MiniSectors => c.mini.mini_sectors = !c.mini.mini_sectors,
@@ -1365,6 +1371,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::TabTelemetry
         | Hit::TabPitboard
         | Hit::MapDotOpen
+        | Hit::MapYouTextOpen
         | Hit::MiniDotOpen
         | Hit::FontOpen
         | Hit::PrimaryOpen
@@ -1476,6 +1483,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::RelHl
         | Hit::MapBg
         | Hit::MapZoom
+        | Hit::MapDotOpacity
         | Hit::MiniBg
         | Hit::MiniZoom
         | Hit::RadarRange

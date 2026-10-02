@@ -299,6 +299,7 @@ pub(crate) fn is_slider(hit: Hit) -> bool {
             | Hit::RelHl
             | Hit::MapBg
             | Hit::MapZoom
+            | Hit::MapDotOpacity
             | Hit::MiniBg
             | Hit::MiniZoom
             | Hit::RadarRange
@@ -451,6 +452,7 @@ pub(crate) fn apply_slide(hit: Hit, mx: f32, x: f32, w: f32, min: i32, max: i32)
         Hit::RelHl => c.relative.rel_hl = v,
         Hit::MapBg => c[WidgetId::Map].bg = v,
         Hit::MapZoom => c.map.map_zoom = v,
+        Hit::MapDotOpacity => c.map.map_dot_opacity = v,
         Hit::MiniBg => c[WidgetId::Minimap].bg = v,
         Hit::MiniZoom => c.mini.mini_zoom = v,
         Hit::RadarRange => c.radar.radar_range = v,
@@ -689,6 +691,8 @@ pub(crate) fn is_drop_pick(hit: Hit) -> bool {
         hit,
         Hit::MapDotNum
             | Hit::MapDotPos
+            | Hit::MapYouTextWhite
+            | Hit::MapYouTextBlack
             | Hit::MiniDotNum
             | Hit::MiniDotPos
             | Hit::StTextWhite
@@ -915,7 +919,7 @@ pub(crate) fn hit_label(hit: Hit) -> String {
         Hit::StHl | Hit::RelHl | Hit::TickerHl => "Row highlight".into(),
         Hit::StStripe | Hit::RelStripe => "Alternating rows".into(),
         Hit::StPlaque | Hit::RelPlaque => "Show plaques".into(),
-        Hit::StTextOpen | Hit::RelTextOpen => "Text color".into(),
+        Hit::StTextOpen | Hit::RelTextOpen | Hit::MapYouTextOpen => "Text color".into(),
         Hit::StPlaqueTextOpen | Hit::RelPlaqueTextOpen => "Plaque text".into(),
         Hit::StTextWhite
         | Hit::StTextBlack
@@ -924,7 +928,9 @@ pub(crate) fn hit_label(hit: Hit) -> String {
         | Hit::StPlaqueTextWhite
         | Hit::StPlaqueTextBlack
         | Hit::RelPlaqueTextWhite
-        | Hit::RelPlaqueTextBlack => "Color".into(),
+        | Hit::RelPlaqueTextBlack
+        | Hit::MapYouTextWhite
+        | Hit::MapYouTextBlack => "Color".into(),
         Hit::StDec | Hit::StInc => "Rows".into(),
         Hit::RelDec | Hit::RelInc => "Nearby riders".into(),
         Hit::TickerDec | Hit::TickerInc => "Riders shown".into(),
@@ -995,6 +1001,7 @@ pub(crate) fn hit_label(hit: Hit) -> String {
         Hit::DashShiftColor => "Shift color".into(),
         Hit::MapSectors => "Sector lines".into(),
         Hit::MapZoom => "Zoom".into(),
+        Hit::MapDotOpacity => "Dot opacity".into(),
         Hit::MiniSectors => "Sector lines".into(),
         Hit::TelemetryTraces => "Traces".into(),
         Hit::TelemetryTraceThrottle => "Throttle trace".into(),
@@ -1292,6 +1299,7 @@ pub(crate) fn nudge_slider(hit: Hit, delta: i32) {
         Hit::RelHl => c.relative.rel_hl,
         Hit::MapBg => c[WidgetId::Map].bg,
         Hit::MapZoom => c.map.map_zoom,
+        Hit::MapDotOpacity => c.map.map_dot_opacity,
         Hit::MiniBg => c[WidgetId::Minimap].bg,
         Hit::MiniZoom => c.mini.mini_zoom,
         Hit::RadarRange => c.radar.radar_range,
@@ -1339,6 +1347,7 @@ pub(crate) fn nudge_slider(hit: Hit, delta: i32) {
         Hit::RelHl => c.relative.rel_hl = v,
         Hit::MapBg => c[WidgetId::Map].bg = v,
         Hit::MapZoom => c.map.map_zoom = v,
+        Hit::MapDotOpacity => c.map.map_dot_opacity = v,
         Hit::MiniBg => c[WidgetId::Minimap].bg = v,
         Hit::MiniZoom => c.mini.mini_zoom = v,
         Hit::RadarRange => c.radar.radar_range = v,

@@ -417,6 +417,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
     let mut saw_game = crate::startup::mx_bikes_pid().is_some();
     let mut game_gone_at: Option<Instant> = None;
     let mut shm_miss_since: Option<Instant> = None;
+    let mut bottom_gap: i32;
 
     let mut msg = MSG::default();
     loop {
@@ -512,6 +513,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         if overlay_on {
             crate::settings::keep_above_overlay(host);
         }
+        bottom_gap = game.map(compat::overlay_bottom_gap).unwrap_or(0);
         if let Some(g) = game {
             if let Some((nx, ny, nw, nh)) = client_screen_rect(g) {
                 if nw > 64
@@ -821,6 +823,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         } else {
             live_mark = None;
         }
+        fill_bottom_rows_black(pixmap.data_mut(), w as u32, h as u32, bottom_gap);
         dib.blit_premul_bgra(pixmap.data());
         dib.present(hwnd, w, h, x, y);
         crate::settings::paint(&fonts);
@@ -989,6 +992,26 @@ fn find_game_hwnd() -> Option<HWND> {
 
 fn client_screen_rect(hwnd: HWND) -> Option<(i32, i32, i32, i32)> {
     crate::compat::overlay_screen_rect(hwnd)
+}
+
+/// Opaque black over the desktop strip under a 1–2px-shy borderless window.
+fn fill_bottom_rows_black(pixels: &mut [u8], width: u32, height: u32, rows: i32) {
+    if rows <= 0 || width == 0 || height == 0 {
+        return;
+    }
+    let rows = (rows as u32).min(height);
+    let stride = width as usize * 4;
+    let start = (height - rows) as usize * stride;
+    let end = height as usize * stride;
+    if end > pixels.len() || start > end {
+        return;
+    }
+    for pixel in pixels[start..end].chunks_exact_mut(4) {
+        pixel[0] = 0;
+        pixel[1] = 0;
+        pixel[2] = 0;
+        pixel[3] = 255;
+    }
 }
 
 fn primary_screen() -> (i32, i32, i32, i32) {

@@ -17,7 +17,7 @@ pub(crate) const RADAR_RINGS_M: [f32; 3] = [3.0, 6.0, 12.0];
 pub(crate) const RADAR_RING_OUTER_M: f32 = 12.0;
 
 /// How long a crashed rider stays on Arrows after the crash bit rises nearby.
-pub(crate) const ARROW_CRASH_HOLD_MS: i32 = 1_750;
+pub(crate) const ARROW_CRASH_HOLD_MS: i32 = 750;
 
 #[derive(Clone, Copy, Debug)]
 struct ArrowCrashTrack {
