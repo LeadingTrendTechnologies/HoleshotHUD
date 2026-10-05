@@ -7,7 +7,7 @@ Settings subtitle: “White and checkered — same timing as Dash”. Toggles: *
 ## Code
 
 - Draw: `draw_flag` in `overlay/hud/src/render.rs`
-- Timing: `dash_race_flag` + `flag_anim_step`, ticked once per frame in `draw()` (`tick_display_flag`) when Dash or Flags is on, so they cannot double-step the anim
+- Timing: `dash_race_flag` + `flag_anim_step`, stepped once in overlay `draw()` (`advance_display_flag`). Stream `draw_each` reads that cached flag. If the overlay did not paint the sample, the stream job steps once, not once per pass
 - Caution: `caution_flag` — yellow is a crash **ahead** within `FLAG_YELLOW_SPAN_M` (50 m), held ~1.75 s (`YELLOW_HOLD_MS`) after the live sample drops so blue/red cannot flash on remount / span jitter; blue is `LapRel::LappingMe` **and** behind within `FLAG_BLUE_SPAN_M` (40 m); red is `LapRel::LappedByMe` **and** ahead within `FLAG_RED_SPAN_M` (40 m). Blue/red skip crashed riders. Merged in `wanted_flag` only when Flags is on **and** the matching toggle. Priority: checkered > white > yellow > blue > red. Preview codes: 0 none, 1 white, 2 checkered, 3 yellow, 4 blue, 5 red
 - Preview: `set_flag_preview` (website demo cycles checkered / white / hidden; with each toggle on, that color too)
 - Settings: `pane_flag` in `overlay/src/settings.rs`
@@ -21,6 +21,7 @@ Fresh install: `show_flag = false`, `flag_yellow = false`, `flag_blue = false`, 
 - Do not draw a plaque when the flag is down. Empty slot, except the Ctrl layout box.
 - Do not invent a second flag machine. White wave, checkered latch, run-in hold, and `finish_earned` live in `dash_race_flag`.
 - Do not tick `flag_anim_step` from both Dash and Flags. One step per frame.
+- Do not step the flag from stream paint when the overlay already painted that sample. `draw_each` reads the cached flag.
 - Do not hide Dash wrap when Flags is on. They are independent.
 - Do not paint Flags-widget yellow/blue/red onto the Dash wrap. `dash_wrap_flag` only keeps them when `dash_yellow` / `dash_blue` / `dash_red` are on.
 - Do not treat `lapped()` (whole-race gap) as a blue or red flag. Blue is situational `LapRel::LappingMe` only. Red is situational `LapRel::LappedByMe` only.
@@ -34,6 +35,7 @@ Fresh install: `show_flag = false`, `flag_yellow = false`, `flag_blue = false`, 
 
 ## Change log
 
+- 2026-10-05 — Stream paint no longer steps the flag again. A Browser Source was advancing the same wave, hold, and run-in on its own clock, so the plaque flipped between flags and would not stay up.
 - 2026-10-01 — Same white/checkered timing as Dash: timed +2 lapped on `0/2` or `1/2` shows the checkered on the line that would start `2/2`.
 - 2026-10-01 — Same white/checkered timing as Dash: timed +1 on `0/1` shows the checkered when the leader has already finished the lap that lapped you. A finish with no pass does not.
 - 2026-09-25 — Yellow holds ~1.75 s after the crash bit or span edge drops so blue/red cannot flash during the same incident. Blue/red ignore crashed riders (a downed backmarker no longer arms red the instant yellow clears).

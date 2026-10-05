@@ -130,8 +130,8 @@ impl RaceField {
 pub struct RaceStore {
     pub clock: SessionClock,
     pub field: RaceField,
-    /// Race flag from the last [`RaceStore::refresh`]. Render draws this; it does not
-    /// re-run the start/finish machine.
+    /// Race flag from the last advancing [`RaceStore::refresh`]. A paint-only refresh
+    /// leaves it. Render draws this; it does not re-run the start/finish machine.
     pub race_flag: i32,
 }
 
@@ -1024,7 +1024,7 @@ fn build_field(s: &Snapshot, clock: &SessionClock) -> RaceField {
     }
 }
 
-fn build_clock(s: &Snapshot) -> SessionClock {
+fn build_clock_with(s: &Snapshot, write_flag: bool) -> SessionClock {
     // One mutation per tick: banner formatting must not call session_remain_ms again.
     let remain_ms = session_remain_ms(s);
     note_leader_finish(s);
@@ -1035,7 +1035,7 @@ fn build_clock(s: &Snapshot) -> SessionClock {
     } else {
         0
     };
-    let flag = timed_race_flag(s);
+    let flag = timed_race_flag_with(s, write_flag);
     SessionClock {
         mode: ClockMode::from_state(s, remain_ms, &banner.1),
         remain_ms,
@@ -1052,9 +1052,17 @@ fn build_clock(s: &Snapshot) -> SessionClock {
 /// Lap motos and the early white on the run-in need track geometry, so the dash
 /// refines this in render; this is the count-only value for tracing and fallback.
 pub(crate) fn timed_race_flag(s: &Snapshot) -> RaceFlag {
+    timed_race_flag_with(s, true)
+}
+
+/// `write` is the overlay (or a stream-only) step. A second paint of the same sample
+/// must not clear the checkered latch or the laps-to-run note.
+fn timed_race_flag_with(s: &Snapshot, write: bool) -> RaceFlag {
     note_session(s);
     if s.on_track == 0 {
-        CHECKERED_LATCH.store(0, Ordering::Relaxed);
+        if write {
+            CHECKERED_LATCH.store(0, Ordering::Relaxed);
+        }
         return RaceFlag::None;
     }
     if is_lap_race(s) || timed_clock_live(s) || prestart(s) || !overtime_active(s) {
@@ -1063,7 +1071,9 @@ pub(crate) fn timed_race_flag(s: &Snapshot) -> RaceFlag {
     // Same recovery as `dash_race_flag`: do not keep a latched finish while laps remain.
     if CHECKERED_LATCH.load(Ordering::Relaxed) == 1 {
         if extras_started(s) && laps_left(s).is_some_and(|n| n > 0) {
-            CHECKERED_LATCH.store(0, Ordering::Relaxed);
+            if write {
+                CHECKERED_LATCH.store(0, Ordering::Relaxed);
+            }
         } else {
             return RaceFlag::Checkered;
         }
@@ -1072,9 +1082,13 @@ pub(crate) fn timed_race_flag(s: &Snapshot) -> RaceFlag {
         return RaceFlag::None;
     }
     let left = laps_left(s).unwrap_or(1);
-    note_laps_to_run(s, Some(left));
+    if write {
+        note_laps_to_run(s, Some(left));
+    }
     if left == 0 && finish_earned(s) {
-        CHECKERED_LATCH.store(1, Ordering::Relaxed);
+        if write {
+            CHECKERED_LATCH.store(1, Ordering::Relaxed);
+        }
         RaceFlag::Checkered
     } else if skip_last_lap_white(s, Some(left)) {
         RaceFlag::None
@@ -1087,26 +1101,16 @@ pub(crate) fn timed_race_flag(s: &Snapshot) -> RaceFlag {
 }
 
 impl RaceStore {
-    /// Fill `VIEW` without cloning. Overlay `draw` uses this, then [`with`].
+    /// Fill `VIEW` without cloning. Overlay `draw` and [`tick`] use this, then [`with`].
+    /// Steps the race flag once. Stream paint uses [`refresh_without_flags`].
     pub fn refresh(s: &Snapshot) {
-        // Clock first, and only it may mutate session state: the field reads the result.
-        let clock = build_clock(s);
-        note_field_laps(s);
-        let field = build_field(s, &clock);
-        if s.has_telemetry != 0 {
-            let (thr, brk, _) = crate::telemetry::inputs(s);
-            crate::telemetry::note(thr, brk, crate::telemetry::steer(s));
-        }
-        if let Ok(mut g) = VIEW.lock() {
-            g.clock = clock;
-            g.field = field;
-        }
-        // Flag, start/finish, and run-in advance once with the session, after the clock
-        // is visible to `dash_race_flag`.
-        let race_flag = crate::render::session_race_flag(s);
-        if let Ok(mut g) = VIEW.lock() {
-            g.race_flag = race_flag;
-        }
+        fill_view(s, true);
+    }
+
+    /// Clock and field for a second paint of a sample the overlay already flagged.
+    /// Does not step white, checkered, the run-in, or the checkered latch.
+    pub fn refresh_without_flags(s: &Snapshot) {
+        fill_view(s, false);
     }
 
     /// Once per frame for tests and clock logs. Overlay draw prefers [`refresh`] + [`with`].
@@ -1136,6 +1140,30 @@ impl RaceStore {
     /// Clone of the last refresh. Prefer [`with`] on the draw path.
     pub fn get() -> RaceStore {
         Self::with(|s| s.clone())
+    }
+}
+
+fn fill_view(s: &Snapshot, advance_flags: bool) {
+    // Clock first, and only it may mutate session state: the field reads the result.
+    let clock = build_clock_with(s, advance_flags);
+    note_field_laps(s);
+    let field = build_field(s, &clock);
+    if s.has_telemetry != 0 {
+        let (thr, brk, _) = crate::telemetry::inputs(s);
+        crate::telemetry::note(thr, brk, crate::telemetry::steer(s));
+    }
+    if let Ok(mut g) = VIEW.lock() {
+        g.clock = clock;
+        g.field = field;
+    }
+    if !advance_flags {
+        return;
+    }
+    // Flag, start/finish, and run-in advance once with the session, after the clock
+    // is visible to `dash_race_flag`.
+    let race_flag = crate::render::session_race_flag(s);
+    if let Ok(mut g) = VIEW.lock() {
+        g.race_flag = race_flag;
     }
 }
 

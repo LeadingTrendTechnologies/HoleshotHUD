@@ -71,6 +71,8 @@ struct PaintJob {
     copies: GameCopies,
     /// Layout revision captured with `live_cfg`, so a text pass is not marked done on an older frame.
     stream_rev: u64,
+    /// Overlay `draw` already stepped the flag for this sample.
+    overlay_advanced: bool,
 }
 
 struct GameCopy {
@@ -359,6 +361,7 @@ pub fn publish_frame(
     stream_rev: u64,
 ) {
     let copies = take_game_copies();
+    let overlay_advanced = crate::render::take_overlay_advanced_flags();
     if !is_running() || client_count() == 0 {
         return;
     }
@@ -371,6 +374,7 @@ pub fn publish_frame(
         window_h,
         copies,
         stream_rev,
+        overlay_advanced,
     });
     drop(latest);
     LATEST_CV.notify_one();
@@ -519,6 +523,12 @@ fn paint_job(
     let Some(fonts) = fonts.as_ref() else {
         return;
     };
+
+    if !job.overlay_advanced {
+        if let Some(snap) = job.snap.as_ref() {
+            crate::render::advance_display_flag(snap, &job.live_cfg);
+        }
+    }
 
     let motion = motion_widgets();
     let text = text_widgets();

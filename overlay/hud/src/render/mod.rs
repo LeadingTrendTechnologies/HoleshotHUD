@@ -2,7 +2,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use crate::config::{
@@ -293,6 +293,7 @@ pub fn draw(
     settings_hint: bool,
     after_widget: &mut dyn FnMut(WidgetId, &mut Pixmap),
 ) {
+    OVERLAY_ADVANCED_FLAGS.store(false, Ordering::SeqCst);
     crate::config::set_accent_rgb(cfg.primary);
     clear_click_riders();
     px.fill(if settings_hint {
@@ -351,21 +352,10 @@ pub fn draw(
     let sh = h as f32;
     // Stream surface: orange Ctrl-drag chrome only — never paint stream widgets on the game HWND.
     if cfg.edit_surface != EditSurface::Stream {
-        RaceStore::refresh(s);
+        advance_display_flag(s, cfg);
+        OVERLAY_ADVANCED_FLAGS.store(true, Ordering::SeqCst);
+        let (flag, flag_grow) = cached_display_flag();
         RaceStore::with(|_| {
-            let (flag, flag_grow) = if cfg[WidgetId::Dash].show || cfg[WidgetId::Flag].show {
-                tick_display_flag(
-                    s,
-                    (cfg[WidgetId::Flag].show && cfg.flag.flag_yellow)
-                        || (cfg[WidgetId::Dash].show && cfg.dash.dash_yellow),
-                    (cfg[WidgetId::Flag].show && cfg.flag.flag_blue)
-                        || (cfg[WidgetId::Dash].show && cfg.dash.dash_blue),
-                    (cfg[WidgetId::Flag].show && cfg.flag.flag_red)
-                        || (cfg[WidgetId::Dash].show && cfg.dash.dash_red),
-                )
-            } else {
-                (DashFlag::None, 0.0)
-            };
             draw_widgets(
                 px,
                 fonts,
@@ -459,20 +449,8 @@ pub fn draw_each<After>(
     let sh = h as f32;
     let raster_w = if window_w >= 64 { window_w as f32 } else { sw };
     let raster_h = if window_h >= 64 { window_h as f32 } else { sh };
-    RaceStore::refresh(s);
-    let (flag, flag_grow) = if cfg[WidgetId::Dash].show || cfg[WidgetId::Flag].show {
-        tick_display_flag(
-            s,
-            (cfg[WidgetId::Flag].show && cfg.flag.flag_yellow)
-                || (cfg[WidgetId::Dash].show && cfg.dash.dash_yellow),
-            (cfg[WidgetId::Flag].show && cfg.flag.flag_blue)
-                || (cfg[WidgetId::Dash].show && cfg.dash.dash_blue),
-            (cfg[WidgetId::Flag].show && cfg.flag.flag_red)
-                || (cfg[WidgetId::Dash].show && cfg.dash.dash_red),
-        )
-    } else {
-        (DashFlag::None, 0.0)
-    };
+    RaceStore::refresh_without_flags(s);
+    let (flag, flag_grow) = cached_display_flag();
     draw_widgets(
         px,
         fonts,
@@ -1887,6 +1865,42 @@ pub(crate) fn session_race_flag(s: &Snapshot) -> i32 {
 /// Website demo: 0 none, 1 white, 2 checkered, 3 yellow, 4 blue, 5 red. Negative = live.
 static FLAG_PREVIEW: AtomicI32 = AtomicI32::new(-1);
 
+/// Set when [`draw`] stepped the flag for this sample. [`take_overlay_advanced_flags`]
+/// hands that to the stream job so the paint thread does not step it again.
+static OVERLAY_ADVANCED_FLAGS: AtomicBool = AtomicBool::new(false);
+
+/// Overlay `draw` stepped the flag. The stream job reads this once and clears it.
+pub fn take_overlay_advanced_flags() -> bool {
+    OVERLAY_ADVANCED_FLAGS.swap(false, Ordering::SeqCst)
+}
+
+/// One step of the race flag and the plaque anim. Overlay `draw` calls this.
+/// The stream calls it only when the overlay did not paint the sample.
+pub fn advance_display_flag(s: &Snapshot, cfg: &HudConfig) {
+    RaceStore::refresh(s);
+    let (yellow, blue, red) = caution_toggles(cfg);
+    tick_display_flag(s, yellow, blue, red);
+}
+
+/// Game board and stream board can each enable a caution. One step covers both;
+/// each surface still filters at draw time.
+fn caution_toggles(cfg: &HudConfig) -> (bool, bool, bool) {
+    let game = caution_from_layout(cfg.edit());
+    let stream = caution_from_layout(cfg.stream_slot(cfg.active_preset));
+    (game.0 || stream.0, game.1 || stream.1, game.2 || stream.2)
+}
+
+fn caution_from_layout(lay: &crate::config::HudLayout) -> (bool, bool, bool) {
+    (
+        (lay[WidgetId::Flag].show && lay.flag.flag_yellow)
+            || (lay[WidgetId::Dash].show && lay.dash.dash_yellow),
+        (lay[WidgetId::Flag].show && lay.flag.flag_blue)
+            || (lay[WidgetId::Dash].show && lay.dash.dash_blue),
+        (lay[WidgetId::Flag].show && lay.flag.flag_red)
+            || (lay[WidgetId::Dash].show && lay.dash.dash_red),
+    )
+}
+
 pub fn set_flag_preview(code: i32) {
     FLAG_PREVIEW.store(code, Ordering::Relaxed);
     if code > 0 {
@@ -1908,11 +1922,22 @@ pub(crate) fn reset_flag_display() {
         t0: 0.0,
         hiding: false,
         none_since: -1.0,
+        shown: DashFlag::None,
+        grow: 0.0,
     };
 }
 
 fn tick_display_flag(s: &Snapshot, yellow: bool, blue: bool, red: bool) -> (DashFlag, f32) {
-    flag_anim_step(wanted_flag(s, yellow, blue, red))
+    let shown = flag_anim_step(wanted_flag(s, yellow, blue, red));
+    let mut st = FLAG_ANIM.lock().unwrap_or_else(|e| e.into_inner());
+    st.shown = shown.0;
+    st.grow = shown.1;
+    shown
+}
+
+fn cached_display_flag() -> (DashFlag, f32) {
+    let st = FLAG_ANIM.lock().unwrap_or_else(|e| e.into_inner());
+    (st.shown, st.grow)
 }
 
 fn wanted_flag(s: &Snapshot, yellow: bool, blue: bool, red: bool) -> DashFlag {
@@ -2414,6 +2439,9 @@ struct FlagAnim {
     /// When `wanted` first went None; hide only after a short hold so one-frame
     /// flicker on the run-in cannot slam the banner shut.
     none_since: f32,
+    /// Last step. Stream paint reads this and does not step again.
+    shown: DashFlag,
+    grow: f32,
 }
 
 static FLAG_ANIM: Mutex<FlagAnim> = Mutex::new(FlagAnim {
@@ -2421,6 +2449,8 @@ static FLAG_ANIM: Mutex<FlagAnim> = Mutex::new(FlagAnim {
     t0: 0.0,
     hiding: false,
     none_since: -1.0,
+    shown: DashFlag::None,
+    grow: 0.0,
 });
 
 fn flag_anim_step(wanted: DashFlag) -> (DashFlag, f32) {

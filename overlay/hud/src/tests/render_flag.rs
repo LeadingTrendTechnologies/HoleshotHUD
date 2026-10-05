@@ -808,3 +808,118 @@ fn dash_wrap_paints_red_when_enabled() {
         "dash wrap should paint red when the toggle is on"
     );
 }
+
+fn paint_again(px: &mut Pixmap, s: &Snapshot, cfg: &HudConfig) {
+    draw_each(
+        px,
+        &fonts(),
+        Some(s),
+        cfg,
+        1280,
+        720,
+        0.0,
+        1280,
+        720,
+        None,
+        |_, _| true,
+    );
+}
+
+/// A second paint (the stream thread) must not step the wave, the yellow hold, or the run-in.
+#[test]
+fn stream_redraw_keeps_the_overlay_flag() {
+    let _g = session_lock();
+    reset_session();
+    struct Guard;
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            reset_flag_display();
+        }
+    }
+    let _pg = Guard;
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg[WidgetId::Flag].show = true;
+    cfg.flag.flag_yellow = true;
+    cfg.flag.flag_blue = true;
+    cfg.flag.flag_red = true;
+    let mut s = mid_race_snap();
+    crash_ahead(&mut s);
+    let mut px = Pixmap::new(1280, 720).expect("pixmap");
+    draw(&mut px, &fonts(), Some(&s), &cfg, 1280, 720, 0.0, false, false, false);
+    let shown = cached_display_flag();
+    assert_eq!(shown.0, DashFlag::Yellow);
+    let hold = YELLOW_HOLD_AT.load(Ordering::Relaxed);
+    let wave = WHITE_WAVE_AT.load(Ordering::Relaxed);
+    let run_in = RUN_IN_FLAG.load(Ordering::Relaxed);
+    assert!(hold >= 0, "yellow hold should be armed");
+    s.riders[0].crashed = 0;
+    paint_again(&mut px, &s, &cfg);
+    assert_eq!(YELLOW_HOLD_AT.load(Ordering::Relaxed), hold);
+    assert_eq!(WHITE_WAVE_AT.load(Ordering::Relaxed), wave);
+    assert_eq!(RUN_IN_FLAG.load(Ordering::Relaxed), run_in);
+    assert_eq!(cached_display_flag(), shown);
+}
+
+/// No overlay paint: one advance still waves white, checkered, and yellow, and a
+/// following paint does not step them again.
+#[test]
+fn stream_only_advances_each_flag_once() {
+    let _g = session_lock();
+    reset_session();
+    struct Guard;
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            reset_flag_display();
+        }
+    }
+    let _pg = Guard;
+    let mut cfg = HudConfig::new();
+    hide_widgets(&mut cfg);
+    cfg[WidgetId::Flag].show = true;
+    let mut s = live_snap();
+    s.session_length = 0;
+    s.session_laps = 4;
+    s.session_time_ms = 0;
+    s.local_speed = 18.0;
+    s.poly_count = 0;
+    s.sf_meters = 0.0;
+    s.standings[0].num_laps = 2;
+    s.standings[1].num_laps = 2;
+    s.current_lap = 3;
+    advance_display_flag(&s, &cfg);
+    s.standings[1].num_laps = 3;
+    s.current_lap = 4;
+    advance_display_flag(&s, &cfg);
+    assert_eq!(cached_display_flag().0, DashFlag::White);
+    let wave = WHITE_WAVE_AT.load(Ordering::Relaxed);
+    let mut px = Pixmap::new(1280, 720).expect("pixmap");
+    paint_again(&mut px, &s, &cfg);
+    assert_eq!(WHITE_WAVE_AT.load(Ordering::Relaxed), wave);
+    assert_eq!(cached_display_flag().0, DashFlag::White);
+
+    s.standings[1].num_laps = 4;
+    s.current_lap = 5;
+    advance_display_flag(&s, &cfg);
+    assert_eq!(cached_display_flag().0, DashFlag::Checkered);
+    assert_eq!(CHECKERED_LATCH.load(Ordering::Relaxed), 1);
+    paint_again(&mut px, &s, &cfg);
+    assert_eq!(CHECKERED_LATCH.load(Ordering::Relaxed), 1);
+    assert_eq!(cached_display_flag().0, DashFlag::Checkered);
+
+    reset_session();
+    reset_flag_display();
+    cfg.flag.flag_yellow = true;
+    cfg.flag.flag_blue = true;
+    cfg.flag.flag_red = true;
+    let mut s = mid_race_snap();
+    crash_ahead(&mut s);
+    advance_display_flag(&s, &cfg);
+    assert_eq!(cached_display_flag().0, DashFlag::Yellow);
+    let hold = YELLOW_HOLD_AT.load(Ordering::Relaxed);
+    assert!(hold >= 0);
+    s.riders[0].crashed = 0;
+    paint_again(&mut px, &s, &cfg);
+    assert_eq!(YELLOW_HOLD_AT.load(Ordering::Relaxed), hold);
+    assert_eq!(cached_display_flag().0, DashFlag::Yellow);
+}

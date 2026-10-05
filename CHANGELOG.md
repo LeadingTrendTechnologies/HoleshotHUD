@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.30.1
+
+- Flags stay on one flag while a Browser Source or the layout editor is open. Stream paint was stepping the flag a second time, so the plaque flipped between flags and would not stay up.
+
 ## 0.30.0
 
 - Profile → MyMXB shows mymxb.com.
