@@ -35,6 +35,7 @@ pub struct Editor {
     gamepad: Option<Rect>,
     telemetry: Option<Rect>,
     pitboard: Option<Rect>,
+    timer: Option<Rect>,
     st_w_name: Option<i32>,
     rel_w_name: Option<i32>,
     standings_rows: Option<i32>,
@@ -81,6 +82,7 @@ impl Editor {
             || self.gamepad.is_some()
             || self.telemetry.is_some()
             || self.pitboard.is_some()
+            || self.timer.is_some()
             || self.st_w_name.is_some()
             || self.rel_w_name.is_some()
             || self.standings_rows.is_some()
@@ -126,6 +128,9 @@ impl Editor {
         }
         if let Some(s) = self.pitboard {
             cfg[WidgetId::Pitboard].rect = s;
+        }
+        if let Some(s) = self.timer {
+            cfg[WidgetId::Timer].rect = s;
         }
         if let Some(r) = self.standings {
             cfg[WidgetId::Standings].rect = r;
@@ -182,8 +187,12 @@ impl Editor {
             if let Some(s) = snap {
                 if let Some((t, h)) = hit(s, self, cfg, nx, ny, ow, oh) {
                     let (name_w, rows) = match t {
-                        WidgetId::Standings => (cfg.standings.st_w_name, cfg.standings.standings_rows),
-                        WidgetId::Relative => (cfg.relative.rel_w_name, cfg.relative.relative_count),
+                        WidgetId::Standings => {
+                            (cfg.standings.st_w_name, cfg.standings.standings_rows)
+                        }
+                        WidgetId::Relative => {
+                            (cfg.relative.rel_w_name, cfg.relative.relative_count)
+                        }
                         _ => (0, 0),
                     };
                     self.drag = Some(Drag {
@@ -220,6 +229,7 @@ impl Editor {
                 WidgetId::Gamepad => self.gamepad = Some(r),
                 WidgetId::Telemetry => self.telemetry = Some(r),
                 WidgetId::Pitboard => self.pitboard = Some(r),
+                WidgetId::Timer => self.timer = Some(r),
             }
             apply_table_resize(self, cfg, d, r, ow, oh);
             let _ = overlay;
@@ -228,12 +238,13 @@ impl Editor {
         released && self.drag.take().is_some()
     }
 
+    /// Writes the drag preview into the live layout. The preview stays so this
+    /// frame can paint it; the caller clears it after that copy is built.
     pub fn commit(&mut self, snap: Option<&Snapshot>) {
         self.save(snap);
-        self.clear_preview();
     }
 
-    fn clear_preview(&mut self) {
+    pub fn clear_preview(&mut self) {
         self.map = None;
         self.standings = None;
         self.relative = None;
@@ -250,6 +261,7 @@ impl Editor {
         self.gamepad = None;
         self.telemetry = None;
         self.pitboard = None;
+        self.timer = None;
         self.st_w_name = None;
         self.rel_w_name = None;
         self.standings_rows = None;
@@ -276,6 +288,7 @@ impl Editor {
         let gamepad = self.gamepad;
         let telemetry = self.telemetry;
         let pitboard = self.pitboard;
+        let timer = self.timer;
         crate::config::update_config(|cfg| {
             let lay = cfg.live_mut();
             lay[WidgetId::Map].rect = map;
@@ -319,6 +332,9 @@ impl Editor {
             }
             if let Some(s) = pitboard {
                 lay[WidgetId::Pitboard].rect = s;
+            }
+            if let Some(s) = timer {
+                lay[WidgetId::Timer].rect = s;
             }
             if let Some(w) = self.st_w_name {
                 lay.standings.st_w_name = w;
@@ -378,6 +394,7 @@ fn rect_of(s: &Snapshot, ed: &Editor, cfg: &HudConfig, t: WidgetId) -> Rect {
         WidgetId::Gamepad => ed.gamepad.unwrap_or(cfg[WidgetId::Gamepad].rect),
         WidgetId::Telemetry => ed.telemetry.unwrap_or(cfg[WidgetId::Telemetry].rect),
         WidgetId::Pitboard => ed.pitboard.unwrap_or(cfg[WidgetId::Pitboard].rect),
+        WidgetId::Timer => ed.timer.unwrap_or(cfg[WidgetId::Timer].rect),
     }
 }
 
@@ -399,6 +416,7 @@ fn shown(s: &Snapshot, cfg: &HudConfig, t: WidgetId) -> bool {
         WidgetId::Gamepad => cfg.gamepad_visible(),
         WidgetId::Telemetry => cfg[WidgetId::Telemetry].show,
         WidgetId::Pitboard => cfg[WidgetId::Pitboard].show,
+        WidgetId::Timer => cfg[WidgetId::Timer].show,
     }
 }
 
@@ -411,7 +429,8 @@ fn hit(
     ow: i32,
     oh: i32,
 ) -> Option<(WidgetId, Handle)> {
-    const ORDER: [WidgetId; 16] = [
+    const ORDER: [WidgetId; 17] = [
+        WidgetId::Timer,
         WidgetId::Dash,
         WidgetId::Ticker,
         WidgetId::Sys,

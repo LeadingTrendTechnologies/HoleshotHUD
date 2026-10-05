@@ -59,9 +59,11 @@ Default columns on: Position, Number, Name, Gap to leader, Fastest, Last lap.
 - Ctrl+resize chrome is the hugged plaque (column pack × row stack), not leftover widget glass. Dragging it larger still grows Name / Rows — do not leave the orange box as a no-op hug.
 - The night-ink plaque must cover every visible row. Do not clamp stack height to a shorter saved `standings_h`.
 - Finished riders show only the Status finish flag — not crash / pit / DNS / OUT / DSQ on top of it.
+- An empty group list draws no icon and does not change the name column. The mark is the first matching group, case-insensitive, on the 31-character display name.
 
 ## Change log
 
+- 2026-10-04 — A rider listed on the Groups tab gets that group's icon in the group color, immediately left of the name. The first group in the list wins. The name column gives up about 14px for it. Click-to-follow still uses the whole name cell.
 - 2026-10-02 — Bike-column pills use a translucent brand wash and a 1px stronger brand border. Letters stay black or white from the brand (`ink_on`).
 - 2026-10-01 — Your row is a left-to-right accent fade with a 1px line on the top and bottom. **Row highlight** still scales it. Alternating rows stay a flat wash.
 - 2026-10-01 — Lap 1 places move at S1 and S2, and between those gates, before the finish. See [live race order](../live-order.md).

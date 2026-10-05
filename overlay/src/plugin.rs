@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use windows::core::{w, PCWSTR};
 use windows::Win32::System::Registry::{
     RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ,
-    REG_SZ,
+    REG_DWORD, REG_SZ,
 };
 
 const PLUGIN_FILE: &str = "Holeshot-HUD.dlo";
@@ -328,6 +328,104 @@ fn vdf_path(line: &str) -> Option<String> {
     let start = rest.find('"')? + 1;
     let end = rest[start..].find('"')? + start;
     Some(rest[start..end].replace("\\\\", "\\"))
+}
+
+/// Public individual SteamID64 with the account id in the low 32 bits.
+const STEAM_ID64_BASE: u64 = 76561197960265728;
+
+/// Rider page for the Steam account signed in on this PC.
+pub(crate) fn local_ranked_url() -> Option<String> {
+    if let Some(account) = active_steam_account() {
+        return ranked_url_from_account(account);
+    }
+    for root in steam_roots() {
+        let path = root.join("config").join("loginusers.vdf");
+        let Ok(text) = fs::read_to_string(path) else {
+            continue;
+        };
+        if let Some(id) = most_recent_steam_id(&text) {
+            return Some(ranked_url_from_steam_id64(id));
+        }
+    }
+    None
+}
+
+fn ranked_url_from_account(account_id: u32) -> Option<String> {
+    if account_id == 0 {
+        return None;
+    }
+    Some(ranked_url_from_steam_id64(
+        STEAM_ID64_BASE + u64::from(account_id),
+    ))
+}
+
+fn ranked_url_from_steam_id64(steam_id64: u64) -> String {
+    format!("https://mxb-ranked.com/Rider/FF{steam_id64:016X}")
+}
+
+fn active_steam_account() -> Option<u32> {
+    unsafe {
+        let mut key = Default::default();
+        if RegOpenKeyExW(
+            HKEY_CURRENT_USER,
+            w!("Software\\Valve\\Steam\\ActiveProcess"),
+            0,
+            KEY_READ,
+            &mut key,
+        )
+        .is_err()
+        {
+            return None;
+        }
+        let mut account = 0u32;
+        let mut bytes = std::mem::size_of::<u32>() as u32;
+        let mut ty = REG_DWORD;
+        let ok = RegQueryValueExW(
+            key,
+            w!("ActiveUser"),
+            None,
+            Some(&mut ty),
+            Some((&mut account as *mut u32).cast()),
+            Some(&mut bytes),
+        )
+        .is_ok();
+        let _ = RegCloseKey(key);
+        if ok && ty == REG_DWORD && account != 0 {
+            Some(account)
+        } else {
+            None
+        }
+    }
+}
+
+/// SteamID64 of the `MostRecent` user in `loginusers.vdf`.
+fn most_recent_steam_id(text: &str) -> Option<u64> {
+    let mut current = None;
+    for line in text.lines() {
+        if let Some(id) = quoted_steam_id(line) {
+            current = Some(id);
+            continue;
+        }
+        if line_is_most_recent(line) {
+            return current;
+        }
+    }
+    None
+}
+
+fn quoted_steam_id(line: &str) -> Option<u64> {
+    let inner = line.trim().strip_prefix('"')?.strip_suffix('"')?;
+    if inner.len() < 17 || !inner.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    inner.parse().ok()
+}
+
+fn line_is_most_recent(line: &str) -> bool {
+    let Some(rest) = line.trim().strip_prefix("\"MostRecent\"") else {
+        return false;
+    };
+    rest.trim() == "\"1\""
 }
 
 fn steam_roots() -> Vec<PathBuf> {

@@ -84,13 +84,13 @@ pub(crate) fn flag_caption_band_path(
 }
 
 pub(crate) fn flag_label(flag: DashFlag) -> &'static str {
-    match flag {
+    crate::i18n::t(match flag {
         DashFlag::White => "WHITE FLAG",
         DashFlag::Yellow => "YELLOW FLAG",
         DashFlag::Blue => "BLUE FLAG",
         DashFlag::Red => "RED FLAG",
         _ => "Checkered Flag",
-    }
+    })
 }
 
 pub(crate) fn flag_yellow_cloth(a: u8) -> Color {

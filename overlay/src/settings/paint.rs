@@ -5,8 +5,8 @@ use tiny_skia::{
 };
 use windows::Win32::Foundation::{BOOL, HWND};
 use windows::Win32::Graphics::Gdi::{
-    GetDC, ReleaseDC, SetDIBitsToDevice, BITMAPINFO,
-    BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
+    GetDC, GetDCEx, ReleaseDC, SetDIBitsToDevice, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
+    DCX_CACHE, DCX_CLIPCHILDREN, DIB_RGB_COLORS, HRGN,
 };
 
 use crate::config::{
@@ -20,7 +20,10 @@ use super::*;
 pub(crate) fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
     refresh_palette();
     px.fill(bg());
-    with_config(|cfg| draw_with_cfg(px, fonts, w, h, cfg));
+    with_config(|cfg| {
+        crate::locale::apply(cfg.language);
+        draw_with_cfg(px, fonts, w, h, cfg);
+    });
 }
 
 pub(crate) fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig) {
@@ -41,6 +44,7 @@ pub(crate) fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg:
         reply_scroll,
         reply_id,
         ui_all_time,
+        ui_ranked_only,
         clear_confirm,
         app_section,
         mut profile_section,
@@ -84,6 +88,7 @@ pub(crate) fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg:
             ui.map(|u| u.reply_scroll).unwrap_or(0.0),
             ui.and_then(|u| u.reply_id.clone()),
             ui.map(|u| u.profile_all_time).unwrap_or(true),
+            ui.map(|u| u.profile_ranked_only).unwrap_or(false),
             ui.and_then(|u| u.clear_confirm),
             ui.map(|u| u.app_section).unwrap_or(AppSection::Look),
             ui.map(|u| u.profile_section)
@@ -279,6 +284,8 @@ pub(crate) fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg:
                     tracks_pan_x,
                     tracks_pan_z,
                 )
+            } else if profile_section == ProfileSection::Ranked {
+                super::ranked::paint_pane(px, fonts, w, h, clip_top)
             } else {
                 pane_profile(
                     px,
@@ -289,11 +296,13 @@ pub(crate) fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg:
                     py,
                     cw,
                     ui_all_time,
+                    ui_ranked_only,
                     cfg.review,
                 )
             }
         }
         Tab::Feedback => pane_feedback_tab(px, fonts, hover, &mut hits, x, py, cw),
+        Tab::Groups => pane_groups(px, fonts, &cfg, hover, &mut hits, x, py, cw, clip_bottom),
         Tab::Standings => pane_standings(
             px, fonts, &cfg, hover, open_drop, drag, &mut hits, x, py, cw,
         ),
@@ -325,6 +334,7 @@ pub(crate) fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg:
         Tab::Gamepad => pane_gamepad(px, fonts, &cfg, hover, &mut hits, x, py, cw, open_drop),
         Tab::Telemetry => pane_telemetry(px, fonts, &cfg, hover, &mut hits, x, py, cw),
         Tab::Pitboard => pane_pitboard(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
+        Tab::Timer => pane_timer(px, fonts, &cfg, hover, &mut hits, x, py, cw),
     };
     if widgets {
         let sticky_bottom = clip_top + 10.0 + PRESET_STRIP_H;
@@ -367,6 +377,7 @@ pub(crate) fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg:
             &mut hits,
             28.0,
             clip_top + 8.0,
+            w,
         );
     }
     draw_top_bar(
@@ -506,10 +517,21 @@ pub(crate) fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg:
             ui.nav_scroll = 0.0;
         }
     }
+    let host = UI.lock().unwrap().as_ref().map(|u| u.host).unwrap_or_default();
+    let show_ranked = tab == Tab::Profile
+        && profile_section == ProfileSection::Ranked
+        && reply_view.is_none()
+        && !whats_new_open
+        && !pit_help_open
+        && clear_confirm.is_none();
+    let top = (banner_h + TOP_H + PROFILE_SUBNAV_H).round() as i32;
+    let pane_w = w.round().max(0.0) as u32;
+    let pane_h = (h - top as f32).round().max(0.0) as u32;
+    super::ranked::sync(host, show_ranked, top, pane_w, pane_h);
 }
 
 pub(crate) fn snap_align_label(align: SnapAlign) -> &'static str {
-    match align {
+    mxbo_hud::i18n::t(match align {
         SnapAlign::TopLeft => "Top left",
         SnapAlign::Top => "Top center",
         SnapAlign::TopRight => "Top right",
@@ -521,11 +543,11 @@ pub(crate) fn snap_align_label(align: SnapAlign) -> &'static str {
         SnapAlign::BottomRight => "Bottom right",
         SnapAlign::HCenter => "Center horizontally",
         SnapAlign::VCenter => "Center vertically",
-    }
+    })
 }
 
 pub(crate) fn widget_short_name(id: WidgetId) -> &'static str {
-    match id {
+    mxbo_hud::i18n::t(match id {
         WidgetId::Standings => "Standings",
         WidgetId::Relative => "Relative",
         WidgetId::Map => "Map",
@@ -542,7 +564,8 @@ pub(crate) fn widget_short_name(id: WidgetId) -> &'static str {
         WidgetId::Gamepad => "Controller",
         WidgetId::Telemetry => "Telemetry",
         WidgetId::Pitboard => "Pit Board",
-    }
+        WidgetId::Timer => "Session",
+    })
 }
 
 pub(crate) fn paint_slot_center_tooltip(
@@ -797,6 +820,12 @@ pub(crate) fn widget_groups(cfg: &HudConfig) -> Vec<(&'static str, Vec<(Tab, Hit
     let cockpit = vec![
         (Tab::Dash, Hit::TabDash, "Dash", cfg[WidgetId::Dash].show),
         (
+            Tab::Timer,
+            Hit::TabTimer,
+            "Session",
+            cfg[WidgetId::Timer].show,
+        ),
+        (
             Tab::Telemetry,
             Hit::TabTelemetry,
             "Telemetry",
@@ -972,16 +1001,22 @@ pub(crate) fn draw_profile_subnav(
     hits: &mut Vec<HitBox>,
     x: f32,
     y: f32,
+    pane_w: f32,
 ) {
     let mut cx = x;
     let items: &[ProfileSection] = if show_tracks {
         &[
             ProfileSection::Overview,
             ProfileSection::Motos,
+            ProfileSection::Ranked,
             ProfileSection::Tracks,
         ]
     } else {
-        &[ProfileSection::Overview, ProfileSection::Motos]
+        &[
+            ProfileSection::Overview,
+            ProfileSection::Motos,
+            ProfileSection::Ranked,
+        ]
     };
     for item in items {
         cx += profile::profile_chip(
@@ -995,6 +1030,22 @@ pub(crate) fn draw_profile_subnav(
             hover,
             hits,
         ) + 8.0;
+    }
+    if section == ProfileSection::Ranked {
+        let label = "Refresh";
+        let bw = (measure(fonts, label, 13.0) + 28.0).max(64.0);
+        let rx = (pane_w - 28.0 - bw).max(cx);
+        profile::profile_chip(
+            px,
+            fonts,
+            rx,
+            y,
+            label,
+            false,
+            Hit::RankedRefresh,
+            hover,
+            hits,
+        );
     }
 }
 
@@ -1067,6 +1118,17 @@ pub(crate) fn draw_top_bar(
         fonts,
         mx,
         ty,
+        "Groups",
+        tab == Tab::Groups,
+        Hit::TabGroups,
+        hover,
+        hits,
+    );
+    mx += mode_tab(
+        px,
+        fonts,
+        mx,
+        ty,
         "Feedback",
         tab == Tab::Feedback,
         Hit::TabFeedback,
@@ -1091,7 +1153,7 @@ pub(crate) fn draw_top_bar(
     let quit_h = 32.0;
     let qx = w - 14.0 - quit_w;
     let qy = y + (TOP_H - quit_h) * 0.5;
-    let hint = format!("{key_label}  settings");
+    let hint = mxbo_hud::i18n::t_fmt("{key}  settings", &[("key", key_label)]);
     let hw = measure(fonts, &hint, 10.0);
     text(
         px,
@@ -1165,7 +1227,7 @@ pub(crate) fn preset_copy_btn(
     hover: Option<Hit>,
     hits: &mut Vec<HitBox>,
 ) -> f32 {
-    let copy = "Copy to";
+    let copy = mxbo_hud::i18n::t("Copy to");
     let tw = measure(fonts, copy, 12.0);
     let bw = tw + 32.0;
     let h = 28.0;
@@ -1187,9 +1249,19 @@ pub(crate) fn preset_copy_btn(
         let mut options: Vec<(Hit, String, bool)> = SessionPreset::ALL
             .into_iter()
             .filter(|p| *p != src)
-            .map(|p| (Hit::PresetCopyTo(p), p.label().to_string(), false))
+            .map(|p| {
+                (
+                    Hit::PresetCopyTo(p),
+                    mxbo_hud::i18n::t(p.label()).to_string(),
+                    false,
+                )
+            })
             .collect();
-        options.push((Hit::PresetCopyAll, "All".into(), false));
+        options.push((
+            Hit::PresetCopyAll,
+            mxbo_hud::i18n::t("All").to_string(),
+            false,
+        ));
         let item_h = 28.0;
         let pad = 5.0;
         let content_h = pad * 2.0 + item_h * options.len() as f32;
@@ -1197,6 +1269,7 @@ pub(crate) fn preset_copy_btn(
             menus.borrow_mut().push(PendingDrop {
                 mx: x,
                 my: y + h + 6.0,
+                anchor_top: y,
                 bw: bw.max(168.0),
                 content_h,
                 open_hit: hit,
@@ -1208,15 +1281,18 @@ pub(crate) fn preset_copy_btn(
 }
 
 pub(crate) fn preset_strip_status(live: bool, selected: SessionPreset, live_preset: SessionPreset) -> String {
-    let board = selected.label();
+    let board = mxbo_hud::i18n::t(selected.label());
     if live {
         if selected == live_preset {
-            format!("On track — editing {board}")
+            mxbo_hud::i18n::t_fmt("On track — editing {board}", &[("board", board)])
         } else {
-            format!("Editing {board} — {} is live", live_preset.label())
+            mxbo_hud::i18n::t_fmt(
+                "Editing {board} — {live} is live",
+                &[("board", board), ("live", mxbo_hud::i18n::t(live_preset.label()))],
+            )
         }
     } else {
-        format!("Editing {board} — garage")
+        mxbo_hud::i18n::t_fmt("Editing {board} — garage", &[("board", board)])
     }
 }
 
@@ -1232,6 +1308,7 @@ pub(crate) fn preset_chip(
     hover: Option<Hit>,
     hits: &mut Vec<HitBox>,
 ) -> f32 {
+    let label = mxbo_hud::i18n::t(label);
     let size = 13.0;
     let tw = measure(fonts, label, size);
     let h = 28.0;
@@ -1280,6 +1357,7 @@ pub(crate) fn mode_tab(
     hover: Option<Hit>,
     hits: &mut Vec<HitBox>,
 ) -> f32 {
+    let label = mxbo_hud::i18n::t(label);
     let size = 14.0;
     let tw = measure(fonts, label, size);
     let h = 32.0;
@@ -1343,7 +1421,10 @@ pub(crate) fn draw_update_banner(
     });
     let (line, show_update) = match &kind {
         crate::update::ManualBanner::Available { version } => {
-            (format!("Version {version} is available."), true)
+            (
+                mxbo_hud::i18n::t_fmt("Version {version} is available.", &[("version", version)]),
+                true,
+            )
         }
         crate::update::ManualBanner::Installing => (
             "Downloading and installing… the app will restart.".to_string(),
@@ -1407,10 +1488,11 @@ pub(crate) fn draw_update_banner(
 }
 
 pub(crate) fn nav_group(px: &mut Pixmap, fonts: &Fonts, x: f32, y: f32, label: &str) -> f32 {
+    let label = mxbo_hud::i18n::t(label).to_ascii_uppercase();
     text(
         px,
         fonts,
-        &label.to_ascii_uppercase(),
+        &label,
         10.0,
         x + 14.0,
         y + 6.0,
@@ -1652,6 +1734,11 @@ pub(crate) fn nav_icon(px: &mut Pixmap, hit: Hit, cx: f32, cy: f32, c: Color) {
             fill_round(px, cx - 7.0, cy - 4.6, 14.0, 9.2, 2.2, c);
             fill_round(px, cx - 3.6, cy - 1.8, 7.2, 3.6, 1.0, Color::from_rgba8(12, 12, 16, 255));
         }
+        Hit::TabTimer => {
+            icon_stroke_circle(px, cx, cy, 6.2, c);
+            icon_stroke_line(px, cx, cy, cx, cy - 3.4, c, 1.4);
+            icon_stroke_line(px, cx, cy, cx + 2.6, cy + 1.2, c, 1.4);
+        }
         Hit::QuitApp => {
             icon_stroke_circle(px, cx, cy, 6.2, c);
             icon_stroke_line(px, cx, cy - 7.2, cx, cy - 1.2, c, 1.7);
@@ -1753,6 +1840,7 @@ pub(crate) fn nav_tab(
             h,
         });
     }
+    let name = mxbo_hud::i18n::t(name);
     if selected {
         fill_round(px, x, y, w, h, 8.0, tab_on());
         fill_round(px, x, y + 8.0, 3.0, h - 16.0, 1.5, accent());
@@ -2059,6 +2147,8 @@ pub(crate) fn action_btn(
     hits: &mut Vec<HitBox>,
     primary: bool,
 ) {
+    let label = mxbo_hud::i18n::t(label);
+    let label = ellipsize_heading(fonts, label, 13.0, (w - 24.0).max(8.0));
     hits.push(HitBox {
         id: hit,
         x,
@@ -2073,7 +2163,7 @@ pub(crate) fn action_btn(
             accent()
         };
         fill_round(px, x, y, w, h, 8.0, fill);
-        text(px, fonts, label, 13.0, x + w * 0.5, y + 8.0, ink(), true);
+        text(px, fonts, &label, 13.0, x + w * 0.5, y + 8.0, ink(), true);
     } else {
         let fill = if hover == Some(hit) {
             chip_hover()
@@ -2084,7 +2174,7 @@ pub(crate) fn action_btn(
         text(
             px,
             fonts,
-            label,
+            &label,
             13.0,
             x + w * 0.5,
             y + 8.0,
@@ -2276,7 +2366,16 @@ pub(crate) fn slots_section(
     let col = (w - 16.0) / 3.0;
     for (slot, (label, drop)) in ["Left", "Middle", "Right"].iter().zip(slots).enumerate() {
         let cx = x + 8.0 + slot as f32 * col;
-        text(px, fonts, label, 11.0, cx + 4.0, y + 8.0, dim(), false);
+        text(
+            px,
+            fonts,
+            mxbo_hud::i18n::t(label),
+            11.0,
+            cx + 4.0,
+            y + 8.0,
+            dim(),
+            false,
+        );
         let bw = (col - 12.0).max(80.0);
         let bh = 28.0;
         let bx = cx + 4.0;
@@ -2298,10 +2397,16 @@ pub(crate) fn slots_section(
             7.0,
             if hot { chip_hover() } else { bg() },
         );
+        let value = ellipsize_heading(
+            fonts,
+            mxbo_hud::i18n::t(drop.value),
+            12.0,
+            (bw - 28.0).max(8.0),
+        );
         text(
             px,
             fonts,
-            drop.value,
+            &value,
             12.0,
             bx + 8.0,
             by + 6.0,
@@ -2318,6 +2423,7 @@ pub(crate) fn slots_section(
                 menus.borrow_mut().push(PendingDrop {
                     mx: bx,
                     my: by + bh + 6.0,
+                    anchor_top: by,
                     bw,
                     content_h,
                     open_hit: drop.open_hit,
@@ -2341,6 +2447,9 @@ pub(crate) fn heading(
     hover: Option<Hit>,
     hits: &mut Vec<HitBox>,
 ) -> f32 {
+    let title = mxbo_hud::i18n::t(title);
+    let sub = mxbo_hud::i18n::t(sub);
+    let show = show.map(|(on, hit, label)| (on, hit, mxbo_hud::i18n::t(label)));
     let title_sz = 22.0;
     let h = 48.0;
     let skew = 8.0;
@@ -2391,6 +2500,7 @@ pub(crate) fn heading(
 }
 
 pub(crate) fn note_lines(px: &mut Pixmap, fonts: &Fonts, x: f32, y: f32, w: f32, msg: &str) -> f32 {
+    let msg = mxbo_hud::i18n::t(msg);
     let lines = wrap_fb(fonts, msg, (w - 8.0).max(40.0), 12.0);
     let mut y = y;
     for line in &lines {
@@ -2447,10 +2557,11 @@ pub(crate) fn fit_path(fonts: &Fonts, path: &str, size: f32, max_w: f32) -> Stri
 }
 
 pub(crate) fn section(px: &mut Pixmap, fonts: &Fonts, x: f32, y: f32, label: &str) -> f32 {
+    let label = mxbo_hud::i18n::t(label).to_ascii_uppercase();
     text(
         px,
         fonts,
-        &label.to_ascii_uppercase(),
+        &label,
         10.0,
         x + 2.0,
         y + 10.0,
@@ -3020,8 +3131,12 @@ pub(crate) fn game_ui_image_row(
     y + h + ROW_GAP
 }
 
+fn wide_z(text: &str) -> Vec<u16> {
+    text.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
 pub(crate) fn browse_exe(host: HWND) -> Option<String> {
-    use windows::core::w;
+    use windows::core::PCWSTR;
     use windows::Win32::System::Com::{
         CoCreateInstance, CoInitializeEx, CoTaskMemFree, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
     };
@@ -3034,7 +3149,8 @@ pub(crate) fn browse_exe(host: HWND) -> Option<String> {
         let dlg: IFileOpenDialog = CoCreateInstance(&FileOpenDialog, None, CLSCTX_ALL).ok()?;
         dlg.SetOptions(FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST | FOS_FORCEFILESYSTEM)
             .ok()?;
-        dlg.SetTitle(w!("Select an app to watch")).ok()?;
+        let title = wide_z(mxbo_hud::i18n::t("Select an app to watch"));
+        dlg.SetTitle(PCWSTR(title.as_ptr())).ok()?;
         dlg.Show(host).ok()?;
         let item = dlg.GetResult().ok()?;
         let name = item.GetDisplayName(SIGDN_FILESYSPATH).ok()?;
@@ -3046,10 +3162,12 @@ pub(crate) fn browse_exe(host: HWND) -> Option<String> {
             .to_string_lossy()
             .into_owned();
         if !file.to_ascii_lowercase().ends_with(".exe") {
+            let body = wide_z(mxbo_hud::i18n::t("Pick an .exe file."));
+            let caption = wide_z("Holeshot HUD");
             let _ = windows::Win32::UI::WindowsAndMessaging::MessageBoxW(
                 host,
-                w!("Pick an .exe file."),
-                w!("Holeshot HUD"),
+                PCWSTR(body.as_ptr()),
+                PCWSTR(caption.as_ptr()),
                 windows::Win32::UI::WindowsAndMessaging::MB_OK
                     | windows::Win32::UI::WindowsAndMessaging::MB_ICONWARNING,
             );
@@ -3060,7 +3178,7 @@ pub(crate) fn browse_exe(host: HWND) -> Option<String> {
 }
 
 pub(crate) fn browse_image(host: HWND) -> Option<String> {
-    use windows::core::w;
+    use windows::core::{w, PCWSTR};
     use windows::Win32::System::Com::{
         CoCreateInstance, CoInitializeEx, CoTaskMemFree, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
     };
@@ -3074,9 +3192,11 @@ pub(crate) fn browse_image(host: HWND) -> Option<String> {
         let dlg: IFileOpenDialog = CoCreateInstance(&FileOpenDialog, None, CLSCTX_ALL).ok()?;
         dlg.SetOptions(FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST | FOS_FORCEFILESYSTEM)
             .ok()?;
-        dlg.SetTitle(w!("Select an image")).ok()?;
+        let title = wide_z(mxbo_hud::i18n::t("Select an image"));
+        dlg.SetTitle(PCWSTR(title.as_ptr())).ok()?;
+        let filter_name = wide_z(mxbo_hud::i18n::t("Images (PNG, JPG)"));
         let filters = [COMDLG_FILTERSPEC {
-            pszName: w!("Images (PNG, JPG)"),
+            pszName: PCWSTR(filter_name.as_ptr()),
             pszSpec: w!("*.png;*.jpg;*.jpeg"),
         }];
         let _ = dlg.SetFileTypes(&filters);
@@ -3089,10 +3209,12 @@ pub(crate) fn browse_image(host: HWND) -> Option<String> {
         let path = path?;
         let lower = path.to_ascii_lowercase();
         if !(lower.ends_with(".png") || lower.ends_with(".jpg") || lower.ends_with(".jpeg")) {
+            let body = wide_z(mxbo_hud::i18n::t("Pick a .png, .jpg, or .jpeg file."));
+            let caption = wide_z("Holeshot HUD");
             let _ = windows::Win32::UI::WindowsAndMessaging::MessageBoxW(
                 host,
-                w!("Pick a .png, .jpg, or .jpeg file."),
-                w!("Holeshot HUD"),
+                PCWSTR(body.as_ptr()),
+                PCWSTR(caption.as_ptr()),
                 windows::Win32::UI::WindowsAndMessaging::MB_OK
                     | windows::Win32::UI::WindowsAndMessaging::MB_ICONWARNING,
             );
@@ -3103,7 +3225,7 @@ pub(crate) fn browse_image(host: HWND) -> Option<String> {
 }
 
 pub(crate) fn browse_json(host: HWND) -> Option<String> {
-    use windows::core::w;
+    use windows::core::{w, PCWSTR};
     use windows::Win32::System::Com::{
         CoCreateInstance, CoInitializeEx, CoTaskMemFree, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
     };
@@ -3117,9 +3239,11 @@ pub(crate) fn browse_json(host: HWND) -> Option<String> {
         let dlg: IFileOpenDialog = CoCreateInstance(&FileOpenDialog, None, CLSCTX_ALL).ok()?;
         dlg.SetOptions(FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST | FOS_FORCEFILESYSTEM)
             .ok()?;
-        dlg.SetTitle(w!("Import pit board")).ok()?;
+        let title = wide_z(mxbo_hud::i18n::t("Import pit board"));
+        dlg.SetTitle(PCWSTR(title.as_ptr())).ok()?;
+        let filter_name = wide_z(mxbo_hud::i18n::t("Pit board (board.json)"));
         let filters = [COMDLG_FILTERSPEC {
-            pszName: w!("Pit board (board.json)"),
+            pszName: PCWSTR(filter_name.as_ptr()),
             pszSpec: w!("*.json"),
         }];
         let _ = dlg.SetFileTypes(&filters);
@@ -3131,10 +3255,12 @@ pub(crate) fn browse_json(host: HWND) -> Option<String> {
         CoTaskMemFree(Some(name.0 as _));
         let path = path?;
         if !path.to_ascii_lowercase().ends_with(".json") {
+            let body = wide_z(mxbo_hud::i18n::t("Pick a board.json file."));
+            let caption = wide_z("Holeshot HUD");
             let _ = windows::Win32::UI::WindowsAndMessaging::MessageBoxW(
                 host,
-                w!("Pick a board.json file."),
-                w!("Holeshot HUD"),
+                PCWSTR(body.as_ptr()),
+                PCWSTR(caption.as_ptr()),
                 windows::Win32::UI::WindowsAndMessaging::MB_OK
                     | windows::Win32::UI::WindowsAndMessaging::MB_ICONWARNING,
             );
@@ -3148,7 +3274,7 @@ const DEMO_PIT_PNG: &[u8] =
     include_bytes!("../../../pit-text-designs/chevron-frame/chevron-frame.png");
 
 pub(crate) fn pick_demo_png(host: HWND) -> Option<String> {
-    use windows::core::w;
+    use windows::core::{w, PCWSTR};
     use windows::Win32::System::Com::{
         CoCreateInstance, CoInitializeEx, CoTaskMemFree, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
     };
@@ -3162,9 +3288,11 @@ pub(crate) fn pick_demo_png(host: HWND) -> Option<String> {
         let dlg: IFileSaveDialog = CoCreateInstance(&FileSaveDialog, None, CLSCTX_ALL).ok()?;
         dlg.SetOptions(FOS_OVERWRITEPROMPT | FOS_PATHMUSTEXIST | FOS_FORCEFILESYSTEM)
             .ok()?;
-        dlg.SetTitle(w!("Save demo pit board")).ok()?;
+        let title = wide_z(mxbo_hud::i18n::t("Save demo pit board"));
+        dlg.SetTitle(PCWSTR(title.as_ptr())).ok()?;
+        let filter_name = wide_z(mxbo_hud::i18n::t("PNG"));
         let filters = [COMDLG_FILTERSPEC {
-            pszName: w!("PNG"),
+            pszName: PCWSTR(filter_name.as_ptr()),
             pszSpec: w!("*.png"),
         }];
         let _ = dlg.SetFileTypes(&filters);
@@ -3190,7 +3318,7 @@ pub(crate) fn write_demo_png(path: &str) -> Result<String, String> {
             .unwrap_or("holeshot-demo");
         path.set_file_name(format!("{name}.png"));
     }
-    std::fs::write(&path, DEMO_PIT_PNG).map_err(|_| "Could not save the demo pit board.".to_string())?;
+    std::fs::write(&path, DEMO_PIT_PNG).map_err(|_| mxbo_hud::i18n::t("Could not save the demo pit board.").to_string())?;
     Ok(path
         .file_name()
         .and_then(|name| name.to_str())
@@ -3199,7 +3327,7 @@ pub(crate) fn write_demo_png(path: &str) -> Result<String, String> {
 }
 
 pub(crate) fn pick_export_folder(host: HWND) -> Option<String> {
-    use windows::core::w;
+    use windows::core::PCWSTR;
     use windows::Win32::System::Com::{
         CoCreateInstance, CoInitializeEx, CoTaskMemFree, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
     };
@@ -3210,7 +3338,8 @@ pub(crate) fn pick_export_folder(host: HWND) -> Option<String> {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         let dlg: IFileOpenDialog = CoCreateInstance(&FileOpenDialog, None, CLSCTX_ALL).ok()?;
         dlg.SetOptions(FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM).ok()?;
-        dlg.SetTitle(w!("Export pit board")).ok()?;
+        let title = wide_z(mxbo_hud::i18n::t("Export pit board"));
+        dlg.SetTitle(PCWSTR(title.as_ptr())).ok()?;
         dlg.Show(host).ok()?;
         let item = dlg.GetResult().ok()?;
         let name = item.GetDisplayName(SIGDN_FILESYSPATH).ok()?;
@@ -3225,10 +3354,10 @@ pub(crate) fn confirm_delete_board(host: HWND, board: &str) -> bool {
     use windows::Win32::UI::WindowsAndMessaging::{
         MessageBoxW, IDYES, MB_DEFBUTTON2, MB_ICONWARNING, MB_YESNO,
     };
-    let prompt: Vec<u16> = format!("Delete the pit board \"{board}\"? This removes its folder.")
-        .encode_utf16()
-        .chain(std::iter::once(0))
-        .collect();
+    let prompt = wide_z(&mxbo_hud::i18n::t_fmt(
+        "Delete the pit board \"{board}\"? This removes its folder.",
+        &[("board", board)],
+    ));
     let title: Vec<u16> = "Holeshot HUD"
         .encode_utf16()
         .chain(std::iter::once(0))
@@ -3267,8 +3396,13 @@ pub(crate) fn bind_row(
         });
         fill_round(px, x, y, w, h, 10.0, accent());
         let max_w = (w - 32.0).max(40.0);
-        let title = ellipsize_heading(fonts, "Press a button now", 16.0, max_w);
-        let sub = ellipsize_heading(fonts, "Pad, key, or mouse  ·  Esc cancels", 12.0, max_w);
+        let title = ellipsize_heading(fonts, mxbo_hud::i18n::t("Press a button now"), 16.0, max_w);
+        let sub = ellipsize_heading(
+            fonts,
+            mxbo_hud::i18n::t("Pad, key, or mouse  ·  Esc cancels"),
+            12.0,
+            max_w,
+        );
         text(px, fonts, &title, 16.0, x + 16.0, y + 12.0, ink(), false);
         text(px, fonts, &sub, 12.0, x + 16.0, y + 36.0, ink(), false);
         return y + h + ROW_GAP;
@@ -3344,13 +3478,24 @@ pub(crate) fn paint_drop_menus(px: &mut Pixmap, fonts: &Fonts, hover: Option<Hit
 
     for menu in menus {
         let mx = menu.mx;
-        let my = menu.my;
+        let mut my = menu.my;
         let bw = menu.bw;
         let content_h = menu.content_h;
-        let space_below = (win_h - my - 10.0).max(item_h + pad * 2.0);
-        let view_h = content_h
-            .min(pad * 2.0 + item_h * max_visible)
-            .min(space_below);
+        let gap = 6.0;
+        let margin = 10.0;
+        let ideal = content_h.min(pad * 2.0 + item_h * max_visible);
+        let space_below = (win_h - my - margin).max(0.0);
+        let space_above = (menu.anchor_top - gap - margin).max(0.0);
+        let open_up = space_below < ideal && space_above > space_below;
+        let min_row = item_h + pad * 2.0;
+        let view_h = if open_up {
+            ideal.min(space_above).max(1.0)
+        } else {
+            ideal.min(space_below.max(min_row))
+        };
+        if open_up {
+            my = (menu.anchor_top - gap - view_h).max(margin);
+        }
         let max_scroll = (content_h - view_h).max(0.0);
         drop_scroll = drop_scroll.clamp(0.0, max_scroll);
         drop_menu = Some((mx, my, bw, view_h, content_h));
@@ -3710,7 +3855,9 @@ pub(crate) fn paint_hue_bar(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32) {
 }
 
 pub(crate) unsafe fn present(hwnd: HWND, px: &Pixmap) {
-    let hdc = GetDC(hwnd);
+    // GetDC paints through child windows. Clip so the Ranked WebView2 stays visible.
+    let hdc = GetDCEx(hwnd, HRGN::default(), DCX_CACHE | DCX_CLIPCHILDREN);
+    let hdc = if hdc.is_invalid() { GetDC(hwnd) } else { hdc };
     if hdc.is_invalid() {
         return;
     }

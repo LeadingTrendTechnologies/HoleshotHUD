@@ -1,12 +1,30 @@
 #![allow(unused_imports)]
 use super::*;
 
-pub(crate) fn ticker_delta(focus: &crate::shm::Standing, row: &crate::shm::Standing) -> String {
-    format_signed_delta(row.gap_ms - focus.gap_ms, row.gap_laps - focus.gap_laps)
+/// Leader (live P1) shows a lap time. Everyone else shows the classification
+/// interval to the rider one place ahead, same as the Standings interval column.
+fn ticker_card_line(s: &Snapshot, row: &crate::shm::Standing, is_focus: bool) -> String {
+    if row.position <= 1 {
+        let ms = if row.last_lap_ms > 0 {
+            row.last_lap_ms
+        } else if is_focus && s.last_lap_ms > 0 {
+            s.last_lap_ms
+        } else {
+            row.best_lap_ms
+        };
+        return format_lap(ms);
+    }
+    RaceStore::with(|store| {
+        store
+            .field
+            .row_by_num(row.race_num)
+            .map(interval_text_from_row)
+            .unwrap_or_else(|| interval_text(s, row))
+    })
 }
 
 pub(crate) fn ticker_meta_label(field: BoardField, val: &str) -> &'static str {
-    match field {
+    crate::i18n::t(match field {
         BoardField::Lap | BoardField::LapsLeft | BoardField::Session | BoardField::RaceTime => {
             if val.contains('/') || val.starts_with('+') {
                 "LAPS"
@@ -33,12 +51,12 @@ pub(crate) fn ticker_meta_label(field: BoardField, val: &str) -> &'static str {
         BoardField::Penalty => "PEN",
         BoardField::Server => "SERVER",
         BoardField::None => "",
-    }
+    })
 }
 
 pub(crate) fn ticker_title(s: &Snapshot) -> String {
     let track = bytes_as_text(&s.track_name);
-    let kind = if is_warmup(s) {
+    let kind = crate::i18n::t(if is_warmup(s) {
         "WARMUP"
     } else if is_lap_race(s) {
         "LAP RACE"
@@ -48,7 +66,7 @@ pub(crate) fn ticker_title(s: &Snapshot) -> String {
         "TIMED"
     } else {
         "SESSION"
-    };
+    });
     if track.is_empty() {
         kind.into()
     } else {
@@ -204,7 +222,11 @@ pub(crate) fn draw_ticker(
         let scroll = if cfg.ticker.ticker_autoscroll && n > vis {
             (now * HS_AUTO_SPEED).rem_euclid(n as f32)
         } else {
-            let target = hstand_scroll_start(fi, vis, n);
+            let target = HS_SCROLL.with(|a| {
+                let slide = a.borrow();
+                let current = if slide.init { slide.to } else { 0.0 };
+                hstand_scroll_hold(fi, vis, n, current)
+            });
             HS_SCROLL.with(|a| a.borrow_mut().step(target, now))
         };
         let lw = cards_w.ceil().max(1.0) as u32;
@@ -310,6 +332,23 @@ pub(crate) fn hstand_scroll_start(focus_idx: usize, vis: usize, n: usize) -> f32
     }
 }
 
+/// Keep `current` while the focus card still overlaps that window.
+/// Pin only when the card is fully outside, so a camera change does not slide the strip.
+pub(crate) fn hstand_scroll_hold(focus_idx: usize, vis: usize, n: usize, current: f32) -> f32 {
+    let vis = vis.max(1);
+    if n <= vis {
+        return 0.0;
+    }
+    let start = current;
+    let end = current + vis as f32;
+    let index = focus_idx as f32;
+    if index < end && index + 1.0 > start {
+        current
+    } else {
+        hstand_scroll_start(focus_idx, vis, n)
+    }
+}
+
 pub(crate) fn ticker_meta_copy(
     _fonts: &Fonts,
     s: &Snapshot,
@@ -404,7 +443,7 @@ pub(crate) fn draw_ticker_card(
     let is_focus = row.race_num == focus.race_num;
     let out = standing_status(row).is_some() && standing_status(row) != Some("PIT");
     if is_focus {
-        fill_fade_row(px, x, y, w, h, you_row_bg(cfg.ticker.ticker_hl));
+        fill_fade_card(px, x, y, w, h, you_row_bg(cfg.ticker.ticker_hl));
     }
     let pos_s = (h * 0.38).clamp(14.0, 20.0);
     let pos_y = y + (h - pos_s) * 0.5;
@@ -434,6 +473,21 @@ pub(crate) fn draw_ticker_card(
         fill_rect(px, rrt, accent_c);
     }
     let text_x = bar_x + 7.0;
+    let badge = cfg.group_badge(&bytes_as_text(&row.name));
+    let badge_w = if badge.is_some() { 14.0 } else { 0.0 };
+    if let Some((mark, rgb)) = badge {
+        icon(
+            px,
+            fonts,
+            mark,
+            11.0,
+            text_x,
+            y + h * 0.18,
+            Color::from_rgba8(rgb[0], rgb[1], rgb[2], 255),
+            false,
+        );
+    }
+    let name_x = text_x + badge_w;
     let name_sz = (h * 0.28).clamp(10.5, 13.5);
     let gap_sz = (h * 0.22).clamp(8.5, 11.0);
     let mark = if cfg.ticker.ticker_status {
@@ -450,7 +504,7 @@ pub(crate) fn draw_ticker_card(
         fonts,
         &bytes_as_text(&row.name),
         name_sz,
-        (w - (text_x - x) - 8.0 - status_pad).max(24.0),
+        (w - (name_x - x) - 8.0 - status_pad).max(24.0),
     );
     let name_c = if out {
         Color::from_rgba8(110, 110, 116, 255)
@@ -462,7 +516,7 @@ pub(crate) fn draw_ticker_card(
         fonts,
         &name,
         name_sz,
-        text_x,
+        name_x,
         y + h * 0.16,
         name_c,
         false,
@@ -474,35 +528,12 @@ pub(crate) fn draw_ticker_card(
     } else {
         Color::from_rgba8(168, 168, 176, 255)
     };
-    let gap = if is_focus {
-        let ms = if row.last_lap_ms > 0 {
-            row.last_lap_ms
-        } else if s.last_lap_ms > 0 {
-            s.last_lap_ms
-        } else {
-            row.best_lap_ms
-        };
-        format_lap(ms)
-    } else if !cfg.ticker.ticker_status {
-        if let Some(st) = standing_status(row) {
-            st.to_string()
-        } else {
-            RaceStore::with(|store| {
-                store
-                    .field
-                    .row_by_num(row.race_num)
-                    .map(ticker_delta_from_row)
-                    .unwrap_or_else(|| ticker_delta(focus, row))
-            })
-        }
+    let gap = if !cfg.ticker.ticker_status {
+        standing_status(row)
+            .map(str::to_string)
+            .unwrap_or_else(|| ticker_card_line(s, row, is_focus))
     } else {
-        RaceStore::with(|store| {
-            store
-                .field
-                .row_by_num(row.race_num)
-                .map(ticker_delta_from_row)
-                .unwrap_or_else(|| ticker_delta(focus, row))
-        })
+        ticker_card_line(s, row, is_focus)
     };
     text(px, fonts, &gap, gap_sz, text_x, y + h * 0.52, gap_c, false);
     if !matches!(mark, RiderMark::None) {
@@ -517,7 +548,7 @@ pub(crate) fn draw_ticker_card(
         );
     }
     if best_ms > 0 && row.best_lap_ms == best_ms && !out {
-        let tag = "FASTEST LAP";
+        let tag = crate::i18n::t("FASTEST LAP");
         let tag_sz = (7.5 * k).clamp(6.5, 8.5);
         let tw = measure(fonts, tag, tag_sz);
         text(

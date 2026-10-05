@@ -536,6 +536,103 @@ impl SettingsTheme {
     }
 }
 
+/// F8 Look language. `System` follows the Windows UI locale.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Language {
+    System,
+    En,
+    Fr,
+    It,
+    Es,
+    De,
+    PtBr,
+    Nl,
+}
+
+impl Language {
+    pub const CHOICES: [Self; 8] = [
+        Self::System,
+        Self::En,
+        Self::Fr,
+        Self::It,
+        Self::Es,
+        Self::De,
+        Self::PtBr,
+        Self::Nl,
+    ];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::System => "system",
+            Self::En => "en",
+            Self::Fr => "fr",
+            Self::It => "it",
+            Self::Es => "es",
+            Self::De => "de",
+            Self::PtBr => "pt-BR",
+            Self::Nl => "nl",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "en" | "en-us" | "en-gb" => Self::En,
+            "fr" | "fr-fr" | "fr-ca" => Self::Fr,
+            "it" | "it-it" => Self::It,
+            "es" | "es-es" | "es-mx" | "es-ar" => Self::Es,
+            "de" | "de-de" | "de-at" | "de-ch" => Self::De,
+            "pt-br" | "pt_br" | "pt" | "pt-pt" => Self::PtBr,
+            "nl" | "nl-nl" | "nl-be" => Self::Nl,
+            _ => Self::System,
+        }
+    }
+
+    /// Map a Windows locale tag. Unknown tags stay English. `pt` and `pt-PT` use Brazilian Portuguese.
+    pub fn from_locale(tag: &str) -> Self {
+        let tag = tag.trim().trim_matches('\0').replace('_', "-");
+        let primary = tag
+            .split('-')
+            .next()
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        match primary.as_str() {
+            "en" => Self::En,
+            "fr" => Self::Fr,
+            "it" => Self::It,
+            "es" => Self::Es,
+            "de" => Self::De,
+            "pt" => Self::PtBr,
+            "nl" => Self::Nl,
+            _ => Self::En,
+        }
+    }
+
+    /// Stored choice, with `System` replaced by the resolved Windows language.
+    pub fn resolved(self, system: Self) -> Self {
+        match self {
+            Self::System => match system {
+                Self::System => Self::En,
+                other => other,
+            },
+            other => other,
+        }
+    }
+
+    /// Name of the language in that language. `System` is the English word; paint it with `t`.
+    pub fn endonym(self) -> &'static str {
+        match self {
+            Self::System => "System",
+            Self::En => "English",
+            Self::Fr => "Français",
+            Self::It => "Italiano",
+            Self::Es => "Español",
+            Self::De => "Deutsch",
+            Self::PtBr => "Português (Brasil)",
+            Self::Nl => "Nederlands",
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum StanceBind {
     PadRb,
@@ -955,10 +1052,11 @@ pub enum WidgetId {
     Gamepad,
     Telemetry,
     Pitboard,
+    Timer,
 }
 
 impl WidgetId {
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 17] = [
         Self::Standings,
         Self::Relative,
         Self::Map,
@@ -975,8 +1073,9 @@ impl WidgetId {
         Self::Gamepad,
         Self::Telemetry,
         Self::Pitboard,
+        Self::Timer,
     ];
-    pub const COUNT: usize = 16;
+    pub const COUNT: usize = 17;
 
     pub fn idx(self) -> usize {
         self as usize
@@ -1090,6 +1189,12 @@ impl WidgetId {
                 w: 0.32,
                 h: 0.22,
             },
+            Self::Timer => Rect {
+                x: 0.40,
+                y: 0.058,
+                w: 0.0645,
+                h: 0.0337,
+            },
         }
     }
 
@@ -1098,7 +1203,7 @@ impl WidgetId {
             Self::Standings | Self::Relative => 78,
             Self::Radar | Self::Ticker | Self::Stance | Self::Lean => 86,
             Self::Gamepad | Self::Map | Self::Minimap | Self::Delta => 0,
-            Self::Dash | Self::Sys | Self::Sector | Self::Telemetry => 82,
+            Self::Dash | Self::Sys | Self::Sector | Self::Telemetry | Self::Timer => 82,
             Self::Pitboard => 100,
             Self::Flag => 100,
         }
@@ -1218,6 +1323,13 @@ impl WidgetId {
                 font: "pit_font",
                 bold: "pit_bold",
                 bg: "pit_bg",
+            },
+            Self::Timer => WidgetIni {
+                rect: "timer",
+                show: "show_timer",
+                font: "timer_font",
+                bold: "timer_bold",
+                bg: "timer_bg",
             },
         }
     }
@@ -2086,6 +2198,12 @@ pub struct RadarLayout {
 }
 
 #[derive(Clone)]
+pub struct TimerLayout {
+    /// Place reads `P3/12`. Off by default. Missing ini key stays off.
+    pub timer_of: bool,
+}
+
+#[derive(Clone)]
 pub struct DashLayout {
     pub dash_rev: bool,
     /// Nearby crash wrap on Dash. Off by default.
@@ -2209,6 +2327,7 @@ pub struct HudLayout {
     pub telemetry: TelemetryLayout,
     pub pit: PitLayout,
     pub sys: SysLayout,
+    pub timer: TimerLayout,
 }
 
 impl HudLayout {
@@ -2403,6 +2522,7 @@ impl HudLayout {
             sys: SysLayout {
                 sys_apps: default_sys_apps(),
             },
+            timer: TimerLayout { timer_of: false },
         }
     }
 
@@ -2433,6 +2553,139 @@ impl IndexMut<WidgetId> for HudLayout {
     fn index_mut(&mut self, id: WidgetId) -> &mut WidgetPrefs {
         self.prefs_mut(id)
     }
+}
+
+pub const GROUP_MAX: usize = 24;
+pub const GROUP_MEMBER_MAX: usize = 64;
+pub const GROUP_NAME_MAX: usize = 31;
+
+/// Font Awesome solid glyphs for a group mark. Order is the settings icon row.
+pub const GROUP_ICONS: [char; 10] = [
+    '\u{f024}', // flag
+    '\u{f005}', // star
+    '\u{f132}', // shield
+    '\u{f807}', // helmet
+    '\u{f0e7}', // bolt
+    '\u{f521}', // crown
+    '\u{f111}', // circle
+    '\u{f3a5}', // gem
+    '\u{f0c0}', // friends
+    '\u{f091}', // ranked
+];
+
+/// Swatches on the Groups page. Orange is the Holeshot accent.
+pub const GROUP_COLORS: [[u8; 3]; 6] = [
+    [0xFF, 0x94, 0x30],
+    [0x3B, 0x82, 0xF6],
+    [0x30, 0xDC, 0x58],
+    [0xFF, 0x40, 0x48],
+    [0xC4, 0x70, 0xFF],
+    [0xE4, 0xE4, 0xE6],
+];
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RiderGroup {
+    pub name: String,
+    pub icon: char,
+    pub color: [u8; 3],
+    pub members: Vec<String>,
+}
+
+impl RiderGroup {
+    pub fn new(name: &str) -> Self {
+        Self {
+            name: clamp_group_name(name),
+            icon: GROUP_ICONS[0],
+            color: GROUP_COLORS[0],
+            members: Vec::new(),
+        }
+    }
+}
+
+pub fn rider_key(name: &str) -> String {
+    clamp_group_name(name).to_lowercase()
+}
+
+pub fn clamp_group_name(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|ch| if ch == '\t' || ch == '\n' || ch == '\r' { ' ' } else { ch })
+        .collect();
+    cleaned.trim().chars().take(GROUP_NAME_MAX).collect()
+}
+
+/// First group in list order that contains this display name.
+pub fn group_badge(groups: &[RiderGroup], name: &str) -> Option<(char, [u8; 3])> {
+    let key = rider_key(name);
+    if key.is_empty() {
+        return None;
+    }
+    groups.iter().find_map(|group| {
+        group
+            .members
+            .iter()
+            .any(|member| rider_key(member) == key)
+            .then_some((group.icon, group.color))
+    })
+}
+
+fn groups_section(groups: &[RiderGroup], on_maps: bool) -> String {
+    let mut body = format!("\n[Groups]\non_maps={}\n", ini_flag(on_maps));
+    for (index, group) in groups.iter().enumerate().take(GROUP_MAX) {
+        body.push_str(&format!("{index}={}\n", encode_group(group)));
+    }
+    body
+}
+
+fn encode_group(group: &RiderGroup) -> String {
+    let mut parts = vec![
+        clamp_group_name(&group.name),
+        format!("{:04X}", group.icon as u32),
+        format_primary_color(group.color).trim_start_matches('#').to_string(),
+    ];
+    for member in group.members.iter().take(GROUP_MEMBER_MAX) {
+        let member = clamp_group_name(member);
+        if !member.is_empty() {
+            parts.push(member);
+        }
+    }
+    parts.join("\t")
+}
+
+fn parse_group_record(val: &str) -> Option<RiderGroup> {
+    let mut parts = val.split('\t');
+    let name = clamp_group_name(parts.next().unwrap_or(""));
+    if name.is_empty() {
+        return None;
+    }
+    let icon = parts
+        .next()
+        .and_then(|hex| u32::from_str_radix(hex.trim(), 16).ok())
+        .and_then(char::from_u32)
+        .filter(|ch| GROUP_ICONS.contains(ch))
+        .unwrap_or(GROUP_ICONS[0]);
+    let color = parts
+        .next()
+        .and_then(parse_primary_color)
+        .unwrap_or(GROUP_COLORS[0]);
+    let mut members: Vec<String> = Vec::new();
+    for part in parts {
+        let member = clamp_group_name(part);
+        if member.is_empty() || members.len() >= GROUP_MEMBER_MAX {
+            continue;
+        }
+        let key = rider_key(&member);
+        if members.iter().any(|have| rider_key(have) == key) {
+            continue;
+        }
+        members.push(member);
+    }
+    Some(RiderGroup {
+        name,
+        icon,
+        color,
+        members,
+    })
 }
 
 #[derive(Clone)]
@@ -2484,10 +2737,16 @@ pub struct HudConfig {
     pub settings_key: SettingsKey,
     /// F8 Settings chrome theme. Dark is the default charcoal look.
     pub settings_theme: SettingsTheme,
+    /// F8 Look. `System` follows the Windows UI locale.
+    pub language: Language,
     /// Settings host origin in virtual-screen pixels. A second monitor can be `x >= primary` or negative.
     pub settings_x: i32,
     pub settings_y: i32,
     pub stance_bind: StanceBind,
+    /// Rider groups. Shared across presets. List order picks the icon when a rider is in more than one.
+    pub groups: Vec<RiderGroup>,
+    /// When on, other riders on Map and Minimap use their group color. The orange you-dot stays orange.
+    pub groups_on_maps: bool,
     loaded_mtime: Option<SystemTime>,
 }
 
@@ -2524,9 +2783,12 @@ impl HudConfig {
             first_install_version: String::new(),
             settings_key: SettingsKey::F8,
             settings_theme: SettingsTheme::Dark,
+            language: Language::System,
             settings_x: 80,
             settings_y: 80,
             stance_bind: StanceBind::PadRb,
+            groups: Vec::new(),
+            groups_on_maps: false,
             loaded_mtime: None,
         }
     }
@@ -2906,16 +3168,106 @@ impl HudConfig {
         }
     }
 
+    pub fn group_badge(&self, name: &str) -> Option<(char, [u8; 3])> {
+        group_badge(&self.groups, name)
+    }
+
+    pub fn add_group(&mut self, name: &str) -> Option<usize> {
+        if self.groups.len() >= GROUP_MAX {
+            return None;
+        }
+        let mut group = RiderGroup::new(name);
+        if group.name.is_empty() {
+            group.name = "Group".into();
+        }
+        self.groups.push(group);
+        Some(self.groups.len() - 1)
+    }
+
+    pub fn remove_group(&mut self, index: usize) {
+        if index < self.groups.len() {
+            self.groups.remove(index);
+        }
+    }
+
+    pub fn move_group(&mut self, index: usize, delta: isize) -> usize {
+        if index >= self.groups.len() {
+            return index;
+        }
+        let next = index as isize + delta;
+        if next < 0 || next >= self.groups.len() as isize {
+            return index;
+        }
+        self.groups.swap(index, next as usize);
+        next as usize
+    }
+
+    pub fn rename_group(&mut self, index: usize, name: &str) {
+        let name = clamp_group_name(name);
+        if name.is_empty() {
+            return;
+        }
+        if let Some(group) = self.groups.get_mut(index) {
+            group.name = name;
+        }
+    }
+
+    pub fn set_group_icon(&mut self, index: usize, icon: char) {
+        if !GROUP_ICONS.contains(&icon) {
+            return;
+        }
+        if let Some(group) = self.groups.get_mut(index) {
+            group.icon = icon;
+        }
+    }
+
+    pub fn set_group_color(&mut self, index: usize, color: [u8; 3]) {
+        if !GROUP_COLORS.contains(&color) {
+            return;
+        }
+        if let Some(group) = self.groups.get_mut(index) {
+            group.color = color;
+        }
+    }
+
+    pub fn add_group_members(&mut self, index: usize, names: &[String]) {
+        let Some(group) = self.groups.get_mut(index) else {
+            return;
+        };
+        for name in names {
+            let name = clamp_group_name(name);
+            if name.is_empty() || group.members.len() >= GROUP_MEMBER_MAX {
+                continue;
+            }
+            if group
+                .members
+                .iter()
+                .any(|member| rider_key(member) == rider_key(&name))
+            {
+                continue;
+            }
+            group.members.push(name);
+        }
+    }
+
+    pub fn remove_group_member(&mut self, index: usize, member: usize) {
+        if let Some(group) = self.groups.get_mut(index) {
+            if member < group.members.len() {
+                group.members.remove(member);
+            }
+        }
+    }
+
     pub fn save(&mut self) {
         let path = ini_path();
         if let Some(dir) = path.parent() {
             let _ = fs::create_dir_all(dir);
         }
-        let body = format!(
+        let mut body = format!(
             "# Holeshot HUD layout (normalized 0..1, origin top-left)\n\
              [App]\n\
              font_family={}\nprimary_color={}\nunits={}\nunits_speed={}\nunits_liquids={}\nunits_temperature={}\n\
-             settings_key={}\nsettings_theme={}\nsettings_x={}\nsettings_y={}\nstart_with_windows={}\nminimize_on_close={}\n\
+             settings_key={}\nsettings_theme={}\nlanguage={}\nsettings_x={}\nsettings_y={}\nstart_with_windows={}\nminimize_on_close={}\n\
              close_with_game={}\nopen_with_game={}\nstream_enabled={}\nstream_port={}\nauto_update_on_launch={}\nwhats_new_seen={}\n\
              first_install_version={}\nexperimental={}\nreview={}\ningame_hud={}\ngame_ui={}\n\
              game_ui_match_primary={}\ngame_ui_primary_color={}\n\
@@ -2930,6 +3282,7 @@ impl HudConfig {
             self.units.temperature.key(),
             self.settings_key.key(),
             self.settings_theme.key(),
+            self.language.key(),
             self.settings_x,
             self.settings_y,
             ini_flag(self.start_with_windows),
@@ -2960,6 +3313,7 @@ impl HudConfig {
             layout_ini(&self.stream_layouts[SessionPreset::Race.idx()]),
             layout_ini(&self.stream_layouts[SessionPreset::Spectate.idx()]),
         );
+        body.push_str(&groups_section(&self.groups, self.groups_on_maps));
         if write_atomic(&path, &body).is_ok() {
             self.loaded_mtime = fs::metadata(&path).and_then(|m| m.modified()).ok();
         }
@@ -3148,6 +3502,7 @@ enum IniSection {
     App,
     Preset(SessionPreset),
     StreamPreset(SessionPreset),
+    Groups,
     Legacy,
 }
 
@@ -3206,6 +3561,10 @@ fn apply_ini_text(cfg: &mut HudConfig, text: &str) -> IniScan {
         }
         if line.starts_with('[') {
             section = parse_ini_section(line);
+            if matches!(section, IniSection::Groups) {
+                cfg.groups.clear();
+                cfg.groups_on_maps = false;
+            }
             continue;
         }
         let Some((k, v)) = line.split_once('=') else {
@@ -3241,6 +3600,17 @@ fn apply_ini_text(cfg: &mut HudConfig, text: &str) -> IniScan {
                     continue;
                 }
                 apply_layout_key(layout, key, val, b, &mut scan.saw_stream_last_cols[p.idx()]);
+            }
+            IniSection::Groups => {
+                if key == "on_maps" {
+                    cfg.groups_on_maps = b;
+                    continue;
+                }
+                if let Some(group) = parse_group_record(val) {
+                    if cfg.groups.len() < GROUP_MAX {
+                        cfg.groups.push(group);
+                    }
+                }
             }
             IniSection::Legacy => {
                 if apply_app_key(
@@ -3353,6 +3723,7 @@ fn parse_ini_section(line: &str) -> IniSection {
         "warmupstream" => IniSection::StreamPreset(SessionPreset::Warmup),
         "racestream" => IniSection::StreamPreset(SessionPreset::Race),
         "spectatestream" | "spectatingstream" => IniSection::StreamPreset(SessionPreset::Spectate),
+        "groups" => IniSection::Groups,
         _ => IniSection::Legacy,
     }
 }
@@ -3414,6 +3785,7 @@ fn apply_app_key(
         }
         "settings_key" => cfg.settings_key = SettingsKey::parse(val),
         "settings_theme" => cfg.settings_theme = SettingsTheme::parse(val),
+        "language" => cfg.language = Language::parse(val),
         "settings_x" => {
             if let Ok(n) = val.parse::<i32>() {
                 cfg.settings_x = n;
@@ -3529,6 +3901,10 @@ impl HudLayout {
             WidgetId::Gamepad => self.mix_gamepad(&mut mix),
             WidgetId::Telemetry => self.mix_telemetry(&mut mix),
             WidgetId::Pitboard => self.mix_pit(&mut mix),
+            WidgetId::Timer => {
+                mix_style(&mut mix, self, WidgetId::Timer);
+                mix.flag(self.timer.timer_of);
+            }
         }
         mix.finish()
     }
@@ -3559,6 +3935,7 @@ impl HudLayout {
             WidgetId::Gamepad => self.gamepad = source.gamepad.clone(),
             WidgetId::Telemetry => self.telemetry = source.telemetry.clone(),
             WidgetId::Pitboard => self.pit = source.pit.clone(),
+            WidgetId::Timer => self.timer = source.timer.clone(),
         }
     }
 
@@ -4035,6 +4412,16 @@ impl RadarLayout {
     }
 }
 
+impl TimerLayout {
+    fn apply_key(&mut self, key: &str, on: bool) -> bool {
+        match key {
+            "timer_of" => self.timer_of = on,
+            _ => return false,
+        }
+        true
+    }
+}
+
 impl DashLayout {
     fn apply_key(&mut self, key: &str, val: &str, b: bool) -> bool {
         match key {
@@ -4175,6 +4562,9 @@ fn apply_layout_key(cfg: &mut HudLayout, key: &str, val: &str, b: bool, saw_last
     if cfg.dash.apply_key(key, val, b) {
         return;
     }
+    if cfg.timer.apply_key(key, b) {
+        return;
+    }
     if cfg.stance.apply_key(key, val, b) {
         return;
     }
@@ -4252,6 +4642,7 @@ fn layout_ini(l: &HudLayout) -> String {
     let gamepad = l[WidgetId::Gamepad];
     let telemetry = l[WidgetId::Telemetry];
     let pit = l[WidgetId::Pitboard];
+    let timer = l[WidgetId::Timer];
     format!(
         "standings_x={}\nstandings_y={}\nstandings_w={}\nstandings_h={}\n\
          relative_x={}\nrelative_y={}\nrelative_w={}\nrelative_h={}\n\
@@ -4269,9 +4660,10 @@ fn layout_ini(l: &HudLayout) -> String {
          gamepad_x={}\ngamepad_y={}\ngamepad_w={}\ngamepad_h={}\n\
          telemetry_x={}\ntelemetry_y={}\ntelemetry_w={}\ntelemetry_h={}\n\
          pitboard_x={}\npitboard_y={}\npitboard_w={}\npitboard_h={}\n\
+         timer_x={}\ntimer_y={}\ntimer_w={}\ntimer_h={}\n\
          show_standings={}\nshow_relative={}\nshow_map={}\nshow_minimap={}\nshow_radar={}\n\
          show_dash={}\nshow_ticker={}\nshow_sys={}\nshow_sector={}\nshow_delta={}\n\
-         show_stance={}\nshow_flag={}\nshow_lean={}\nshow_gamepad={}\nshow_telemetry={}\nshow_pitboard={}\n\
+         show_stance={}\nshow_flag={}\nshow_lean={}\nshow_gamepad={}\nshow_telemetry={}\nshow_pitboard={}\nshow_timer={}\n\
          standings_rows={}\nrelative_count={}\nticker_count={}\n\
          st_pos={}\nst_num={}\nst_name={}\nst_gap={}\nst_interval={}\nst_laps={}\nst_current={}\n\
          st_best={}\nst_last={}\nst_status={}\nst_bike={}\nst_penalty={}\nst_crashed={}\nst_category={}\nst_lapdiff={}\n\
@@ -4311,7 +4703,8 @@ fn layout_ini(l: &HudLayout) -> String {
          telemetry_bg={}\ntelemetry_font={}\ntelemetry_bold={}\n\
          pit_sponsor={}\npit_art={}\npit_board={}\npit_text={}\npit_vars={}\npit_when={}\n\
          pit_yellow={}\npit_blue={}\n\
-         pit_bg={}\npit_font={}\npit_bold={}",
+         pit_bg={}\npit_font={}\npit_bold={}\n\
+         timer_bg={}\ntimer_font={}\ntimer_bold={}\ntimer_of={}",
         st.rect.x, st.rect.y, st.rect.w, st.rect.h,
         rel.rect.x, rel.rect.y, rel.rect.w, rel.rect.h,
         map.rect.x, map.rect.y, map.rect.w, map.rect.h,
@@ -4328,9 +4721,10 @@ fn layout_ini(l: &HudLayout) -> String {
         gamepad.rect.x, gamepad.rect.y, gamepad.rect.w, gamepad.rect.h,
         telemetry.rect.x, telemetry.rect.y, telemetry.rect.w, telemetry.rect.h,
         pit.rect.x, pit.rect.y, pit.rect.w, pit.rect.h,
+        timer.rect.x, timer.rect.y, timer.rect.w, timer.rect.h,
         ini_flag(st.show), ini_flag(rel.show), ini_flag(map.show), ini_flag(mini.show), ini_flag(radar.show),
         ini_flag(dash.show), ini_flag(ticker.show), ini_flag(sys.show), ini_flag(sector.show), ini_flag(delta.show),
-        ini_flag(stance.show), ini_flag(flag.show), ini_flag(lean.show), ini_flag(gamepad.show), ini_flag(telemetry.show), ini_flag(pit.show),
+        ini_flag(stance.show), ini_flag(flag.show), ini_flag(lean.show), ini_flag(gamepad.show), ini_flag(telemetry.show), ini_flag(pit.show), ini_flag(timer.show),
         l.standings.standings_rows, l.relative.relative_count, l.ticker.ticker_count,
         ini_flag(l.standings.st_pos), ini_flag(l.standings.st_num), ini_flag(l.standings.st_name), ini_flag(l.standings.st_gap), ini_flag(l.standings.st_interval), ini_flag(l.standings.st_laps), ini_flag(l.standings.st_current),
         ini_flag(l.standings.st_best), ini_flag(l.standings.st_last), ini_flag(l.standings.st_status), ini_flag(l.standings.st_bike), ini_flag(l.standings.st_penalty), ini_flag(l.standings.st_crashed), ini_flag(l.standings.st_category), ini_flag(l.standings.st_lapdiff),
@@ -4383,6 +4777,7 @@ fn layout_ini(l: &HudLayout) -> String {
         format_primary_color(l.pit.pit_yellow),
         format_primary_color(l.pit.pit_blue),
         pit.bg, pit.font, ini_flag(pit.bold),
+        timer.bg, timer.font, ini_flag(timer.bold), ini_flag(l.timer.timer_of),
     )
 }
 

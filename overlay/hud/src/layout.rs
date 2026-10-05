@@ -58,6 +58,7 @@ pub fn parse_target(name: &str) -> Option<WidgetId> {
         "gamepad" => WidgetId::Gamepad,
         "telemetry" => WidgetId::Telemetry,
         "pitboard" | "pit" => WidgetId::Pitboard,
+        "timer" | "session" => WidgetId::Timer,
         _ => return None,
     })
 }
@@ -88,6 +89,7 @@ pub fn min_px(id: WidgetId) -> (f32, f32) {
         WidgetId::Gamepad => (160.0, 96.0),
         WidgetId::Telemetry => (220.0, 64.0),
         WidgetId::Pitboard => (200.0, 110.0),
+        WidgetId::Timer => (80.0, 22.0),
     }
 }
 
@@ -137,7 +139,8 @@ pub fn handle_at(r: Rect, nx: f32, ny: f32, ow: f32, oh: f32, id: WidgetId) -> O
     let y0 = r.y * oh;
     let x1 = (r.x + r.w) * ow;
     let y1 = (r.y + r.h) * oh;
-    let s = 12.0;
+    let span = (x1 - x0).min(y1 - y0);
+    let s = 12.0_f32.min(span * 0.25).max(4.0);
     if id == WidgetId::Ticker {
         if px >= x0 - s && px <= x1 + s && py >= y0 - s && py <= y1 + s {
             if (px - x0).abs() <= s {

@@ -3,9 +3,7 @@ use std::sync::atomic::Ordering;
 use tiny_skia::Pixmap;
 use windows::Win32::Foundation::{BOOL, HWND, LPARAM, RECT};
 use windows::Win32::Graphics::Gdi::{
-    EnumDisplayMonitors,
-    GetMonitorInfoW, HDC, HMONITOR,
-    MONITORINFO,
+    EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFO,
 };
 use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -15,9 +13,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     SW_RESTORE, SW_SHOW,
 };
 
-use crate::config::{
-    update_config, with_config, EditSurface, FontFamily, StanceBind,
-};
+use crate::config::{update_config, with_config, EditSurface, FontFamily, StanceBind};
 use crate::render::Fonts;
 
 use super::*;
@@ -70,6 +66,7 @@ pub fn attach(host: HWND) {
         analyze_follow: false,
         map_drag: None,
         profile_all_time: true,
+        profile_ranked_only: false,
         tracks_selected: None,
         tracks_zoom: 1.0,
         tracks_pan_x: 0.0,
@@ -301,6 +298,7 @@ pub fn dump_whats_new(path: &std::path::Path) -> Result<crate::changelog::Notes,
         analyze_follow: false,
         map_drag: None,
         profile_all_time: true,
+        profile_ranked_only: false,
         tracks_selected: None,
         tracks_zoom: 1.0,
         tracks_pan_x: 0.0,
@@ -428,6 +426,7 @@ pub(crate) fn paint_review_tab(
         analyze_follow: false,
         map_drag: None,
         profile_all_time: true,
+        profile_ranked_only: false,
         tracks_selected: None,
         tracks_zoom: 1.0,
         tracks_pan_x: 0.0,
@@ -625,4 +624,3 @@ pub fn paint(fonts: &Fonts) {
         present(host, &px);
     }
 }
-

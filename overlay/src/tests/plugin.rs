@@ -1,6 +1,40 @@
 use super::*;
 
 #[test]
+fn ranked_url_uses_ff_and_steamid64_hex() {
+    let url = ranked_url_from_account(0x1284_9BE5).unwrap();
+    assert_eq!(url, "https://mxb-ranked.com/Rider/FF0110000112849BE5");
+}
+
+#[test]
+fn ranked_url_rejects_signed_out_account() {
+    assert!(ranked_url_from_account(0).is_none());
+}
+
+#[test]
+fn most_recent_login_user_is_the_steam_id() {
+    let vdf = r#"
+"users"
+{
+	"76561198000000000"
+	{
+		"MostRecent"		"0"
+	}
+	"76561198270946277"
+	{
+		"AccountName"		"rider"
+		"MostRecent"		"1"
+	}
+}
+"#;
+    assert_eq!(most_recent_steam_id(vdf), Some(76561198270946277));
+    assert_eq!(
+        ranked_url_from_steam_id64(most_recent_steam_id(vdf).unwrap()),
+        "https://mxb-ranked.com/Rider/FF0110000112849BE5"
+    );
+}
+
+#[test]
 fn embedded_plugin_wins_over_sidecar() {
     let embedded = vec![1u8; 2000];
     let sidecar = vec![2u8; 2000];

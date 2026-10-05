@@ -81,6 +81,10 @@ pub fn reset() {}
 
 pub fn tick(_s: &Snapshot, _in_session: bool) {}
 
+pub fn take_ranked_page_stale() -> bool {
+    false
+}
+
 pub fn live_id() -> Option<i64> {
     None
 }
@@ -89,7 +93,11 @@ pub fn list(_filter: ListFilter) -> Vec<SessionRow> {
     Vec::new()
 }
 
-pub fn profile(_window: crate::ProfileWindow) -> crate::RiderProfile {
+pub fn profile(window: crate::ProfileWindow) -> crate::RiderProfile {
+    profile_for(window, false)
+}
+
+pub fn profile_for(_window: crate::ProfileWindow, _ranked_only: bool) -> crate::RiderProfile {
     crate::RiderProfile::empty()
 }
 

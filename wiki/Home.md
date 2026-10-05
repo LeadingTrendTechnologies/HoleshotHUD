@@ -39,7 +39,7 @@ To add a widget: if the field is **Overlay**, draw it. If **Cached** / **Receive
 
 ## Overlay widget wikis
 
-Per-widget behavior, pitfalls, and change history for agents: **[widgets.md](widgets.md)**. Wishlist (not shipped): **[future.md](widgets/future.md)**. Streaming (OBS Browser Source + stream layouts): **[streaming.md](streaming.md)**. Broadcast gaps: **[stream-broadcast.md](stream-broadcast.md)**.
+Per-widget behavior, pitfalls, and change history for agents: **[widgets.md](widgets.md)**. Wishlist (not shipped): **[future/widgets.md](future/widgets.md)**. Signals the HUD does not show: **[future/unread.md](future/unread.md)**. Streaming (OBS Browser Source + stream layouts): **[streaming.md](streaming.md)**. Broadcast gaps: **[future/stream-broadcast.md](future/stream-broadcast.md)**.
 
 Rust overlay structure and possible refactors (suggestions only): **[rust-patterns.md](rust-patterns.md)**. MX Bikes menu pack (`game_ui/`) cleanup backlog: **[game-ui.md](game-ui.md)**.
 
@@ -429,7 +429,7 @@ Already published (version **1**):
 
 Command mapping `Local\MXBOHudCmdV1` (`MxboShmCmd`): overlay writes `spectateRaceNum`; plugin writes `spectating` while `SpectateVehicles` is live. Not part of the snapshot seqlock.
 
-**Not published yet** (but available in the API or `PluginState`): penalty, bike names, laps/splits, comms, temps/suspension, spectate camera list, `m_iServerType`. Local throttle / brakes / clutch are Overlay (V14). Other riders still only send throttle / front brake / lean. Holeshot is Overlay (V16). Draw FPS counter is Overlay (V17). Server name + event GUID are Overlay (V18). Sector gate per rider is Overlay (V19).
+**Not published yet** (but available in the API or `PluginState`): suspension, acceleration, wheel speed, brake pressure, steer torque, angular rates, vertical velocity, the temp alarm band, `RaceCommunication`, spectate camera list, `m_iServerType`. Penalty, combined engine temp, air temp, and per-rider speed / RPM / gear / throttle / front brake are already in SHM. What the rider HUD still does not show is [future/unread.md](future/unread.md). Local throttle / brakes / clutch are Overlay (V14). Holeshot is Overlay (V16). Draw FPS counter is Overlay (V17). Server name + event GUID are Overlay (V18). Sector gate per rider is Overlay (V19).
 
 Bump `MXBO_SHM_VERSION` when you add fields; keep C and Rust `#[repr(C)]` layouts identical.
 
@@ -463,23 +463,23 @@ Existing overlay widgets: [widgets.md](widgets.md) (behavior + change logs). Fie
 | [Systems](widgets/systems.md) | host meters | Overlay |
 | [Sectors](widgets/sector.md) | `RunSplit` / `RaceSplit` | Overlay (labs flag) |
 | [Delta Bar](widgets/delta-bar.md) | overlay tape at `local_track_pos` | Overlay |
-| Shift light | `m_iRPM` vs `m_iShiftRPM` | Need SHM |
+| Shift light | `m_iRPM` vs `m_iShiftRPM` | Overlay (dash rev bar) |
 | Throttle / brakes / clutch | telemetry inputs | Overlay (V14) |
 | [Lean](widgets/lean.md) | `m_fRoll` / `m_fPitch` / `m_fSteer` / `m_fSteerLock` + `m_fLean` | Overlay |
 | [Controller](widgets/gamepad.md) | local XInput / DualShock HID | Overlay (not plugin). |
 | Fuel | `m_fFuel` / `m_fMaxFuel` | Overlay (dash / standings / relative / ticker) |
 | Setup | `m_szSetupFileName` | Overlay (dash / standings / relative / ticker) |
-| Temps | engine/water + alarm band | Need SHM |
+| Temps | combined engine/water temp | Overlay (dash / pit board). Alarm band Need SHM |
 | Suspension | length / velocity / max travel | Need SHM |
 | G-meter | acceleration XYZ | Need SHM |
 | Wheel slip | wheel speed vs chassis velocity | Need SHM |
 | Current / last / best lap | `RunLap` / `RaceLap` | Overlay (dash / standings) |
 | Sector delta | `RunSplit` / `RaceSplit` | Overlay (labs: Sectors) |
-| Session timer / laps to go | `RaceSession` + classification header | Unused |
-| Penalty banner | `m_iPenalty` + `RaceCommunication` | Cached / unused |
-| Holeshot | `RaceHoleshot` | Overlay (SHM v16). Profile count. |
-| Rival compare | `RaceVehicleData` speed/rpm vs you | Cached |
-| Air temp | session | Unused |
+| Session timer / laps to go | `RaceSession` | Overlay (dash / session) |
+| Penalty banner | `m_iPenalty` | Overlay (`penalty_ms`). `RaceCommunication` still unused |
+| Holeshot | `RaceHoleshot` | Overlay (SHM v16). Profile count. Live plaque not drawn |
+| Rival compare | `RaceVehicleData` speed/rpm/gear/throttle | Speed is a Relative column. RPM, gear, throttle, and front brake are in SHM and not drawn |
+| Air temp | session | Overlay (dash / pit board) |
 
 ---
 
@@ -498,4 +498,5 @@ Enums without comments in the header (`m_iSession`, `m_iConditions`, `m_iType`, 
 
 ## Change log
 
-- 2026-10-01 — Broadcast gaps live on [stream-broadcast.md](stream-broadcast.md), so streaming is not treated as “no new widgets.”
+- 2026-10-03 — Cheat sheet matches SHM. Penalty, combined temp, air temp, the rev bar, and the session clock are Overlay. Unread signals live on [future/unread.md](future/unread.md). Wishlists moved under `wiki/future/`.
+- 2026-10-01 — Broadcast gaps live on [stream-broadcast.md](future/stream-broadcast.md), so streaming is not treated as “no new widgets.”

@@ -248,16 +248,7 @@ fn paint_bullet_line(px: &mut Pixmap, fonts: &Fonts, line: &str, size: f32, x: f
         fill_rect(px, r, accent());
     }
     if !after.is_empty() {
-        text(
-            px,
-            fonts,
-            after,
-            size,
-            url_x + url_w,
-            y,
-            text_col(),
-            false,
-        );
+        text(px, fonts, after, size, url_x + url_w, y, text_col(), false);
     }
 }
 

@@ -19,7 +19,7 @@ Without a pose, or when the bike is more than 300 m from the centerline: whole-t
 
 Other riders use the same `rider_map_pose` placement as Map (live world XZ, centerline when that XZ is stuck).
 
-While riding you get an orange motion trail (velocity samples). Spectate has no local vel, so no trail. Others outside the circle are skipped. Default **Dot number** is bike **Number** (map defaults to **Position**). **Sector lines** match Map (dotted S1 / S2 / S3 at sector starts); a gate outside the zoomed circle is skipped.
+While riding you get an orange motion trail (velocity samples). Spectate has no local vel, so no trail. Others outside the circle are skipped. Default **Dot number** is bike **Number** (map defaults to **Position**). Numbered dots share Map’s penalty `*` (green ahead of on-track, red behind). **Sector lines** match Map (dotted S1 / S2 / S3 at sector starts); a gate outside the zoomed circle is skipped.
 
 Toggles match Map, plus **Zoom**. Default background 0.
 
@@ -29,9 +29,11 @@ Toggles match Map, plus **Zoom**. Default background 0.
 - Place other-rider (and spectate) dots on live world XZ, same as Map. A stuck XZ falls back to the centerline. At the gate / prestart, keep world XZ so stalls stay apart.
 - Leader crown, ahead / behind rings, and dot position numbers stay on live race order, same as Map.
 - Same lapping color rules as Map. Do not invent a second palette. Off in warmup, same as Map. Two laps down stays blue when nearby within catch span.
+- **Show on maps** shares Map: another rider's dot and chevron use the first group's color. The orange you-dot stays orange. Off by default.
 - Red only when you gained a lap on them (pairwise). Leader lapping someone behind you is not red.
 - Same-race S/F straddles must not paint blue/red (same continuous-progress rule as Map).
 - Position labels, leader crown and ahead / behind rings use live `RaceStore` rank during a race (same as Map). See [live race order](../live-order.md).
+- Numbered dots share Map’s penalty `*`. No star when numbers are off. Ahead / behind rings stay the wash outside the dot.
 - Ahead / behind rings stay off in warmup and practice (shared `place_rings_for_session` with Map).
 - When live, keep north-up (along-track forward = up). Do not rotate the circle with bike roll/yaw as a radar.
 - Follow / north-up must use `subject_pose`, not `has_telemetry` alone, or spectate falls back to a whole-track fit with no orange you-dot.
@@ -42,6 +44,9 @@ Toggles match Map, plus **Zoom**. Default background 0.
 
 ## Change log
 
+- 2026-10-04 — Shares Map: **Show on maps** recolors another rider's dot and chevron. The orange you-dot stays orange.
+- 2026-10-02 — Shares Map: numbered dots trail a green or red `*` when live place differs from on-track place.
+- 2026-10-02 — Shares Map: ahead / behind marks are a light wash and a 1px ring. Chevrons stay solid.
 - 2026-10-02 — Shares Map: dot numbers use the app font at semibold (Exo 2 SemiBold Italic by default).
 - 2026-10-01 — Shares Map: rider dots are a translucent disc with a 1px color ring.
 - 2026-10-01 — Shares Map: the S/F bar spans only the track stroke.

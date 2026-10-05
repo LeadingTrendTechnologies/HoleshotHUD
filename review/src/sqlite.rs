@@ -1,6 +1,7 @@
 //! Session review library (`%LOCALAPPDATA%\Holeshot HUD\reviews\reviews.sqlite`).
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -21,7 +22,7 @@ pub struct SessionRow {
     pub track: String,
     /// Online server name from SHM (empty offline / unknown). Used for Ranked chip / trophy.
     pub server_name: String,
-    /// True when `server_name` contains a `#lobby_id` present in `ranked_servers`.
+    /// True when `server_name` contains `MXB-Ranked.com`.
     pub ranked: bool,
     pub rider_count: i32,
     pub your_position: i32,
@@ -169,8 +170,7 @@ fn apply_field(d: &mut SessionDetail, s: &Snapshot, you: i32, fastest: i32) {
     }
     d.row.rider_count = n as i32;
     d.row.server_name = bytes_as_text(&s.server_name);
-    d.row.ranked = lobby_id_from_server_name(&d.row.server_name)
-        .is_some_and(|id| RANKED_LOBBY_IDS.contains(&id));
+    d.row.ranked = server_name_is_ranked(&d.row.server_name);
     let prev: Vec<(i32, bool, i32)> = d
         .riders
         .iter()
@@ -275,79 +275,15 @@ pub fn serial() -> std::sync::MutexGuard<'static, ()> {
     LOCK.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// Known MXB-Ranked lobby ids (allowlist for the Motos Ranked chip).
-const RANKED_LOBBY_IDS: &[i64] = &[
-    105004, 105010, 105001, 105005, 105019, 105020, 105014, 105017, 105013, 104785, 104847,
-    104840, 104982, 104986, 105016, 105009, 104964, 104981, 105012, 105011, 104819, 104945,
-    104999, 104996, 105008, 105018, 105015,
-];
-
-/// First `#` + digits in a server name (e.g. `… | #105019`).
-pub fn lobby_id_from_server_name(s: &str) -> Option<i64> {
-    let bytes = s.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'#' {
-            let start = i + 1;
-            let mut end = start;
-            while end < bytes.len() && bytes[end].is_ascii_digit() {
-                end += 1;
-            }
-            if end > start {
-                return s[start..end].parse().ok();
-            }
-        }
-        i += 1;
-    }
-    None
+fn server_name_is_ranked(server_name: &str) -> bool {
+    server_name.contains("MXB-Ranked.com")
 }
 
-fn ranked_lobby_set(c: &Connection) -> std::collections::HashSet<i64> {
-    let mut set = std::collections::HashSet::new();
-    if let Ok(mut stmt) = c.prepare("SELECT lobby_id FROM ranked_servers") {
-        if let Ok(rows) = stmt.query_map([], |r| r.get::<_, i64>(0)) {
-            for id in rows.flatten() {
-                set.insert(id);
-            }
-        }
-    }
-    if set.is_empty() {
-        set.extend(RANKED_LOBBY_IDS.iter().copied());
-    }
-    set
-}
+static RANKED_PAGE_STALE: AtomicBool = AtomicBool::new(false);
 
-fn server_name_is_ranked(ids: &std::collections::HashSet<i64>, server_name: &str) -> bool {
-    lobby_id_from_server_name(server_name).is_some_and(|id| ids.contains(&id))
-}
-
-fn seed_ranked_servers(c: &Connection) {
-    let _ = c.execute_batch(
-        "CREATE TABLE IF NOT EXISTS ranked_servers (
-           lobby_id INTEGER PRIMARY KEY,
-           host TEXT NOT NULL DEFAULT '',
-           series TEXT NOT NULL DEFAULT '',
-           class TEXT NOT NULL DEFAULT '',
-           split TEXT NOT NULL DEFAULT '',
-           region TEXT NOT NULL DEFAULT ''
-         );",
-    );
-    for id in RANKED_LOBBY_IDS {
-        let _ = c.execute(
-            "INSERT OR IGNORE INTO ranked_servers (lobby_id) VALUES (?1)",
-            params![id],
-        );
-    }
-    // Freebies 250 S3- regional lobbies (metadata known).
-    for (id, region) in [(105019i64, "EU"), (105020, "NA"), (105005, "NZ")] {
-        let _ = c.execute(
-            "UPDATE ranked_servers
-             SET host = 'MXB-Ranked.com', series = 'MX Freebies', class = '250',
-                 split = 'S3-', region = ?1
-             WHERE lobby_id = ?2",
-            params![region, id],
-        );
-    }
+/// True once, after a ranked session with laps has finished since the last take.
+pub fn take_ranked_page_stale() -> bool {
+    RANKED_PAGE_STALE.swap(false, Ordering::Relaxed)
 }
 
 pub fn init(dir: PathBuf) {
@@ -449,6 +385,10 @@ pub fn init(dir: PathBuf) {
         "ALTER TABLE profile_races ADD COLUMN penalty_ms INTEGER NOT NULL DEFAULT 0",
         [],
     );
+    let _ = conn.execute(
+        "ALTER TABLE profile_races ADD COLUMN ranked INTEGER NOT NULL DEFAULT 0",
+        [],
+    );
     let _ = conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS track_bank (
            track TEXT PRIMARY KEY,
@@ -480,14 +420,15 @@ pub fn init(dir: PathBuf) {
            name TEXT NOT NULL DEFAULT '',
            holeshot INTEGER,
            state INTEGER NOT NULL DEFAULT 0,
-           penalty_ms INTEGER NOT NULL DEFAULT 0
+           penalty_ms INTEGER NOT NULL DEFAULT 0,
+           ranked INTEGER NOT NULL DEFAULT 0
          );
          CREATE TABLE IF NOT EXISTS profile_meta (
            k TEXT PRIMARY KEY,
            v INTEGER NOT NULL
          );",
     );
-    seed_ranked_servers(&conn);
+    let _ = conn.execute_batch("DROP TABLE IF EXISTS ranked_servers;");
     seed_track_bank_if_needed(&conn);
     let mut st = live();
     st.conn = Some(conn);
@@ -697,10 +638,9 @@ pub fn list(filter: ListFilter) -> Vec<SessionRow> {
         Ok(it) => it.filter_map(|r| r.ok()).collect(),
         Err(_) => return Vec::new(),
     };
-    let ranked_ids = ranked_lobby_set(c);
     for row in &mut rows {
         row.you_won = session_you_won(c, row.id, row.rider_count);
-        row.ranked = server_name_is_ranked(&ranked_ids, &row.server_name);
+        row.ranked = server_name_is_ranked(&row.server_name);
     }
     if filter == ListFilter::Ranked {
         rows.retain(|row| row.ranked);
@@ -801,7 +741,7 @@ fn load_from(c: &Connection, id: i64) -> Option<SessionDetail> {
         .ok()
         .flatten()?;
     let (mut row, fastest_race_num, your_race_num, poly_blob, sf_meters, practice, kind) = row;
-    row.ranked = server_name_is_ranked(&ranked_lobby_set(c), &row.server_name);
+    row.ranked = server_name_is_ranked(&row.server_name);
     let mut riders = Vec::new();
     if let Ok(mut stmt) = c.prepare(
         "SELECT race_num, name, bike, position, best_ms, last_ms, state, penalty_ms,
@@ -1632,8 +1572,23 @@ fn delete_if_empty(c: &Connection, id: i64) {
 }
 
 fn finish_visit(c: &Connection, id: i64) {
+    let refresh = session_has_laps(c, id) && session_server_is_ranked(c, id);
     upsert_profile_race(c, id);
     delete_if_empty(c, id);
+    if refresh {
+        RANKED_PAGE_STALE.store(true, Ordering::Relaxed);
+    }
+}
+
+fn session_server_is_ranked(c: &Connection, id: i64) -> bool {
+    let name = c
+        .query_row(
+            "SELECT server_name FROM sessions WHERE id = ?1",
+            params![id],
+            |row| row.get::<_, String>(0),
+        )
+        .unwrap_or_default();
+    server_name_is_ranked(&name)
 }
 
 fn note_holeshot(c: &Connection, id: i64, s: &Snapshot, you: i32, practice: bool) {
@@ -1859,18 +1814,20 @@ fn compact_and_prune(c: &Connection) {
 }
 
 fn upsert_profile_race(c: &Connection, id: i64) {
-    let Some(compact) = race_input_from(c, id).and_then(|i| crate::compact_from_input(&i)) else {
+    let Some(mut compact) = race_input_from(c, id).and_then(|i| crate::compact_from_input(&i)) else {
         let _ = c.execute(
             "DELETE FROM profile_races WHERE session_id = ?1",
             params![id],
         );
         return;
     };
+    compact.ranked = session_server_is_ranked(c, id);
+    let ranked = if compact.ranked { 1 } else { 0 };
     let _ = c.execute(
         "INSERT INTO profile_races (
             session_id, started, rider_count, position, your_best_ms, fastest_ms,
-            laps, attack_hot, attack_n, air_hot, air_n, name, holeshot, state, penalty_ms
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+            laps, attack_hot, attack_n, air_hot, air_n, name, holeshot, state, penalty_ms, ranked
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
          ON CONFLICT(session_id) DO UPDATE SET
             started = excluded.started,
             rider_count = excluded.rider_count,
@@ -1885,7 +1842,8 @@ fn upsert_profile_race(c: &Connection, id: i64) {
             name = excluded.name,
             holeshot = excluded.holeshot,
             state = excluded.state,
-            penalty_ms = excluded.penalty_ms",
+            penalty_ms = excluded.penalty_ms,
+            ranked = excluded.ranked",
         params![
             compact.session_id,
             compact.started,
@@ -1901,7 +1859,8 @@ fn upsert_profile_race(c: &Connection, id: i64) {
             compact.name,
             compact.holeshot,
             compact.state,
-            compact.penalty_ms
+            compact.penalty_ms,
+            ranked
         ],
     );
 }
@@ -1965,6 +1924,7 @@ fn load_compact_row(
     holeshot: Option<i32>,
     state: i32,
     penalty_ms: i32,
+    ranked: i32,
 ) -> crate::CompactRace {
     crate::CompactRace {
         session_id,
@@ -1982,24 +1942,35 @@ fn load_compact_row(
         holeshot,
         state,
         penalty_ms,
+        ranked: ranked != 0,
     }
 }
 
 pub fn profile(window: crate::ProfileWindow) -> crate::RiderProfile {
+    profile_for(window, false)
+}
+
+pub fn profile_for(window: crate::ProfileWindow, ranked_only: bool) -> crate::RiderProfile {
     let st = live();
     let Some(c) = st.conn.as_ref() else {
         return crate::RiderProfile::empty();
     };
-    profile_from(c, window, now_secs())
+    profile_from(c, window, ranked_only, now_secs())
 }
 
-fn profile_from(c: &Connection, window: crate::ProfileWindow, now: i64) -> crate::RiderProfile {
+fn profile_from(
+    c: &Connection,
+    window: crate::ProfileWindow,
+    ranked_only: bool,
+    now: i64,
+) -> crate::RiderProfile {
     backfill_profile_races(c);
     let cutoff = now - crate::PROFILE_WINDOW_SECS;
     let mut races = Vec::new();
     if let Ok(mut stmt) = c.prepare(
         "SELECT session_id, started, rider_count, position, your_best_ms, fastest_ms,
-                laps, attack_hot, attack_n, air_hot, air_n, name, holeshot, state, penalty_ms
+                laps, attack_hot, attack_n, air_hot, air_n, name, holeshot, state, penalty_ms,
+                ranked
          FROM profile_races",
     ) {
         if let Ok(it) = stmt.query_map([], |r| {
@@ -2019,6 +1990,7 @@ fn profile_from(c: &Connection, window: crate::ProfileWindow, now: i64) -> crate
                 r.get(12)?,
                 r.get::<_, i32>(13).unwrap_or(0),
                 r.get::<_, i32>(14).unwrap_or(0),
+                r.get::<_, i32>(15).unwrap_or(0),
             ))
         }) {
             races.extend(it.filter_map(|r| r.ok()));
@@ -2032,6 +2004,14 @@ fn profile_from(c: &Connection, window: crate::ProfileWindow, now: i64) -> crate
             newest = race.started;
             name = race.name.clone();
         }
+    }
+    let sample_count = if ranked_only {
+        races.iter().filter(|race| race.ranked).count() as i32
+    } else {
+        all_time_count
+    };
+    if ranked_only {
+        races.retain(|race| race.ranked);
     }
     let window_races: Vec<&crate::CompactRace> = match window {
         crate::ProfileWindow::TwoWeeks => races.iter().filter(|r| r.started >= cutoff).collect(),
@@ -2049,6 +2029,7 @@ fn profile_from(c: &Connection, window: crate::ProfileWindow, now: i64) -> crate
         name,
         race_count: window_races.len() as i32,
         all_time_count,
+        sample_count,
         holeshots,
         scores: crate::mean_scores(&scores),
         ..crate::RiderProfile::empty()
@@ -2065,6 +2046,7 @@ fn profile_from(c: &Connection, window: crate::ProfileWindow, now: i64) -> crate
         cleared_at,
         cutoff,
         matches!(window, crate::ProfileWindow::AllTime),
+        ranked_only,
     ));
     profile.wins = win_ids.len() as i32;
     let rate_n = profile.race_count.max(profile.wins);
@@ -2079,6 +2061,7 @@ fn live_eligible_win_ids(
     cleared_at: i64,
     cutoff: i64,
     all_time: bool,
+    ranked_only: bool,
 ) -> std::collections::HashSet<i64> {
     let rows: Vec<(i64, i64)> = c
         .prepare("SELECT id, started FROM sessions")
@@ -2095,6 +2078,9 @@ fn live_eligible_win_ids(
             continue;
         }
         if !all_time && started < cutoff {
+            continue;
+        }
+        if ranked_only && !session_server_is_ranked(c, id) {
             continue;
         }
         let Some(input) = race_input_from(c, id) else {
@@ -3601,65 +3587,52 @@ mod tests {
     }
 
     #[test]
-    fn init_seeds_ranked_servers_allowlist() {
+    fn init_drops_ranked_servers_table() {
         let _g = serial();
         reset();
         let dir = std::env::temp_dir().join(format!("mxbo-ranked-servers-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         init(dir.clone());
+        {
+            let st = live();
+            let c = st.conn.as_ref().expect("conn");
+            c.execute_batch(
+                "CREATE TABLE ranked_servers (lobby_id INTEGER PRIMARY KEY);
+                 INSERT INTO ranked_servers (lobby_id) VALUES (105019);",
+            )
+            .expect("seed leftover table");
+        }
+        reset();
+        init(dir.clone());
         let st = live();
         let c = st.conn.as_ref().expect("conn");
-        let count: i64 = c
-            .query_row("SELECT COUNT(*) FROM ranked_servers", [], |r| r.get(0))
-            .expect("count");
-        assert_eq!(count, RANKED_LOBBY_IDS.len() as i64);
-        for id in RANKED_LOBBY_IDS {
-            let found: i64 = c
-                .query_row(
-                    "SELECT lobby_id FROM ranked_servers WHERE lobby_id = ?1",
-                    params![id],
-                    |r| r.get(0),
-                )
-                .unwrap_or(0);
-            assert_eq!(found, *id, "missing lobby {id}");
-        }
-        let freebies: Vec<(i64, String, String, String)> = c
-            .prepare(
-                "SELECT lobby_id, series, class, region FROM ranked_servers
-                 WHERE lobby_id IN (105019, 105020, 105005) ORDER BY lobby_id",
+        let present: i64 = c
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'ranked_servers'",
+                [],
+                |r| r.get(0),
             )
-            .expect("prep")
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
-            .expect("q")
-            .map(|r| r.expect("row"))
-            .collect();
-        assert_eq!(
-            freebies,
-            vec![
-                (105005, "MX Freebies".into(), "250".into(), "NZ".into()),
-                (105019, "MX Freebies".into(), "250".into(), "EU".into()),
-                (105020, "MX Freebies".into(), "250".into(), "NA".into()),
-            ]
-        );
+            .expect("master");
+        assert_eq!(present, 0);
         drop(st);
         reset();
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn lobby_id_from_server_name_parses_hash() {
-        assert_eq!(
-            lobby_id_from_server_name("MXB-Ranked.com | MX Freebies | 250 | S3- | EU | #105019"),
-            Some(105019)
-        );
-        assert_eq!(lobby_id_from_server_name("#105020"), Some(105020));
-        assert_eq!(lobby_id_from_server_name(""), None);
-        assert_eq!(lobby_id_from_server_name("offline practice"), None);
-        assert_eq!(lobby_id_from_server_name("no hash 105019"), None);
+    fn server_name_is_ranked_matches_host() {
+        assert!(server_name_is_ranked(
+            "MXB-Ranked.com | MX Freebies | 250 | S3- | EU | #105573"
+        ));
+        assert!(server_name_is_ranked("MXB-Ranked.com"));
+        assert!(!server_name_is_ranked("#105019"));
+        assert!(!server_name_is_ranked(""));
+        assert!(!server_name_is_ranked("offline practice"));
+        assert!(!server_name_is_ranked("mxb-ranked.com"));
     }
 
     #[test]
-    fn list_marks_ranked_when_server_lobby_in_allowlist() {
+    fn list_marks_ranked_when_server_name_is_mxb_ranked() {
         let _g = serial();
         reset();
         let dir = std::env::temp_dir().join(format!("mxbo-ranked-flag-{}", std::process::id()));
@@ -3683,18 +3656,32 @@ mod tests {
             upsert_lap(c, casual, &dummy_lap(2, 114_000, true, false)).expect("lap");
             let offline = insert_typed(c, "Millville", 7, 2, 7, false, "").expect("offline");
             upsert_lap(c, offline, &dummy_lap(2, 115_000, true, false)).expect("lap");
+            let new_lobby = insert_typed(
+                c,
+                "Unadilla",
+                7,
+                2,
+                7,
+                false,
+                "MXB-Ranked.com | MX Freebies | 250 | S3- | NA | #105573",
+            )
+            .expect("new lobby");
+            upsert_lap(c, new_lobby, &dummy_lap(2, 116_000, true, false)).expect("lap");
+            let id_only = insert_typed(c, "Budds Creek", 7, 2, 7, false, "Practice | #105019").expect("id only");
+            upsert_lap(c, id_only, &dummy_lap(2, 117_000, true, false)).expect("lap");
         }
         let rows = list(ListFilter::All);
         let by_track = |t: &str| rows.iter().find(|r| r.track == t).expect(t);
         assert!(by_track("Norwood").ranked);
         assert!(!by_track("Hangtown").ranked);
         assert!(!by_track("Millville").ranked);
+        assert!(by_track("Unadilla").ranked);
+        assert!(!by_track("Budds Creek").ranked);
         let detail = load(by_track("Norwood").id).expect("load");
         assert!(detail.row.ranked);
         let ranked_only = list(ListFilter::Ranked);
-        assert_eq!(ranked_only.len(), 1);
-        assert_eq!(ranked_only[0].track, "Norwood");
-        assert!(ranked_only[0].ranked);
+        assert_eq!(ranked_only.len(), 2);
+        assert!(ranked_only.iter().all(|row| row.ranked));
         reset();
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -3802,6 +3789,63 @@ mod tests {
         let p = profile(crate::ProfileWindow::AllTime);
         assert_eq!(p.all_time_count, 1);
         assert!(p.scores[0].is_some());
+        reset();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn profile_ranked_only_filters_and_survives_session_delete() {
+        let _g = serial();
+        reset();
+        let dir = std::env::temp_dir().join(format!("mxbo-profile-ranked-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        init(dir.clone());
+        {
+            let st = live();
+            let c = st.conn.as_ref().expect("conn");
+            let ranked = put_eligible_race(c, now_secs(), 2, &[113_000, 114_000, 112_500, 113_400]);
+            c.execute(
+                "UPDATE sessions SET server_name = ?1 WHERE id = ?2",
+                params!["MXB-Ranked.com #1", ranked],
+            )
+            .expect("ranked name");
+            c.execute(
+                "UPDATE riders SET position = 1 WHERE session_id = ?1 AND race_num = 2",
+                params![ranked],
+            )
+            .expect("ranked win");
+            let casual =
+                put_eligible_race(c, now_secs() - 30, 2, &[115_000, 116_000, 114_500, 115_400]);
+            c.execute(
+                "UPDATE sessions SET server_name = ?1 WHERE id = ?2",
+                params!["Club night", casual],
+            )
+            .expect("casual name");
+            c.execute(
+                "UPDATE riders SET position = 1 WHERE session_id = ?1 AND race_num = 2",
+                params![casual],
+            )
+            .expect("casual win");
+        }
+        let all = profile(crate::ProfileWindow::AllTime);
+        assert_eq!(all.race_count, 2);
+        assert_eq!(all.wins, 2);
+        assert_eq!(all.all_time_count, 2);
+        let only = profile_for(crate::ProfileWindow::AllTime, true);
+        assert_eq!(only.race_count, 1);
+        assert_eq!(only.wins, 1);
+        assert_eq!(only.all_time_count, 2);
+        assert_eq!(only.sample_count, 1);
+        {
+            let st = live();
+            let c = st.conn.as_ref().expect("conn");
+            c.execute("DELETE FROM sessions", []).expect("drop sessions");
+        }
+        let still = profile_for(crate::ProfileWindow::AllTime, true);
+        assert_eq!(still.race_count, 1);
+        assert_eq!(still.wins, 1);
+        assert_eq!(still.sample_count, 1);
+        assert_eq!(profile(crate::ProfileWindow::AllTime).race_count, 2);
         reset();
         let _ = std::fs::remove_dir_all(&dir);
     }

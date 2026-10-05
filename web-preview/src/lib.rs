@@ -367,6 +367,7 @@ impl Preview {
             false,
             false,
             false,
+            &mut |_, _| {},
         );
         if self.layout_edit {
             if let Some(t) = edit::parse_target(&self.active) {
@@ -454,6 +455,7 @@ fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg[WidgetId::Gamepad].show = name == "gamepad";
     cfg[WidgetId::Telemetry].show = name == "telemetry";
     cfg[WidgetId::Pitboard].show = name == "pitboard";
+    cfg[WidgetId::Timer].show = name == "timer";
 }
 
 fn widget_id(name: &str) -> Option<WidgetId> {
@@ -612,6 +614,8 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "gamepad_bold" => cfg[WidgetId::Gamepad].bold,
         "telemetry_bold" => cfg[WidgetId::Telemetry].bold,
         "pit_bold" => cfg[WidgetId::Pitboard].bold,
+        "timer_bold" => cfg[WidgetId::Timer].bold,
+        "timer_of" => cfg.timer.timer_of,
         "telemetry_traces" => cfg.telemetry.telemetry_traces,
         "telemetry_trace_throttle" => cfg.telemetry.telemetry_trace_throttle,
         "telemetry_trace_brake" => cfg.telemetry.telemetry_trace_brake,
@@ -720,6 +724,8 @@ fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
         "telemetry_bar_steer" => cfg.telemetry.telemetry_bar_steer = on,
         "telemetry_dial" => cfg.telemetry.telemetry_dial = on,
         "pit_bold" => cfg[WidgetId::Pitboard].bold = on,
+        "timer_bold" => cfg[WidgetId::Timer].bold = on,
+        "timer_of" => cfg.timer.timer_of = on,
         "flag_yellow" => cfg.flag.flag_yellow = on,
         "flag_blue" => cfg.flag.flag_blue = on,
         "flag_red" => cfg.flag.flag_red = on,
@@ -776,6 +782,8 @@ fn int_val(cfg: &HudConfig, key: &str) -> Option<i32> {
         "telemetry_bg" => cfg[WidgetId::Telemetry].bg,
         "pit_font" => cfg[WidgetId::Pitboard].font,
         "pit_bg" => cfg[WidgetId::Pitboard].bg,
+        "timer_font" => cfg[WidgetId::Timer].font,
+        "timer_bg" => cfg[WidgetId::Timer].bg,
         _ => return None,
     })
 }
@@ -807,6 +815,7 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "gamepad_bg" => cfg[WidgetId::Gamepad].bg = value.clamp(0, 100),
         "telemetry_bg" => cfg[WidgetId::Telemetry].bg = value.clamp(0, 100),
         "pit_bg" => cfg[WidgetId::Pitboard].bg = value.clamp(0, 100),
+        "timer_bg" => cfg[WidgetId::Timer].bg = value.clamp(0, 100),
         "ticker_count" => cfg.ticker.ticker_count = value.clamp(3, 15),
         "sector_hist_laps" => cfg.sector.sector_hist_laps = value.clamp(1, 5),
         "st_font" => cfg.set_font_pct(WidgetId::Standings, value),
@@ -825,6 +834,7 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "gamepad_font" => cfg.set_font_pct(WidgetId::Gamepad, value),
         "telemetry_font" => cfg.set_font_pct(WidgetId::Telemetry, value),
         "pit_font" => cfg.set_font_pct(WidgetId::Pitboard, value),
+        "timer_font" => cfg.set_font_pct(WidgetId::Timer, value),
         _ => {}
     }
 }
@@ -1343,6 +1353,7 @@ impl Live {
             false,
             false,
             false,
+            &mut |_, _| {},
         );
         px.data().to_vec()
     }

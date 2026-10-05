@@ -141,6 +141,14 @@ pub(crate) fn widget_pane_spec(id: WidgetId) -> WidgetPaneSpec {
             bg: Hit::PitBg,
             bg_label: "Panel opacity",
         },
+        WidgetId::Timer => WidgetPaneSpec {
+            id,
+            title: "Session",
+            subtitle: "Position and time or laps left",
+            show: Hit::TimerShow,
+            bg: Hit::TimerBg,
+            bg_label: "Panel opacity",
+        },
     }
 }
 
@@ -616,7 +624,11 @@ pub(crate) fn pane_map(
                     open_drop == Some(Drop::MapDot),
                     Hit::MapDotOpen,
                     &[
-                        (Hit::MapDotNum, "Number", cfg.map.map_dot == DotLabel::Number),
+                        (
+                            Hit::MapDotNum,
+                            "Number",
+                            cfg.map.map_dot == DotLabel::Number,
+                        ),
                         (
                             Hit::MapDotPos,
                             "Position",
@@ -796,7 +808,11 @@ pub(crate) fn pane_minimap(
                     open_drop == Some(Drop::MiniDot),
                     Hit::MiniDotOpen,
                     &[
-                        (Hit::MiniDotNum, "Number", cfg.mini.mini_dot == DotLabel::Number),
+                        (
+                            Hit::MiniDotNum,
+                            "Number",
+                            cfg.mini.mini_dot == DotLabel::Number,
+                        ),
                         (
                             Hit::MiniDotPos,
                             "Position",
@@ -1225,7 +1241,10 @@ pub(crate) fn pane_sys(
             x,
             y,
             w,
-            &format!("Up to {SYS_PROC_MAX} on the overlay. Matched by .exe name, not install folder. Hide a row with the switch; extras can be removed."),
+            &mxbo_hud::i18n::t_fmt(
+                "Up to {max} on the overlay. Matched by .exe name, not install folder. Hide a row with the switch; extras can be removed.",
+                &[("max", &SYS_PROC_MAX.to_string())],
+            ),
         );
             for (i, app) in cfg.sys.sys_apps.iter().enumerate() {
                 let i = i as u8;
@@ -1306,6 +1325,9 @@ pub(crate) fn pane_sector(
         w,
         spec,
         |px, fonts, y, shown, hits| {
+            if !shown {
+                return y;
+            }
             let mut y = note_lines(
             px,
             fonts,
@@ -1379,9 +1401,6 @@ pub(crate) fn pane_sector(
                 false,
             );
             y += 40.0;
-            if !shown {
-                return y;
-            }
             pane_style(px, fonts, spec, cfg, hover, hits, x, y, w)
         },
     )
@@ -1843,7 +1862,16 @@ fn pit_type_bar(
             bg()
         },
     );
-    text(px, fonts, value, 12.0, cursor + 10.0, drop_y + 6.0, text_col(), false);
+    text(
+        px,
+        fonts,
+        value,
+        12.0,
+        cursor + 10.0,
+        drop_y + 6.0,
+        text_col(),
+        false,
+    );
     chevron(
         px,
         cursor + drop_w - 14.0,
@@ -1860,6 +1888,7 @@ fn pit_type_bar(
             menus.borrow_mut().push(PendingDrop {
                 mx: cursor,
                 my: drop_y + drop_h + 6.0,
+                anchor_top: drop_y,
                 bw: drop_w,
                 content_h,
                 open_hit,
@@ -1869,15 +1898,27 @@ fn pit_type_bar(
     }
     cursor += drop_w + 14.0;
 
-    text(px, fonts, "Size", 13.0, cursor, y + 16.0, text_col(), false);
-    cursor += measure(fonts, "Size", 13.0) + 8.0;
+    let size_word = mxbo_hud::i18n::t("Size");
+    text(px, fonts, size_word, 13.0, cursor, y + 16.0, text_col(), false);
+    cursor += measure(fonts, size_word, 13.0) + 8.0;
     let size_label = size.to_string();
-    text(px, fonts, &size_label, 13.0, cursor, y + 16.0, text_col(), false);
+    text(
+        px,
+        fonts,
+        &size_label,
+        13.0,
+        cursor,
+        y + 16.0,
+        text_col(),
+        false,
+    );
     cursor += measure(fonts, &size_label, 13.0) + 10.0;
 
     let swatch_w = 52.0;
-    let text_w = measure(fonts, "Text", 13.0);
-    let bold_w = measure(fonts, "Bold", 13.0);
+    let text_word = mxbo_hud::i18n::t("Text");
+    let bold_word = mxbo_hud::i18n::t("Bold");
+    let text_w = measure(fonts, text_word, 13.0);
+    let bold_w = measure(fonts, bold_word, 13.0);
     let switch_w = 38.0;
     let swatch_x = x + w - 14.0 - swatch_w;
     let text_x = swatch_x - 8.0 - text_w;
@@ -1896,7 +1937,7 @@ fn pit_type_bar(
         hover,
         hits,
     );
-    text(px, fonts, "Bold", 13.0, bold_x, y + 16.0, text_col(), false);
+    text(px, fonts, bold_word, 13.0, bold_x, y + 16.0, text_col(), false);
     switch(
         px,
         bold_x + bold_w + 8.0,
@@ -1907,7 +1948,7 @@ fn pit_type_bar(
         hits,
     );
 
-    text(px, fonts, "Text", 13.0, text_x, y + 16.0, text_col(), false);
+    text(px, fonts, text_word, 13.0, text_x, y + 16.0, text_col(), false);
     hits.push(HitBox {
         id: text_hit,
         x: swatch_x,
@@ -1987,7 +2028,9 @@ fn pit_action_row(
             cursor_x = x;
             cursor_y += h + gap;
         }
-        action_btn(px, fonts, cursor_x, cursor_y, width, h, label, hit, hover, hits, false);
+        action_btn(
+            px, fonts, cursor_x, cursor_y, width, h, label, hit, hover, hits, false,
+        );
         cursor_x += width + gap;
     }
     cursor_y + h + 8.0
@@ -2005,308 +2048,357 @@ pub(crate) fn pane_pitboard(
     w: f32,
 ) -> f32 {
     let spec = widget_pane_spec(WidgetId::Pitboard);
-    open_widget_pane(px, fonts, cfg, hover, hits, x, y, w, spec, |px, fonts, y, shown, hits| {
-        let mut y = y;
-        if crate::stock_pitboard::needs_restart() {
-            text(
-                px,
-                fonts,
-                crate::stock_pitboard::RESTART_STOCK,
-                11.0,
-                x + 4.0,
-                y + 2.0,
-                accent(),
-                false,
-            );
-            y += 20.0;
-        }
-        if !shown {
-            return y;
-        }
-        y = pit_action_row(
-            px,
-            fonts,
-            x,
-            y,
-            w,
-            &[
-                ("Download demo", 148.0, Hit::PitDemo),
-                ("Make your own", 148.0, Hit::PitHelpOpen),
-            ],
-            hover,
-            hits,
-        );
-        y = pit_action_row(
-            px,
-            fonts,
-            x,
-            y,
-            w,
-            &[
-                ("Upload Pitboard image", 210.0, Hit::PitBrowse),
-                ("Export", 76.0, Hit::PitExport),
-                ("Import", 76.0, Hit::PitImport),
-            ],
-            hover,
-            hits,
-        );
-        seed_pit_name(&cfg.pit.pit_board);
-        let factory = cfg.pit.pit_board.is_empty() && (cfg.pit.pit_art.is_empty() || cfg.pit.pit_art == FACTORY_ART);
-        if factory && pit_name_focused() {
-            set_pit_name_focus(false);
-        }
-        let boards = mxbo_hud::pitboard::saved_boards();
-        let current = if !cfg.pit.pit_board.is_empty() {
-            cfg.pit.pit_board.clone()
-        } else if cfg.pit.pit_art.is_empty() || cfg.pit.pit_art == FACTORY_ART {
-            "Holeshot".to_string()
-        } else {
-            cfg.pit.pit_art.clone()
-        };
-        let mut board_options = vec![(
-            Hit::PitBoardFactory,
-            "Holeshot".to_string(),
-            cfg.pit.pit_board.is_empty() && (cfg.pit.pit_art.is_empty() || cfg.pit.pit_art == FACTORY_ART),
-        )];
-        for (index, name) in boards.iter().take(255).enumerate() {
-            board_options.push((
-                Hit::PitBoardPick(index as u8),
-                name.clone(),
-                cfg.pit.pit_board == *name,
-            ));
-        }
-        let saved_board = !cfg.pit.pit_board.is_empty();
-        let row_gap = 8.0;
-        let when_w = 228.0_f32.min(w * 0.4);
-        let board_w = (w - when_w - row_gap).max(160.0);
-        let board_y = y;
-        let board_bottom = ordered_menu_row(
-            px,
-            fonts,
-            x,
-            y,
-            board_w,
-            "Board",
-            &current,
-            open_drop == Some(Drop::PitBoard),
-            Hit::PitBoardOpen,
-            board_options,
-            hover,
-            hits,
-        );
-        let when_options = [
-            (Hit::PitWhenAlways, PitWhen::Always.label(), cfg.pit.pit_when == PitWhen::Always),
-            (Hit::PitWhenSector, PitWhen::Sector.label(), cfg.pit.pit_when == PitWhen::Sector),
-            (Hit::PitWhenLap, PitWhen::Lap.label(), cfg.pit.pit_when == PitWhen::Lap),
-        ];
-        let when_bottom = dropdown_row(
-            px,
-            fonts,
-            x + board_w + row_gap,
-            board_y,
-            when_w,
-            "When",
-            cfg.pit.pit_when.label(),
-            open_drop == Some(Drop::PitWhen),
-            Hit::PitWhenOpen,
-            &when_options,
-            hover,
-            hits,
-        );
-        y = board_bottom.max(when_bottom);
-        if factory {
+    open_widget_pane(
+        px,
+        fonts,
+        cfg,
+        hover,
+        hits,
+        x,
+        y,
+        w,
+        spec,
+        |px, fonts, y, shown, hits| {
+            let mut y = y;
+            if crate::stock_pitboard::needs_restart() {
+                text(
+                    px,
+                    fonts,
+                    crate::stock_pitboard::RESTART_STOCK,
+                    11.0,
+                    x + 4.0,
+                    y + 2.0,
+                    accent(),
+                    false,
+                );
+                y += 20.0;
+            }
+            if !shown {
+                return y;
+            }
             y = pit_action_row(
                 px,
                 fonts,
                 x,
                 y,
                 w,
-                &[("Reset layout", 124.0, Hit::PitReset)],
+                &[
+                    ("Download demo", 148.0, Hit::PitDemo),
+                    ("Make your own", 148.0, Hit::PitHelpOpen),
+                ],
                 hover,
                 hits,
             );
-        }
-        let name = if factory {
-            "Holeshot".to_string()
-        } else {
-            pit_name_draft()
-        };
-        let delete_w = 76.0;
-        let name_w = if saved_board {
-            (w - delete_w - row_gap).max(160.0)
-        } else {
-            w
-        };
-        let name_y = y;
-        y = name_row(
-            px,
-            fonts,
-            x,
-            y,
-            name_w,
-            &name,
-            !factory && pit_name_focused(),
-            Hit::PitName,
-            if factory { None } else { hover },
-            hits,
-        );
-        if saved_board {
+            y = pit_action_row(
+                px,
+                fonts,
+                x,
+                y,
+                w,
+                &[
+                    ("Upload Pitboard image", 210.0, Hit::PitBrowse),
+                    ("Export", 76.0, Hit::PitExport),
+                    ("Import", 76.0, Hit::PitImport),
+                ],
+                hover,
+                hits,
+            );
+            seed_pit_name(&cfg.pit.pit_board);
+            let factory = cfg.pit.pit_board.is_empty()
+                && (cfg.pit.pit_art.is_empty() || cfg.pit.pit_art == FACTORY_ART);
+            if factory && pit_name_focused() {
+                set_pit_name_focus(false);
+            }
+            let boards = mxbo_hud::pitboard::saved_boards();
+            let current = if !cfg.pit.pit_board.is_empty() {
+                cfg.pit.pit_board.clone()
+            } else if cfg.pit.pit_art.is_empty() || cfg.pit.pit_art == FACTORY_ART {
+                "Holeshot".to_string()
+            } else {
+                cfg.pit.pit_art.clone()
+            };
+            let mut board_options = vec![(
+                Hit::PitBoardFactory,
+                "Holeshot".to_string(),
+                cfg.pit.pit_board.is_empty()
+                    && (cfg.pit.pit_art.is_empty() || cfg.pit.pit_art == FACTORY_ART),
+            )];
+            for (index, name) in boards.iter().take(255).enumerate() {
+                board_options.push((
+                    Hit::PitBoardPick(index as u8),
+                    name.clone(),
+                    cfg.pit.pit_board == *name,
+                ));
+            }
+            let saved_board = !cfg.pit.pit_board.is_empty();
+            let row_gap = 8.0;
+            let when_w = 228.0_f32.min(w * 0.4);
+            let board_w = (w - when_w - row_gap).max(160.0);
+            let board_y = y;
+            let board_bottom = ordered_menu_row(
+                px,
+                fonts,
+                x,
+                y,
+                board_w,
+                "Board",
+                &current,
+                open_drop == Some(Drop::PitBoard),
+                Hit::PitBoardOpen,
+                board_options,
+                hover,
+                hits,
+            );
+            let when_options = [
+                (
+                    Hit::PitWhenAlways,
+                    PitWhen::Always.label(),
+                    cfg.pit.pit_when == PitWhen::Always,
+                ),
+                (
+                    Hit::PitWhenSector,
+                    PitWhen::Sector.label(),
+                    cfg.pit.pit_when == PitWhen::Sector,
+                ),
+                (
+                    Hit::PitWhenLap,
+                    PitWhen::Lap.label(),
+                    cfg.pit.pit_when == PitWhen::Lap,
+                ),
+            ];
+            let when_bottom = dropdown_row(
+                px,
+                fonts,
+                x + board_w + row_gap,
+                board_y,
+                when_w,
+                "When",
+                cfg.pit.pit_when.label(),
+                open_drop == Some(Drop::PitWhen),
+                Hit::PitWhenOpen,
+                &when_options,
+                hover,
+                hits,
+            );
+            y = board_bottom.max(when_bottom);
+            if factory {
+                y = pit_action_row(
+                    px,
+                    fonts,
+                    x,
+                    y,
+                    w,
+                    &[("Reset layout", 124.0, Hit::PitReset)],
+                    hover,
+                    hits,
+                );
+            }
+            let name = if factory {
+                "Holeshot".to_string()
+            } else {
+                pit_name_draft()
+            };
+            let delete_w = 76.0;
+            let name_w = if saved_board {
+                (w - delete_w - row_gap).max(160.0)
+            } else {
+                w
+            };
+            let name_y = y;
+            y = name_row(
+                px,
+                fonts,
+                x,
+                y,
+                name_w,
+                &name,
+                !factory && pit_name_focused(),
+                Hit::PitName,
+                if factory { None } else { hover },
+                hits,
+            );
+            if saved_board {
+                action_btn(
+                    px,
+                    fonts,
+                    x + name_w + row_gap,
+                    name_y + 8.0,
+                    delete_w,
+                    32.0,
+                    "Delete",
+                    Hit::PitDelete,
+                    hover,
+                    hits,
+                    false,
+                );
+            }
+            let notice = pit_notice();
+            if !notice.is_empty() {
+                y = note_lines(px, fonts, x, y, w, &notice);
+            }
+
+            let slots = if cfg.pit.pit_vars.len() >= LEGACY_CATALOG {
+                factory_places()
+            } else {
+                cfg.pit.pit_vars.clone()
+            };
+            let selected = if slots.is_empty() {
+                0
+            } else {
+                pit_selected().min(slots.len() as u8 - 1)
+            };
+            if pit_selected() != selected {
+                set_pit_selected(selected);
+            }
+            let names = pack_slot_names(&cfg.pit.pit_art);
+            let menu = slot_menu();
+            if let Some(place) = slots.get(selected as usize) {
+                let title = names
+                    .get(selected as usize)
+                    .cloned()
+                    .filter(|name| !name.is_empty())
+                    .unwrap_or_else(|| place.row_label());
+                let (value, options) = slot_menu_options(selected, place, &menu);
+                let rgb = place.color.unwrap_or([16, 16, 18]);
+                y = pit_type_bar(
+                    px,
+                    fonts,
+                    x,
+                    y,
+                    w,
+                    &title,
+                    &value,
+                    &options,
+                    open_drop == Some(Drop::PitSlot(selected)),
+                    Hit::PitSlotOpen(selected),
+                    place.size.round() as i32,
+                    place.bold,
+                    rgb,
+                    open_drop == Some(Drop::PitSlotColor),
+                    hover,
+                    hits,
+                );
+                let cell = 44.0;
+                let gap = 6.0;
+                let bar_w = (cell * 3.0 + gap * 2.0 - gap) * 0.5;
+                snap_axis(
+                    px,
+                    x,
+                    y,
+                    bar_w,
+                    cell,
+                    true,
+                    Hit::PitSlotCenterX,
+                    hover,
+                    hits,
+                );
+                snap_axis(
+                    px,
+                    x + bar_w + gap,
+                    y,
+                    bar_w,
+                    cell,
+                    false,
+                    Hit::PitSlotCenterY,
+                    hover,
+                    hits,
+                );
+                y += cell + 8.0;
+            }
+            y = pit_plate_preview(px, fonts, cfg, &slots, selected, hits, x, y, w);
             action_btn(
                 px,
                 fonts,
-                x + name_w + row_gap,
-                name_y + 8.0,
-                delete_w,
+                x,
+                y,
+                132.0,
                 32.0,
-                "Delete",
-                Hit::PitDelete,
+                "Add slot",
+                Hit::PitSlotAdd,
                 hover,
                 hits,
                 false,
             );
-        }
-        let notice = pit_notice();
-        if !notice.is_empty() {
-            y = note_lines(px, fonts, x, y, w, &notice);
-        }
-
-        let slots = if cfg.pit.pit_vars.len() >= LEGACY_CATALOG {
-            factory_places()
-        } else {
-            cfg.pit.pit_vars.clone()
-        };
-        let selected = if slots.is_empty() {
-            0
-        } else {
-            pit_selected().min(slots.len() as u8 - 1)
-        };
-        if pit_selected() != selected {
-            set_pit_selected(selected);
-        }
-        let names = pack_slot_names(&cfg.pit.pit_art);
-        let menu = slot_menu();
-        if let Some(place) = slots.get(selected as usize) {
-            let title = names
-                .get(selected as usize)
-                .cloned()
-                .filter(|name| !name.is_empty())
-                .unwrap_or_else(|| place.row_label());
-            let (value, options) = slot_menu_options(selected, place, &menu);
-            let rgb = place.color.unwrap_or([16, 16, 18]);
-            y = pit_type_bar(
+            action_btn(
                 px,
                 fonts,
-                x,
+                x + 144.0,
                 y,
-                w,
-                &title,
-                &value,
-                &options,
-                open_drop == Some(Drop::PitSlot(selected)),
-                Hit::PitSlotOpen(selected),
-                place.size.round() as i32,
-                place.bold,
-                rgb,
-                open_drop == Some(Drop::PitSlotColor),
+                148.0,
+                32.0,
+                "Remove slot",
+                Hit::PitSlotRemove,
                 hover,
                 hits,
-            );
-            let cell = 44.0;
-            let gap = 6.0;
-            let bar_w = (cell * 3.0 + gap * 2.0 - gap) * 0.5;
-            snap_axis(
-                px,
-                x,
-                y,
-                bar_w,
-                cell,
-                true,
-                Hit::PitSlotCenterX,
-                hover,
-                hits,
-            );
-            snap_axis(
-                px,
-                x + bar_w + gap,
-                y,
-                bar_w,
-                cell,
                 false,
-                Hit::PitSlotCenterY,
-                hover,
-                hits,
             );
-            y += cell + 8.0;
-        }
-        y = pit_plate_preview(px, fonts, cfg, &slots, selected, hits, x, y, w);
-        action_btn(px, fonts, x, y, 132.0, 32.0, "Add slot", Hit::PitSlotAdd, hover, hits, false);
-        action_btn(px, fonts, x + 144.0, y, 148.0, 32.0, "Remove slot", Hit::PitSlotRemove, hover, hits, false);
-        y += 40.0;
-        if slots.len() >= MAX_DESIGN_SLOTS {
-            y = note_lines(px, fonts, x, y, w, "12 slots is the limit.");
-        }
-        if cfg.pit.pit_art.is_empty() || cfg.pit.pit_art == FACTORY_ART {
-            y = color_row(
-                px,
-                fonts,
-                x,
-                y,
-                w,
-                cfg.pit.pit_yellow,
-                open_drop == Some(Drop::PitYellow),
-                ColorPickKind::PitYellow,
-                hover,
-                hits,
-            );
-            y = color_row(
-                px,
-                fonts,
-                x,
-                y,
-                w,
-                cfg.pit.pit_blue,
-                open_drop == Some(Drop::PitBlue),
-                ColorPickKind::PitBlue,
-                hover,
-                hits,
-            );
-        }
-        let col_gap = 8.0;
-        let col_w = ((w - col_gap) * 0.5).max(160.0);
-        let mut left_y = y;
-        let mut right_y = y;
-        for (slot, place) in slots.iter().enumerate() {
-            let title = names
-                .get(slot)
-                .cloned()
-                .filter(|name| !name.is_empty())
-                .unwrap_or_else(|| place.row_label());
-            let stat = slot_menu_options(slot as u8, place, &menu).0;
-            let on_right = slot % 2 == 1;
-            let col_x = if on_right { x + col_w + col_gap } else { x };
-            let col_y = if on_right { right_y } else { left_y };
-            let next = slot_readout_row(
-                px,
-                fonts,
-                col_x,
-                col_y,
-                col_w,
-                &title,
-                &stat,
-                slot as u8,
-                slot as u8 == selected,
-                hover,
-                hits,
-            );
-            if on_right {
-                right_y = next;
-            } else {
-                left_y = next;
+            y += 40.0;
+            if slots.len() >= MAX_DESIGN_SLOTS {
+                y = note_lines(px, fonts, x, y, w, "12 slots is the limit.");
             }
-        }
-        y = left_y.max(right_y);
-        y
-    })
+            if cfg.pit.pit_art.is_empty() || cfg.pit.pit_art == FACTORY_ART {
+                y = color_row(
+                    px,
+                    fonts,
+                    x,
+                    y,
+                    w,
+                    cfg.pit.pit_yellow,
+                    open_drop == Some(Drop::PitYellow),
+                    ColorPickKind::PitYellow,
+                    hover,
+                    hits,
+                );
+                y = color_row(
+                    px,
+                    fonts,
+                    x,
+                    y,
+                    w,
+                    cfg.pit.pit_blue,
+                    open_drop == Some(Drop::PitBlue),
+                    ColorPickKind::PitBlue,
+                    hover,
+                    hits,
+                );
+            }
+            let col_gap = 8.0;
+            let col_w = ((w - col_gap) * 0.5).max(160.0);
+            let mut left_y = y;
+            let mut right_y = y;
+            for (slot, place) in slots.iter().enumerate() {
+                let title = names
+                    .get(slot)
+                    .cloned()
+                    .filter(|name| !name.is_empty())
+                    .unwrap_or_else(|| place.row_label());
+                let stat = slot_menu_options(slot as u8, place, &menu).0;
+                let on_right = slot % 2 == 1;
+                let col_x = if on_right { x + col_w + col_gap } else { x };
+                let col_y = if on_right { right_y } else { left_y };
+                let next = slot_readout_row(
+                    px,
+                    fonts,
+                    col_x,
+                    col_y,
+                    col_w,
+                    &title,
+                    &stat,
+                    slot as u8,
+                    slot as u8 == selected,
+                    hover,
+                    hits,
+                );
+                if on_right {
+                    right_y = next;
+                } else {
+                    left_y = next;
+                }
+            }
+            y = left_y.max(right_y);
+            y
+        },
+    )
 }
 
 fn slot_readout_row(
@@ -2332,7 +2424,16 @@ fn slot_readout_row(
         h,
     });
     row_card(px, x, y, w, h, selected || hover == Some(hit));
-    text(px, fonts, title, 13.0, x + 16.0, y + 16.0, text_col(), false);
+    text(
+        px,
+        fonts,
+        title,
+        13.0,
+        x + 16.0,
+        y + 16.0,
+        text_col(),
+        false,
+    );
     if !value.is_empty() {
         let value_w = measure(fonts, value, 13.0);
         text(
@@ -2447,7 +2548,11 @@ fn with_plate<T>(cfg: &HudConfig, f: impl FnOnce(Option<&tiny_skia::Pixmap>) -> 
     }
     let art = cfg.pit.pit_art.as_str();
     let factory = art.is_empty() || art == FACTORY_ART;
-    let main = if factory { cfg.pit.pit_yellow } else { [0, 0, 0] };
+    let main = if factory {
+        cfg.pit.pit_yellow
+    } else {
+        [0, 0, 0]
+    };
     let secondary = if factory { cfg.pit.pit_blue } else { [0, 0, 0] };
     let gen = plate_preview_gen();
     CACHE.with(|slot| {
@@ -2615,6 +2720,48 @@ pub(crate) fn pane_gamepad(
                         cfg.gamepad.gamepad_theme == GamepadTheme::Dark,
                     ),
                 ],
+                hover,
+                hits,
+            );
+            pane_style(px, fonts, spec, cfg, hover, hits, x, y, w)
+        },
+    )
+}
+
+pub(crate) fn pane_timer(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    cfg: &HudConfig,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+    x: f32,
+    y: f32,
+    w: f32,
+) -> f32 {
+    let spec = widget_pane_spec(WidgetId::Timer);
+    open_widget_pane(
+        px,
+        fonts,
+        cfg,
+        hover,
+        hits,
+        x,
+        y,
+        w,
+        spec,
+        |px, fonts, y, shown, hits| {
+            if !shown {
+                return y;
+            }
+            let y = toggle_row(
+                px,
+                fonts,
+                x,
+                y,
+                w,
+                "Out of riders",
+                cfg.timer.timer_of,
+                Hit::TimerOf,
                 hover,
                 hits,
             );

@@ -133,14 +133,9 @@ pub(crate) fn radar_blip_color(heat: f32) -> Color {
 
 pub(crate) fn draw_radar_blip(px: &mut Pixmap, x: f32, y: f32, rad: f32, heat: f32) {
     let col = radar_blip_color(heat);
-    let (cr, cg, cb) = (
-        (col.red() * 255.0) as u8,
-        (col.green() * 255.0) as u8,
-        (col.blue() * 255.0) as u8,
-    );
-    fill_circle(px, x, y, rad + 3.4, Color::from_rgba8(cr, cg, cb, 46));
-    fill_circle(px, x, y, rad + 1.5, Color::from_rgba8(cr, cg, cb, 88));
-    fill_circle(px, x, y, rad, col);
+    fill_circle(px, x, y, rad + 3.3, color_alpha(col, 46));
+    fill_circle(px, x, y, rad, color_alpha(col, 165));
+    stroke_circle(px, x, y, rad, color_alpha(col, 230), 1.0);
 }
 
 pub(crate) fn radar_fit_scale(

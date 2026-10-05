@@ -399,6 +399,8 @@ pub(crate) fn btn_border() -> Color {
 pub struct PendingDrop {
     pub mx: f32,
     pub my: f32,
+    /// Top of the control the menu is attached to. `my` is 6px under that control.
+    pub anchor_top: f32,
     pub bw: f32,
     pub content_h: f32,
     pub open_hit: Hit,
@@ -599,6 +601,7 @@ mod tests {
             m.borrow_mut().push(PendingDrop {
                 mx: 1.0,
                 my: 2.0,
+                anchor_top: 0.0,
                 bw: 3.0,
                 content_h: 4.0,
                 open_hit: Hit::AnalyzeLapOpen,

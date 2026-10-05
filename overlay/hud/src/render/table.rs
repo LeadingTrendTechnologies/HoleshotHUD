@@ -349,7 +349,7 @@ pub(crate) trait BoardCol: Copy + PartialEq {
 
 impl BoardCol for StField {
     fn header(self) -> &'static str {
-        match self {
+        crate::i18n::t(match self {
             Self::Pos => "P",
             Self::Num => "#",
             Self::Name => "NAME",
@@ -365,7 +365,7 @@ impl BoardCol for StField {
             Self::Penalty => "PEN",
             Self::Crashed => "CR",
             Self::Category => "CLASS",
-        }
+        })
     }
 
     fn width(self, cfg: &HudConfig) -> i32 {
@@ -391,7 +391,7 @@ impl BoardCol for StField {
 
 impl BoardCol for RelField {
     fn header(self) -> &'static str {
-        match self {
+        crate::i18n::t(match self {
             Self::Pos => "P",
             Self::Num => "#",
             Self::Name => "NAME",
@@ -407,7 +407,7 @@ impl BoardCol for RelField {
             Self::LapDiff => "DIFF",
             Self::Category => "CLASS",
             Self::Speed => "SPD",
-        }
+        })
     }
 
     fn width(self, cfg: &HudConfig) -> i32 {
@@ -830,9 +830,10 @@ impl<C: BoardCol> TableRow<'_, C> {
         fonts: &Fonts,
         accent: Color,
         click: Option<i32>,
+        groups: &[crate::config::RiderGroup],
         mut cell: impl FnMut(C) -> (String, Color, bool),
     ) {
-        paint_table_row(px, fonts, self, accent, click, &mut cell);
+        paint_table_row(px, fonts, self, accent, click, groups, &mut cell);
     }
 }
 
@@ -842,6 +843,7 @@ pub(crate) fn paint_table_row<C: BoardCol>(
     row: &TableRow<'_, C>,
     accent: Color,
     click: Option<i32>,
+    groups: &[crate::config::RiderGroup],
     cell: &mut impl FnMut(C) -> (String, Color, bool),
 ) {
     let mut named = false;
@@ -863,10 +865,28 @@ pub(crate) fn paint_table_row<C: BoardCol>(
         } else {
             0.0
         };
+        let badge = if kind.is_name() {
+            crate::config::group_badge(groups, &val)
+        } else {
+            None
+        };
+        let badge_w = if badge.is_some() { 14.0 } else { 0.0 };
         if kind.is_name() {
             named = true;
             if let Some(num) = click {
                 push_click_rider(num, *cx + pad, row.cy, (*cw - pad).max(8.0), row.row_h);
+            }
+            if let Some((mark, rgb)) = badge {
+                icon(
+                    px,
+                    fonts,
+                    mark,
+                    11.0,
+                    *cx + pad,
+                    row.cy + 5.0,
+                    Color::from_rgba8(rgb[0], rgb[1], rgb[2], 255),
+                    false,
+                );
             }
         }
         if kind.is_bike() && !val.is_empty() {
@@ -904,8 +924,8 @@ pub(crate) fn paint_table_row<C: BoardCol>(
                 fonts,
                 &val,
                 12.0,
-                *cx + pad,
-                (*cw - pad).max(8.0),
+                *cx + pad + badge_w,
+                (*cw - pad - badge_w).max(8.0),
                 row.cy + 4.0,
                 color,
                 right,

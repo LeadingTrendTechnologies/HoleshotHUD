@@ -50,7 +50,11 @@ fn hud_dir(game: &Path) -> PathBuf {
 
 fn sync_at(game: &Path, want_hidden: bool, mark_restart_if_game_on: bool) {
     let game_on = crate::startup::mx_bikes_pid().is_some();
-    let result = if want_hidden { hide(game) } else { release(game) };
+    let result = if want_hidden {
+        hide(game)
+    } else {
+        release(game)
+    };
     match result {
         Ok(changed) => {
             NEED_RETRY.store(false, Ordering::Relaxed);

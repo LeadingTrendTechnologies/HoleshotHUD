@@ -1,7 +1,7 @@
 //! THESIS: Settings is a first-run on-switch, then a working board — not a Windows Settings clone.
 //! OWN-WORLD: Charcoal stack, Holeshot Orange plaque, Exo 2 ExtraBold Italic, 6–10px rounds, no card shadows.
 //! STORY: Rider hits F8, sees Show on overlay, turns widgets on, then edits columns and snap.
-//! FIRST VIEWPORT: Top mode bar (Widgets / Profile / Settings / Feedback); Profile sub-nav Overview / Motos / Tracks; widget rail grouped Boards / Cockpit / Track; rail hides on Feedback; orange name plaque; Show on overlay on the right; Header/Footer are three slots.
+//! FIRST VIEWPORT: Top mode bar (Widgets / Profile / Settings / Groups / Feedback); Profile sub-nav Overview / Motos / mxb-ranked / Tracks; widget rail grouped Boards / Cockpit / Track; rail hides on Feedback; orange name plaque; Show on overlay on the right; Header/Footer are three slots.
 //! FORM: Combined Show Plaque + Header Strip columns; seed settings-comp.
 //! FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance.
 
@@ -39,8 +39,10 @@ mod clear;
 mod controls;
 mod dispatch;
 mod feedback;
+mod groups;
 mod pit_help;
 mod profile;
+mod ranked;
 mod reply;
 mod review;
 mod tracks;
@@ -51,6 +53,10 @@ pub(crate) use clear::*;
 pub(crate) use controls::*;
 pub(crate) use dispatch::*;
 pub(crate) use feedback::*;
+pub(crate) use groups::{
+    commit_group_name, dispatch_group, group_backspace, group_member_focused, group_name_focused,
+    group_push, group_revert_focus, pane_groups, set_session_riders,
+};
 pub(crate) use pit_help::*;
 pub(crate) use profile::*;
 pub(crate) use reply::*;
@@ -499,6 +505,7 @@ struct SettingsUi {
     analyze_follow: bool,
     map_drag: Option<(f32, f32, f32, f32)>,
     profile_all_time: bool,
+    profile_ranked_only: bool,
     /// Selected track name on Profile → Tracks detail.
     tracks_selected: Option<String>,
     tracks_zoom: f32,
@@ -524,6 +531,8 @@ static RAISING: AtomicBool = AtomicBool::new(false);
 struct PendingDrop {
     mx: f32,
     my: f32,
+    /// Top of the control the menu is attached to. `my` is 6px under that control.
+    anchor_top: f32,
     bw: f32,
     content_h: f32,
     open_hit: Hit,
@@ -691,6 +700,7 @@ fn plate_preview_gen() -> u32 {
 pub(crate) fn queue_drop_menu(
     mx: f32,
     my: f32,
+    anchor_top: f32,
     bw: f32,
     content_h: f32,
     open_hit: Hit,
@@ -700,6 +710,7 @@ pub(crate) fn queue_drop_menu(
         menus.borrow_mut().push(PendingDrop {
             mx,
             my,
+            anchor_top,
             bw,
             content_h,
             open_hit,

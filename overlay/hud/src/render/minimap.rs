@@ -191,7 +191,7 @@ pub(crate) fn draw_minimap(
             if (hx - mc) * (hx - mc) + (hy - mc) * (hy - mc) > sdim * sdim * 0.27 {
                 continue;
             }
-            let fill = rider_dot_col(s, rider.race_num);
+            let fill = group_map_fill(cfg, s, rider);
             numbered_dot(
                 mini,
                 fonts,
@@ -200,6 +200,7 @@ pub(crate) fn draw_minimap(
                 other_r,
                 fill,
                 rider_dot_num(s, rider.race_num, cfg.mini.mini_dot),
+                rider.race_num,
                 cfg.mini.mini_numbers,
                 false,
                 MAP_DOT_OPACITY_DEFAULT,
@@ -258,6 +259,7 @@ pub(crate) fn draw_minimap(
             local_r,
             you_col(),
             rider_dot_num(s, subject, cfg.mini.mini_dot),
+            subject,
             cfg.mini.mini_numbers,
             true,
             MAP_DOT_OPACITY_DEFAULT,

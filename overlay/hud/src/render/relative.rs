@@ -145,6 +145,7 @@ pub(crate) fn draw_relative(
                             fonts,
                             accent_c,
                             Some(rider.race_num),
+                            &cfg.groups,
                             |kind| match kind {
                                 RelField::Pos => (
                                     if pos > 0 {

@@ -91,7 +91,7 @@ pub(crate) fn draw_stance(px: &mut Pixmap, fonts: &Fonts, cfg: &HudConfig, sw: f
     };
     let skew = (h * 0.12).clamp(3.0, 6.0);
     fill_skew(px, x, y, w, h, skew, fill);
-    let word = if sitting { "SIT" } else { "STAND" };
+    let word = crate::i18n::t(if sitting { "SIT" } else { "STAND" });
     let ink = if stand {
         ink_on(fill)
     } else {

@@ -63,6 +63,8 @@ pub struct RiderProfile {
     pub name: String,
     pub race_count: i32,
     pub all_time_count: i32,
+    /// Races that feed the spider lock: all stored races, or ranked races when that filter is on.
+    pub sample_count: i32,
     pub holeshots: i32,
     pub wins: i32,
     pub scores: [Option<f32>; AXIS_COUNT],
@@ -90,6 +92,7 @@ impl RiderProfile {
             name: String::new(),
             race_count: 0,
             all_time_count: 0,
+            sample_count: 0,
             holeshots: 0,
             wins: 0,
             scores: [None; AXIS_COUNT],
@@ -137,6 +140,7 @@ pub struct CompactRace {
     pub holeshot: Option<i32>,
     pub state: i32,
     pub penalty_ms: i32,
+    pub ranked: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -227,6 +231,7 @@ pub fn compact_from_input(input: &RaceInput) -> Option<CompactRace> {
         holeshot: input.holeshot,
         state: input.state,
         penalty_ms: input.penalty_ms.max(0),
+        ranked: false,
     })
 }
 
@@ -586,6 +591,7 @@ mod tests {
             holeshot: None,
             state: 0,
             penalty_ms: 0,
+            ranked: false,
         }
     }
 

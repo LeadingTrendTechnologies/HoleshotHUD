@@ -88,6 +88,7 @@ pub(crate) fn draw_standings(
                             fonts,
                             accent_c,
                             Some(standing.race_num),
+                            &cfg.groups,
                             |kind| match kind {
                                 StField::Pos => (
                                     format_place_digits(standing.position.max(0), false),

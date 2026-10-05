@@ -49,6 +49,7 @@ fn dummy_ui(open: bool) -> SettingsUi {
         analyze_follow: false,
         map_drag: None,
         profile_all_time: true,
+        profile_ranked_only: false,
         tracks_selected: None,
         tracks_zoom: 1.0,
         tracks_pan_x: 0.0,
@@ -405,6 +406,64 @@ fn open_dropdown_menu_sits_above_focus_ring() {
 }
 
 #[test]
+fn language_menu_opens_above_its_button() {
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::App;
+    ui.app_section = AppSection::Look;
+    ui.open_drop = Some(Drop::Language);
+    *UI.lock().unwrap() = Some(ui);
+    let mut px = Pixmap::new(1000, 720).expect("pixmap");
+    draw(&mut px, &fonts, 1000.0, 720.0);
+    let (menu_bottom, button_y) = {
+        let ui = UI.lock().unwrap();
+        let ui = ui.as_ref().unwrap();
+        let (_mx, my, _mw, mh, _) = ui.drop_menu.expect("language menu painted");
+        let button = ui
+            .hits
+            .iter()
+            .find(|hit| matches!(hit.id, Hit::LanguageOpen) && hit.h <= 32.0)
+            .expect("language button");
+        (my + mh, button.y)
+    };
+    assert!(
+        menu_bottom <= button_y + 0.5,
+        "language menu bottom {menu_bottom} should sit above the button at {button_y}"
+    );
+    *UI.lock().unwrap() = None;
+}
+
+#[test]
+fn theme_menu_still_opens_downward() {
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::App;
+    ui.app_section = AppSection::Look;
+    ui.open_drop = Some(Drop::Theme);
+    *UI.lock().unwrap() = Some(ui);
+    let mut px = Pixmap::new(1000, 720).expect("pixmap");
+    draw(&mut px, &fonts, 1000.0, 720.0);
+    let (menu_y, button_bottom) = {
+        let ui = UI.lock().unwrap();
+        let ui = ui.as_ref().unwrap();
+        let (_mx, my, _mw, _mh, _) = ui.drop_menu.expect("theme menu painted");
+        let button = ui
+            .hits
+            .iter()
+            .find(|hit| matches!(hit.id, Hit::ThemeOpen) && hit.h <= 32.0)
+            .expect("theme button");
+        (my, button.y + button.h)
+    };
+    assert!(
+        menu_y >= button_bottom,
+        "theme menu at {menu_y} should open under the button at {button_bottom}"
+    );
+    *UI.lock().unwrap() = None;
+}
+
+#[test]
 fn live_analyze_target_force_from_list() {
     assert_eq!(live_analyze_target(true, false, None, Some(7)), Some(7));
     assert_eq!(live_analyze_target(true, true, None, Some(7)), Some(7));
@@ -718,6 +777,7 @@ fn profile_tab_visible_when_motos_off() {
     assert!(ids.contains(&Hit::TabProfile));
     assert!(ids.contains(&Hit::ProfileNavOverview));
     assert!(ids.contains(&Hit::ProfileNavMotos));
+    assert!(ids.contains(&Hit::ProfileNavRanked));
     assert!(
         !ids.contains(&Hit::ProfileNavTracks),
         "Tracks is Labs-only until experimental is on"
@@ -817,6 +877,7 @@ fn profile_empty_paints_teach_copy() {
     assert!(ids.contains(&Hit::ProfileNavOverview));
     assert!(ids.contains(&Hit::ProfileAllTime));
     assert!(ids.contains(&Hit::ProfileTwoWeeks));
+    assert!(ids.contains(&Hit::ProfileRanked));
     assert!(!ids.contains(&Hit::ProfileClear));
     assert_golden("profile-empty", &px);
     *UI.lock().unwrap() = None;

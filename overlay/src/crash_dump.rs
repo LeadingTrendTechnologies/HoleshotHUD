@@ -177,7 +177,10 @@ pub(crate) fn newest_crash_dump(dir: &Path) -> Option<PathBuf> {
 
 /// `crash-YYYYMMDD-HHMMSS.dmp` is local time from `GetLocalTime`. Shown as `mm/dd/yyyy hh:mm:ss`.
 fn crash_when(name: &str) -> String {
-    let Some(stamp) = name.strip_prefix("crash-").and_then(|rest| rest.strip_suffix(".dmp")) else {
+    let Some(stamp) = name
+        .strip_prefix("crash-")
+        .and_then(|rest| rest.strip_suffix(".dmp"))
+    else {
         return String::new();
     };
     let Some((date, time)) = stamp.split_once('-') else {
@@ -669,7 +672,9 @@ mod tests {
         assert!(report.missing_code);
         assert!(report.instructions.is_empty());
         assert!(report.summary.contains("mxbikes.exe"));
-        assert!(report.plain_text().contains("Code bytes are not in this dump."));
+        assert!(report
+            .plain_text()
+            .contains("Code bytes are not in this dump."));
     }
 
     #[test]
@@ -695,7 +700,10 @@ rip=0x0000000140001000
 
     #[test]
     fn crash_stamp_is_local_clock() {
-        assert_eq!(crash_when("crash-20261002-094345.dmp"), "10/02/2026 09:43:45");
+        assert_eq!(
+            crash_when("crash-20261002-094345.dmp"),
+            "10/02/2026 09:43:45"
+        );
         assert_eq!(crash_when("notes.txt"), "");
         assert_eq!(crash_when("crash-20261002.dmp"), "");
     }

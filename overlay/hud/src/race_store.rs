@@ -2909,26 +2909,6 @@ pub(crate) fn gap_behind_text(s: &Snapshot, field: &RaceField, row: &Standing) -
         .unwrap_or_else(|| "---".into())
 }
 
-pub(crate) fn ticker_delta_from_row(row: &RaceRow) -> String {
-    format_signed_delta(row.gap_to_focus_ms, row.gap_to_focus_laps)
-}
-
-fn format_signed_delta(ms: i32, laps: i32) -> String {
-    if laps != 0 {
-        let sign = if laps > 0 { '+' } else { '-' };
-        return format!("{sign}{}L", laps.abs());
-    }
-    let sec = ms as f32 / 1000.0;
-    if sec.abs() >= 60.0 {
-        let m = (sec.abs() / 60.0) as i32;
-        let s = sec.abs() - m as f32 * 60.0;
-        let sign = if ms < 0 { '-' } else { '+' };
-        format!("{sign}{m}:{:04.1}", s)
-    } else {
-        format!("{sec:+.3}")
-    }
-}
-
 #[cfg(test)]
 #[path = "tests/session_replay.rs"]
 mod session_replay_tests;

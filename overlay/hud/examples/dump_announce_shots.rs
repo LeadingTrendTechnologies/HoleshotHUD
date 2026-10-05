@@ -216,6 +216,7 @@ fn main() {
             false,
             false,
             false,
+            &mut |_, _| {},
         );
         fill_backdrop(&mut px);
         draw(
@@ -229,6 +230,7 @@ fn main() {
             false,
             false,
             false,
+            &mut |_, _| {},
         );
         let path = out.join(name);
         let png = if let Some(id) = pair_widget(name) {
@@ -314,6 +316,7 @@ fn show_only(cfg: &mut HudConfig, name: &str) {
     cfg[WidgetId::Gamepad].show = name == "gamepad";
     cfg[WidgetId::Telemetry].show = name == "telemetry";
     cfg[WidgetId::Pitboard].show = name == "pitboard";
+    cfg[WidgetId::Timer].show = name == "timer";
 }
 
 fn size_show(cfg: &mut HudConfig, name: &str, w: f32, h: f32) {
@@ -334,6 +337,7 @@ fn size_show(cfg: &mut HudConfig, name: &str, w: f32, h: f32) {
         "gamepad" => WidgetId::Gamepad,
         "telemetry" => WidgetId::Telemetry,
         "pitboard" => WidgetId::Pitboard,
+        "timer" => WidgetId::Timer,
         _ => return,
     };
     cfg[id].rect.w = w;

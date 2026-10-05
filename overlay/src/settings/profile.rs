@@ -11,6 +11,7 @@ pub(crate) fn pane_profile(
     y: f32,
     w: f32,
     all_time: bool,
+    ranked_only: bool,
     recording: bool,
 ) -> f32 {
     let window = if all_time {
@@ -18,7 +19,7 @@ pub(crate) fn pane_profile(
     } else {
         ProfileWindow::TwoWeeks
     };
-    let p = crate::review::profile(window);
+    let p = crate::review::profile_for(window, ranked_only);
     let mut y = y + 8.0;
     let name = if p.name.is_empty() {
         "YOU"
@@ -38,10 +39,19 @@ pub(crate) fn pane_profile(
         false,
     );
     y += 42.0;
-    let sub = if p.race_count == 1 {
-        "1 race moto".to_string()
+    let sub = if ranked_only {
+        if p.race_count == 1 {
+            mxbo_hud::i18n::t("1 ranked race moto").to_string()
+        } else {
+            mxbo_hud::i18n::t_fmt(
+                "{n} ranked race motos",
+                &[("n", &p.race_count.to_string())],
+            )
+        }
+    } else if p.race_count == 1 {
+        mxbo_hud::i18n::t("1 race moto").to_string()
     } else {
-        format!("{} race motos", p.race_count)
+        mxbo_hud::i18n::t_fmt("{n} race motos", &[("n", &p.race_count.to_string())])
     };
     let sw = measure(fonts, &sub, 13.0);
     text(
@@ -60,15 +70,33 @@ pub(crate) fn pane_profile(
         ("All time", all_time, Hit::ProfileAllTime),
         ("14 days", !all_time, Hit::ProfileTwoWeeks),
     ];
+    let chip_w = |label: &str| (measure(fonts, label, 13.0) + 28.0).max(64.0);
+    let gap = 8.0;
+    let ranked_gap = 20.0;
     let mut total = 0.0;
-    for (label, _, _) in &chips {
-        total += (measure(fonts, label, 13.0) + 28.0).max(64.0) + 8.0;
+    for (i, (label, _, _)) in chips.iter().enumerate() {
+        if i > 0 {
+            total += gap;
+        }
+        total += chip_w(label);
     }
-    total = (total - 8.0).max(0.0);
+    total += ranked_gap + chip_w("Ranked");
     let mut cx = x + ((w - total) * 0.5).max(0.0);
     for (label, on, hit) in chips {
-        cx += profile_chip(px, fonts, cx, y, label, on, hit, hover, hits) + 8.0;
+        cx += profile_chip(px, fonts, cx, y, label, on, hit, hover, hits) + gap;
     }
+    cx += ranked_gap - gap;
+    profile_chip(
+        px,
+        fonts,
+        cx,
+        y,
+        "Ranked",
+        ranked_only,
+        Hit::ProfileRanked,
+        hover,
+        hits,
+    );
     if p.all_time_count > 0 {
         let bw = (measure(fonts, "Clear", 13.0) + 28.0).max(64.0);
         profile_chip(
@@ -84,8 +112,12 @@ pub(crate) fn pane_profile(
         );
     }
     y += 44.0;
-    if p.all_time_count == 0 {
-        let copy = "Finish a race with a field. Practice, warmup, and solo sessions do not count.";
+    if p.all_time_count == 0 || (ranked_only && p.sample_count == 0) {
+        let copy = if ranked_only && p.all_time_count > 0 {
+            "No ranked motos yet."
+        } else {
+            "Finish a race with a field. Practice, warmup, and solo sessions do not count."
+        };
         for line in wrap_fb(fonts, copy, (w - 24.0).max(40.0), 13.0) {
             let lw = measure(fonts, &line, 13.0);
             text(
@@ -144,7 +176,7 @@ pub(crate) fn pane_profile(
         mid_w,
         card_h,
         &p.scores,
-        p.all_time_count,
+        p.sample_count,
     );
     paint_kpi_stack(px, fonts, right_x, y, flank_w, card_h, &right);
     if let Some(tip) = tip {
@@ -211,7 +243,13 @@ fn paint_spider_card(
     let radius = (w.min(h) * 0.28).clamp(70.0, 130.0);
     let tip = draw_spider(px, fonts, hover, hits, x, w, cx, cy, radius, scores);
     if all_time_count < PROFILE_LOCK_RACES {
-        let msg = format!("{} of {} races", all_time_count, PROFILE_LOCK_RACES);
+        let msg = mxbo_hud::i18n::t_fmt(
+            "{done} of {need} races",
+            &[
+                ("done", &all_time_count.to_string()),
+                ("need", &PROFILE_LOCK_RACES.to_string()),
+            ],
+        );
         let mw = measure(fonts, &msg, 14.0);
         text(
             px,

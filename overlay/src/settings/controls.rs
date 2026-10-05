@@ -13,6 +13,14 @@
 #![allow(unused_imports)]
 use super::*;
 
+fn chrome<'a>(label: &'a str) -> &'a str {
+    mxbo_hud::i18n::t(label)
+}
+
+fn fit_row_label(fonts: &Fonts, label: &str, size: f32, max_w: f32) -> String {
+    ellipsize_heading(fonts, chrome(label), size, max_w.max(8.0))
+}
+
 pub(crate) fn row_card(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, hot: bool) {
     let fill = if hot { chip_hover() } else { panel() };
     fill_round(px, x, y, w, h, 10.0, fill);
@@ -39,10 +47,11 @@ pub(crate) fn toggle_row(
         h,
     });
     row_card(px, x, y, w, h, hover == Some(hit));
+    let shown = fit_row_label(fonts, label, 13.0, w - 76.0);
     text(
         px,
         fonts,
-        label,
+        &shown,
         13.0,
         x + 16.0,
         y + 16.0,
@@ -103,10 +112,11 @@ pub(crate) fn slider_row(
         h,
     });
     row_card(px, x, y, w, h, hover == Some(hit));
+    let shown = fit_row_label(fonts, label, 13.0, w - 126.0);
     text(
         px,
         fonts,
-        label,
+        &shown,
         13.0,
         x + 16.0,
         y + 16.0,
@@ -114,7 +124,7 @@ pub(crate) fn slider_row(
         false,
     );
     let val_w = 44.0;
-    let label_end = x + 16.0 + measure(fonts, label, 13.0) + 12.0;
+    let label_end = x + 16.0 + measure(fonts, &shown, 13.0) + 12.0;
     let max_end = x + w - 14.0;
     let track_w = 148.0_f32.min((max_end - val_w - label_end).max(40.0));
     let track_x = max_end - val_w - track_w;
@@ -192,10 +202,11 @@ pub(crate) fn stepper_row(
 ) -> f32 {
     let h = ROW_H;
     row_card(px, x, y, w, h, hover == Some(dec) || hover == Some(inc));
+    let shown = fit_row_label(fonts, label, 13.0, w - 188.0);
     text(
         px,
         fonts,
-        label,
+        &shown,
         13.0,
         x + 16.0,
         y + 16.0,
@@ -245,17 +256,18 @@ pub(crate) fn dropdown_row(
         h,
     });
     row_card(px, x, y, w, h, open || hover == Some(open_hit));
+    let shown = fit_row_label(fonts, label, 13.0, w - 134.0);
     text(
         px,
         fonts,
-        label,
+        &shown,
         13.0,
         x + 16.0,
         y + 16.0,
         text_col(),
         false,
     );
-    let label_w = measure(fonts, label, 13.0);
+    let label_w = measure(fonts, &shown, 13.0);
     let bw = (w - 30.0 - label_w - 16.0).clamp(88.0, 160.0);
     let bh = 28.0;
     let bx = x + w - bw - 14.0;
@@ -277,10 +289,11 @@ pub(crate) fn dropdown_row(
         7.0,
         if hot { chip_hover() } else { bg() },
     );
+    let value_shown = ellipsize_heading(fonts, chrome(value), 12.0, (bw - 28.0).max(8.0));
     text(
         px,
         fonts,
-        value,
+        &value_shown,
         12.0,
         bx + 10.0,
         by + 6.0,
@@ -289,7 +302,14 @@ pub(crate) fn dropdown_row(
     );
     chevron(px, bx + bw - 14.0, by + bh * 0.5, open, muted());
     if open {
-        let options = sorted_drop_options(options);
+        let options = if open_hit == Hit::LanguageOpen {
+            options
+                .iter()
+                .map(|(hit, name, on)| (*hit, chrome(name).to_string(), *on))
+                .collect()
+        } else {
+            sorted_drop_options(options)
+        };
         let item_h = 28.0;
         let pad = 5.0;
         let content_h = pad * 2.0 + item_h * options.len() as f32;
@@ -297,6 +317,7 @@ pub(crate) fn dropdown_row(
             menus.borrow_mut().push(PendingDrop {
                 mx: bx,
                 my: by + bh + 6.0,
+                anchor_top: by,
                 bw,
                 content_h,
                 open_hit,
@@ -329,7 +350,16 @@ pub(crate) fn name_row(
     });
     let hot = focused || hover == Some(hit);
     row_card(px, x, y, w, h, hot);
-    text(px, fonts, "Name", 13.0, x + 16.0, y + 16.0, text_col(), false);
+    text(
+        px,
+        fonts,
+        chrome("Name"),
+        13.0,
+        x + 16.0,
+        y + 16.0,
+        text_col(),
+        false,
+    );
     let label_w = measure(fonts, "Name", 13.0);
     let bw = (w - 30.0 - label_w - 16.0).clamp(120.0, 280.0);
     let bh = 28.0;
@@ -344,13 +374,29 @@ pub(crate) fn name_row(
         7.0,
         if hot { chip_hover() } else { bg() },
     );
-    let shown = if value.is_empty() { "Name this board" } else { value };
-    let ink = if value.is_empty() { muted() } else { text_col() };
+    let shown = if value.is_empty() {
+        "Name this board"
+    } else {
+        value
+    };
+    let ink = if value.is_empty() {
+        muted()
+    } else {
+        text_col()
+    };
     text(px, fonts, shown, 12.0, bx + 10.0, by + 6.0, ink, false);
     let caret_text = if value.is_empty() { "" } else { shown };
     if focused {
         let caret_x = bx + 10.0 + measure(fonts, caret_text, 12.0) + 2.0;
-        fill_round(px, caret_x.min(bx + bw - 8.0), by + 6.0, 1.5, 14.0, 0.0, accent());
+        fill_round(
+            px,
+            caret_x.min(bx + bw - 8.0),
+            by + 6.0,
+            1.5,
+            14.0,
+            0.0,
+            accent(),
+        );
     }
     y + h + ROW_GAP
 }
@@ -378,8 +424,18 @@ pub(crate) fn ordered_menu_row(
         h,
     });
     row_card(px, x, y, w, h, open || hover == Some(open_hit));
-    text(px, fonts, label, 13.0, x + 16.0, y + 16.0, text_col(), false);
-    let label_w = measure(fonts, label, 13.0);
+    let shown = fit_row_label(fonts, label, 13.0, w - 134.0);
+    text(
+        px,
+        fonts,
+        &shown,
+        13.0,
+        x + 16.0,
+        y + 16.0,
+        text_col(),
+        false,
+    );
+    let label_w = measure(fonts, &shown, 13.0);
     let bw = (w - 30.0 - label_w - 16.0).clamp(88.0, 220.0);
     let bh = 28.0;
     let bx = x + w - bw - 14.0;
@@ -401,9 +457,23 @@ pub(crate) fn ordered_menu_row(
         7.0,
         if hot { chip_hover() } else { bg() },
     );
-    text(px, fonts, value, 12.0, bx + 10.0, by + 6.0, text_col(), false);
+    let value_shown = ellipsize_heading(fonts, chrome(value), 12.0, (bw - 28.0).max(8.0));
+    text(
+        px,
+        fonts,
+        &value_shown,
+        12.0,
+        bx + 10.0,
+        by + 6.0,
+        text_col(),
+        false,
+    );
     chevron(px, bx + bw - 14.0, by + bh * 0.5, open, muted());
     if open {
+        let options: Vec<(Hit, String, bool)> = options
+            .into_iter()
+            .map(|(hit, name, on)| (hit, chrome(&name).to_string(), on))
+            .collect();
         let item_h = 28.0;
         let pad = 5.0;
         let content_h = pad * 2.0 + item_h * options.len() as f32;
@@ -411,6 +481,7 @@ pub(crate) fn ordered_menu_row(
             menus.borrow_mut().push(PendingDrop {
                 mx: bx,
                 my: by + bh + 6.0,
+                anchor_top: by,
                 bw,
                 content_h,
                 open_hit,
@@ -451,10 +522,11 @@ pub(crate) fn color_row(
         h,
         open || hover == Some(open_hit) || hover == Some(reset_hit),
     );
+    let shown = fit_row_label(fonts, kind.label(), 13.0, w - 160.0);
     text(
         px,
         fonts,
-        kind.label(),
+        &shown,
         13.0,
         x + 16.0,
         y + 16.0,
@@ -462,7 +534,7 @@ pub(crate) fn color_row(
         false,
     );
     let hex = format_primary_color(rgb);
-    let label_w = measure(fonts, kind.label(), 13.0);
+    let label_w = measure(fonts, &shown, 13.0);
     let bh = 28.0;
     let by = y + 10.0;
     let reset_label = "Reset";
@@ -578,6 +650,10 @@ pub(crate) fn sorted_drop_options(
             _ => a.1.to_ascii_lowercase().cmp(&b.1.to_ascii_lowercase()),
         }
     });
+    for (_, name, _) in &mut options {
+        let translated = chrome(name).to_string();
+        *name = translated;
+    }
     options
 }
 

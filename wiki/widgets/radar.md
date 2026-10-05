@@ -25,11 +25,11 @@ Proximity beside and behind you. Settings subtitle: “Riders beside and behind 
 
 `radar_in_view`: rear blips if `radar_rear` and behind; side blips if `radar_sides` and `|lat| > 0.4`.
 
-**Plaque:** You are a white bike silhouette near the top (`radar_you_frac` from the 3 m forward cap vs range), with a night-ink outline so the mark still reads on a light sky when the panel is glass. Blips heat by distance (closer = larger, more orange). Farther blips draw first so near ones sit on top. Colors follow the Range Arcs mock: close `#FA7602`, far cream `#E4C670`, both opaque with a same-hue glow (no dark halo). Size is `0.020 + heat×0.014` of the widget, clamped 7–15 px. When `lap_rel` is set (same rules as map / relative — see [widgets.md](../widgets.md) § Shared rider colors), a **blue** or **red** ring strokes just outside the solid fill; heat fill stays. Crashed riders (and pit / DNS / out / DSQ) use the same `draw_state_mark` triangle as map/minimap — crash is the common one on radar. You get the mark on the white bike if you are down.
+**Plaque:** You are a white bike silhouette near the top (`radar_you_frac` from the 3 m forward cap vs range), with a night-ink outline so the mark still reads on a light sky when the panel is glass. Blips heat by distance (closer = larger, more orange). Farther blips draw first so near ones sit on top. Colors follow the Range Arcs mock: close `#FA7602`, far cream `#E4C670`. The disc is a translucent wash of that color with a 1px ring and one soft halo. Size is `0.020 + heat×0.014` of the widget, clamped 7–15 px. When `lap_rel` is set (same rules as map / relative — see [widgets.md](../widgets.md) § Shared rider colors), a **blue** or **red** ring strokes just outside the disc; heat color stays. Crashed riders (and pit / DNS / out / DSQ) use the same `draw_state_mark` triangle as map/minimap — crash is the common one on radar. You get the mark on the white bike if you are down.
 
 **Range rings** (default on, Plaque only) can be toggled in settings / the demo. Off: panel, bike, and blips only. Stroke and the two outer labels lift with panel opacity so they still read on a solid `#0E0E10` plaque (100% background). Rings are always 3 / 6 / 12 m. Raising **Range** past 12 m leaves those rings in place and puts farther blips outside the 12 m ring. The Range rings toggle is hidden while Look is Arrows.
 
-**Arrows:** Heat fill and glow match plaque blips; size is `0.032 + heat×0.024` of `min(w,h)`, clamped 28–56 px, with a night-ink border. Lapper blue/red strokes outside that border. Crash / state mark sits on the arrow (~0.45× tip). Switching to Arrows expands the rect once if it is still the default plaque (`RADAR_ARROWS_RECT` ≈ 2% inset full frame). Switching back to Plaque does not shrink a custom rect. Panel opacity does not fill a plaque in Arrows mode.
+**Arrows:** Heat fill stays the solid arrow (night-ink border). Plaque blips are the translucent disc. Glow color still matches. size is `0.032 + heat×0.024` of `min(w,h)`, clamped 28–56 px, with a night-ink border. Lapper blue/red strokes outside that border. Crash / state mark sits on the arrow (~0.45× tip). Switching to Arrows expands the rect once if it is still the default plaque (`RADAR_ARROWS_RECT` ≈ 2% inset full frame). Switching back to Plaque does not shrink a custom rect. Panel opacity does not fill a plaque in Arrows mode.
 
 **Arrows crash flash:** Sustained crashed riders are hidden (unlike Plaque). When a nearby rider’s crash bit rises, the arrow holds 0.75 s at the last bearing with the crash icon, then drops.
 
@@ -58,6 +58,7 @@ Local position is predicted with `age`, same as map/minimap. Requires telemetry;
 
 ## Change log
 
+- 2026-10-02 — Plaque blips are a translucent disc with a 1px heat ring and one halo. Arrows stay a solid fill.
 - 2026-10-02 — Arrows crash flash holds 0.75 s, then drops. A downed rider behind you was lingering too long at 1.75 s, and 1 s was still long enough to stay on screen after the crash.
 - 2026-09-26 — Arrows larger (28–56 px) with night-ink border; crash icon bigger. Sustained crashed riders hidden; ~1.75 s flash when someone goes down nearby.
 - 2026-09-26 — Arrows are larger (22–48 px) with a wider glow so they read on bright track/sky.

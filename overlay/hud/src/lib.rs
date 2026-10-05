@@ -1,5 +1,6 @@
 pub mod config;
 pub mod delta;
+pub mod i18n;
 pub mod gamepad;
 pub mod layout;
 pub mod lean;

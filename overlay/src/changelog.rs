@@ -189,6 +189,7 @@ const WIDGETS: &[(&str, &[&str])] = &[
     ("Sectors", &["sectors", "sector"]),
     ("Delta Bar", &["delta bar"]),
     ("Flags", &["flags widget"]),
+    ("Session", &["session widget"]),
 ];
 
 fn split_by_widget(notes: Notes) -> Notes {

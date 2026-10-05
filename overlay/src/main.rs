@@ -8,6 +8,7 @@ mod feedback;
 mod game_ui;
 mod gpu;
 mod layout;
+mod locale;
 mod ping;
 mod plugin;
 mod record;
@@ -51,7 +52,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     ICON_BIG, ICON_SMALL, IDC_ARROW, IDC_HAND, IMAGE_ICON, LR_DEFAULTCOLOR, MSG, PM_REMOVE,
     SM_CXSCREEN, SM_CYSCREEN, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_SHOWNOACTIVATE, ULW_ALPHA,
     WM_ACTIVATE, WM_CLOSE, WM_DESTROY, WM_QUIT, WM_SETCURSOR, WM_SETICON, WNDCLASSEXW, WS_CAPTION,
-    WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+    WS_CLIPCHILDREN, WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+    WS_EX_TOPMOST,
     WS_EX_TRANSPARENT, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_POPUP, WS_SYSMENU,
 };
 
@@ -337,7 +339,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         WS_EX_APPWINDOW,
         class,
         w!("Holeshot HUD — Settings"),
-        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_CLIPCHILDREN,
         host_x,
         host_y,
         crate::settings::SETTINGS_W,
@@ -665,6 +667,9 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         } else {
             None
         };
+        if commit_layout {
+            editor.clear_preview();
+        }
         let raw_age = last_snap
             .as_ref()
             .map(|s| qpc_age(s.tick_qpc, freq))
@@ -702,6 +707,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         let in_session = last_snap
             .as_ref()
             .is_some_and(|s| mxbo_hud::live_session(s, spectating));
+        crate::settings::set_session_riders(in_session.then_some(last_snap.as_ref()).flatten());
         if in_session {
             if let Some(s) = last_snap.as_mut() {
                 s.on_track = 1;
@@ -775,6 +781,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
             crate::settings::apply_stance_bind(bind);
         }
         let mut paint = |cfg: &crate::config::HudConfig| {
+            crate::locale::apply(cfg.language);
             render::draw(
                 &mut pixmap,
                 &fonts,

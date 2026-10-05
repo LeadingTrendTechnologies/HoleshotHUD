@@ -175,6 +175,31 @@ fn pane_app_look(
         hover,
         hits,
     );
+    let effective = cfg.language.resolved(crate::locale::system_language());
+    y = dropdown_row(
+        px,
+        fonts,
+        x,
+        y,
+        w,
+        "Language",
+        effective.endonym(),
+        open_drop == Some(Drop::Language),
+        Hit::LanguageOpen,
+        &crate::config::Language::CHOICES.map(|lang| {
+            (
+                Hit::LanguagePick(lang),
+                if lang == crate::config::Language::System {
+                    "System"
+                } else {
+                    lang.endonym()
+                },
+                cfg.language == lang,
+            )
+        }),
+        hover,
+        hits,
+    );
     text(
         px,
         fonts,
@@ -345,16 +370,7 @@ fn pane_app_install(
         hover,
         hits,
     );
-    text(
-        px,
-        fonts,
-        "Installed to",
-        10.0,
-        x + 2.0,
-        y + 2.0,
-        dim(),
-        false,
-    );
+    text(px, fonts, mxbo_hud::i18n::t("Installed to"), 10.0, x + 2.0, y + 2.0, dim(), false);
     y += 18.0;
     let install = fit_path(fonts, &crate::update::install_dir_display(), 12.0, w - 8.0);
     text(px, fonts, &install, 13.0, x + 4.0, y, text_col(), false);
@@ -473,9 +489,9 @@ fn pane_app_startup(
         text(
             px,
             fonts,
-            &format!(
-                "Close, Open when Windows starts, and Open when MX Bikes opens hide to the tray. {} or the tray icon brings settings back. Quit overlay exits.",
-                cfg.settings_key.label()
+            &mxbo_hud::i18n::t_fmt(
+                "Close, Open when Windows starts, and Open when MX Bikes opens hide to the tray. {key} or the tray icon brings settings back. Quit overlay exits.",
+                &[("key", cfg.settings_key.label())],
             ),
             11.0,
             x + 4.0,
@@ -527,7 +543,7 @@ fn pane_app_startup(
         hits,
     );
     if cfg.open_with_game {
-        text(px, fonts, "Starts the overlay in the tray when MX Bikes launches, including after a reboot or after you Quit overlay. F8 or the HUD mark opens settings.", 11.0, x + 4.0, y + 2.0, dim(), false);
+        text(px, fonts, mxbo_hud::i18n::t("Starts the overlay in the tray when MX Bikes launches, including after a reboot or after you Quit overlay. F8 or the HUD mark opens settings."), 11.0, x + 4.0, y + 2.0, dim(), false);
         y += 22.0;
     }
     y + 28.0
@@ -583,16 +599,7 @@ fn pane_app_stream(
         let field_h = 36.0;
         let obs = crate::stream::url();
         outlined(px, x, y, field_w, field_h, 8.0, panel());
-        text(
-            px,
-            fonts,
-            &obs,
-            12.0,
-            x + 12.0,
-            y + 10.0,
-            text_col(),
-            false,
-        );
+        text(px, fonts, &obs, 12.0, x + 12.0, y + 10.0, text_col(), false);
         action_btn(
             px,
             fonts,
@@ -677,7 +684,10 @@ fn pane_app_stream(
             y,
             w.min(280.0),
             36.0,
-            &format!("Copy game {} → stream", cfg.settings_preset.label()),
+            &mxbo_hud::i18n::t_fmt(
+                "Copy game {preset} → stream",
+                &[("preset", mxbo_hud::i18n::t(cfg.settings_preset.label()))],
+            ),
             Hit::StreamCopyGameToStream,
             hover,
             hits,
@@ -846,7 +856,10 @@ fn pane_app_updates(
         }
         crate::update::UpdateState::Available { version, .. } => (
             "A newer version is ready to install.",
-            Some(format!("Version {version} is available.")),
+            Some(mxbo_hud::i18n::t_fmt(
+                "Version {version} is available.",
+                &[("version", version.as_str())],
+            )),
             true,
             true,
         ),
@@ -866,7 +879,7 @@ fn pane_app_updates(
     text(
         px,
         fonts,
-        "Installed",
+        mxbo_hud::i18n::t("Installed"),
         10.0,
         x + 16.0,
         y + 14.0,
@@ -888,7 +901,7 @@ fn pane_app_updates(
         text(px, fonts, line, 13.0, x + 16.0, iy, accent(), false);
         iy += 22.0;
     }
-    text(px, fonts, status, 12.0, x + 16.0, iy, muted(), false);
+    text(px, fonts, mxbo_hud::i18n::t(status), 12.0, x + 16.0, iy, muted(), false);
     iy += 26.0;
     if need_admin && show_install {
         text(
@@ -1043,7 +1056,7 @@ fn pane_app_diagnostics(
     let copy = !report.empty;
     let card_h = 28.0 + rows.len() as f32 * 18.0 + if copy { 56.0 } else { 16.0 };
     outlined(px, x, y, w, card_h, 10.0, panel());
-    text(px, fonts, "Latest", 10.0, x + 16.0, y + 14.0, dim(), false);
+    text(px, fonts, mxbo_hud::i18n::t("Latest"), 10.0, x + 16.0, y + 14.0, dim(), false);
     let mut iy = y + 34.0;
     for (line, color) in rows {
         text(px, fonts, &line, 12.0, x + 16.0, iy, color, false);

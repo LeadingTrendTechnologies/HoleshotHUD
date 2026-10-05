@@ -27,7 +27,7 @@ Three columns **S1**, **S2**, **S3**, plus **LAP** on the right. Each column is 
 - Not yet reached this lap: `--`.
 - After you cross: S3 stays hero (frozen last lap) until the next lap clock runs, then S1 is hero again.
 - Split times at the bottom of each cell sit on night-ink pills (same chip as Delta Bar BEST / LAST).
-- When **panel opacity** is under 40%, floating type (caption, live deltas, live LAP stack, log cells) gets a 1px night-ink rim. Not extra chips. Not a drop-shadow. Pill times and the orange S# plaque are unchanged.
+- When **panel opacity** is under 40%, floating type (caption, live deltas, live LAP stack, log cells) gets the same soft night-ink rim as Session (copies on two circles). Not extra chips. Not a drop-shadow. Pill times and the orange S# plaque are unchanged.
 - Green: faster. Red: slower. Dim `--` until there is a comparison. Caption: **vs. your best**.
 - No purple on this widget (standings still uses violet for session-best lap).
 
@@ -36,6 +36,7 @@ No column picker; show, **Live sector**, **Compare to session best**, **Lap log*
 ## Do not regress
 
 - Keep the widget off until **Show on overlay** is on. Experimental features does not gate it.
+- Settings controls stay hidden while **Show on overlay** is off. Only the heading and that toggle remain.
 - **Compare to session best** (`sector_session`) is this visit’s fastest splits, not the saved tape. Independent of Delta Bar’s toggle. Do not use plugin sector delta in that mode.
 - Do not draw off-track unless settings layout boxes are up (same as other race widgets).
 - Hero is the sector you are in, not last completed.
@@ -60,10 +61,11 @@ No column picker; show, **Live sector**, **Compare to session best**, **Lap log*
 - `RunSplit` and `RaceSplit` both fire for the same split. Record it once. A second write after the session best is updated stores `0.000` on a faster sector. Overlay freeze vs the **old** saved best so a new PB is negative, not `0.000`. That compare is official duration minus saved, not tape-at-the-line.
 - SHM version must stay in lockstep between `overlay/hud/src/snapshot.rs` and `src/shm/mxbo_shm.h`.
 - Split times at the bottom sit on night-ink pills. Do not leave those captions floating on the game. Pill height is `fs * style_k` plus pad. With no lap log they sit above the 6px plaque corner — do not pin them to `pad_y` only or a large font shaves the chip into a bar.
-- Under 40% panel opacity, rim floating type in night-ink (1px, 8-neighbor). Do not add chips, row bars, or a log band for that. Do not rim type that already sits on a night-ink pill or the orange S# plaque.
+- Under 40% panel opacity, rim floating type with the soft circle outline. Do not add chips, row bars, or a log band for that. Do not rim type that already sits on a night-ink pill or the orange S# plaque. Do not switch this back to the hard 8-neighbor rim.
 
 ## Change log
 
+- 2026-10-03 — Under 40% opacity, floating type uses the same soft round night-ink rim as Session. Pills and the orange S# plaque stay bare.- 2026-10-02 — Settings body (note, live sector, session best, lap log, clear track, style) stays hidden until **Show on overlay** is on. The heading and that toggle stay so the widget can be turned back on.
 - 2026-09-10 — Split pills follow the Settings font and sit above the plaque corner, so a large font no longer clips them into a flat bar.
 - 2026-09-22 — Live sector elapsed follows Delta Bar’s wall-clock lap anchor, not plugin `_fTime`.
 - 2026-09-10 — Large Settings font no longer piles “vs. your best”, live times, and LAST on top of each other. Caption/log row height follows the scaled type; live delta is capped; shrink can go below a raw 8 px when font is 160%.

@@ -2278,6 +2278,7 @@ fn draw_compare_drop(
             menus.borrow_mut().push(PendingDrop {
                 mx: x,
                 my: y + h + 6.0,
+                anchor_top: y,
                 bw,
                 content_h: 10.0 + 28.0 * options.len() as f32,
                 open_hit: hit,
@@ -2865,6 +2866,7 @@ fn draw_you_lap_stepper(
             menus.borrow_mut().push(PendingDrop {
                 mx,
                 my: y + h + 6.0,
+                anchor_top: y,
                 bw: mid_w,
                 content_h: 10.0 + 28.0 * options.len() as f32,
                 open_hit: Hit::AnalyzeLapOpen,

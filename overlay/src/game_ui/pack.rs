@@ -6,9 +6,9 @@ use crate::config::format_primary_color;
 
 use super::io::{write_english_labels, write_text};
 use super::mnu::{
-    main_mnu, splice_connection, splice_export, splice_garage, splice_hostsetup,
+    main_mnu, menu_index, splice_connection, splice_export, splice_garage, splice_hostsetup,
     splice_multiclient, splice_multijoin, splice_options, splice_profiles, splice_replay,
-    splice_test, splice_testsetup, splice_viewreplays, menu_index,
+    splice_test, splice_testsetup, splice_viewreplays,
 };
 use super::screens::{write_screen_images, LOADING_TGA, SPLASH_TGA};
 use super::sprites::{

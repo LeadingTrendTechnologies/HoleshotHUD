@@ -2,7 +2,7 @@
 
 **Browser Source + `/edit`** — OBS paints `/`; stream Show / move / resize / basic prefs live at `/edit`. F8 configures the in-game HUD only. When you change this page, append a **Change log** bullet (why, not just what).
 
-Widget wishlist: [widgets/future.md](widgets/future.md). Shipped widgets: [widgets.md](widgets.md). Broadcast gaps: [stream-broadcast.md](stream-broadcast.md).
+Widget wishlist: [future/widgets.md](future/widgets.md). Shipped widgets: [widgets.md](widgets.md). Broadcast gaps: [future/stream-broadcast.md](future/stream-broadcast.md). Unread signals: [future/unread.md](future/unread.md).
 
 ## Today
 
@@ -68,7 +68,8 @@ A second-monitor companion window can come later.
 
 ## Change log
 
-- 2026-10-01 — Broadcast gaps live on [stream-broadcast.md](stream-broadcast.md), so streaming is not treated as “no new widgets.”
+- 2026-10-03 — Broadcast gaps and the widget wishlist moved under `wiki/future/`. This page stays the OBS how-to.
+- 2026-10-01 — Broadcast gaps live on [stream-broadcast.md](future/stream-broadcast.md), so streaming is not treated as “no new widgets.”
 - 2026-09-30 — Standings and the other text widgets send a style change or hide to OBS on the next frame, even while a newer sample is waiting.
 - 2026-09-30 — OBS paints a style change when the frame arrives, instead of waiting for an animation frame.
 - 2026-09-30 — Turning a stream widget on copies that preset’s in-game settings once. Later in-game edits leave the stream widget as it was.

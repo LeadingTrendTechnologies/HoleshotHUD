@@ -56,6 +56,7 @@ pub(crate) fn pane_review(
         super::queue_drop_menu(
             menu.mx,
             menu.my,
+            menu.anchor_top,
             menu.bw,
             menu.content_h,
             map_hit_to_overlay(menu.open_hit),

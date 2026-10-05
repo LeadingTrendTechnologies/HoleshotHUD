@@ -36,7 +36,8 @@ While live order is on, a second ranking uses the same bubble with penalties ign
 (`TRACK_ORDER` / `track_position`). When a rider's live place and on-track place differ,
 boards paint a trailing `*` on the place: green (`ahead_col`) when live is ahead of
 on-track, red (`behind_col`) when behind. Dash hero `P#`, Dash/board Position (and
-ClassPos), Standings, Relative, and H-Standings all use it. Map dot numbers stay plain.
+ClassPos), Standings, Relative, and H-Standings all use it. Map and Minimap numbered
+dots center the same `*` after the digits. No star when numbers are off.
 
 ## Progress tracker
 
@@ -103,6 +104,7 @@ each tick) and where their current lap started:
 
 ## Change log
 
+- 2026-10-02 — Map and Minimap numbered dots trail the same green/red `*` after the digits.
 - 2026-10-02 — A sector gate after the first lap no longer zeroes a healthy rider's metres,
   so places stop swapping as the pack reaches S1 and S2. On lap 1, the stretch just past
   the learned S2 stays ahead of S1 until the split publishes, instead of dropping a full lap.

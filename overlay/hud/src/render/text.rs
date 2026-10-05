@@ -200,7 +200,7 @@ pub fn text(
     );
 }
 
-/// 1px night-ink border around glyphs. Not a drop-shadow: same 8-neighbor rim as radar numbers.
+/// Round night-ink rim. Copies sit on two circles so glyph anti-aliasing blends the edge.
 pub(crate) fn text_halo(
     px: &mut Pixmap,
     fonts: &Fonts,
@@ -213,18 +213,21 @@ pub(crate) fn text_halo(
     glass: bool,
 ) {
     if glass {
-        let ink = Color::from_rgba8(10, 10, 10, 230);
-        for (dx, dy) in [
-            (-1.0, 0.0),
-            (1.0, 0.0),
-            (0.0, -1.0),
-            (0.0, 1.0),
-            (-1.0, -1.0),
-            (1.0, -1.0),
-            (-1.0, 1.0),
-            (1.0, 1.0),
-        ] {
-            text(px, fonts, s, size, x + dx, y + dy, ink, center);
+        for (radius, alpha, steps) in [(1.0, 210u8, 12u32), (1.85, 90, 16)] {
+            let ink = Color::from_rgba8(10, 10, 10, alpha);
+            for step in 0..steps {
+                let angle = (step as f32) * std::f32::consts::TAU / steps as f32;
+                text(
+                    px,
+                    fonts,
+                    s,
+                    size,
+                    x + angle.cos() * radius,
+                    y + angle.sin() * radius,
+                    ink,
+                    center,
+                );
+            }
         }
     }
     text(px, fonts, s, size, x, y, color, center);

@@ -182,7 +182,7 @@ pub(crate) fn draw_reply(
     let ty = box_y + 10.0;
     let tw = (inner_w - 24.0).max(40.0);
     if compose.message.is_empty() && !compose.focused {
-        text(px, fonts, "Write a reply", 12.0, tx, ty + 2.0, dim(), false);
+        text(px, fonts, mxbo_hud::i18n::t("Write a reply"), 12.0, tx, ty + 2.0, dim(), false);
         crate::feedback::set_caret_layout(tx, ty, 16.0, vec![vec![(0, 0.0)]]);
     } else {
         draw_fb_text(

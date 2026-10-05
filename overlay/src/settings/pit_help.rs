@@ -47,9 +47,7 @@ pub(crate) fn draw_pit_help(
     }
     let header_h = pad + plaque_h + 16.0;
     let footer_h = 16.0 + btn_h + 16.0;
-    let panel_h = (header_h + body_h + footer_h)
-        .min(win_h - 48.0)
-        .max(160.0);
+    let panel_h = (header_h + body_h + footer_h).min(win_h - 48.0).max(160.0);
     let panel_x = ((win_w - panel_w) * 0.5).max(16.0);
     let panel_y = ((win_h - panel_h) * 0.5).max(16.0);
     fill_round(px, panel_x, panel_y, panel_w, panel_h, 10.0, menu_fill());
@@ -90,7 +88,16 @@ pub(crate) fn draw_pit_help(
     let mut text_y = plaque_y + plaque_h + 16.0;
     for lines in &wrapped {
         for line in lines {
-            text(px, fonts, line, body_size, plaque_x, text_y, text_col(), false);
+            text(
+                px,
+                fonts,
+                line,
+                body_size,
+                plaque_x,
+                text_y,
+                text_col(),
+                false,
+            );
             text_y += line_h;
         }
         text_y += 6.0;

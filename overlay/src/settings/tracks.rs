@@ -25,18 +25,19 @@ pub(crate) fn pane_tracks(
     }
     let rows = crate::review::track_bank_rows();
     if rows.is_empty() {
-        let copy =
-            "No track lines yet. Enable Motos Record, finish clean laps, and they bank here.";
+        let copy = mxbo_hud::i18n::t(
+            "No track lines yet. Enable Motos Record, finish clean laps, and they bank here.",
+        );
         for line in wrap_fb(fonts, copy, (w - 24.0).max(40.0), 13.0) {
             text(px, fonts, &line, 13.0, x + 4.0, y, muted(), false);
             y += 18.0;
         }
         return y + 24.0;
     }
-    text(px, fonts, "TRACK", 10.0, x + 4.0, y, dim(), false);
-    text(px, fonts, "BEST", 10.0, x + w * 0.46, y, dim(), false);
-    text(px, fonts, "IDEAL", 10.0, x + w * 0.62, y, dim(), false);
-    text(px, fonts, "GAP", 10.0, x + w * 0.78, y, dim(), false);
+    text(px, fonts, mxbo_hud::i18n::t("TRACK"), 10.0, x + 4.0, y, dim(), false);
+    text(px, fonts, mxbo_hud::i18n::t("BEST"), 10.0, x + w * 0.46, y, dim(), false);
+    text(px, fonts, mxbo_hud::i18n::t("IDEAL"), 10.0, x + w * 0.62, y, dim(), false);
+    text(px, fonts, mxbo_hud::i18n::t("GAP"), 10.0, x + w * 0.78, y, dim(), false);
     y += 18.0;
     if let Some(r) = Rect::from_xywh(x, y, w, 1.0) {
         fill_rect(px, r, row_line());
@@ -124,7 +125,7 @@ fn pane_track_detail(
         text(
             px,
             fonts,
-            "No line stored for this track.",
+            mxbo_hud::i18n::t("No line stored for this track."),
             13.0,
             x + 4.0,
             y,
@@ -137,22 +138,31 @@ fn pane_track_detail(
     let best = format_lap(detail.best_ms);
     let ideal = format_lap(detail.ideal_ms);
     let gap = if detail.best_ms > 0 && detail.ideal_ms > 0 && detail.best_ms > detail.ideal_ms {
-        format!("gap {}", format_lap(detail.best_ms - detail.ideal_ms))
+        mxbo_hud::i18n::t_fmt(
+            "gap {time}",
+            &[("time", &format_lap(detail.best_ms - detail.ideal_ms))],
+        )
     } else {
-        "gap —".into()
+        mxbo_hud::i18n::t("gap —").to_string()
     };
-    let header = format!(
-        "Best {best}   Ideal {ideal}   {gap}   {} laps merged",
-        detail.merged_laps
+    let laps = detail.merged_laps.to_string();
+    let header = mxbo_hud::i18n::t_fmt(
+        "Best {best}   Ideal {ideal}   {gap}   {laps} laps merged",
+        &[
+            ("best", &best),
+            ("ideal", &ideal),
+            ("gap", &gap),
+            ("laps", &laps),
+        ],
     );
     text(px, fonts, &header, 12.0, x + 4.0, y, dim(), false);
     y += 22.0;
 
-    text(px, fonts, "Best", 11.0, x + 4.0, y, accent(), false);
+    text(px, fonts, mxbo_hud::i18n::t("Best"), 11.0, x + 4.0, y, accent(), false);
     text(
         px,
         fonts,
-        "Ideal",
+        mxbo_hud::i18n::t("Ideal"),
         11.0,
         x + 56.0,
         y,

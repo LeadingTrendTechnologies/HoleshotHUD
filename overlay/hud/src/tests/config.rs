@@ -1491,3 +1491,89 @@ fn seed_stream_widget_copies_factory_settings_once() {
     assert_eq!(cfg.stream_slot(preset).map.map_zoom, 40);
     assert_eq!(cfg.stream_slot(preset)[WidgetId::Standings].bg, 33);
 }
+
+#[test]
+fn groups_round_trip_and_first_badge() {
+    let long = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let mut cfg = HudConfig::new();
+    cfg.add_group("Factory");
+    cfg.set_group_icon(0, '\u{f024}');
+    cfg.set_group_color(0, [0xFF, 0x94, 0x30]);
+    cfg.add_group_members(0, &["VetMX".into(), "Sandbag".into()]);
+    cfg.add_group("Locals");
+    cfg.set_group_icon(1, '\u{f132}');
+    cfg.set_group_color(1, [0x3B, 0x82, 0xF6]);
+    cfg.add_group_members(1, &["vetmx".into(), "LocalHero".into(), long.into()]);
+    cfg.groups_on_maps = true;
+
+    let mut loaded = HudConfig::new();
+    loaded.groups.push(RiderGroup::new("Stale"));
+    loaded.groups_on_maps = false;
+    loaded.apply_ini_str(&super::groups_section(&cfg.groups, cfg.groups_on_maps));
+
+    assert!(loaded.groups_on_maps);
+    assert_eq!(loaded.groups.len(), 2);
+    assert_eq!(loaded.groups[0].name, "Factory");
+    assert_eq!(loaded.groups[0].icon, '\u{f024}');
+    assert_eq!(loaded.groups[0].color, [0xFF, 0x94, 0x30]);
+    assert_eq!(
+        loaded.group_badge("  vetmx "),
+        Some(('\u{f024}', [0xFF, 0x94, 0x30]))
+    );
+    assert_eq!(
+        loaded.group_badge("LocalHero"),
+        Some(('\u{f132}', [0x3B, 0x82, 0xF6]))
+    );
+    assert_eq!(loaded.groups[1].members.last().unwrap().chars().count(), 31);
+    assert!(loaded.group_badge("").is_none());
+    assert_eq!(cfg.move_group(0, 1), 1);
+    assert_eq!(cfg.group_badge("VetMX").unwrap().0, '\u{f132}');
+
+    let mut missing = HudConfig::new();
+    missing.groups_on_maps = true;
+    missing.apply_ini_str("\n[Groups]\n0=Factory\tF024\tFF9430\n");
+    assert!(!missing.groups_on_maps);
+    assert_eq!(missing.groups.len(), 1);
+}
+
+#[test]
+fn language_defaults_to_system_and_round_trips() {
+    let mut cfg = HudConfig::new();
+    assert_eq!(cfg.language, Language::System);
+    cfg.apply_ini_str("[App]\nfirst_install_version=0.1.0\n");
+    assert_eq!(cfg.language, Language::System);
+
+    cfg.apply_ini_str("[App]\nlanguage=pt-BR\n");
+    assert_eq!(cfg.language, Language::PtBr);
+    cfg.apply_ini_str("[App]\nlanguage=system\n");
+    assert_eq!(cfg.language, Language::System);
+
+    for lang in Language::CHOICES {
+        assert_eq!(Language::parse(lang.key()), lang, "{}", lang.key());
+    }
+    assert_eq!(Language::parse("pt_br"), Language::PtBr);
+    assert_eq!(Language::parse("nope"), Language::System);
+}
+
+#[test]
+fn locale_prefix_maps_to_a_supported_language() {
+    assert_eq!(Language::from_locale("en-US"), Language::En);
+    assert_eq!(Language::from_locale("fr-FR"), Language::Fr);
+    assert_eq!(Language::from_locale("it-IT"), Language::It);
+    assert_eq!(Language::from_locale("es-MX"), Language::Es);
+    assert_eq!(Language::from_locale("de-DE"), Language::De);
+    assert_eq!(Language::from_locale("pt-BR"), Language::PtBr);
+    assert_eq!(Language::from_locale("pt-PT"), Language::PtBr);
+    assert_eq!(Language::from_locale("nl-NL"), Language::Nl);
+    assert_eq!(Language::from_locale("ja-JP"), Language::En);
+    assert_eq!(Language::from_locale("pt_BR"), Language::PtBr);
+    assert_eq!(
+        Language::System.resolved(Language::Fr),
+        Language::Fr
+    );
+    assert_eq!(Language::De.resolved(Language::Fr), Language::De);
+    assert_eq!(
+        Language::System.resolved(Language::System),
+        Language::En
+    );
+}

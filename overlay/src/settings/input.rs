@@ -111,6 +111,9 @@ pub fn handle_message(msg: u32, wp: WPARAM, lp: LPARAM) -> bool {
             if pit_name_focused() {
                 pit_name_push(ch);
                 true
+            } else if group_name_focused() || group_member_focused() {
+                group_push(ch);
+                true
             } else {
                 crate::feedback::on_char(ch)
             }
@@ -316,6 +319,7 @@ pub(crate) fn is_slider(hit: Hit) -> bool {
             | Hit::GamepadBg
             | Hit::TelemetryBg
             | Hit::PitBg
+            | Hit::TimerBg
             | Hit::StW(_)
             | Hit::RelW(_)
             | Hit::Font(_)
@@ -469,6 +473,7 @@ pub(crate) fn apply_slide(hit: Hit, mx: f32, x: f32, w: f32, min: i32, max: i32)
         Hit::GamepadBg => c[WidgetId::Gamepad].bg = v,
         Hit::TelemetryBg => c[WidgetId::Telemetry].bg = v,
         Hit::PitBg => c[WidgetId::Pitboard].bg = v,
+        Hit::TimerBg => c[WidgetId::Timer].bg = v,
         Hit::StW(i) => {
             if let Some(f) = c.standings.st_order.get(i as usize).copied() {
                 f.set_width(c, v);
@@ -713,6 +718,7 @@ pub(crate) fn is_drop_pick(hit: Hit) -> bool {
             | Hit::FontMontserrat
             | Hit::UnitsPick(_, _)
             | Hit::SettingsKeyPick(_)
+            | Hit::LanguagePick(_)
             | Hit::ThemePick(_)
             | Hit::StanceModePick(_)
             | Hit::StanceStylePick(_)
@@ -780,7 +786,7 @@ pub(crate) fn set_kb_focus(id: Hit) {
 }
 
 pub(crate) fn hit_label(hit: Hit) -> String {
-    match hit {
+    let english = match hit {
         Hit::TabWidgets => "Widgets".into(),
         Hit::TabApp => "Settings".into(),
         Hit::AppLook => "Look".into(),
@@ -791,17 +797,35 @@ pub(crate) fn hit_label(hit: Hit) -> String {
         Hit::AppLabs => "Labs".into(),
         Hit::AppUpdates => "Updates".into(),
         Hit::AppDiagnostics => "Diagnostics".into(),
+        Hit::TabGroups => "Groups".into(),
+        Hit::GroupSelect(_) => "Group".into(),
+        Hit::GroupUp(_) => "Move group up".into(),
+        Hit::GroupDown(_) => "Move group down".into(),
+        Hit::GroupNew => "New group".into(),
+        Hit::GroupDelete => "Delete group".into(),
+        Hit::GroupsOnMaps => "Show on maps".into(),
+        Hit::GroupIcon(_) => "Group icon".into(),
+        Hit::GroupColor(_) => "Group color".into(),
+        Hit::GroupMemberRemove(_) => "Remove rider".into(),
+        Hit::GroupCheck(_) => "Select rider".into(),
+        Hit::GroupAddSelected => "Add selected".into(),
+        Hit::GroupAddName => "Add name".into(),
+        Hit::GroupName => "Group name".into(),
+        Hit::GroupMember => "Rider name".into(),
         Hit::DiagCopy => "Copy crash report".into(),
         Hit::TabProfile => "Profile".into(),
         Hit::TabFeedback => "Feedback".into(),
         Hit::ProfileNavOverview => "Overview".into(),
         Hit::ProfileNavMotos => "Motos".into(),
+        Hit::ProfileNavRanked => "MXB-Ranked".into(),
         Hit::ProfileNavTracks => "Tracks".into(),
+        Hit::RankedRefresh => "Refresh".into(),
         Hit::TrackOpen(_) => "Open track".into(),
         Hit::TrackBack => "Back".into(),
         Hit::TrackMap => "Track map".into(),
         Hit::ProfileAllTime => "All time".into(),
         Hit::ProfileTwoWeeks => "Last 14 days".into(),
+        Hit::ProfileRanked => "Ranked motos".into(),
         Hit::ProfileClear => "Clear Profile".into(),
         Hit::ReviewClear => "Clear Motos".into(),
         Hit::ClearCancel => "Cancel".into(),
@@ -839,6 +863,7 @@ pub(crate) fn hit_label(hit: Hit) -> String {
         Hit::TabGamepad => "Controller".into(),
         Hit::TabTelemetry => "Telemetry".into(),
         Hit::TabPitboard => "Pit Board".into(),
+        Hit::TabTimer => "Session".into(),
         Hit::PitBrowse => "PNG or JPEG. An empty name uses the file name. A picture with no board.json starts as one slot.".into(),
         Hit::PitExport => "Save this pit board folder, plate.png and board.json".into(),
         Hit::PitImport => "Open a board.json that has plate.png beside it".into(),
@@ -871,16 +896,25 @@ pub(crate) fn hit_label(hit: Hit) -> String {
             let (live, active, editing) =
                 with_config(|c| (c.session_live, c.active_preset, c.settings_preset));
             if live && p == active && p != editing {
-                format!("{} — live HUD", p.label())
+                mxbo_hud::i18n::t_fmt(
+                    "{preset} — live HUD",
+                    &[("preset", mxbo_hud::i18n::t(p.label()))],
+                )
             } else {
                 p.label().into()
             }
         }
         Hit::PresetCopyOpen => {
             let src = with_config(|c| c.settings_preset);
-            format!("Copy {} to another preset", src.label())
+            mxbo_hud::i18n::t_fmt(
+                "Copy {preset} to another preset",
+                &[("preset", mxbo_hud::i18n::t(src.label()))],
+            )
         }
-        Hit::PresetCopyTo(p) => format!("Replace {} with this layout", p.label()),
+        Hit::PresetCopyTo(p) => mxbo_hud::i18n::t_fmt(
+            "Replace {preset} with this layout",
+            &[("preset", mxbo_hud::i18n::t(p.label()))],
+        ),
         Hit::PresetCopyAll => "Replace all presets with this layout".into(),
         Hit::FeatureSector => "Experimental features (Tracks)".into(),
         Hit::GameUi => "MX Bikes menus".into(),
@@ -899,7 +933,9 @@ pub(crate) fn hit_label(hit: Hit) -> String {
         | Hit::LeanShow
         | Hit::GamepadShow
         | Hit::TelemetryShow
-        | Hit::PitShow => "Show on overlay".into(),
+        | Hit::PitShow
+        | Hit::TimerShow => "Show on overlay".into(),
+        Hit::TimerOf => "Out of riders".into(),
         Hit::QuitApp => "Quit overlay".into(),
         Hit::Font(_) => "Font size".into(),
         Hit::Bold(_) => "Bold text".into(),
@@ -915,7 +951,8 @@ pub(crate) fn hit_label(hit: Hit) -> String {
         | Hit::LeanBg
         | Hit::GamepadBg
         | Hit::TelemetryBg
-        | Hit::PitBg => "Panel opacity".into(),
+        | Hit::PitBg
+        | Hit::TimerBg => "Panel opacity".into(),
         Hit::StHl | Hit::RelHl | Hit::TickerHl => "Row highlight".into(),
         Hit::StStripe | Hit::RelStripe => "Alternating rows".into(),
         Hit::StPlaque | Hit::RelPlaque => "Show plaques".into(),
@@ -966,6 +1003,8 @@ pub(crate) fn hit_label(hit: Hit) -> String {
         Hit::UnitsOpen(kind) => kind.label().into(),
         Hit::UnitsPick(_, units) => units.label().into(),
         Hit::SettingsKeyOpen => "Settings key".into(),
+        Hit::LanguageOpen => "Language".into(),
+        Hit::LanguagePick(lang) => lang.endonym().into(),
         Hit::ThemeOpen => "Theme".into(),
         Hit::ThemePick(theme) => theme.label().into(),
         Hit::StanceBindOpen => {
@@ -1044,11 +1083,15 @@ pub(crate) fn hit_label(hit: Hit) -> String {
         Hit::ReplySend => "Send".into(),
         Hit::ReplyText => "Write a reply".into(),
         _ => "Control".into(),
-    }
+    };
+    mxbo_hud::i18n::t(&english).to_string()
 }
 
 pub(crate) fn announce(host: HWND, label: &str) {
-    let title = format!("Holeshot HUD — Settings — {label}");
+    let title = format!(
+        "Holeshot HUD — {} — {label}",
+        mxbo_hud::i18n::t("Settings")
+    );
     let mut buf: Vec<u16> = title.encode_utf16().collect();
     buf.push(0);
     unsafe {
@@ -1073,6 +1116,26 @@ pub(crate) fn handle_key(vk: u16, shift: bool, _ctrl: bool) -> bool {
         }
         if vk == VK_BACK.0 {
             pit_name_backspace();
+            return true;
+        }
+        return true;
+    }
+    if group_name_focused() || group_member_focused() {
+        if vk == VK_ESCAPE.0 {
+            group_revert_focus();
+            return true;
+        }
+        if vk == VK_RETURN.0 {
+            if group_name_focused() {
+                commit_group_name();
+                group_revert_focus();
+            } else {
+                dispatch(Hit::GroupAddName, (0.0, 0.0));
+            }
+            return true;
+        }
+        if vk == VK_BACK.0 {
+            group_backspace();
             return true;
         }
         return true;
@@ -1316,6 +1379,7 @@ pub(crate) fn nudge_slider(hit: Hit, delta: i32) {
         Hit::GamepadBg => c[WidgetId::Gamepad].bg,
         Hit::TelemetryBg => c[WidgetId::Telemetry].bg,
         Hit::PitBg => c[WidgetId::Pitboard].bg,
+        Hit::TimerBg => c[WidgetId::Timer].bg,
         Hit::StW(i) => c
             .standings.st_order
             .get(i as usize)
@@ -1364,6 +1428,7 @@ pub(crate) fn nudge_slider(hit: Hit, delta: i32) {
         Hit::GamepadBg => c[WidgetId::Gamepad].bg = v,
         Hit::TelemetryBg => c[WidgetId::Telemetry].bg = v,
         Hit::PitBg => c[WidgetId::Pitboard].bg = v,
+        Hit::TimerBg => c[WidgetId::Timer].bg = v,
         Hit::StW(i) => {
             if let Some(f) = c.standings.st_order.get(i as usize).copied() {
                 f.set_width(c, v);

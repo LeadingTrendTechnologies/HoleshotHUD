@@ -146,7 +146,7 @@ pub(crate) fn sector_col_need(
     let lap_time_fs = (live_h * 0.28).clamp(12.0, 22.0);
     let lap_delta_fs = (live_h * 0.18).clamp(10.0, 14.0);
     let pill_fs = (live_h * 0.14).clamp(9.0, 12.0);
-    let mut lw = measure(fonts, "LAP", lap_label_fs);
+    let mut lw = measure(fonts, crate::i18n::t("LAP"), lap_label_fs);
     lw = lw.max(measure(fonts, SECTOR_PROBE_LAP, lap_time_fs));
     lw = lw.max(measure(fonts, SECTOR_PROBE_DELTA, lap_delta_fs));
     lw = lw.max(measure(fonts, SECTOR_PROBE_DELTA_LONG, lap_delta_fs));
@@ -554,7 +554,7 @@ pub(crate) fn draw_sector_lap_live(
     text_halo(
         px,
         fonts,
-        "LAP",
+        crate::i18n::t("LAP"),
         label_fs,
         mid,
         body_y,

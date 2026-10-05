@@ -30,7 +30,7 @@ pub(crate) fn draw_map(
         text(
             px,
             fonts,
-            "No track map",
+            crate::i18n::t("No track map"),
             13.0,
             x + w * 0.5,
             y + h * 0.5,
@@ -201,7 +201,7 @@ fn paint_map_riders(
             }
             let pose = rider_map_pose(s, rider);
             let (hx, hy) = to_px(pose.x, pose.z);
-            let fill = rider_dot_col(s, rider.race_num);
+            let fill = group_map_fill(cfg, s, rider);
             draw_rider_dot(
                 px,
                 fonts,
@@ -210,6 +210,7 @@ fn paint_map_riders(
                 other_r,
                 fill,
                 rider_dot_num(s, rider.race_num, cfg.map.map_dot),
+                rider.race_num,
                 cfg.map.map_numbers,
                 false,
                 cfg.map.map_dot_opacity,
@@ -252,6 +253,7 @@ fn paint_map_riders(
             local_r,
             you_col(),
             rider_dot_num(s, subject, cfg.map.map_dot),
+            subject,
             cfg.map.map_numbers,
             true,
             cfg.map.map_dot_opacity,

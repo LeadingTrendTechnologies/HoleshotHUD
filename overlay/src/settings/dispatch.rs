@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use super::*;
 
-fn open_default_browser(url: &str) {
+pub(crate) fn open_default_browser(url: &str) {
     use windows::core::{w, PCWSTR};
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::Shell::ShellExecuteW;
@@ -67,6 +67,10 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         }
         set_pit_name_focus(false);
     }
+    if !matches!(id, Hit::GroupName) && group_name_focused() {
+        commit_group_name();
+        group_revert_focus();
+    }
     match id {
         Hit::TabWidgets => {
             let last = UI
@@ -131,6 +135,14 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             open_live_analyze(true);
             return;
         }
+        Hit::ProfileNavRanked => {
+            set_profile_section(ProfileSection::Ranked);
+            return;
+        }
+        Hit::RankedRefresh => {
+            super::ranked::request_refresh();
+            return;
+        }
         Hit::ProfileNavTracks => {
             if with_config(|c| c.experimental_unlocked()) {
                 set_profile_section(ProfileSection::Tracks);
@@ -164,6 +176,10 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         }
         Hit::TabFeedback => {
             set_tab(Tab::Feedback);
+            return;
+        }
+        Hit::TabGroups => {
+            set_tab(Tab::Groups);
             return;
         }
         Hit::ReviewFilterAll => {
@@ -251,6 +267,12 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::ProfileTwoWeeks => {
             if let Some(ui) = UI.lock().unwrap().as_mut() {
                 ui.profile_all_time = false;
+            }
+            return;
+        }
+        Hit::ProfileRanked => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.profile_ranked_only = !ui.profile_ranked_only;
             }
             return;
         }
@@ -397,6 +419,10 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
                 let art = c.pit.pit_art.clone();
                 apply_json_names(&art, &mut c.pit.pit_vars);
             });
+            return;
+        }
+        Hit::TabTimer => {
+            set_tab(Tab::Timer);
             return;
         }
         Hit::PresetCopyOpen => {
@@ -558,6 +584,10 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         }
         Hit::SettingsKeyOpen => {
             toggle_drop(Drop::SettingsKey);
+            return;
+        }
+        Hit::LanguageOpen => {
+            toggle_drop(Drop::Language);
             return;
         }
         Hit::ThemeOpen => {
@@ -970,7 +1000,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
                 return;
             };
             match write_demo_png(&path) {
-                Ok(name) => set_pit_notice(&format!("Saved {name}.")),
+                Ok(name) => set_pit_notice(&mxbo_hud::i18n::t_fmt("Saved {name}.", &[("name", &name)])),
                 Err(msg) => set_pit_notice(&msg),
             }
             return;
@@ -1123,7 +1153,12 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             crate::feedback::send();
             return;
         }
-        _ => close_drop(),
+        _ => {
+            if dispatch_group(id) {
+                return;
+            }
+            close_drop();
+        }
     }
     update_config(|c| match id {
         Hit::StShow => c[WidgetId::Standings].show ^= true,
@@ -1158,6 +1193,8 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::LeanShow => c[WidgetId::Lean].show ^= true,
         Hit::TelemetryShow => c[WidgetId::Telemetry].show ^= true,
         Hit::PitShow => c[WidgetId::Pitboard].show ^= true,
+        Hit::TimerShow => c[WidgetId::Timer].show ^= true,
+        Hit::TimerOf => c.timer.timer_of ^= true,
         Hit::PitReset => {
             let (text, _, places) = factory_pack();
             c.pit.pit_art = FACTORY_ART.into();
@@ -1290,6 +1327,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::RelPlaqueTextWhite => c.relative.rel_plaque_text = TableText::White,
         Hit::RelPlaqueTextBlack => c.relative.rel_plaque_text = TableText::Black,
         Hit::SettingsKeyPick(key) => c.settings_key = key,
+        Hit::LanguagePick(lang) => c.language = lang,
         Hit::ThemePick(theme) => c.settings_theme = theme,
         Hit::StanceModePick(mode) => c.stance.stance_mode = mode,
         Hit::StanceStylePick(style) => c.stance.stance_style = style,
@@ -1336,10 +1374,27 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::AppLabs
         | Hit::AppUpdates
         | Hit::AppDiagnostics
+        | Hit::TabGroups
+        | Hit::GroupSelect(_)
+        | Hit::GroupUp(_)
+        | Hit::GroupDown(_)
+        | Hit::GroupNew
+        | Hit::GroupDelete
+        | Hit::GroupsOnMaps
+        | Hit::GroupIcon(_)
+        | Hit::GroupColor(_)
+        | Hit::GroupMemberRemove(_)
+        | Hit::GroupCheck(_)
+        | Hit::GroupAddSelected
+        | Hit::GroupAddName
+        | Hit::GroupName
+        | Hit::GroupMember
         | Hit::DiagCopy
         | Hit::TabProfile
         | Hit::ProfileNavOverview
         | Hit::ProfileNavMotos
+        | Hit::ProfileNavRanked
+        | Hit::RankedRefresh
         | Hit::ProfileNavTracks
         | Hit::TrackOpen(_)
         | Hit::TrackBack
@@ -1347,6 +1402,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::TabFeedback
         | Hit::ProfileAllTime
         | Hit::ProfileTwoWeeks
+        | Hit::ProfileRanked
         | Hit::ProfileClear
         | Hit::ProfileAxis(_)
         | Hit::ReviewClear
@@ -1370,6 +1426,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::TabGamepad
         | Hit::TabTelemetry
         | Hit::TabPitboard
+        | Hit::TabTimer
         | Hit::MapDotOpen
         | Hit::MapYouTextOpen
         | Hit::MiniDotOpen
@@ -1409,6 +1466,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::StPlaqueTextOpen
         | Hit::RelPlaqueTextOpen
         | Hit::SettingsKeyOpen
+        | Hit::LanguageOpen
         | Hit::ThemeOpen
         | Hit::StanceBindOpen
         | Hit::StanceModeOpen
@@ -1500,6 +1558,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::GamepadBg
         | Hit::TelemetryBg
         | Hit::PitBg
+        | Hit::TimerBg
         | Hit::PitBrowse
         | Hit::PitName
         | Hit::PitBoardOpen

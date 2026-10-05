@@ -15,6 +15,7 @@ pub(crate) enum Tab {
     Review,
     Profile,
     Feedback,
+    Groups,
     Standings,
     Relative,
     Map,
@@ -31,11 +32,15 @@ pub(crate) enum Tab {
     Gamepad,
     Telemetry,
     Pitboard,
+    Timer,
 }
 
 impl Tab {
     pub(crate) fn is_widget(self) -> bool {
-        !matches!(self, Tab::App | Tab::Review | Tab::Profile | Tab::Feedback)
+        !matches!(
+            self,
+            Tab::App | Tab::Review | Tab::Profile | Tab::Feedback | Tab::Groups
+        )
     }
 }
 
@@ -55,22 +60,25 @@ pub(crate) enum AppSection {
 pub(crate) enum ProfileSection {
     Overview,
     Motos,
+    Ranked,
     Tracks,
 }
 
 impl ProfileSection {
     pub(crate) fn label(self) -> &'static str {
-        match self {
+        mxbo_hud::i18n::t(match self {
             Self::Overview => "Overview",
             Self::Motos => "Motos",
+            Self::Ranked => "MXB-Ranked",
             Self::Tracks => "Tracks",
-        }
+        })
     }
 
     pub(crate) fn hit(self) -> Hit {
         match self {
             Self::Overview => Hit::ProfileNavOverview,
             Self::Motos => Hit::ProfileNavMotos,
+            Self::Ranked => Hit::ProfileNavRanked,
             Self::Tracks => Hit::ProfileNavTracks,
         }
     }
@@ -78,7 +86,7 @@ impl ProfileSection {
 
 impl AppSection {
     pub(crate) fn label(self) -> &'static str {
-        match self {
+        mxbo_hud::i18n::t(match self {
             Self::Look => "Look",
             Self::Menus => "In game HUD",
             Self::Install => "Install",
@@ -87,7 +95,7 @@ impl AppSection {
             Self::Labs => "Labs",
             Self::Updates => "Updates",
             Self::Diagnostics => "Diagnostics",
-        }
+        })
     }
 
     pub(crate) fn hit(self) -> Hit {
@@ -107,9 +115,9 @@ impl AppSection {
 /// Settings left rail: HUD chrome separate from app install/startup/menus.
 pub(crate) fn app_section_groups() -> Vec<(&'static str, Vec<AppSection>)> {
     let mut groups = vec![
-        ("HUD", vec![AppSection::Look]),
+        (mxbo_hud::i18n::t("HUD"), vec![AppSection::Look]),
         (
-            "App",
+            mxbo_hud::i18n::t("App"),
             vec![
                 AppSection::Menus,
                 AppSection::Install,
@@ -136,7 +144,9 @@ pub(crate) enum Hit {
     TabFeedback,
     ProfileNavOverview,
     ProfileNavMotos,
+    ProfileNavRanked,
     ProfileNavTracks,
+    RankedRefresh,
     TrackOpen(u16),
     TrackBack,
     TrackMap,
@@ -148,6 +158,21 @@ pub(crate) enum Hit {
     AppLabs,
     AppUpdates,
     AppDiagnostics,
+    TabGroups,
+    GroupSelect(u8),
+    GroupUp(u8),
+    GroupDown(u8),
+    GroupNew,
+    GroupDelete,
+    GroupsOnMaps,
+    GroupIcon(u8),
+    GroupColor(u8),
+    GroupMemberRemove(u8),
+    GroupCheck(u8),
+    GroupAddSelected,
+    GroupAddName,
+    GroupName,
+    GroupMember,
     DiagCopy,
     ReviewFilterAll,
     ReviewFilterRanked,
@@ -159,6 +184,7 @@ pub(crate) enum Hit {
     ReviewToggle,
     ProfileAllTime,
     ProfileTwoWeeks,
+    ProfileRanked,
     ProfileClear,
     ProfileAxis(u8),
     ReviewClear,
@@ -185,6 +211,7 @@ pub(crate) enum Hit {
     TabGamepad,
     TabTelemetry,
     TabPitboard,
+    TabTimer,
     Preset(SessionPreset),
     PresetCopyOpen,
     PresetCopyTo(SessionPreset),
@@ -224,6 +251,9 @@ pub(crate) enum Hit {
     GamepadShow,
     TelemetryShow,
     PitShow,
+    TimerShow,
+    TimerOf,
+    TimerBg,
     PitBrowse,
     PitName,
     PitBoardOpen,
@@ -401,6 +431,8 @@ pub(crate) enum Hit {
     UnitsPick(UnitKind, Units),
     SettingsKeyOpen,
     SettingsKeyPick(SettingsKey),
+    LanguageOpen,
+    LanguagePick(crate::config::Language),
     ThemeOpen,
     ThemePick(SettingsTheme),
     StanceBindOpen,
@@ -520,6 +552,7 @@ pub(crate) enum Drop {
     FontFamily,
     Units(UnitKind),
     SettingsKey,
+    Language,
     Theme,
     StanceMode,
     StanceStyle,
@@ -619,13 +652,13 @@ impl ColorPickKind {
     }
 
     pub(crate) fn label(self) -> &'static str {
-        match self {
+        mxbo_hud::i18n::t(match self {
             Self::App => "Primary color",
             Self::Menu => "Menu color",
             Self::PitYellow => "Main",
             Self::PitBlue => "Secondary",
             Self::PitSlot => "Text",
-        }
+        })
     }
 }
 

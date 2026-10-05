@@ -123,7 +123,7 @@ pub(crate) fn draw_delta(
     let cap_y = times_y + (times_fs - cap_fs) * 0.45;
     let pills = cfg[WidgetId::Delta].bg < 40;
     if view.recording {
-        let hint = "complete a flying lap";
+        let hint = crate::i18n::t("complete a flying lap");
         let hw = measure(fonts, hint, times_fs);
         let hx = mid - hw * 0.5;
         if pills {
@@ -136,7 +136,7 @@ pub(crate) fn draw_delta(
             draw_delta_lap_chip(
                 px,
                 fonts,
-                if cfg.delta.delta_session { "SESSION" } else { "BEST" },
+                crate::i18n::t(if cfg.delta.delta_session { "SESSION" } else { "BEST" }),
                 &best,
                 line_x,
                 cap_y,
@@ -154,7 +154,7 @@ pub(crate) fn draw_delta(
             } else {
                 view.ref_lap_ms
             });
-            let cap = "NEW BEST";
+            let cap = crate::i18n::t("NEW BEST");
             let cap_w = measure(fonts, cap, cap_fs) + 6.0;
             let chip_w = cap_w + measure(fonts, &pb, times_fs);
             let lx = line_x + line_w - chip_w;

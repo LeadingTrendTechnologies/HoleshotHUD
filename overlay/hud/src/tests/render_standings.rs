@@ -780,6 +780,11 @@ fn horizontal_standings_scrolls_from_the_leader() {
     assert_eq!(hstand_scroll_start(7, 7, 12), 1.0);
     assert_eq!(hstand_scroll_start(11, 7, 12), 5.0);
     assert_eq!(hstand_scroll_start(2, 7, 5), 0.0);
+    assert_eq!(hstand_scroll_hold(4, 4, 12, 2.0), 2.0);
+    assert_eq!(hstand_scroll_hold(2, 4, 12, 2.0), 2.0);
+    assert_eq!(hstand_scroll_hold(5, 4, 12, 2.0), 2.0);
+    assert_eq!(hstand_scroll_hold(6, 4, 12, 2.0), hstand_scroll_start(6, 4, 12));
+    assert_eq!(hstand_scroll_hold(1, 4, 12, 2.0), hstand_scroll_start(1, 4, 12));
     assert!((hstand_card_x(0.0, 0.0, 0.0, 40.0) - 0.0).abs() < 0.01);
     assert!((hstand_card_x(2.0, 0.0, 0.0, 40.0) - 80.0).abs() < 0.01);
     let looped = hstand_loop_x(0.0, 0.3, 12.0, 100.0, 700.0, 97.0).unwrap();

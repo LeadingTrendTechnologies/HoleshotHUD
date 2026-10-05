@@ -4,19 +4,19 @@ These are **not shipped**. When one lands, give it a real page under `wiki/widge
 
 Plugin field status lives in [Home.md](../Home.md). **Overlay** = already in SHM. **Need SHM** = API has it, plugin/overlay do not publish it yet.
 
-Streaming (OBS Browser Source, stream-only layout) is not a widget — see [streaming.md](../streaming.md). Broadcast gaps: [stream-broadcast.md](../stream-broadcast.md).
+Streaming (OBS Browser Source, stream-only layout) is not a widget — see [streaming.md](../streaming.md). Broadcast gaps: [stream-broadcast.md](stream-broadcast.md). Signals the HUD does not show: [unread.md](unread.md).
 
 | Widget | Closest we have | Data |
 | --- | --- | --- |
 | [Holeshot / Start](#holeshot--start) | — | Overlay gate (`IN_GATE` / `session_state` 256) + live `track_pos`. `RaceHoleshot` on SHM v16 (Profile count; live plaque not shipped) |
-| [Battle card](#battle-card) | [Relative](relative.md) | Overlay gaps. Rival speed Need SHM (`RaceVehicleData`) |
+| [Battle card](#battle-card) | [Relative](../widgets/relative.md) | Overlay gaps. Rival speed Need SHM (`RaceVehicleData`) |
 | [Spectate nameplate](#spectate-nameplate) | Dash / Standings | Overlay (`focus_race_num`, live order, last lap) |
-| [Line](#line) | [Map](map.md) centerline | Overlay `poly[]` + XZ. **Needs in-game dumps** |
+| [Line](#line) | [Map](../widgets/map.md) centerline | Overlay `poly[]` + XZ. **Needs in-game dumps** |
 | [G-Force](#g-force) | — | Need SHM (`m_fAccelerationX/Y/Z`) |
 | [Fuel calculator](#fuel-calculator) | Dash / table **Fuel** and **Fuel %** | Overlay (`fuel` / `maxFuel`) |
-| [Ideal Lap](#ideal-lap) | [Sectors](sector.md) — shipped as IDEAL | Overlay splits + `track_pb` |
-| [Lap consistency](#lap-consistency) | [Delta Bar](delta-bar.md) | Overlay last/best lap; need a lap ring |
-| [Telemetry](#telemetry) | [Telemetry](telemetry.md) — traces + bars + gear/speed | Overlay inputs. Suspension still Need SHM |
+| [Ideal Lap](#ideal-lap) | [Sectors](../widgets/sector.md) — shipped as IDEAL | Overlay splits + `track_pb` |
+| [Lap consistency](#lap-consistency) | [Delta Bar](../widgets/delta-bar.md) | Overlay last/best lap; need a lap ring |
+| [Telemetry](#telemetry) | [Telemetry](../widgets/telemetry.md) — traces + bars + gear/speed | Overlay inputs. Suspension still Need SHM |
 | [Event Log](#event-log) | — | Cached / unused (`RaceCommunication`, laps, penalties) |
 
 ---
@@ -80,7 +80,7 @@ Consumption tracking, not just a tank readout.
 
 ## Ideal Lap
 
-Shipped on [Sectors](sector.md): best S1 + S2 + S3 (possibly from different laps). Night-ink pill in the LAP column; **IDEAL** row in the lap log. Not a separate widget. No purple (standings still owns Best Lap Violet).
+Shipped on [Sectors](../widgets/sector.md): best S1 + S2 + S3 (possibly from different laps). Night-ink pill in the LAP column; **IDEAL** row in the lap log. Not a separate widget. No purple (standings still owns Best Lap Violet).
 
 ## Lap consistency
 
@@ -92,7 +92,7 @@ Lap-time trend across the session (sparkline / rolling delta vs average or best)
 
 ## Telemetry
 
-Shipped as [Telemetry](telemetry.md): throttle / brake traces, clutch / brake / throttle bars, gear and speed. Suspension graphs are still future (`m_afSuspLength` / `m_afSuspVelocity` — Need SHM).
+Shipped as [Telemetry](../widgets/telemetry.md): throttle / brake traces, clutch / brake / throttle bars, gear and speed. Suspension graphs are still future (`m_afSuspLength` / `m_afSuspVelocity` — Need SHM).
 
 ## Event Log
 
@@ -101,19 +101,20 @@ Timestamped race-event feed.
 - Plugin: `RaceCommunication` (**Unused**, enums unmapped), `RaceLap` / `RaceSplit` (splits already Overlay), classification `m_iPenalty` (**Cached**, not in SHM), rider state DNS/OUT/DSQ.
 - Holeshot winner is [Holeshot / Start](#holeshot--start), not this scrollback.
 - Need a small ring of events in overlay (or SHM). Map `m_iCommunication` / `m_iReason` / `m_iOffence` in-game before drawing labels — they are game-defined ints.
-- Overlap with [Flags](flag.md) (white/checkered/yellow/blue) and Dash notices. This is a **scrollback**, not a flag cloth.
+- Overlap with [Flags](../widgets/flag.md) (white/checkered/yellow/blue) and Dash notices. This is a **scrollback**, not a flag cloth.
 
 ## Change log
 
-- 2026-10-01 — Broadcast gaps live on [stream-broadcast.md](../stream-broadcast.md), so streaming is not treated as “no new widgets.”
-- 2026-09-11 — Pit Board shipped. Moved to [pitboard.md](pitboard.md).
-- 2026-09-22 — Radar lappers shipped as blue/red rings on [radar.md](radar.md); dropped from this page.
+- 2026-10-03 — Moved here from `wiki/widgets/` so wishlists sit together. Shipped widget pages stay under `wiki/widgets/`.
+- 2026-10-01 — Broadcast gaps live on [stream-broadcast.md](stream-broadcast.md), so streaming is not treated as “no new widgets.”
+- 2026-09-11 — Pit Board shipped. Moved to [pitboard.md](../widgets/pitboard.md).
+- 2026-09-22 — Radar lappers shipped as blue/red rings on [radar.md](../widgets/radar.md); dropped from this page.
 - 2026-09-10 — Dropped unapproved ideas (ahead plate, interval bar, hunt, remount, finish projection, bike health, and the parked list).
 - 2026-09-10 — Added Holeshot / Start, Battle card, Spectate nameplate, Line (needs dumps), Radar lappers. Streaming moved to [streaming.md](../streaming.md). Event Log no longer owns holeshot.
 - 2026-09-09 — Telemetry shipped (traces + bars + gear/speed). Suspension graphs stay here.
-- 2026-09-25 — Controller left Labs. See [gamepad.md](gamepad.md).
-- 2026-09-04 — Controller (was Gamepad) is Labs-only. See [gamepad.md](gamepad.md).
-- 2026-09-02 — Gamepad shipped. Moved to [gamepad.md](gamepad.md).
-- 2026-09-01 — Lean shipped. Moved to [lean.md](lean.md).
+- 2026-09-25 — Controller left Labs. See [gamepad.md](../widgets/gamepad.md).
+- 2026-09-04 — Controller (was Gamepad) is Labs-only. See [gamepad.md](../widgets/gamepad.md).
+- 2026-09-02 — Gamepad shipped. Moved to [gamepad.md](../widgets/gamepad.md).
+- 2026-09-01 — Lean shipped. Moved to [lean.md](../widgets/lean.md).
 - 2026-09-01 — Added Lap consistency (session lap-time trend).
 - 2026-09-01 — First cut. Eight widgets only.

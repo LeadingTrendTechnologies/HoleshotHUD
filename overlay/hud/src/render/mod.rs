@@ -25,7 +25,7 @@ pub(crate) use crate::race_store::{
     penalty_place_delta, prestart, race_lap, race_laps_left_text, race_over_for_me,
     race_progress_text, reset_session_clock_track, rider_current_lap, session_banner,
     session_best_ms, session_len_ms, session_remain_ms, skip_last_lap_white, standing_num_laps,
-    standing_of, ticker_delta_from_row, timed_clock_live, timed_race_flag, track_position,
+    standing_of, timed_clock_live, timed_race_flag, track_position,
     RaceFlag, RaceStore, CHECKERED_LATCH, CLOSING_ON_LINE, IN_GATE, LAPS_TO_RUN_AT, LAP_GREEN,
     LAP_MID_SEEN, LAST_CUR_LAP, LAST_SESSION_SIG, LAST_SF_METERS, LEADER_FIN_LOCAL_BASE,
     OVERTIME_LOCAL_BASE, POST_GATE, RUN_IN_FLAG, SESSION_EXPIRED, START_FINISH_FRACTION_CANDIDATE, START_FINISH_FRACTION_LEARNED,
@@ -53,6 +53,7 @@ mod sys;
 mod telemetry;
 mod ticker;
 mod pitboard;
+mod timer;
 pub(crate) use dash::*;
 pub(crate) use delta::*;
 pub(crate) use flag::*;
@@ -71,6 +72,7 @@ pub use sys::{set_sys_procs, set_sys_stats, SysProc};
 pub(crate) use telemetry::*;
 pub(crate) use ticker::*;
 pub(crate) use pitboard::*;
+pub(crate) use timer::*;
 
 mod table;
 mod text;
@@ -303,14 +305,14 @@ pub fn draw(
             px,
             fonts,
             w,
-            "Fully quit MX Bikes and start it again so the plugin can load",
+            crate::i18n::t("Fully quit MX Bikes and start it again so the plugin can load"),
         );
     } else if restart_hint {
         top_banner(
             px,
             fonts,
             w,
-            "Restart MX Bikes once so the HUD stays on top while you ride",
+            crate::i18n::t("Restart MX Bikes once so the HUD stays on top while you ride"),
         );
     }
     let Some(s) = snap else {
@@ -322,20 +324,27 @@ pub fn draw(
                 px,
                 fonts,
                 w,
-                "Press F8 — turn on Show on overlay. Widgets appear on track.",
+                crate::i18n::t("Press F8 — turn on Show on overlay. Widgets appear on track."),
             );
         } else {
             top_banner(
                 px,
                 fonts,
                 w,
-                "Widgets appear on track. If you are racing, fully quit MX Bikes and start it again.",
+                crate::i18n::t(
+                    "Widgets appear on track. If you are racing, fully quit MX Bikes and start it again.",
+                ),
             );
         }
         return;
     }
     if !cfg.any_overlay_widget() && !settings_hint {
-        top_banner(px, fonts, w, "Press F8 — turn on Show on overlay");
+        top_banner(
+            px,
+            fonts,
+            w,
+            crate::i18n::t("Press F8 — turn on Show on overlay"),
+        );
     }
 
     let sw = w as f32;
@@ -421,20 +430,27 @@ pub fn draw_each<After>(
                 px,
                 fonts,
                 w,
-                "Press F8 — turn on Show on overlay. Widgets appear on track.",
+                crate::i18n::t("Press F8 — turn on Show on overlay. Widgets appear on track."),
             );
         } else {
             top_banner(
                 px,
                 fonts,
                 w,
-                "Widgets appear on track. If you are racing, fully quit MX Bikes and start it again.",
+                crate::i18n::t(
+                    "Widgets appear on track. If you are racing, fully quit MX Bikes and start it again.",
+                ),
             );
         }
         return;
     }
     if !cfg.any_overlay_widget() {
-        top_banner(px, fonts, w, "Press F8 — turn on Show on overlay");
+        top_banner(
+            px,
+            fonts,
+            w,
+            crate::i18n::t("Press F8 — turn on Show on overlay"),
+        );
     }
     if cfg.edit_surface == EditSurface::Stream {
         return;
@@ -685,6 +701,15 @@ fn draw_widgets<After>(
             return;
         }
     }
+    if cfg[WidgetId::Timer].show && included(WidgetId::Timer) {
+        RaceStore::with(|_| {
+            let _style = push_style(fonts, cfg[WidgetId::Timer].bold, cfg[WidgetId::Timer].font);
+            draw_timer(px, fonts, s, cfg, sw, sh);
+        });
+        if !after_widget(WidgetId::Timer, px) {
+            return;
+        }
+    }
 }
 
 fn try_rect(x: f32, y: f32, w: f32, h: f32) -> Option<Rect> {
@@ -871,6 +896,16 @@ fn draw_layout(px: &mut Pixmap, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32)
     if cfg[WidgetId::Pitboard].show {
         layout_box(px, cfg[WidgetId::Pitboard].rect.x * sw, cfg[WidgetId::Pitboard].rect.y * sh, cfg[WidgetId::Pitboard].rect.w * sw, cfg[WidgetId::Pitboard].rect.h * sh, false);
     }
+    if cfg[WidgetId::Timer].show {
+        layout_box(
+            px,
+            cfg[WidgetId::Timer].rect.x * sw,
+            cfg[WidgetId::Timer].rect.y * sh,
+            cfg[WidgetId::Timer].rect.w * sw,
+            cfg[WidgetId::Timer].rect.h * sh,
+            false,
+        );
+    }
     if cfg[WidgetId::Flag].show {
         layout_box(
             px,
@@ -1009,6 +1044,52 @@ fn fill_fade_row(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, c: Color) {
     );
 }
 
+/// H-Standings focus card: same wash as a row, 1px frame, 4px rounded corners.
+fn fill_fade_card(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, c: Color) {
+    let (r, g, b, wash) = color_bytes(c);
+    if wash == 0 || w < 2.0 || h < 2.0 {
+        return;
+    }
+    let radius = 4.0_f32.min(w * 0.5).min(h * 0.5);
+    let Some(path) = round_rect_path(x, y, w, h, radius) else {
+        return;
+    };
+    let Some(mut mask) = Mask::new(px.width(), px.height()) else {
+        return;
+    };
+    mask.fill_path(&path, FillRule::Winding, true, Transform::identity());
+    fill_h_fade_mask(px, x, y, w, h, r, g, b, wash, 0, Some(&mask));
+    // 1px strips clipped by the mask leave a square gap at a 4px arc. Stroke the
+    // centerline inset so the arc stays inside the card layer (cards sit on y = 0).
+    let border_left = (wash as u32 * 3).min(255) as u8;
+    let border_right = (wash as u32 * 24 / 10).min(255) as u8;
+    let inset = 0.5;
+    let stroke_r = (radius - inset).max(0.0);
+    let Some(frame) = round_rect_path(x + inset, y + inset, w - 1.0, h - 1.0, stroke_r) else {
+        return;
+    };
+    let Some(shader) = LinearGradient::new(
+        SkPoint::from_xy(x, y),
+        SkPoint::from_xy(x + w, y),
+        vec![
+            GradientStop::new(0.0, Color::from_rgba8(r, g, b, border_left)),
+            GradientStop::new(1.0, Color::from_rgba8(r, g, b, border_right)),
+        ],
+        SpreadMode::Pad,
+        Transform::identity(),
+    ) else {
+        return;
+    };
+    let mut paint = Paint::default();
+    paint.shader = shader;
+    paint.anti_alias = true;
+    let stroke = Stroke {
+        width: 1.0,
+        ..Stroke::default()
+    };
+    px.stroke_path(&frame, &paint, &stroke, Transform::identity(), None);
+}
+
 fn fill_h_fade(
     px: &mut Pixmap,
     x: f32,
@@ -1040,6 +1121,40 @@ fn fill_h_fade(
     paint.shader = shader;
     paint.anti_alias = w >= 2.0 && h >= 2.0;
     px.fill_rect(rrt, &paint, Transform::identity(), None);
+}
+
+fn fill_h_fade_mask(
+    px: &mut Pixmap,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    r: u8,
+    g: u8,
+    b: u8,
+    left: u8,
+    right: u8,
+    mask: Option<&Mask>,
+) {
+    let Some(rrt) = try_rect(x, y, w, h) else {
+        return;
+    };
+    let Some(shader) = LinearGradient::new(
+        SkPoint::from_xy(x, y),
+        SkPoint::from_xy(x + w, y),
+        vec![
+            GradientStop::new(0.0, Color::from_rgba8(r, g, b, left)),
+            GradientStop::new(1.0, Color::from_rgba8(r, g, b, right)),
+        ],
+        SpreadMode::Pad,
+        Transform::identity(),
+    ) else {
+        return;
+    };
+    let mut paint = Paint::default();
+    paint.shader = shader;
+    paint.anti_alias = w >= 2.0 && h >= 2.0;
+    px.fill_rect(rrt, &paint, Transform::identity(), mask);
 }
 
 /// Spider-scaled wash: full chroma, alpha 52 at default 50% highlight.
@@ -1220,6 +1335,15 @@ fn rider_dot_col(s: &Snapshot, race_num: i32) -> Color {
         LapRel::LappedByMe => lapped_col(),
         LapRel::Same => other_col(),
     }
+}
+
+fn group_map_fill(cfg: &HudConfig, s: &Snapshot, rider: &Rider) -> Color {
+    if cfg.groups_on_maps {
+        if let Some((_, rgb)) = cfg.group_badge(&bytes_as_text(&rider.name)) {
+            return Color::from_rgba8(rgb[0], rgb[1], rgb[2], 255);
+        }
+    }
+    rider_dot_col(s, rider.race_num)
 }
 
 fn lap_row_bg(rel: LapRel, opacity_pct: i32) -> Option<Color> {
@@ -2196,24 +2320,6 @@ fn draw_board_bar(
 
 
 
-fn format_signed_delta(ms: i32, laps: i32) -> String {
-    if laps != 0 {
-        return format!("{laps:+}L");
-    }
-    let sec = ms as f32 / 1000.0;
-    if ms.abs() < 50 {
-        return "0.000".into();
-    }
-    if sec.abs() >= 60.0 {
-        let m = (sec.abs() / 60.0) as i32;
-        let s = sec.abs() - m as f32 * 60.0;
-        let sign = if ms < 0 { '-' } else { '+' };
-        format!("{sign}{m}:{:04.1}", s)
-    } else {
-        format!("{sec:+.3}")
-    }
-}
-
 fn signed_deg(deg: f32) -> String {
     let n = deg.round();
     if n == 0.0 {
@@ -2811,13 +2917,16 @@ fn draw_rider_dot(
     r: f32,
     fill: Color,
     num: i32,
+    race_num: i32,
     show_num: bool,
     you: bool,
     opacity: i32,
     num_ink: Option<Color>,
 ) {
     if show_num {
-        numbered_dot(px, fonts, x, y, r, fill, num, true, you, opacity, num_ink);
+        numbered_dot(
+            px, fonts, x, y, r, fill, num, race_num, true, you, opacity, num_ink,
+        );
     } else {
         dot_body(px, x, y, r, fill, you, opacity);
     }
@@ -2855,6 +2964,24 @@ fn you_dot_ink(mode: TableText) -> Color {
     }
 }
 
+/// One step smaller once a penalty `*` shares the disc with the digits.
+fn dot_label_scale(num: i32, with_star: bool) -> f32 {
+    let step = if num >= 100 {
+        2
+    } else if num >= 10 {
+        1
+    } else {
+        0
+    };
+    let step = if with_star { step + 1 } else { step };
+    match step {
+        0 => 1.22,
+        1 => 1.08,
+        2 => 0.92,
+        _ => 0.78,
+    }
+}
+
 fn numbered_dot(
     px: &mut Pixmap,
     fonts: &Fonts,
@@ -2863,6 +2990,7 @@ fn numbered_dot(
     r: f32,
     fill: Color,
     num: i32,
+    race_num: i32,
     show_num: bool,
     you: bool,
     opacity: i32,
@@ -2875,15 +3003,26 @@ fn numbered_dot(
     let label = format!("{num}");
     let face = &fonts.semibold;
     let k = style_k().max(0.01);
-    let size = if num >= 100 {
-        r * 0.92
-    } else if num >= 10 {
-        r * 1.08
-    } else {
-        r * 1.22
-    } / k;
-    let Some((min_x, min_y, max_x, max_y)) = ink_bounds(face, &label, size) else {
+    let star = place_star_col(penalty_place_delta(race_num));
+    let size = dot_label_scale(num, star.is_some()) * r / k;
+    let Some((digit_min_x, digit_min_y, digit_max_x, digit_max_y)) = ink_bounds(face, &label, size)
+    else {
         return;
+    };
+    let (min_x, min_y, max_x, max_y, star_pen) = if star.is_some() {
+        let advance = measure_font(face, &label, size * style_k());
+        match ink_bounds(face, "*", size) {
+            Some((star_min_x, star_min_y, star_max_x, star_max_y)) => (
+                digit_min_x.min(advance + star_min_x),
+                digit_min_y.min(star_min_y),
+                digit_max_x.max(advance + star_max_x),
+                digit_max_y.max(star_max_y),
+                Some(advance),
+            ),
+            None => (digit_min_x, digit_min_y, digit_max_x, digit_max_y, None),
+        }
+    } else {
+        (digit_min_x, digit_min_y, digit_max_x, digit_max_y, None)
     };
     let tx = (x - (min_x + max_x) * 0.5).round();
     let ty = (y - (min_y + max_y) * 0.5).round();
@@ -2898,6 +3037,9 @@ fn numbered_dot(
         false,
         false,
     );
+    if let (Some(star_col), Some(pen)) = (star, star_pen) {
+        draw_text(px, face, "*", size, tx + pen, ty, star_col, false, false);
+    }
 }
 
 
@@ -2938,12 +3080,8 @@ fn draw_rider_overhead(
 
 fn draw_place_mark(px: &mut Pixmap, x: f32, y: f32, r: f32, ahead: bool) {
     let col = if ahead { ahead_col() } else { behind_col() };
-    let mut ring = PathBuilder::new();
-    ring.push_circle(x, y, r + 3.4);
-    if let Some(path) = ring.finish() {
-        stroke_path(px, &path, col, 3.6);
-        stroke_path(px, &path, Color::from_rgba8(8, 8, 10, 200), 1.2);
-    }
+    stroke_circle(px, x, y, r + 2.0, color_alpha(col, 70), 2.2);
+    stroke_circle(px, x, y, r + 3.4, color_alpha(col, 220), 1.0);
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -2,7 +2,9 @@
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering};
+use std::sync::atomic::{
+    AtomicBool, AtomicU16, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering,
+};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
@@ -293,12 +295,7 @@ fn stop() {
 }
 
 /// Copy one widget out of the overlay pixmap. Called after that widget is drawn and before the next one starts.
-pub fn copy_game_widget(
-    id: WidgetId,
-    px: &Pixmap,
-    snap: &crate::shm::Snapshot,
-    cfg: &HudConfig,
-) {
+pub fn copy_game_widget(id: WidgetId, px: &Pixmap, snap: &crate::shm::Snapshot, cfg: &HudConfig) {
     if !is_running() || client_count() == 0 {
         return;
     }
@@ -444,11 +441,11 @@ fn match_paint_size(
     obs_cache: &mut WidgetCache,
     edit_cache: &mut WidgetCache,
 ) {
-    let (width, height) = paint_size(
-        VIEW_W.load(Ordering::SeqCst),
-        VIEW_H.load(Ordering::SeqCst),
-    );
-    if px.width() == width && px.height() == height && text_px.width() == width && text_px.height() == height
+    let (width, height) = paint_size(VIEW_W.load(Ordering::SeqCst), VIEW_H.load(Ordering::SeqCst));
+    if px.width() == width
+        && px.height() == height
+        && text_px.width() == width
+        && text_px.height() == height
     {
         return;
     }
@@ -726,10 +723,7 @@ fn empty_widget_cache() -> WidgetCache {
 }
 
 fn sample_waiting() -> bool {
-    LATEST
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .is_some()
+    LATEST.lock().unwrap_or_else(|e| e.into_inner()).is_some()
 }
 
 fn motion_widgets() -> [bool; WidgetId::COUNT] {
@@ -916,11 +910,10 @@ fn crop_rect_for(
         WidgetId::Lean if cfg[id].show => Some(cfg[id].rect),
         WidgetId::Gamepad if cfg.gamepad_visible() => Some(cfg[id].rect),
         WidgetId::Telemetry if cfg[id].show => Some(cfg[id].rect),
-        WidgetId::Pitboard
-            if mxbo_hud::pitboard::drawing(cfg[id].show, cfg.pit.pit_when) =>
-        {
+        WidgetId::Pitboard if mxbo_hud::pitboard::drawing(cfg[id].show, cfg.pit.pit_when) => {
             Some(cfg[id].rect)
         }
+        WidgetId::Timer if cfg[id].show => Some(cfg[id].rect),
         _ => None,
     }
 }
@@ -959,7 +952,8 @@ fn blit_copy_fit(px: &mut Pixmap, copy: &GameCopy, crop: &WidgetCrop) {
     if copy.width == 0 || copy.height == 0 || crop.width == 0 || crop.height == 0 {
         return;
     }
-    let scale = (crop.width as f32 / copy.width as f32).min(crop.height as f32 / copy.height as f32);
+    let scale =
+        (crop.width as f32 / copy.width as f32).min(crop.height as f32 / copy.height as f32);
     if scale <= 0.0 {
         return;
     }
@@ -1013,8 +1007,17 @@ fn copy_pixel(copy: &GameCopy, x: u32, y: u32) -> [u8; 4] {
 }
 
 fn lerp_pixel(left: [u8; 4], right: [u8; 4], t: f32) -> [u8; 4] {
-    let mix = |a: u8, b: u8| (a as f32 + (b as f32 - a as f32) * t).round().clamp(0.0, 255.0) as u8;
-    [mix(left[0], right[0]), mix(left[1], right[1]), mix(left[2], right[2]), mix(left[3], right[3])]
+    let mix = |a: u8, b: u8| {
+        (a as f32 + (b as f32 - a as f32) * t)
+            .round()
+            .clamp(0.0, 255.0) as u8
+    };
+    [
+        mix(left[0], right[0]),
+        mix(left[1], right[1]),
+        mix(left[2], right[2]),
+        mix(left[3], right[3]),
+    ]
 }
 
 fn clear_pixmap_rect(px: &mut Pixmap, x: u32, y: u32, width: u32, height: u32) {
@@ -1034,7 +1037,11 @@ fn clear_pixmap_rect(px: &mut Pixmap, x: u32, y: u32, width: u32, height: u32) {
     }
 }
 
-fn padded_pixel_rect(rect: crate::shm::Rect, paint_w: u32, paint_h: u32) -> Option<(u32, u32, u32, u32)> {
+fn padded_pixel_rect(
+    rect: crate::shm::Rect,
+    paint_w: u32,
+    paint_h: u32,
+) -> Option<(u32, u32, u32, u32)> {
     let left = (rect.x * paint_w as f32).floor() as i32 - CROP_PAD;
     let top = (rect.y * paint_h as f32).floor() as i32 - CROP_PAD;
     let right = ((rect.x + rect.w) * paint_w as f32).ceil() as i32 + CROP_PAD;
@@ -1174,7 +1181,12 @@ const PARTIAL_FLAG: u8 = 1;
 const PIXEL_FLAG: u8 = 1;
 const REMOVE_FLAG: u8 = 2;
 
-fn write_widget_message(piece: &WidgetPiece, include_pixels: bool, paint_w: u32, paint_h: u32) -> OutMessage {
+fn write_widget_message(
+    piece: &WidgetPiece,
+    include_pixels: bool,
+    paint_w: u32,
+    paint_h: u32,
+) -> OutMessage {
     let flags = if piece.remove {
         REMOVE_FLAG
     } else if include_pixels {
@@ -1217,7 +1229,11 @@ fn replace_unsent(unsent: Vec<OutMessage>, incoming: &[OutMessage]) -> Vec<OutMe
     let fresh: std::collections::HashSet<u8> = incoming.iter().map(|message| message.id).collect();
     let mut next = Vec::with_capacity(unsent.len() + incoming.len());
     next.extend(incoming.iter().cloned());
-    next.extend(unsent.into_iter().filter(|message| !fresh.contains(&message.id)));
+    next.extend(
+        unsent
+            .into_iter()
+            .filter(|message| !fresh.contains(&message.id)),
+    );
     next
 }
 
@@ -1573,7 +1589,8 @@ fn handle_conn(
 
     if method == "POST" && path_only == "/api/stream-viewport" {
         let body = read_http_body(&req_head, header_bytes, &mut stream);
-        if let (Some(width), Some(height)) = (json_i32_field(&body, "w"), json_i32_field(&body, "h"))
+        if let (Some(width), Some(height)) =
+            (json_i32_field(&body, "w"), json_i32_field(&body, "h"))
         {
             if width >= 64 && height >= 64 {
                 VIEW_W.store(width as u32, Ordering::SeqCst);
@@ -1762,6 +1779,7 @@ fn widget_key(id: WidgetId) -> &'static str {
         WidgetId::Gamepad => "gamepad",
         WidgetId::Telemetry => "telemetry",
         WidgetId::Pitboard => "pitboard",
+        WidgetId::Timer => "timer",
     }
 }
 
@@ -1783,27 +1801,22 @@ fn widget_label(id: WidgetId) -> &'static str {
         WidgetId::Gamepad => "Controller",
         WidgetId::Telemetry => "Telemetry",
         WidgetId::Pitboard => "Pit Board",
+        WidgetId::Timer => "Session",
     }
 }
 
 fn widget_from_key(s: &str) -> Option<WidgetId> {
-    WidgetId::ALL
-        .into_iter()
-        .find(|id| widget_key(*id) == s)
+    WidgetId::ALL.into_iter().find(|id| widget_key(*id) == s)
 }
 
 fn preset_from_key(s: &str) -> Option<SessionPreset> {
-    SessionPreset::ALL
-        .into_iter()
-        .find(|p| p.key() == s)
+    SessionPreset::ALL.into_iter().find(|p| p.key() == s)
 }
 
 fn stream_layout_json() -> String {
     let edit = edit_preset();
-    let (paint_w, paint_h) = paint_size(
-        VIEW_W.load(Ordering::SeqCst),
-        VIEW_H.load(Ordering::SeqCst),
-    );
+    let (paint_w, paint_h) =
+        paint_size(VIEW_W.load(Ordering::SeqCst), VIEW_H.load(Ordering::SeqCst));
     config::with_config(|cfg| {
         let live = cfg.active_preset;
         let lay = cfg.stream_slot(edit);
@@ -1875,7 +1888,7 @@ fn json_i32_field(body: &str, key: &str) -> Option<i32> {
     let rest = body[i + needle.len()..].trim_start_matches([' ', '\t', '\n', '\r', ':']);
     let num: String = rest
         .chars()
-        .take_while(|c| c.is_ascii_digit() || *c == '-' )
+        .take_while(|c| c.is_ascii_digit() || *c == '-')
         .collect();
     num.parse().ok()
 }
@@ -2074,8 +2087,8 @@ fn apply_stream_layout_post(body: &str) -> String {
         }
         if let Some(id) = json_str_field(body, "widget").and_then(widget_from_key) {
             {
-                let turning_on =
-                    json_bool_field(body, "show") == Some(true) && !cfg.stream_slot(preset)[id].show;
+                let turning_on = json_bool_field(body, "show") == Some(true)
+                    && !cfg.stream_slot(preset)[id].show;
                 if turning_on {
                     cfg.seed_stream_widget_from_game(preset, id);
                 }
