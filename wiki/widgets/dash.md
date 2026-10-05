@@ -109,6 +109,8 @@ One path for lap motos and timed extras, driven by `laps_left`. Lap motos count 
 
 ## Change log
 
+- 2026-10-05 — A missing `P#` draws `-`.
+- 2026-10-04 — `P#` is blank on the gate (`P--`). After the drop it follows track location through the first lap, including a pass on a crashed bike. See [live race order](../live-order.md).
 - 2026-10-01 — Lap 1 `P#` moves at S1 and S2, and between those gates, before the finish. See [live race order](../live-order.md).
 - 2026-10-01 — Timed +1 on `0/1`: if the leader finishes the lap that put you a lap down before you reach the line, the run-in is the checkered. The lap down is a pass or `gap_laps`, not the leader merely finishing ahead. White stays while they still have the extra.
 - 2026-10-01 — Timed +2: a real lap down on `0/2` or `1/2` makes the line that would start `2/2` the checkered. The line into `1/2` stays empty. You do not ride `2/2`. No white flash on the way to that line.

@@ -270,6 +270,8 @@ pub(crate) fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg:
                     analyze_follow,
                 );
                 b
+            } else if profile_section == ProfileSection::MyMxb {
+                super::mymxb::paint_pane(px, fonts, w, h, clip_top)
             } else if profile_section == ProfileSection::Tracks {
                 tracks::pane_tracks(
                     px,
@@ -525,12 +527,14 @@ pub(crate) fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg:
         && !whats_new_open
         && !pit_help_open
         && clear_confirm.is_none();
+    let show_mymxb = page_open && profile_section == ProfileSection::MyMxb;
     let show_ranked = page_open && profile_section == ProfileSection::Ranked;
     let show_cbr = page_open && profile_section == ProfileSection::Cbr;
     let top = (banner_h + TOP_H + PROFILE_SUBNAV_H).round() as i32;
     let pane_w = w.round().max(0.0) as u32;
     let pane_h = (h - top as f32).round().max(0.0) as u32;
     super::cbr::retire_nested_profile();
+    super::mymxb::sync(host, show_mymxb, top, pane_w, pane_h);
     super::ranked::sync(host, show_ranked, top, pane_w, pane_h);
     super::cbr::sync(host, show_cbr, top, pane_w, pane_h);
 }
@@ -1013,6 +1017,7 @@ pub(crate) fn draw_profile_subnav(
         &[
             ProfileSection::Overview,
             ProfileSection::Motos,
+            ProfileSection::MyMxb,
             ProfileSection::Ranked,
             ProfileSection::Cbr,
             ProfileSection::Tracks,
@@ -1021,6 +1026,7 @@ pub(crate) fn draw_profile_subnav(
         &[
             ProfileSection::Overview,
             ProfileSection::Motos,
+            ProfileSection::MyMxb,
             ProfileSection::Ranked,
             ProfileSection::Cbr,
         ]
@@ -1039,6 +1045,7 @@ pub(crate) fn draw_profile_subnav(
         ) + 8.0;
     }
     let refresh = match section {
+        ProfileSection::MyMxb => Some(Hit::MyMxbRefresh),
         ProfileSection::Ranked => Some(Hit::RankedRefresh),
         ProfileSection::Cbr => Some(Hit::CbrRefresh),
         _ => None,

@@ -42,6 +42,7 @@ Settings subtitle: “Your name is highlighted in the field”.
 
 ## Change log
 
+- 2026-10-04 — Card place is blank on the gate, then follows track location through the first lap, including a pass on a crashed bike. See [live race order](../live-order.md).
 - 2026-10-04 — A rider listed on the Groups tab gets that group's icon in the group color, immediately left of the name. The gap line stays put. The first group in the list wins.
 - 2026-10-03 — The line under each name is the classification interval to the rider ahead. The leader's card shows a lap time. It was the gap versus you, and your card always showed your last lap.
 - 2026-10-03 — Your card's 4px corners were cut off: the frame was four 1px strips clipped by the rounded mask, and a stroke on the outer edge is clipped by the card layer. The frame is a 1px stroke inset half a pixel so the arc stays on the card.

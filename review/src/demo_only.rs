@@ -27,7 +27,8 @@ pub struct SessionRow {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ListFilter {
     All,
-    Ranked,
+    MxbRanked,
+    Cbr,
     Saved,
 }
 

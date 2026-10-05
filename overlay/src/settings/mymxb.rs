@@ -1,4 +1,4 @@
-//! Profile → Ranked. A WebView2 child for the local Steam rider page.
+//! Profile → MyMXB. A WebView2 child for https://mymxb.com/.
 
 use std::cell::RefCell;
 use std::num::NonZeroIsize;
@@ -22,65 +22,43 @@ use crate::render::{fill_rect, measure, text, Fonts};
 
 use super::{bg, muted, PROFILE_SUBNAV_H};
 
-const NO_STEAM: &str = "Steam is not signed in on this PC.";
-const OPEN_FAILED: &str = "Couldn't open the Ranked page.";
+const HOME_URL: &str = "https://mymxb.com/";
+const PAGE_ZOOM: f64 = 0.85;
+const OPEN_FAILED: &str = "Couldn't open the MyMXB page.";
 const LOADING: &str = "Loading";
 const LOAD_WAIT: Duration = Duration::from_secs(6);
-const PAGE_ZOOM: f64 = 0.8;
 
 static PAGE_READY: AtomicBool = AtomicBool::new(false);
 static MANUAL_REFRESH: AtomicBool = AtomicBool::new(false);
 static LINK_BLOCKED: AtomicBool = AtomicBool::new(false);
-static RETURN_RIDER: AtomicBool = AtomicBool::new(false);
+static RETURN_HOME: AtomicBool = AtomicBool::new(false);
 static POPUP_URL: Mutex<Option<String>> = Mutex::new(None);
 static BLOCKED_URL: Mutex<Option<String>> = Mutex::new(None);
+
+thread_local! {
+    static PAGE: RefCell<Option<Page>> = const { RefCell::new(None) };
+    static FAILED: RefCell<bool> = const { RefCell::new(false) };
+}
 
 pub(crate) fn request_refresh() {
     MANUAL_REFRESH.store(true, Ordering::Relaxed);
 }
 
-/// Dismiss the mxb-ranked.com cookie notice after Blazor renders it.
-const COOKIE_NOTICE_SCRIPT: &str = r#"
+/// Tell the overlay the page has something to show.
+const READY_SCRIPT: &str = r#"
 (() => {
-  const needle = "uses cookies to improve your experience";
-  const dismiss = () => {
-    let block = null;
-    let blockLen = 2000;
-    for (const el of document.querySelectorAll("body *")) {
-      const text = el.innerText;
-      if (!text || !text.includes(needle) || text.length >= blockLen) continue;
-      block = el;
-      blockLen = text.length;
-    }
-    if (block) {
-      let host = block;
-      while (host && host !== document.body && !host.querySelector("button")) {
-        host = host.parentElement;
-      }
-      const button = host && host !== document.body ? host.querySelector("button") : null;
-      if (button && host.innerText && host.innerText.length < 2000) {
-        if (!host.dataset.mxbCookie) {
-          host.dataset.mxbCookie = "1";
-          button.click();
-        }
-      } else if (!block.dataset.mxbCookie) {
-        block.remove();
-      }
-    }
-    markReady();
-  };
   const markReady = () => {
-    if (window.__mxbReady || !document.body) return;
-    const text = document.body.innerText.replace(needle, "").replace(/\s+/g, " ").trim();
+    if (window.__mymxbReady || !document.body) return;
+    const text = document.body.innerText.replace(/\s+/g, " ").trim();
     if (text.length < 24) return;
-    window.__mxbReady = true;
+    window.__mymxbReady = true;
     if (window.ipc) window.ipc.postMessage("ready");
   };
   const arm = () => {
-    dismiss();
-    if (window.__mxbCookieWatch) return;
-    window.__mxbCookieWatch = new MutationObserver(dismiss);
-    window.__mxbCookieWatch.observe(document.documentElement, {
+    markReady();
+    if (window.__mymxbWatch) return;
+    window.__mymxbWatch = new MutationObserver(markReady);
+    window.__mymxbWatch.observe(document.documentElement, {
       childList: true,
       subtree: true,
     });
@@ -90,171 +68,135 @@ const COOKIE_NOTICE_SCRIPT: &str = r#"
 })();
 "#;
 
-/// Rejoin a dropped Blazor circuit. Does not reload the page.
-const REJOIN_SCRIPT: &str = r#"
+/// Drop third-party ad frames. mymxb.com, Steam, and partner blocks stay.
+const AD_BLOCK_SCRIPT: &str = r#"
 (() => {
-  if (window.top !== window || window.__mxbRejoin) return;
-  window.__mxbRejoin = true;
-  const maxTries = 4;
-  let tries = 0;
-  let pending = false;
-  const failed = () => {
-    const modal = document.getElementById("components-reconnect-modal");
-    if (modal && modal.classList.contains("components-reconnect-failed")) return true;
-    if (!document.body) return false;
-    const text = document.body.innerText || "";
-    return text.includes("Reconnection failed") || text.includes("Failed to rejoin");
+  const roots = [
+    "doubleclick.net",
+    "googlesyndication.com",
+    "googleadservices.com",
+    "adservice.google.com",
+    "adnxs.com",
+    "amazon-adsystem.com",
+    "pubmatic.com",
+    "adsrvr.org",
+    "criteo.com",
+    "taboola.com",
+    "outbrain.com",
+    "2mdn.net",
+    "media.net",
+  ];
+  const hideCss =
+    "ins.adsbygoogle,.google-auto-placed,[id^='div-gpt-ad']," +
+    "iframe[id^='google_ads_iframe'],iframe[id^='aswift_']," +
+    "iframe[name^='google_ads_iframe'],iframe[name^='aswift_']," +
+    roots
+      .map((root) => "iframe[src*='" + root + "'],script[src*='" + root + "'],img[src*='" + root + "']")
+      .join(",") +
+    "{display:none!important;height:0!important;max-height:0!important;overflow:hidden!important}";
+  const injectStyle = () => {
+    const parent = document.head || document.documentElement;
+    if (!parent || document.getElementById("mymxb-ad-hide")) return;
+    const style = document.createElement("style");
+    style.id = "mymxb-ad-hide";
+    style.textContent = hideCss;
+    parent.appendChild(style);
   };
-  const attempt = () => {
-    if (!failed()) {
-      tries = 0;
-      pending = false;
-      return;
-    }
-    if (tries >= maxTries) {
-      pending = false;
-      return;
-    }
-    tries += 1;
+  const adHost = (host) => {
+    const name = String(host || "").replace(/\.$/, "").toLowerCase();
+    return roots.some((root) => name === root || name.endsWith("." + root));
+  };
+  const adUrl = (raw) => {
+    if (!raw) return false;
     try {
-      if (window.Blazor && typeof Blazor.reconnect === "function") {
-        const result = Blazor.reconnect();
-        if (result && typeof result.then === "function") result.then(() => {}, () => {});
-      }
-    } catch (err) {}
-    setTimeout(attempt, 2000);
+      return adHost(new URL(raw, location.href).hostname);
+    } catch (err) {
+      return false;
+    }
   };
-  const kick = () => {
-    if (!failed()) {
-      tries = 0;
-      pending = false;
+  const startsAdFrame = (value) => {
+    const name = String(value || "");
+    return name.startsWith("google_ads_iframe") || name.startsWith("aswift_");
+  };
+  const isSlot = (node) => {
+    if (!node || node.nodeType !== 1) return false;
+    if (node.classList && node.classList.contains("adsbygoogle")) return true;
+    if (node.classList && node.classList.contains("google-auto-placed")) return true;
+    if (String(node.id || "").startsWith("div-gpt-ad")) return true;
+    return startsAdFrame(node.id) || startsAdFrame(node.name || node.getAttribute("name"));
+  };
+  const inSlot = (node) =>
+    !!(node && node.closest && node.closest("ins.adsbygoogle, .google-auto-placed, [id^='div-gpt-ad']"));
+  const sweep = (node) => {
+    if (!node || node.nodeType !== 1 || node.id === "mymxb-ad-hide") return;
+    if (isSlot(node) || (node.tagName === "IFRAME" && inSlot(node))) {
+      node.remove();
       return;
     }
-    if (pending || tries >= maxTries) return;
-    pending = true;
-    setTimeout(attempt, 2000);
+    const tag = node.tagName;
+    if (tag !== "IFRAME" && tag !== "SCRIPT" && tag !== "IMG") return;
+    const src = node.src || node.getAttribute("src") || "";
+    if (adUrl(src)) node.remove();
+  };
+  const sweepTree = (root) => {
+    if (!root || !root.querySelectorAll) return;
+    root
+      .querySelectorAll("ins.adsbygoogle, .google-auto-placed, [id^='div-gpt-ad'], iframe, script, img")
+      .forEach(sweep);
   };
   const arm = () => {
-    kick();
-    if (window.__mxbRejoinWatch) return;
-    window.__mxbRejoinWatch = new MutationObserver(kick);
-    window.__mxbRejoinWatch.observe(document.documentElement, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["class"],
-    });
+    injectStyle();
+    const root = document.documentElement;
+    if (!root) return;
+    sweepTree(document);
+    if (!window.__mymxbAdWatch) {
+      window.__mymxbAdWatch = new MutationObserver((records) => {
+        records.forEach((record) => {
+          sweep(record.target);
+          record.addedNodes.forEach((node) => {
+            sweep(node);
+            sweepTree(node);
+          });
+        });
+      });
+      window.__mymxbAdWatch.observe(root, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["src", "class", "id"],
+      });
+    }
+    if (window.__mymxbAdTimer) return;
+    let left = 10;
+    window.__mymxbAdTimer = setInterval(() => {
+      injectStyle();
+      sweepTree(document);
+      left -= 1;
+      if (left <= 0) {
+        clearInterval(window.__mymxbAdTimer);
+        window.__mymxbAdTimer = 0;
+      }
+    }, 500);
   };
-  if (document.body) arm();
+  if (document.documentElement) arm();
   else document.addEventListener("DOMContentLoaded", arm);
 })();
 "#;
 
-/// The results table scrolls sideways, but its scrollbar sits at the bottom of the table.
-/// The bar is ours. Nothing here writes attributes onto the Blazor page.
-const TABLE_SCROLL_SCRIPT: &str = r##"
-(() => {
-  try {
-    if (window.top !== window || window.__mxbHScroll) return;
-    window.__mxbHScroll = true;
-    let bar = null;
-    let inner = null;
-    let table = null;
-    let lock = false;
-    const bound = new WeakSet();
-    const ensure = () => {
-      if (bar && !bar.isConnected) bar = null;
-      if (bar) return;
-      const style = document.createElement("style");
-      style.textContent = "#mxb-hscroll{position:fixed;bottom:0;height:14px;overflow-x:scroll;overflow-y:hidden;z-index:2147483646;display:none;background:#18191d}#mxb-hscroll::-webkit-scrollbar{height:14px}#mxb-hscroll::-webkit-scrollbar-track{background:#18191d}#mxb-hscroll::-webkit-scrollbar-thumb{background:#8c8c94;border-radius:7px}";
-      document.documentElement.appendChild(style);
-      bar = document.createElement("div");
-      bar.id = "mxb-hscroll";
-      inner = document.createElement("div");
-      inner.style.height = "1px";
-      bar.appendChild(inner);
-      document.documentElement.appendChild(bar);
-      bar.addEventListener("scroll", () => {
-        if (lock || !table) return;
-        lock = true;
-        table.scrollLeft = bar.scrollLeft;
-        lock = false;
-      }, { passive: true });
-    };
-    const widest = () => {
-      let best = null;
-      let gap = 8;
-      for (const el of document.querySelectorAll(".mud-table-container")) {
-        const extra = el.scrollWidth - el.clientWidth;
-        if (extra > gap) {
-          gap = extra;
-          best = el;
-        }
-      }
-      return best;
-    };
-    const place = () => {
-      try {
-        const next = widest();
-        if (!next) {
-          if (bar) bar.style.display = "none";
-          table = null;
-          return;
-        }
-        ensure();
-        if (next !== table) {
-          table = next;
-          if (!bound.has(table)) {
-            bound.add(table);
-            table.addEventListener("scroll", () => {
-              if (lock || !bar) return;
-              lock = true;
-              bar.scrollLeft = table.scrollLeft;
-              lock = false;
-            }, { passive: true });
-          }
-        }
-        const rect = table.getBoundingClientRect();
-        const onScreen = rect.bottom > 0 && rect.top < window.innerHeight && rect.width > 40;
-        if (!onScreen) {
-          bar.style.display = "none";
-          return;
-        }
-        bar.style.display = "block";
-        bar.style.left = Math.max(0, rect.left) + "px";
-        bar.style.width = table.clientWidth + "px";
-        inner.style.width = table.scrollWidth + "px";
-        if (Math.abs(bar.scrollLeft - table.scrollLeft) > 1) {
-          lock = true;
-          bar.scrollLeft = table.scrollLeft;
-          lock = false;
-        }
-      } catch (err) {}
-    };
-    const arm = () => {
-      place();
-      setInterval(place, 400);
-    };
-    if (document.body) arm();
-    else document.addEventListener("DOMContentLoaded", arm);
-  } catch (err) {}
-})();
-"##;
-
-/// Notice shown over the page when a link is outside mxb-ranked and Steam.
+/// Notice shown over the page when a link is outside MyMXB and Steam.
 const BLOCKED_NOTICE_SCRIPT: &str = r##"
 (() => {
   if (window.top !== window) return;
   let blockedUrl = "";
-  window.__mxbShowBlocked = (url) => {
+  window.__mymxbShowBlocked = (url) => {
     if (typeof url === "string" && url) blockedUrl = url;
-    let panel = document.getElementById("mxb-blocked");
+    let panel = document.getElementById("mymxb-blocked");
     if (!panel) {
       panel = document.createElement("div");
-      panel.id = "mxb-blocked";
-      panel.innerHTML = '<div id="mxb-blocked-card"><p>That link can\'t be opened in this app.</p><button type="button" data-open>Open in browser</button><button type="button" data-close>Close</button></div>';
+      panel.id = "mymxb-blocked";
+      panel.innerHTML = '<div id="mymxb-blocked-card"><p>That link can\'t be opened in this app.</p><button type="button" data-open>Open in browser</button><button type="button" data-close>Close</button></div>';
       const style = document.createElement("style");
-      style.textContent = "#mxb-blocked{position:fixed;inset:0;z-index:2147483647;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.55)}#mxb-blocked-card{width:280px;padding:20px;background:#18191d;color:#f4f4f7;font:14px sans-serif;text-align:center}#mxb-blocked-card p{margin:0 0 16px}#mxb-blocked-card button{display:block;width:100%;margin-top:8px;padding:8px 12px;border:0;background:#2a2c31;color:#f4f4f7;cursor:pointer}#mxb-blocked-card button[data-open]{background:#f4f4f7;color:#18191d}";
+      style.textContent = "#mymxb-blocked{position:fixed;inset:0;z-index:2147483647;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.55)}#mymxb-blocked-card{width:280px;padding:20px;background:#18191d;color:#f4f4f7;font:14px sans-serif;text-align:center}#mymxb-blocked-card p{margin:0 0 16px}#mymxb-blocked-card button{display:block;width:100%;margin-top:8px;padding:8px 12px;border:0;background:#2a2c31;color:#f4f4f7;cursor:pointer}#mymxb-blocked-card button[data-open]{background:#f4f4f7;color:#18191d}";
       document.documentElement.appendChild(style);
       document.documentElement.appendChild(panel);
       panel.querySelector("[data-open]").addEventListener("click", () => {
@@ -267,7 +209,7 @@ const BLOCKED_NOTICE_SCRIPT: &str = r##"
     }
     panel.style.display = "flex";
   };
-  const roots = ["mxb-ranked.com", "steamcommunity.com", "steampowered.com"];
+  const roots = ["mymxb.com", "steamcommunity.com", "steampowered.com"];
   const hostOk = (host) => {
     const name = String(host || "").replace(/\.$/, "").toLowerCase();
     return roots.some((root) => name === root || name.endsWith("." + root));
@@ -288,7 +230,7 @@ const BLOCKED_NOTICE_SCRIPT: &str = r##"
     if (!url || hostOk(url.hostname)) return;
     event.preventDefault();
     event.stopPropagation();
-    window.__mxbShowBlocked(url.href);
+    window.__mymxbShowBlocked(url.href);
   }, true);
   document.addEventListener("submit", (event) => {
     const form = event.target;
@@ -297,7 +239,7 @@ const BLOCKED_NOTICE_SCRIPT: &str = r##"
     if (!url || hostOk(url.hostname)) return;
     event.preventDefault();
     event.stopPropagation();
-    window.__mxbShowBlocked(url.href);
+    window.__mymxbShowBlocked(url.href);
   }, true);
 })();
 "##;
@@ -326,34 +268,6 @@ struct Page {
     started: Instant,
 }
 
-struct UrlCache {
-    at: Instant,
-    url: Option<String>,
-}
-
-thread_local! {
-    static PAGE: RefCell<Option<Page>> = const { RefCell::new(None) };
-    static FAILED: RefCell<bool> = const { RefCell::new(false) };
-    static URLS: RefCell<Option<UrlCache>> = const { RefCell::new(None) };
-}
-
-pub(crate) fn rider_url() -> Option<String> {
-    URLS.with(|cell| {
-        let mut slot = cell.borrow_mut();
-        if let Some(cache) = slot.as_ref() {
-            if cache.at.elapsed() < Duration::from_secs(2) {
-                return cache.url.clone();
-            }
-        }
-        let url = crate::plugin::local_ranked_url();
-        *slot = Some(UrlCache {
-            at: Instant::now(),
-            url: url.clone(),
-        });
-        url
-    })
-}
-
 pub(crate) fn paint_pane(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, clip_top: f32) -> f32 {
     let top = clip_top + PROFILE_SUBNAV_H;
     if let Some(rect) = Rect::from_xywh(0.0, top, w, (h - top).max(0.0)) {
@@ -361,8 +275,6 @@ pub(crate) fn paint_pane(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, clip_to
     }
     let line = if FAILED.with(|failed| *failed.borrow()) {
         Some(OPEN_FAILED)
-    } else if rider_url().is_none() {
-        Some(NO_STEAM)
     } else if !page_is_ready() {
         Some(LOADING)
     } else {
@@ -387,24 +299,20 @@ pub(crate) fn paint_pane(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, clip_to
     top
 }
 
-/// Show the rider page only while Profile → Ranked is the visible settings pane.
+/// Show the page only while Profile → MyMXB is the visible settings pane.
 pub(crate) fn sync(host: HWND, show: bool, top: i32, width: u32, height: u32) {
     let show = show && super::is_open();
     if !show || width == 0 || height == 0 {
         hide_page();
         return;
     }
-    let Some(url) = rider_url() else {
-        hide_page();
-        return;
-    };
     if unsafe { !IsWindow(host).as_bool() } {
         return;
     }
     if FAILED.with(|failed| *failed.borrow()) {
         return;
     }
-    show_page(host, &url, top, width, height);
+    show_page(host, HOME_URL, top, width, height);
 }
 
 fn hide_page() {
@@ -434,17 +342,16 @@ fn show_page(host: HWND, url: &str, top: i32, width: u32, height: u32) {
                     return;
                 }
             }
-            let _ = crate::review::take_ranked_page_stale();
         }
         let Some(page) = slot.as_mut() else {
             return;
         };
-        if RETURN_RIDER.swap(false, Ordering::Relaxed) {
+        if RETURN_HOME.swap(false, Ordering::Relaxed) {
             if page.view.load_url(url).is_ok() {
                 page.url = url.to_string();
                 restart_load(page);
             } else {
-                RETURN_RIDER.store(true, Ordering::Relaxed);
+                RETURN_HOME.store(true, Ordering::Relaxed);
             }
         } else if let Some(next) = take_popup() {
             if next != page.url && page.view.load_url(&next).is_ok() {
@@ -455,12 +362,8 @@ fn show_page(host: HWND, url: &str, top: i32, width: u32, height: u32) {
             if page.view.load_url(url).is_ok() {
                 page.url = url.to_string();
                 restart_load(page);
-                let _ = crate::review::take_ranked_page_stale();
             }
-        } else if (MANUAL_REFRESH.swap(false, Ordering::Relaxed)
-            | crate::review::take_ranked_page_stale())
-            && page.view.reload().is_ok()
-        {
+        } else if MANUAL_REFRESH.swap(false, Ordering::Relaxed) && page.view.reload().is_ok() {
             restart_load(page);
         }
         if page.top != top || page.width != width || page.height != height {
@@ -487,7 +390,7 @@ fn show_page(host: HWND, url: &str, top: i32, width: u32, height: u32) {
         }
         if page.visible && LINK_BLOCKED.swap(false, Ordering::Relaxed) {
             let script = take_blocked_url().map_or_else(
-                || "window.__mxbShowBlocked&&window.__mxbShowBlocked()".to_string(),
+                || "window.__mymxbShowBlocked&&window.__mymxbShowBlocked()".to_string(),
                 |url| show_blocked_script(&url),
             );
             let _ = page.view.evaluate_script(&script);
@@ -508,15 +411,13 @@ fn create_page(host: HWND, url: &str, top: i32, width: u32, height: u32) -> Resu
         .with_background_color(color)
         .with_focused(false)
         .with_visible(false)
-        .with_initialization_script(format!(
-            "{COOKIE_NOTICE_SCRIPT}{REJOIN_SCRIPT}{TABLE_SCROLL_SCRIPT}{BLOCKED_NOTICE_SCRIPT}"
-        ))
+        .with_initialization_script(format!("{READY_SCRIPT}{AD_BLOCK_SCRIPT}{BLOCKED_NOTICE_SCRIPT}"))
         .with_on_page_load_handler(|event, url| {
             if matches!(event, PageLoadEvent::Finished)
                 && is_http(&url)
                 && !url_is_allowed(&url)
             {
-                RETURN_RIDER.store(true, Ordering::Relaxed);
+                RETURN_HOME.store(true, Ordering::Relaxed);
                 remember_blocked(&url);
             }
         })
@@ -571,7 +472,7 @@ fn show_blocked_script(url: &str) -> String {
         .replace('\\', "\\\\")
         .replace('\'', "\\'")
         .replace(['\n', '\r'], "");
-    format!("window.__mxbShowBlocked&&window.__mxbShowBlocked('{escaped}')")
+    format!("window.__mymxbShowBlocked&&window.__mymxbShowBlocked('{escaped}')")
 }
 
 fn take_popup() -> Option<String> {
@@ -601,7 +502,7 @@ fn url_is_allowed(raw: &str) -> bool {
     let host = host.rsplit('@').next().unwrap_or(host);
     let host = host.split(':').next().unwrap_or(host);
     let host = host.trim_end_matches('.').to_ascii_lowercase();
-    host_is(&host, "mxb-ranked.com")
+    host_is(&host, "mymxb.com")
         || host_is(&host, "steamcommunity.com")
         || host_is(&host, "steampowered.com")
 }
@@ -674,12 +575,15 @@ fn page_color() -> wry::RGBA {
     )
 }
 
-fn data_dir() -> PathBuf {
-    let dir = std::env::var_os("LOCALAPPDATA")
+fn app_data_dir() -> PathBuf {
+    std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."))
         .join("Holeshot HUD")
-        .join("WebView2");
+}
+
+fn data_dir() -> PathBuf {
+    let dir = app_data_dir().join("WebView2MyMxb");
     let _ = std::fs::create_dir_all(&dir);
     dir
 }

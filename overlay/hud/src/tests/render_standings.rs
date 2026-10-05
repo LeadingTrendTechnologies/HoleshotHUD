@@ -894,7 +894,240 @@ fn the_start_gate_keeps_the_scored_order() {
     pass_the_leader(&mut s, 20.0);
     let field = RaceStore::tick(&s).field;
     assert_eq!(field.rows[0].standing.race_num, 1);
+    assert!(
+        field.rows.iter().all(|row| row.standing.position == 0),
+        "no race place before the gate drops"
+    );
+    assert_eq!(live_position(1), 0);
+    assert_eq!(live_position(12), 0);
+    assert_eq!(super::standing_pos(&s, 12), 0);
     IN_GATE.store(0, Ordering::Relaxed);
+}
+
+/// Grid sits on the S2 side of the sector bisector. Qualifying order must not stick:
+/// the rider further around the lap is ahead once the gate drops.
+#[test]
+fn the_open_lap_follows_the_grid_not_the_sector_bisector() {
+    let _g = session_lock();
+    let _splits = ResetSplits;
+    reset_session();
+    crate::sector::set_split_fracs([0.40, 0.70]);
+    let mut s = live_snap();
+    s.track_length = 2000.0;
+    s.sf_meters = 0.0;
+    s.current_lap = 1;
+    s.standing_count = 2;
+    s.rider_count = 2;
+    s.standings[0] = standing(1, 1, 0);
+    s.standings[1] = standing(12, 2, 0);
+    s.riders[0] = rider(1, 0.0, 0.0, 0.98);
+    s.riders[1] = rider(12, 1.0, 0.0, 0.02);
+    s.local_track_pos = 0.02;
+    IN_GATE.store(1, Ordering::Relaxed);
+    let on_gate = RaceStore::tick(&s);
+    assert!(on_gate.field.rows.iter().all(|row| row.standing.position == 0));
+    IN_GATE.store(0, Ordering::Relaxed);
+    let sitting = RaceStore::tick(&s);
+    assert!(
+        sitting.field.rows.iter().all(|row| row.standing.position == 0),
+        "still in the gate slots"
+    );
+    assert_eq!(super::standing_pos(&s, 12), 0, "qualifying place does not show");
+    s.holeshot_race_num = 1;
+    ride_field_to(&mut s, &[(1, 0.99), (12, 0.03)]);
+    let running = RaceStore::tick(&s);
+    assert_eq!(live_position(12), 1, "further forward off the gate");
+    assert_eq!(live_position(1), 2);
+    assert_eq!(running.field.rows[0].standing.race_num, 12);
+    assert_eq!(running.field.rows[0].standing.position, 1);
+}
+
+/// A rider who crashed and lost track position keeps the spot they went down.
+/// Riding past that spot takes the place.
+#[test]
+fn passing_a_crashed_rider_on_the_open_lap_takes_the_place() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.track_length = 2000.0;
+    s.sf_meters = 0.0;
+    s.current_lap = 1;
+    s.standing_count = 2;
+    s.rider_count = 2;
+    s.standings[0] = standing(1, 1, 0);
+    s.standings[1] = standing(12, 2, 0);
+    s.riders[0] = rider(1, 0.0, 0.0, 0.20);
+    s.riders[1] = rider(12, 1.0, 0.0, 0.10);
+    s.local_track_pos = 0.10;
+    IN_GATE.store(1, Ordering::Relaxed);
+    let _ = RaceStore::tick(&s);
+    IN_GATE.store(0, Ordering::Relaxed);
+    s.holeshot_race_num = 1;
+    ride_field_to(&mut s, &[(1, 0.22), (12, 0.12)]);
+    assert_eq!(live_position(1), 1, "ahead on the grid");
+    s.riders[0].track_pos = -1.0;
+    s.riders[0].crashed = 1;
+    s.standings[0].crashed = 1;
+    ride_field_to(&mut s, &[(12, 0.35)]);
+    assert_eq!(live_position(12), 1, "rode past the crash");
+    assert_eq!(live_position(1), 2);
+}
+
+/// Going down does not freeze the place you had. A rider who rides past the crash
+/// takes it.
+#[test]
+fn a_rider_who_rides_past_your_crash_takes_the_place() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.track_length = 2000.0;
+    s.sf_meters = 0.0;
+    s.current_lap = 1;
+    s.standing_count = 2;
+    s.rider_count = 2;
+    s.standings[0] = standing(1, 1, 0);
+    s.standings[1] = standing(12, 2, 0);
+    s.riders[0] = rider(1, 0.0, 0.0, 0.10);
+    s.riders[1] = rider(12, 1.0, 0.0, 0.20);
+    s.local_track_pos = 0.20;
+    IN_GATE.store(1, Ordering::Relaxed);
+    let _ = RaceStore::tick(&s);
+    IN_GATE.store(0, Ordering::Relaxed);
+    s.holeshot_race_num = 1;
+    ride_field_to(&mut s, &[(1, 0.12), (12, 0.22)]);
+    assert_eq!(live_position(12), 1, "ahead when the gate drops");
+    s.riders[1].track_pos = -1.0;
+    s.riders[1].crashed = 1;
+    s.standings[1].crashed = 1;
+    s.local_track_pos = -1.0;
+    ride_field_to(&mut s, &[(1, 0.40)]);
+    assert_eq!(live_position(1), 1, "rode past you");
+    assert_eq!(live_position(12), 2);
+}
+
+/// The pre-start countdown has ended and `IN_GATE` is clear, but the game still has
+/// the gate up. Qualifying places stay hidden, and they stay hidden after the drop
+/// until the holeshot.
+#[test]
+fn the_countdown_end_does_not_show_a_place_before_the_gate_drops() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.track_length = 2000.0;
+    s.sf_meters = 0.0;
+    s.current_lap = 1;
+    s.session_state = 256;
+    s.standing_count = 2;
+    s.rider_count = 2;
+    s.standings[0] = standing(1, 1, 0);
+    s.standings[1] = standing(12, 2, 0);
+    s.riders[0] = rider(1, 0.0, 0.0, 0.10);
+    s.riders[1] = rider(12, 1.0, 0.0, 0.14);
+    s.local_track_pos = 0.14;
+    IN_GATE.store(0, Ordering::Relaxed);
+    let sitting = RaceStore::tick(&s).field;
+    assert!(sitting.rows.iter().all(|row| row.standing.position == 0));
+    assert_eq!(super::standing_pos(&s, 12), 0, "qualifying place does not show");
+    assert_eq!(super::standing_pos(&s, 1), 0);
+    assert_eq!(live_position(12), 0);
+    s.session_state = 16;
+    ride_field_to(&mut s, &[(1, 0.12), (12, 0.16)]);
+    assert_eq!(s.holeshot_race_num, 0);
+    assert_eq!(live_position(12), 0, "left the slot, still before the holeshot");
+    assert_eq!(live_position(1), 0);
+    assert_eq!(super::standing_pos(&s, 12), 0);
+}
+
+/// The front slot is not P1 at the drop. Places stay blank until the holeshot line,
+/// then a pack that launched first is ahead of a late front slot.
+#[test]
+fn a_late_start_is_not_p1_before_the_holeshot() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.track_length = 2000.0;
+    s.sf_meters = 0.0;
+    s.current_lap = 1;
+    s.standing_count = 2;
+    s.rider_count = 2;
+    s.standings[0] = standing(1, 1, 0);
+    s.standings[1] = standing(12, 2, 0);
+    s.riders[0] = rider(1, 0.0, 0.0, 0.10);
+    s.riders[1] = rider(12, 1.0, 0.0, 0.14);
+    s.local_track_pos = 0.14;
+    IN_GATE.store(1, Ordering::Relaxed);
+    let _ = RaceStore::tick(&s);
+    IN_GATE.store(0, Ordering::Relaxed);
+    ride_field_to(&mut s, &[(1, 0.11), (12, 0.16)]);
+    assert_eq!(s.holeshot_race_num, 0);
+    assert_eq!(live_position(12), 0, "left the slot, still before the holeshot");
+    assert_eq!(live_position(1), 0);
+    assert_eq!(super::standing_pos(&s, 12), 0);
+    s.holeshot_race_num = 1;
+    ride_field_to(&mut s, &[(1, 0.30), (12, 0.18)]);
+    assert_eq!(live_position(1), 1, "the pack launched");
+    assert_eq!(live_position(12), 2, "late off the front slot");
+}
+/// That step must not wrap into almost a full lap.
+#[test]
+fn falling_behind_the_gate_does_not_keep_p1() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.track_length = 2000.0;
+    s.sf_meters = 0.0;
+    s.current_lap = 1;
+    s.standing_count = 2;
+    s.rider_count = 2;
+    s.standings[0] = standing(1, 1, 0);
+    s.standings[1] = standing(12, 2, 0);
+    s.riders[0] = rider(1, 0.0, 0.0, 0.10);
+    s.riders[1] = rider(12, 1.0, 0.0, 0.14);
+    s.local_track_pos = 0.14;
+    IN_GATE.store(1, Ordering::Relaxed);
+    let _ = RaceStore::tick(&s);
+    IN_GATE.store(0, Ordering::Relaxed);
+    let sitting = RaceStore::tick(&s);
+    assert!(sitting.field.rows.iter().all(|row| row.standing.position == 0));
+    s.holeshot_race_num = 1;
+    ride_field_to(&mut s, &[(1, 0.12), (12, 0.20)]);
+    assert_eq!(live_position(12), 1, "front of the grid once the field has left");
+    ride_field_to(&mut s, &[(1, 0.30), (12, 0.08)]);
+    assert_eq!(live_position(1), 1, "pack rode past");
+    assert_eq!(live_position(12), 2, "behind the gate is not a full lap");
+}
+
+/// Finishing the open lap before `num_laps` publishes must not drop the leader
+/// behind riders still on that lap.
+#[test]
+fn crossing_the_line_before_num_laps_keeps_the_lead() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.track_length = 2000.0;
+    s.sf_meters = 0.0;
+    s.current_lap = 1;
+    s.standing_count = 2;
+    s.rider_count = 2;
+    s.standings[0] = standing(1, 1, 0);
+    s.standings[1] = standing(12, 2, 0);
+    s.riders[0] = rider(1, 0.0, 0.0, 0.10);
+    s.riders[1] = rider(12, 1.0, 0.0, 0.12);
+    s.local_track_pos = 0.12;
+    IN_GATE.store(1, Ordering::Relaxed);
+    let _ = RaceStore::tick(&s);
+    IN_GATE.store(0, Ordering::Relaxed);
+    s.holeshot_race_num = 1;
+    ride_field_to(&mut s, &[(1, 0.50), (12, 1.15)]);
+    assert_eq!(s.standings[1].num_laps, 0);
+    assert_eq!(live_position(12), 1, "wrapped the open lap");
+    assert_eq!(live_position(1), 2);
+    s.standings[1].num_laps = 1;
+    let _ = RaceStore::tick(&s);
+    assert_eq!(live_position(12), 1, "the lap bump does not drop the leader");
+    ride_field_to(&mut s, &[(1, 0.70), (12, 0.40)]);
+    assert_eq!(live_position(12), 1, "riding forward is not a pass against you");
+    assert_eq!(live_position(1), 2);
 }
 
 /// Riders on different laps are ranked right by the classification already: a lapped
@@ -1065,10 +1298,10 @@ fn lap_one_pass_inside_s1_still_swaps() {
     assert_eq!(live_position(1), 2);
 }
 
-/// No saved splits: the other rider's S1 split moves them up, then track travel
-/// passes them back before the finish.
+/// After the drop, a published S1 split does not outrank a rider still on the same
+/// stretch. Place follows how far they have ridden from the grid.
 #[test]
-fn a_sector_split_moves_then_track_pos_passes_back() {
+fn a_sector_split_does_not_beat_the_open_lap_grid() {
     let _g = session_lock();
     let _splits = ResetSplits;
     reset_session();
@@ -1076,9 +1309,11 @@ fn a_sector_split_moves_then_track_pos_passes_back() {
     let mut s = gate_field(&[1, 12]);
     s.standings[1].sector_gate = 1;
     let _ = RaceStore::tick(&s);
-    assert_eq!(live_position(12), 1, "S1 split before the finish");
+    assert_eq!(live_position(1), 0, "still in the slot");
+    assert_eq!(live_position(12), 0, "an S1 split is not a place");
     ride_field_to(&mut s, &[(1, 0.55), (12, 0.10)]);
-    assert_eq!(live_position(1), 1, "track travel after the gate takes the place back");
+    assert_eq!(live_position(1), 1, "further up the lap stays ahead");
+    assert_eq!(live_position(12), 2);
     assert_eq!(s.standings[1].num_laps, 0);
 }
 
@@ -1213,10 +1448,10 @@ fn a_far_pass_shows_once_both_riders_have_crossed_the_line() {
     assert_eq!(live_position(12), 1, "600 m up the lap on the leader");
 }
 
-/// If `num_laps` lags while the tracker keeps integrating, lap metres used to grow past a
-/// full lap and invent P1 until the line republished. Past one lap without a bump must not.
+/// A rider who actually rides more than a lap further, while `num_laps` still lags,
+/// is ahead. That place follows the bike. The lap bump does not throw them out.
 #[test]
-fn runaway_lap_metres_without_a_lap_bump_do_not_invent_p1() {
+fn a_real_extra_lap_leads_before_num_laps_bumps() {
     let _g = session_lock();
     reset_session();
     let mut s = gate_field(&[1, 2, 3, 4, 5, 6, 12]);
@@ -1244,14 +1479,10 @@ fn runaway_lap_metres_without_a_lap_bump_do_not_invent_p1() {
         .map(|r| r.track_pos)
         .unwrap_or(0.40);
     ride_field_to(&mut s, &[(12, start + 1.6)]);
-    assert_ne!(
+    assert_eq!(
         live_position(12),
         1,
-        "extra lap of metres without a num_laps bump must not invent P1"
-    );
-    assert!(
-        live_position(12) >= 4,
-        "still behind riders who are truly ahead on track"
+        "a real extra lap of track is the place, even before num_laps bumps"
     );
     s.standings
         .iter_mut()
@@ -1491,6 +1722,8 @@ fn a_teleport_is_not_distance_covered() {
     s.local_track_pos = 0.49;
     let _ = RaceStore::tick(&s);
     assert_eq!(live_position(12), 2);
+    let _ = RaceStore::tick(&s);
+    assert_eq!(live_position(12), 1, "a jump that stays is where they are");
 }
 
 /// The clock owns every session latch and runs first in the tick; the field only reads what

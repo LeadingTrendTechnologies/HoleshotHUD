@@ -9,6 +9,8 @@ const FIELD_EVERY_MS: u64 = 2000;
 
 use mxbo_hud::location_tape::{self, ChannelBin, CommittedLap, CrashMark, BINS};
 use mxbo_hud::snapshot::{bytes_as_text, Snapshot};
+
+use crate::{server_brand, ServerBrand};
 use rusqlite::{params, Connection, OptionalExtension};
 
 const WEEK_SECS: i64 = 7 * 24 * 3600;
@@ -36,7 +38,8 @@ pub struct SessionRow {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ListFilter {
     All,
-    Ranked,
+    MxbRanked,
+    Cbr,
     Saved,
 }
 
@@ -592,7 +595,7 @@ pub fn list(filter: ListFilter) -> Vec<SessionRow> {
         return Vec::new();
     };
     let sql = match filter {
-        ListFilter::All | ListFilter::Ranked => {
+        ListFilter::All | ListFilter::MxbRanked | ListFilter::Cbr => {
             "SELECT s.id, s.started, s.track, s.rider_count, s.fastest_race_num, s.your_race_num, s.kept,
                     (SELECT MIN(best_ms) FROM riders r WHERE r.session_id = s.id AND r.race_num = s.your_race_num),
                     (SELECT name FROM riders r WHERE r.session_id = s.id AND r.race_num = s.fastest_race_num),
@@ -642,8 +645,12 @@ pub fn list(filter: ListFilter) -> Vec<SessionRow> {
         row.you_won = session_you_won(c, row.id, row.rider_count);
         row.ranked = server_name_is_ranked(&row.server_name);
     }
-    if filter == ListFilter::Ranked {
-        rows.retain(|row| row.ranked);
+match filter {
+        ListFilter::MxbRanked => {
+            rows.retain(|row| server_brand(&row.server_name) == Some(ServerBrand::MxbRanked))
+        }
+        ListFilter::Cbr => rows.retain(|row| server_brand(&row.server_name) == Some(ServerBrand::Cbr)),
+        ListFilter::All | ListFilter::Saved => {}
     }
     rows
 }
@@ -2671,7 +2678,8 @@ mod tests {
         let all = list(ListFilter::All);
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].track, "Hangtown");
-        assert!(list(ListFilter::Ranked).is_empty());
+        assert!(list(ListFilter::MxbRanked).is_empty());
+        assert!(list(ListFilter::Cbr).is_empty());
         assert!(list(ListFilter::Saved).is_empty());
         reset();
         let _ = std::fs::remove_dir_all(&dir);
@@ -2694,7 +2702,8 @@ mod tests {
         }
         prune();
         assert!(list(ListFilter::All).is_empty());
-        assert!(list(ListFilter::Ranked).is_empty());
+        assert!(list(ListFilter::MxbRanked).is_empty());
+        assert!(list(ListFilter::Cbr).is_empty());
         reset();
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -3669,6 +3678,17 @@ mod tests {
             upsert_lap(c, new_lobby, &dummy_lap(2, 116_000, true, false)).expect("lap");
             let id_only = insert_typed(c, "Budds Creek", 7, 2, 7, false, "Practice | #105019").expect("id only");
             upsert_lap(c, id_only, &dummy_lap(2, 117_000, true, false)).expect("lap");
+            let cbr = insert_typed(
+                c,
+                "Fox Raceway",
+                7,
+                2,
+                7,
+                false,
+                "1 | OPEN OEM | Stock Track Rotation 1 | CBRSERVERS.COM",
+            )
+            .expect("cbr");
+            upsert_lap(c, cbr, &dummy_lap(2, 118_000, true, false)).expect("lap");
         }
         let rows = list(ListFilter::All);
         let by_track = |t: &str| rows.iter().find(|r| r.track == t).expect(t);
@@ -3679,9 +3699,12 @@ mod tests {
         assert!(!by_track("Budds Creek").ranked);
         let detail = load(by_track("Norwood").id).expect("load");
         assert!(detail.row.ranked);
-        let ranked_only = list(ListFilter::Ranked);
+        let ranked_only = list(ListFilter::MxbRanked);
         assert_eq!(ranked_only.len(), 2);
         assert!(ranked_only.iter().all(|row| row.ranked));
+        let cbr_only = list(ListFilter::Cbr);
+        assert_eq!(cbr_only.len(), 1);
+        assert_eq!(cbr_only[0].track, "Fox Raceway");
         reset();
         let _ = std::fs::remove_dir_all(&dir);
     }

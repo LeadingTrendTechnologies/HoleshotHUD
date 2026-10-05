@@ -19,7 +19,7 @@ pub(crate) use crate::race_store::{
     format_countdown, format_gap, format_lap, format_session_clock, gap_ahead_text,
     gap_behind_text, gap_leader_text, i_finished, interval_text, interval_text_from_row,
     is_lap_race, is_practice_session, is_warmup, lap_diff_ms, lapped, laps_done, laps_left,
-    leader_finished,
+    holding_gate, leader_finished, start_gate_up,
     leader_num_laps, live_leader, live_position, local_overtime_done, local_overtime_taken, moving,
     norm_lap_pos as norm_track_pos, note_laps_to_run, overtime_active, penalty_class_place_delta,
     penalty_place_delta, prestart, race_lap, race_laps_left_text, race_over_for_me,
@@ -169,7 +169,7 @@ fn format_place_digits(pos: i32, with_p: bool) -> String {
         if pos > 0 {
             format!("P{pos}")
         } else {
-            "P--".into()
+            "-".into()
         }
     } else if pos > 0 {
         format!("{pos}")
@@ -2792,6 +2792,9 @@ fn rider_dot_num(s: &Snapshot, race_num: i32, mode: DotLabel) -> i32 {
 }
 
 fn leader_num(s: &Snapshot) -> i32 {
+    if IN_GATE.load(Ordering::Relaxed) == 1 || holding_gate() || start_gate_up(s) {
+        return 0;
+    }
     // Live rank first: the crown has to move with an on-track pass for the lead, not
     // wait for the game to republish its classification at the line.
     let live = live_leader();
@@ -2807,6 +2810,9 @@ fn leader_num(s: &Snapshot) -> i32 {
 }
 
 fn standing_pos(s: &Snapshot, race_num: i32) -> i32 {
+    if IN_GATE.load(Ordering::Relaxed) == 1 || holding_gate() || start_gate_up(s) {
+        return 0;
+    }
     let live = live_position(race_num);
     if live > 0 {
         return live;

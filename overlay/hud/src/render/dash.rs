@@ -92,7 +92,7 @@ pub(crate) fn dash_layout(
     let lead = pos == Some(1);
     let ptxt = pos
         .map(|p| format_place_digits(p, true))
-        .unwrap_or_else(|| "P--".into());
+        .unwrap_or_else(|| "-".into());
     let pstar = place_star_col(penalty_place_delta(focus_num));
     let lap_txt = race_progress_text(s);
     let lapped = lapped(s);
@@ -486,7 +486,7 @@ pub(crate) fn dash_foot_item(
             }
             DashField::Position => st
                 .map(|r| format_place_digits(r.position.max(0), true))
-                .unwrap_or_else(|| "P--".into()),
+                .unwrap_or_else(|| "-".into()),
             DashField::Number => {
                 let n = if s.focus_race_num > 0 {
                     s.focus_race_num

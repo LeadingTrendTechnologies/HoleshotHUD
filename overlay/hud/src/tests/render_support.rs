@@ -592,6 +592,7 @@ pub(crate) fn gate_field(nums: &[i32]) -> Snapshot {
     IN_GATE.store(1, Ordering::Relaxed);
     let _ = RaceStore::tick(&s);
     IN_GATE.store(0, Ordering::Relaxed);
+    s.holeshot_race_num = 1;
     s
 }
 

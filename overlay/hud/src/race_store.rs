@@ -8,7 +8,7 @@ use crate::config::SessionPreset;
 use crate::shm::{bytes_as_text, Snapshot, Standing, MAX_STANDINGS};
 use std::cell::Cell;
 use std::ptr::NonNull;
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::Mutex;
 
 fn anim_now() -> f32 {
@@ -186,6 +186,12 @@ const PENALTY_FALLBACK_MPS: f32 = 15.0;
 /// Small overshoot past one lap of armed travel is noise (centerline wobble near the
 /// line). Past this, the tracker rode more than a lap without a `num_laps` bump.
 const LAP_OVERFLOW_SLACK_M: f32 = 50.0;
+/// Still in the start slot. Further than this off the stored gate fraction and the
+/// field has left the slots. The place stays blank until the holeshot line anyway.
+const GATE_SLOT_M: f32 = 5.0;
+/// No `RaceHoleshot` yet. Once the furthest rider is this far past the back of the
+/// grid, publish anyway so a missed callback does not hide the lap.
+const HOLESHOT_FALLBACK_M: f32 = 200.0;
 
 /// A time penalty as metres of track. The game only applies penalties to the results, and
 /// the live order compares distance, so the seconds are ridden off at the session best
@@ -201,13 +207,21 @@ fn penalty_m(s: &Snapshot, penalty_ms: i32) -> f32 {
 }
 
 /// Distance a rider has covered since the gate dropped or since their last line crossing.
-/// This is what compares riders too far apart for `track_pos`: a rider who crashed on the
-/// start is still scored ahead of the pack until the game re-scores them at a gate.
+/// On the open lap the grid snapshot orders them by location, including a bike that
+/// crashed and lost `track_pos`.
 #[derive(Clone, Copy)]
 struct RiderProgress {
     race_num: i32,
     /// Lap fraction last tick, `None` while they were missing from `riders[]`.
     last_frac: Option<f32>,
+    /// Lap fraction while the gate was up. `None` if we never saw them on the gate.
+    gate_frac: Option<f32>,
+    /// Continuous lap coordinate for a rider we saw on the gate. Set from where they
+    /// are, not from a sum of steps. `None` until the gate snapshot exists.
+    unwrapped: Option<f32>,
+    /// A step over `MAX_STEP_M` we have not accepted yet. The next tick that stays
+    /// there takes it, so one glitch does not move the place and a real jump is not lost.
+    pending_frac: Option<f32>,
     travelled_m: f32,
     lap_base_m: f32,
     laps_at_base: i32,
@@ -222,6 +236,22 @@ struct RiderProgress {
 
 static PROGRESS: Mutex<Vec<RiderProgress>> = Mutex::new(Vec::new());
 
+/// The field is still sitting on the stored gate slots, so there is no race place yet
+/// even if `IN_GATE` has already cleared.
+static HOLDING_GATE: AtomicBool = AtomicBool::new(false);
+
+/// Game session state while the start gate is still up. The pre-start countdown
+/// clears `IN_GATE` before the gate drops; this stays 256 until it does.
+const START_GATE_STATE: i32 = 256;
+
+pub(crate) fn start_gate_up(s: &Snapshot) -> bool {
+    s.session_state == START_GATE_STATE
+}
+
+pub(crate) fn holding_gate() -> bool {
+    HOLDING_GATE.load(Ordering::Relaxed)
+}
+
 fn note_progress(s: &Snapshot, clock: &SessionClock, n: usize) {
     if s.track_length <= 10.0 {
         return;
@@ -234,6 +264,7 @@ fn note_progress(s: &Snapshot, clock: &SessionClock, n: usize) {
     // is known so a mid-race join still uses S/F metres. Do not arm on a zero step — that
     // would invent equal travel for riders who are already spread out.
     let cold_arm = live_order_active(s, clock) && !line_known(s);
+    let on_gate = clock.in_gate || start_gate_up(s);
     for standing in &s.standings[..n] {
         let frac = rider_lap_pos(s, standing.race_num);
         let index = match tracked.iter().position(|p| p.race_num == standing.race_num) {
@@ -242,6 +273,9 @@ fn note_progress(s: &Snapshot, clock: &SessionClock, n: usize) {
                 tracked.push(RiderProgress {
                     race_num: standing.race_num,
                     last_frac: frac,
+                    gate_frac: None,
+                    unwrapped: None,
+                    pending_frac: None,
                     travelled_m: 0.0,
                     lap_base_m: 0.0,
                     laps_at_base: standing.num_laps,
@@ -253,10 +287,14 @@ fn note_progress(s: &Snapshot, clock: &SessionClock, n: usize) {
             }
         };
         let progress = &mut tracked[index];
-        if clock.in_gate {
+        if on_gate {
+            let kept_gate = frac.or(progress.gate_frac);
             *progress = RiderProgress {
                 race_num: standing.race_num,
                 last_frac: frac,
+                gate_frac: kept_gate,
+                unwrapped: progress.unwrapped,
+                pending_frac: None,
                 travelled_m: 0.0,
                 lap_base_m: 0.0,
                 laps_at_base: standing.num_laps,
@@ -285,6 +323,9 @@ fn note_progress(s: &Snapshot, clock: &SessionClock, n: usize) {
             _ => {}
         }
         progress.last_frac = frac;
+        if !clock.in_gate {
+            note_unwrapped(progress, frac, s.track_length);
+        }
         if standing.num_laps > progress.laps_at_base {
             progress.lap_base_m = progress.travelled_m;
             progress.laps_at_base = standing.num_laps;
@@ -316,6 +357,46 @@ fn note_progress(s: &Snapshot, clock: &SessionClock, n: usize) {
             progress.corrupt = true;
         }
     }
+    if on_gate {
+        if let Some(origin) = gate_origin_frac(&tracked) {
+            for progress in tracked.iter_mut() {
+                if let Some(gate) = progress.gate_frac {
+                    progress.unwrapped = Some(origin + forward_frac(origin, gate));
+                    progress.pending_frac = None;
+                }
+            }
+        }
+    }
+}
+
+/// Closest continuous coordinate to `prev` whose fractional part is `now`.
+fn unwrap_near(prev: f32, now: f32) -> f32 {
+    let now = now.rem_euclid(1.0);
+    now + (prev - now).round()
+}
+
+/// Move the gate coordinate to where the bike is. A jump over `MAX_STEP_M` waits
+/// one tick; if the next sample stays there, that is where they are.
+fn note_unwrapped(progress: &mut RiderProgress, now: Option<f32>, track_length: f32) {
+    let (Some(now), Some(prev)) = (now, progress.unwrapped) else {
+        return;
+    };
+    let candidate = unwrap_near(prev, now);
+    let step_m = (candidate - prev).abs() * track_length;
+    if step_m <= MAX_STEP_M {
+        progress.unwrapped = Some(candidate);
+        progress.pending_frac = None;
+        return;
+    }
+    if let Some(pending) = progress.pending_frac {
+        let stay_m = wrap_signed(now - pending).abs() * track_length;
+        if stay_m <= MAX_STEP_M {
+            progress.unwrapped = Some(candidate);
+            progress.pending_frac = None;
+            return;
+        }
+    }
+    progress.pending_frac = Some(now);
 }
 
 /// Metres into the lap they are scored on, when we saw that lap start.
@@ -489,11 +570,97 @@ fn geometric_open_lap_metres(
     -forward_frac(frac, s1) * track_length
 }
 
+/// Fraction at the back of the gate. The candidate that puts every stored grid
+/// fraction in the smallest forward span, so a grid that wraps past 0 still has a back.
+fn gate_origin_frac(tracked: &[RiderProgress]) -> Option<f32> {
+    let fracs: Vec<f32> = tracked.iter().filter_map(|p| p.gate_frac).collect();
+    let mut best = *fracs.first()?;
+    let mut best_span = f32::MAX;
+    for &candidate in &fracs {
+        let span = fracs
+            .iter()
+            .map(|frac| forward_frac(candidate, *frac))
+            .fold(0.0f32, f32::max);
+        if span < best_span {
+            best_span = span;
+            best = candidate;
+        }
+    }
+    Some(best)
+}
+
+/// Where a rider we saw on the gate is, in metres from the back of that grid.
+/// The coordinate is not reset when `num_laps` rises. `num_laps` only lifts a rider
+/// whose coordinate is a full lap behind the classification. A missing `track_pos`
+/// keeps the last coordinate, so a crash can still be passed.
+fn gate_place_metres(s: &Snapshot, tracked: &[RiderProgress], st: &Standing) -> Option<f32> {
+    if out_of_race(st) {
+        return None;
+    }
+    let origin = gate_origin_frac(tracked)?;
+    let progress = tracked.iter().find(|p| p.race_num == st.race_num)?;
+    if progress.gate_frac.is_none() {
+        return None;
+    }
+    let signed = progress.unwrapped? - origin;
+    let class_laps = st.num_laps as f32;
+    let laps = if signed + 1.0 < class_laps {
+        class_laps + signed.rem_euclid(1.0)
+    } else {
+        signed
+    };
+    Some(laps * s.track_length)
+}
+
+/// Every stored gate rider is still within [`GATE_SLOT_M`] of the slot we recorded.
+/// No gate snapshot means the field is not being held.
+fn field_still_in_slots(s: &Snapshot, tracked: &[RiderProgress]) -> bool {
+    let Some(origin) = gate_origin_frac(tracked) else {
+        return false;
+    };
+    let mut saw = false;
+    for progress in tracked {
+        let Some(gate) = progress.gate_frac else {
+            continue;
+        };
+        saw = true;
+        let slot = origin + forward_frac(origin, gate);
+        let now = progress.unwrapped.unwrap_or(slot);
+        if (now - slot).abs() * s.track_length > GATE_SLOT_M {
+            return false;
+        }
+    }
+    saw
+}
+
+/// The gate was seen and the game has not called the holeshot yet. The front slot is
+/// not a place. A long lead with no callback stops holding.
+fn awaiting_holeshot(s: &Snapshot, tracked: &[RiderProgress]) -> bool {
+    if s.holeshot_race_num > 0 {
+        return false;
+    }
+    let Some(origin) = gate_origin_frac(tracked) else {
+        return false;
+    };
+    let mut saw = false;
+    let mut furthest = 0.0f32;
+    for progress in tracked {
+        if progress.gate_frac.is_none() {
+            continue;
+        }
+        saw = true;
+        let now = progress.unwrapped.unwrap_or(origin);
+        furthest = furthest.max((now - origin) * s.track_length);
+    }
+    saw && furthest < HOLESHOT_FALLBACK_M
+}
+
 /// Metres into the lap when we know where it started: the tracker after the gate or a
 /// crossing, otherwise metres past a known start/finish.
 /// Runaway/corrupt riders return `None` so they keep their game place (no S/F collapse
-/// to ~0 just after a wrap before `num_laps` bumps). Lap 1 with a known sector gate
-/// is scored before that, so a pin cannot freeze the start.
+/// to ~0 just after a wrap before `num_laps` bumps). The open lap uses the grid
+/// snapshot when we saw the gate, otherwise sector geometry, so a pin cannot freeze
+/// the start.
 fn lap_metres(s: &Snapshot, tracked: &[RiderProgress], st: &Standing) -> Option<f32> {
     if st.num_laps == 0 {
         if let Some(metres) = open_lap_sector_metres(s, tracked, st) {
@@ -524,6 +691,9 @@ fn rider_score(s: &Snapshot, tracked: &[RiderProgress], st: &Standing) -> Option
 fn track_score(s: &Snapshot, tracked: &[RiderProgress], st: &Standing) -> Option<f32> {
     if out_of_race(st) {
         return None;
+    }
+    if let Some(metres) = gate_place_metres(s, tracked, st) {
+        return Some(metres);
     }
     let metres = lap_metres(s, tracked, st)?;
     Some(st.num_laps as f32 * s.track_length + metres)
@@ -587,8 +757,17 @@ fn score_ahead(
     ahead_m > margin
 }
 
+/// A crashed bike with no live `track_pos` can still be passed when we held a fraction
+/// or an armed lap. DNS / OUT / DSQ stay pinned.
+fn rider_can_move(s: &Snapshot, tracked: &[RiderProgress], st: &Standing) -> bool {
+    if out_of_race(st) {
+        return false;
+    }
+    rider_lap_pos(s, st.race_num).is_some() || track_score(s, tracked, st).is_some()
+}
+
 /// Bubble movable slots in `order` by [`score_ahead`]. `use_penalty` selects live vs
-/// on-track ranking. Pinned rows (no `track_pos`, out of race) stay put.
+/// on-track ranking. Pinned rows (no score, out of race) stay put.
 fn bubble_live_slots(
     s: &Snapshot,
     order: &mut [usize],
@@ -598,10 +777,7 @@ fn bubble_live_slots(
 ) {
     let n = order.len();
     let movable: Vec<usize> = (0..n)
-        .filter(|&slot| {
-            let st = &s.standings[order[slot]];
-            !out_of_race(st) && rider_lap_pos(s, st.race_num).is_some()
-        })
+        .filter(|&slot| rider_can_move(s, tracked, &s.standings[order[slot]]))
         .collect();
     for _ in 0..n {
         let mut moved = false;
@@ -625,6 +801,17 @@ fn bubble_live_slots(
 /// Also publishes [`TRACK_ORDER`] (same bubble without penalties) while live order is on.
 fn live_order(s: &Snapshot, clock: &SessionClock, n: usize) -> Vec<usize> {
     note_progress(s, clock, n);
+    let (in_slots, awaiting_line) = PROGRESS
+        .lock()
+        .map(|tracked| {
+            (
+                field_still_in_slots(s, &tracked),
+                awaiting_holeshot(s, &tracked),
+            )
+        })
+        .unwrap_or((false, false));
+    let holding = in_slots || awaiting_line || start_gate_up(s);
+    HOLDING_GATE.store(holding, Ordering::Relaxed);
     let mut order: Vec<usize> = (0..n).collect();
     order.sort_by_key(|&i| {
         let p = s.standings[i].position;
@@ -634,7 +821,7 @@ fn live_order(s: &Snapshot, clock: &SessionClock, n: usize) -> Vec<usize> {
             i as i32 + MAX_STANDINGS as i32
         }
     });
-    if n > 1 && live_order_active(s, clock) {
+    if n > 1 && live_order_active(s, clock) && !holding {
         let prev_live = LIVE_ORDER.lock().map(|g| g.clone()).unwrap_or_default();
         let prev_track = TRACK_ORDER.lock().map(|g| g.clone()).unwrap_or_default();
         let tracked = PROGRESS.lock().map(|g| g.clone()).unwrap_or_default();
@@ -648,7 +835,14 @@ fn live_order(s: &Snapshot, clock: &SessionClock, n: usize) -> Vec<usize> {
     } else if let Ok(mut g) = TRACK_ORDER.lock() {
         g.clear();
     }
-    if let Ok(mut g) = LIVE_ORDER.lock() {
+    if clock.in_gate || holding {
+        // The gate order is not a race place. Publishing it made the next tick
+        // "correct" qualifying positions instead of starting from location.
+        // The same hold covers the slots, the game's gate state, and the run to the holeshot line.
+        if let Ok(mut g) = LIVE_ORDER.lock() {
+            g.clear();
+        }
+    } else if let Ok(mut g) = LIVE_ORDER.lock() {
         g.clear();
         g.extend(order.iter().map(|&i| s.standings[i].race_num));
     }
@@ -783,8 +977,8 @@ fn build_field(s: &Snapshot, clock: &SessionClock) -> RaceField {
     for (i, &si) in order.iter().enumerate() {
         let mut st = s.standings[si];
         // Live place, so a pass shows on every board without waiting for the game to
-        // republish its classification at the line.
-        st.position = i as i32 + 1;
+        // republish its classification at the line. On the gate there is no place yet.
+        st.position = if clock.in_gate || holding_gate() { 0 } else { i as i32 + 1 };
         let is_focus = st.race_num == focus_num;
         let is_leader = i == 0;
         if is_focus {
@@ -1332,6 +1526,7 @@ pub(crate) fn reset_session_clock_track() {
     LAPS_TO_RUN_AT.store(-1, Ordering::Relaxed);
     LAST_LAPS_REMAINING.store(-1, Ordering::Relaxed);
     IN_GATE.store(0, Ordering::Relaxed);
+    HOLDING_GATE.store(false, Ordering::Relaxed);
     POST_GATE.store(0, Ordering::Relaxed);
     LAP_GREEN.store(0, Ordering::Relaxed);
     LOCKED_SESSION_LEN.store(0, Ordering::Relaxed);

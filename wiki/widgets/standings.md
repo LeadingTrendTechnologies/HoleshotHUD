@@ -63,6 +63,9 @@ Default columns on: Position, Number, Name, Gap to leader, Fastest, Last lap.
 
 ## Change log
 
+- 2026-10-05 — No place from the drop until the holeshot line. See [live race order](../live-order.md).
+- 2026-10-05 — Falling behind the gate no longer keeps that rider P1 for the rest of the open lap. See [live race order](../live-order.md).
+- 2026-10-04 — No place on the gate. From the drop until the first finish, place is where riders are on track, including a pass on a crashed bike. See [live race order](../live-order.md).
 - 2026-10-04 — A rider listed on the Groups tab gets that group's icon in the group color, immediately left of the name. The first group in the list wins. The name column gives up about 14px for it. Click-to-follow still uses the whole name cell.
 - 2026-10-02 — Bike-column pills use a translucent brand wash and a 1px stronger brand border. Letters stay black or white from the brand (`ink_on`).
 - 2026-10-01 — Your row is a left-to-right accent fade with a 1px line on the top and bottom. **Row highlight** still scales it. Alternating rows stay a flat wash.

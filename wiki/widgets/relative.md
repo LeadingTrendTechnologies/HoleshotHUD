@@ -54,6 +54,7 @@ Default columns on: Number, Name, Gap, Fastest, Last lap.
 
 ## Change log
 
+- 2026-10-04 — Place column follows the open-lap grid order: blank on the gate, then track location, including a pass on a crashed bike. See [live race order](../live-order.md).
 - 2026-10-04 — A rider listed on the Groups tab gets that group's icon in the group color, immediately left of the name. Same mark as Standings. The first group in the list wins.
 - 2026-10-02 — Bike-column pills use a translucent brand wash and a 1px stronger brand border. Letters stay black or white from the brand (`ink_on`).
 - 2026-10-01 — Your row and blue/red lapping rows are a left-to-right fade with a 1px line on the top and bottom. **Row highlight** still scales them. Alternating rows stay a flat wash.

@@ -135,6 +135,14 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             open_live_analyze(true);
             return;
         }
+        Hit::ProfileNavMyMxb => {
+            set_profile_section(ProfileSection::MyMxb);
+            return;
+        }
+        Hit::MyMxbRefresh => {
+            super::mymxb::request_refresh();
+            return;
+        }
         Hit::ProfileNavRanked => {
             set_profile_section(ProfileSection::Ranked);
             return;
@@ -196,9 +204,15 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             }
             return;
         }
-        Hit::ReviewFilterRanked => {
+        Hit::ReviewFilterMxbRanked => {
             if let Some(ui) = UI.lock().unwrap().as_mut() {
-                ui.review_filter = crate::review::ListFilter::Ranked;
+                ui.review_filter = crate::review::ListFilter::MxbRanked;
+            }
+            return;
+        }
+        Hit::ReviewFilterCbr => {
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.review_filter = crate::review::ListFilter::Cbr;
             }
             return;
         }
@@ -1401,6 +1415,8 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::TabProfile
         | Hit::ProfileNavOverview
         | Hit::ProfileNavMotos
+        | Hit::ProfileNavMyMxb
+        | Hit::MyMxbRefresh
         | Hit::ProfileNavRanked
         | Hit::RankedRefresh
         | Hit::ProfileNavCbr
@@ -1589,7 +1605,8 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::StanceReset
         | Hit::TrackPbClear
         | Hit::ReviewFilterAll
-        | Hit::ReviewFilterRanked
+        | Hit::ReviewFilterMxbRanked
+        | Hit::ReviewFilterCbr
         | Hit::ReviewFilterSaved
         | Hit::ReviewOpen(_)
         | Hit::ReviewKeep(_)

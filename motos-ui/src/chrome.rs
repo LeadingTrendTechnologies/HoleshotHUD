@@ -17,7 +17,8 @@ fn light_chrome() -> bool {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Hit {
     ReviewFilterAll,
-    ReviewFilterRanked,
+    ReviewFilterMxbRanked,
+    ReviewFilterCbr,
     ReviewFilterSaved,
     ReviewOpen(u64),
     ReviewKeep(u64),

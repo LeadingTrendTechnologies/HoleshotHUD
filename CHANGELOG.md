@@ -1,13 +1,34 @@
 # Changelog
 
+## 0.30.0
+
+- Profile → MyMXB shows mymxb.com.
+- Profile → MyMXB is zoomed to 85%.
+- Profile → MyMXB hides third-party ads.
+- Profile → MXB-Ranked rejoins a dropped page without reloading.
+
+## 0.29.3
+
+- Motos list shows the MXB Ranked logo next to the track on mxb-ranked servers, and a smaller CBR logo on CBR servers.
+- Motos list chips are All, MXB-Ranked, CBR, and Saved.
+
+## 0.29.2
+
+- Race place follows where the bike is. Crossing the finish no longer jumps it, and no place is shown from the drop until the holeshot line. A missing place draws `-`. The pre-start countdown ending does not show a place while the gate is still up.
+
 ## 0.29.1
 
 - Factory Pit Board, Controller, and Map start at the size of their art. A layout you already dragged keeps its box.
+- Falling behind the start gate no longer keeps you P1 for the rest of the open lap. Place is the grid stagger plus metres ridden since the drop.
 
 ## 0.29.0
 
 - Profile → CBR shows the cbrservers.com player page for the Steam account signed in on this PC.
 - Profile → MXB-Ranked shows the rider page again.
+
+## 0.28.2
+
+- From the gate drop until the first finish, place follows where riders are on track. No place is shown before the gate drops. Passing a crashed rider, or being passed while down, updates that place.
 
 ## 0.28.1
 

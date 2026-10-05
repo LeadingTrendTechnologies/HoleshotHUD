@@ -39,7 +39,7 @@ pub(crate) fn draw_timer(
     let lead = place == Some(1);
     let mut place_text = place
         .map(|place| format_place_digits(place, true))
-        .unwrap_or_else(|| "P--".into());
+        .unwrap_or_else(|| "-".into());
     if cfg.timer.timer_of {
         let field = if s.standing_count > 0 {
             s.standing_count

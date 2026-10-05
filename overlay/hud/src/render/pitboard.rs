@@ -495,7 +495,7 @@ pub(crate) fn factory_plate_png() -> Vec<u8> {
 fn pit_blank(t: &str) -> bool {
     matches!(
         t,
-        "--" | "---" | "P--" | "L--" | "C--" | "--:--" | "--:--.---"
+        "-" | "--" | "---" | "P--" | "L--" | "C--" | "--:--" | "--:--.---"
     )
 }
 

@@ -145,7 +145,12 @@ pub fn pane_review(
     let mut cx = x;
     for (label, on, hit) in [
         ("All", filter == ListFilter::All, Hit::ReviewFilterAll),
-        ("Ranked", filter == ListFilter::Ranked, Hit::ReviewFilterRanked),
+        (
+            "MXB-Ranked",
+            filter == ListFilter::MxbRanked,
+            Hit::ReviewFilterMxbRanked,
+        ),
+        ("CBR", filter == ListFilter::Cbr, Hit::ReviewFilterCbr),
         ("Saved", filter == ListFilter::Saved, Hit::ReviewFilterSaved),
     ] {
         let cw = filter_chip(px, fonts, cx, chip_y, label, on, hit, hover, hits);
@@ -575,12 +580,24 @@ fn draw_review_sheet(
             dim(),
             false,
         );
-        let ranked_w = if row.ranked { 13.0 + 8.0 } else { 0.0 };
-        let track = ellipsize_heading(fonts, &row.track, 14.0, (cols.track_w - 4.0 - ranked_w).max(20.0));
+        let brand = mxbo_review::server_brand(&row.server_name);
+        let logo = brand.and_then(server_logo);
+        let logo_w = match (brand, logo) {
+            (Some(brand), Some(src)) => server_logo_box(brand, src).0 + 8.0,
+            _ => 0.0,
+        };
+        let track = ellipsize_heading(fonts, &row.track, 14.0, (cols.track_w - 4.0 - logo_w).max(20.0));
         text(px, fonts, &track, 14.0, cols.track, ty, text_col(), false);
-        if row.ranked {
+        if let (Some(brand), Some(src)) = (brand, logo) {
             let tw = measure(fonts, &track, 14.0);
-            draw_ranked_mark(px, fonts, cols.track + tw + 6.0, ty + 1.0, 13.0);
+            let (_, logo_h) = server_logo_box(brand, src);
+            draw_server_logo(
+                px,
+                brand,
+                src,
+                cols.track + tw + 6.0,
+                ty + (14.0 - logo_h) * 0.5,
+            );
         }
         let pos = fmt_sheet_pos(row.your_position, row.rider_count);
         text(px, fonts, &pos, 13.0, cols.pos, ty, muted(), false);
@@ -836,6 +853,70 @@ fn draw_win_crown(px: &mut Pixmap, fonts: &Fonts, x: f32, y: f32, size: f32) {
 
 fn draw_ranked_mark(px: &mut Pixmap, fonts: &Fonts, x: f32, y: f32, size: f32) {
     icon(px, fonts, '\u{f091}', size, x, y, dim(), false);
+}
+
+const MXB_LOGO_H: f32 = 28.0;
+const MXB_LOGO_MAX_W: f32 = 96.0;
+const CBR_LOGO_H: f32 = 18.0;
+const CBR_LOGO_MAX_W: f32 = 50.0;
+
+fn server_logo(brand: mxbo_review::ServerBrand) -> Option<&'static Pixmap> {
+    match brand {
+        mxbo_review::ServerBrand::MxbRanked => mxb_ranked_logo(),
+        mxbo_review::ServerBrand::Cbr => cbr_logo(),
+    }
+}
+
+fn mxb_ranked_logo() -> Option<&'static Pixmap> {
+    static PNG: OnceLock<Option<Pixmap>> = OnceLock::new();
+    PNG.get_or_init(|| Pixmap::decode_png(include_bytes!("mxb-ranked-logo.png")).ok())
+        .as_ref()
+}
+
+fn cbr_logo() -> Option<&'static Pixmap> {
+    static PNG: OnceLock<Option<Pixmap>> = OnceLock::new();
+    PNG.get_or_init(|| Pixmap::decode_png(include_bytes!("cbr-logo.png")).ok())
+        .as_ref()
+}
+
+fn server_logo_box(brand: mxbo_review::ServerBrand, src: &Pixmap) -> (f32, f32) {
+    let (max_h, max_w) = match brand {
+        mxbo_review::ServerBrand::MxbRanked => (MXB_LOGO_H, MXB_LOGO_MAX_W),
+        mxbo_review::ServerBrand::Cbr => (CBR_LOGO_H, CBR_LOGO_MAX_W),
+    };
+    let width = src.width().max(1) as f32;
+    let height = src.height().max(1) as f32;
+    let scale = (max_h / height).min(max_w / width);
+    (width * scale, height * scale)
+}
+
+fn draw_server_logo(px: &mut Pixmap, brand: mxbo_review::ServerBrand, src: &Pixmap, x: f32, y: f32) {
+    let (drawn_w, _) = server_logo_box(brand, src);
+    let scale = drawn_w / src.width().max(1) as f32;
+    if scale <= 0.0 {
+        return;
+    }
+    if (scale - 1.0).abs() < 0.01 {
+        let _ = px.draw_pixmap(
+            x.round() as i32,
+            y.round() as i32,
+            src.as_ref(),
+            &PixmapPaint::default(),
+            Transform::identity(),
+            None,
+        );
+        return;
+    }
+    let mut paint = PixmapPaint::default();
+    paint.quality = FilterQuality::Bicubic;
+    let _ = px.draw_pixmap(
+        0,
+        0,
+        src.as_ref(),
+        &paint,
+        Transform::from_row(scale, 0.0, 0.0, scale, x, y),
+        None,
+    );
 }
 
 fn draw_bookmark_icon(px: &mut Pixmap, cx: f32, cy: f32, filled: bool, c: Color) {

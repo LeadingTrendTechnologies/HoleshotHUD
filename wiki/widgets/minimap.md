@@ -44,6 +44,7 @@ Toggles match Map, plus **Zoom**. Default background 0.
 
 ## Change log
 
+- 2026-10-04 — Shares Map: no place number or crown on the gate. After the drop, numbers follow track location through the first lap.
 - 2026-10-04 — Shares Map: **Show on maps** recolors another rider's dot and chevron. The orange you-dot stays orange.
 - 2026-10-02 — Shares Map: numbered dots trail a green or red `*` when live place differs from on-track place.
 - 2026-10-02 — Shares Map: ahead / behind marks are a light wash and a 1px ring. Chevrons stay solid.

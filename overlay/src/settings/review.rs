@@ -107,7 +107,8 @@ fn map_hit_box(b: mxbo_motos_ui::HitBox) -> HitBox {
 fn map_hit_to_motos(h: Hit) -> mxbo_motos_ui::Hit {
     match h {
         Hit::ReviewFilterAll => mxbo_motos_ui::Hit::ReviewFilterAll,
-        Hit::ReviewFilterRanked => mxbo_motos_ui::Hit::ReviewFilterRanked,
+        Hit::ReviewFilterMxbRanked => mxbo_motos_ui::Hit::ReviewFilterMxbRanked,
+        Hit::ReviewFilterCbr => mxbo_motos_ui::Hit::ReviewFilterCbr,
         Hit::ReviewFilterSaved => mxbo_motos_ui::Hit::ReviewFilterSaved,
         Hit::ReviewOpen(id) => mxbo_motos_ui::Hit::ReviewOpen(id),
         Hit::ReviewKeep(id) => mxbo_motos_ui::Hit::ReviewKeep(id),
@@ -129,7 +130,8 @@ fn map_hit_to_motos(h: Hit) -> mxbo_motos_ui::Hit {
 fn map_hit_to_overlay(h: mxbo_motos_ui::Hit) -> Hit {
     match h {
         mxbo_motos_ui::Hit::ReviewFilterAll => Hit::ReviewFilterAll,
-        mxbo_motos_ui::Hit::ReviewFilterRanked => Hit::ReviewFilterRanked,
+        mxbo_motos_ui::Hit::ReviewFilterMxbRanked => Hit::ReviewFilterMxbRanked,
+        mxbo_motos_ui::Hit::ReviewFilterCbr => Hit::ReviewFilterCbr,
         mxbo_motos_ui::Hit::ReviewFilterSaved => Hit::ReviewFilterSaved,
         mxbo_motos_ui::Hit::ReviewOpen(id) => Hit::ReviewOpen(id),
         mxbo_motos_ui::Hit::ReviewKeep(id) => Hit::ReviewKeep(id),

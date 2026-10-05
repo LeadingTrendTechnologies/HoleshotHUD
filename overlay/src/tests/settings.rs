@@ -200,7 +200,8 @@ fn review_empty_paints_enable_gate() {
     assert!(ids.contains(&Hit::ProfileNavMotos));
     assert!(ids.contains(&Hit::ReviewToggle));
     assert!(!ids.contains(&Hit::ReviewFilterAll));
-    assert!(!ids.contains(&Hit::ReviewFilterRanked));
+    assert!(!ids.contains(&Hit::ReviewFilterMxbRanked));
+    assert!(!ids.contains(&Hit::ReviewFilterCbr));
     assert!(!ids.contains(&Hit::ReviewFilterSaved));
     assert_golden("review-empty", &px);
     *UI.lock().unwrap() = None;
@@ -225,7 +226,8 @@ fn review_empty_recording_on_paints_filters() {
     let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
     let ids = hit_ids(&hits);
     assert!(ids.contains(&Hit::ReviewFilterAll));
-    assert!(ids.contains(&Hit::ReviewFilterRanked));
+    assert!(ids.contains(&Hit::ReviewFilterMxbRanked));
+    assert!(ids.contains(&Hit::ReviewFilterCbr));
     assert!(ids.contains(&Hit::ReviewFilterSaved));
     *UI.lock().unwrap() = None;
     {
@@ -777,6 +779,7 @@ fn profile_tab_visible_when_motos_off() {
     assert!(ids.contains(&Hit::TabProfile));
     assert!(ids.contains(&Hit::ProfileNavOverview));
     assert!(ids.contains(&Hit::ProfileNavMotos));
+    assert!(ids.contains(&Hit::ProfileNavMyMxb));
     assert!(ids.contains(&Hit::ProfileNavRanked));
     assert!(ids.contains(&Hit::ProfileNavCbr));
     assert!(
