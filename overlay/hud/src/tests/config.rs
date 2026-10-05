@@ -474,6 +474,68 @@ fn migrate_default_flag_widens_portrait_cloth() {
 }
 
 #[test]
+fn migrate_default_boxes_match_art() {
+    let mut pit = crate::shm::Rect {
+        x: 0.34,
+        y: 0.05,
+        w: 0.32,
+        h: 0.22,
+    };
+    super::migrate_default_pitboard(&mut pit);
+    assert!((pit.x - 0.41).abs() < 0.001);
+    assert!((pit.y - 0.05).abs() < 0.001);
+    assert!((pit.w - 0.18).abs() < 0.001);
+    assert!((pit.h - 0.22).abs() < 0.001);
+    let mut pit_custom = crate::shm::Rect {
+        x: 0.20,
+        y: 0.10,
+        w: 0.40,
+        h: 0.22,
+    };
+    super::migrate_default_pitboard(&mut pit_custom);
+    assert!((pit_custom.w - 0.40).abs() < 0.001);
+
+    let mut pad = crate::shm::Rect {
+        x: 0.38,
+        y: 0.76,
+        w: 0.24,
+        h: 0.20,
+    };
+    super::migrate_default_gamepad(&mut pad);
+    assert!((pad.w - 0.16875).abs() < 0.001);
+    assert!((pad.h - 0.20).abs() < 0.001);
+    assert!((pad.x - 0.415625).abs() < 0.001);
+    let mut pad_custom = crate::shm::Rect {
+        x: 0.10,
+        y: 0.70,
+        w: 0.30,
+        h: 0.20,
+    };
+    super::migrate_default_gamepad(&mut pad_custom);
+    assert!((pad_custom.w - 0.30).abs() < 0.001);
+
+    let mut map = crate::shm::Rect {
+        x: 0.775,
+        y: 0.62,
+        w: 0.21,
+        h: 0.34,
+    };
+    super::migrate_default_map(&mut map);
+    assert!((map.w - 0.19125).abs() < 0.001);
+    assert!((map.h - 0.34).abs() < 0.001);
+    assert!((map.x - 0.79375).abs() < 0.001);
+    assert!((map.y - 0.62).abs() < 0.001);
+    let mut map_custom = crate::shm::Rect {
+        x: 0.50,
+        y: 0.40,
+        w: 0.30,
+        h: 0.30,
+    };
+    super::migrate_default_map(&mut map_custom);
+    assert!((map_custom.w - 0.30).abs() < 0.001);
+}
+
+#[test]
 fn units_format_speed_and_temp() {
     assert_eq!(Units::parse("imperial").format_speed(10.0), "22");
     assert_eq!(Units::Metric.format_speed(10.0), "36");

@@ -1106,9 +1106,9 @@ impl WidgetId {
                 h: 0.36,
             },
             Self::Map => Rect {
-                x: 0.775,
+                x: 0.79375,
                 y: 0.62,
-                w: 0.21,
+                w: 0.19125,
                 h: 0.34,
             },
             Self::Minimap => Rect {
@@ -1172,9 +1172,9 @@ impl WidgetId {
                 h: 0.20,
             },
             Self::Gamepad => Rect {
-                x: 0.38,
+                x: 0.415625,
                 y: 0.76,
-                w: 0.24,
+                w: 0.16875,
                 h: 0.20,
             },
             Self::Telemetry => Rect {
@@ -1184,9 +1184,9 @@ impl WidgetId {
                 h: 0.145,
             },
             Self::Pitboard => Rect {
-                x: 0.34,
+                x: 0.41,
                 y: 0.05,
-                w: 0.32,
+                w: 0.18,
                 h: 0.22,
             },
             Self::Timer => Rect {
@@ -2538,6 +2538,9 @@ impl HudLayout {
         migrate_default_dash(&mut self[WidgetId::Dash].rect);
         migrate_default_sector(&mut self[WidgetId::Sector].rect);
         migrate_default_flag(&mut self[WidgetId::Flag].rect);
+        migrate_default_map(&mut self[WidgetId::Map].rect);
+        migrate_default_gamepad(&mut self[WidgetId::Gamepad].rect);
+        migrate_default_pitboard(&mut self[WidgetId::Pitboard].rect);
     }
 }
 
@@ -5348,6 +5351,34 @@ fn migrate_default_flag(r: &mut Rect) {
         || untouched(0.414, 0.032, 0.172, 0.030)
     {
         *r = factory;
+    }
+}
+
+fn rect_is(r: Rect, x: f32, y: f32, w: f32, h: f32) -> bool {
+    (r.x - x).abs() < 0.001
+        && (r.y - y).abs() < 0.001
+        && (r.w - w).abs() < 0.001
+        && (r.h - h).abs() < 0.001
+}
+
+/// Untouched 21%×34% factory map becomes a 16:9 square. A dragged box stays.
+fn migrate_default_map(r: &mut Rect) {
+    if rect_is(*r, 0.775, 0.62, 0.21, 0.34) {
+        *r = WidgetId::Map.default_rect();
+    }
+}
+
+/// Untouched 24%×20% factory pad becomes the DualShock aspect. A dragged box stays.
+fn migrate_default_gamepad(r: &mut Rect) {
+    if rect_is(*r, 0.38, 0.76, 0.24, 0.20) {
+        *r = WidgetId::Gamepad.default_rect();
+    }
+}
+
+/// Untouched 32%×22% factory plate matches holeshot.png (1600×1100) on 16:9.
+fn migrate_default_pitboard(r: &mut Rect) {
+    if rect_is(*r, 0.34, 0.05, 0.32, 0.22) {
+        *r = WidgetId::Pitboard.default_rect();
     }
 }
 

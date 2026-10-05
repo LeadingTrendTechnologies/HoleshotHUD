@@ -55,6 +55,7 @@ Starts **hidden**.
 
 ## Change log
 
+- 2026-10-05 — Factory box is the DualShock aspect (16.875%×20%), still centered. An untouched 24%×20% box picks that up. A dragged box stays. Xbox stays a little narrower inside the box.
 - 2026-09-25 — Left Labs. Regular Cockpit widget. `show_gamepad` is enough. Experimental features still gates Profile → Tracks.
 - 2026-09-24 — Light PlayStation pad. Theme now switches both pads (default Light for everyone): the light DualShock is a cream body with black outlines and panels, slate d-pad keys and shoulders, and no L1/L2/R1/R2 labels. The "PlayStation: dark only" lock is gone. Xbox dark bumpers lose their dividers so they match the light pad.
 - 2026-09-24 — Theme is back for Xbox. Controller → **Theme** picks Light (the filled pad, default) or Dark, a new DualShock-style Xbox schematic: charcoal body, thin grey outlines, outlined ABXY, a ring around the d-pad, and a divider so LB/RB light only the bumper. The Dark art is regenerated from the Light art so every control stays put. PlayStation stays dark; the row shows "PlayStation: dark only" and is locked while Pad is PlayStation.

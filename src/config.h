@@ -19,7 +19,7 @@ struct PluginConfig
 {
     HudRect standings{0.012f, 0.030f, 0.20f, 0.46f};
     HudRect relative{0.012f, 0.62f, 0.20f, 0.36f};
-    HudRect map{0.775f, 0.62f, 0.210f, 0.340f};
+    HudRect map{0.79375f, 0.62f, 0.19125f, 0.340f};
 
     bool showStandings = false;
     bool showRelative = false;

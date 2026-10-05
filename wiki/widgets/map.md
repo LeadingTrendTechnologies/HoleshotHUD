@@ -53,6 +53,7 @@ Toggles: **Follow me** (default off), **Zoom** (shown only while Follow me is on
 
 ## Change log
 
+- 2026-10-05 — Factory box is square on 16:9 (19.125%×34%), right edge unchanged. The track uses the shorter side, so the old 21% width was unused glass. An untouched 21%×34% box picks that up. A dragged box stays.
 - 2026-10-04 — **Show on maps** (Groups, default off) recolors another rider's dot and chevron with the first group's color. The orange you-dot stays orange. Minimap shares it.
 - 2026-10-02 — Numbered dots trail a green or red `*` when a penalty puts live place ahead of or behind on-track place. Minimap shares it. Nearest ahead / behind rings stay outside the dot.
 - 2026-10-02 — Ahead / behind marks are a light wash and a 1px ring outside the dot. Chevrons stay solid. Minimap shares the marks.

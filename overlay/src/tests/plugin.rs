@@ -12,6 +12,17 @@ fn ranked_url_rejects_signed_out_account() {
 }
 
 #[test]
+fn cbr_url_uses_ff_and_steamid64_hex() {
+    let url = cbr_url_from_account(0x1284_9BE5).unwrap();
+    assert_eq!(url, "https://www.cbrservers.com/player/FF0110000112849BE5");
+}
+
+#[test]
+fn cbr_url_rejects_signed_out_account() {
+    assert!(cbr_url_from_account(0).is_none());
+}
+
+#[test]
 fn most_recent_login_user_is_the_steam_id() {
     let vdf = r#"
 "users"

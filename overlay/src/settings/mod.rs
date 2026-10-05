@@ -1,7 +1,7 @@
 //! THESIS: Settings is a first-run on-switch, then a working board — not a Windows Settings clone.
 //! OWN-WORLD: Charcoal stack, Holeshot Orange plaque, Exo 2 ExtraBold Italic, 6–10px rounds, no card shadows.
 //! STORY: Rider hits F8, sees Show on overlay, turns widgets on, then edits columns and snap.
-//! FIRST VIEWPORT: Top mode bar (Widgets / Profile / Settings / Groups / Feedback); Profile sub-nav Overview / Motos / mxb-ranked / Tracks; widget rail grouped Boards / Cockpit / Track; rail hides on Feedback; orange name plaque; Show on overlay on the right; Header/Footer are three slots.
+//! FIRST VIEWPORT: Top mode bar (Widgets / Profile / Settings / Groups / Feedback); Profile sub-nav Overview / Motos / mxb-ranked / CBR / Tracks; widget rail grouped Boards / Cockpit / Track; rail hides on Feedback; orange name plaque; Show on overlay on the right; Header/Footer are three slots.
 //! FORM: Combined Show Plaque + Header Strip columns; seed settings-comp.
 //! FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance.
 
@@ -42,6 +42,7 @@ mod feedback;
 mod groups;
 mod pit_help;
 mod profile;
+mod cbr;
 mod ranked;
 mod reply;
 mod review;

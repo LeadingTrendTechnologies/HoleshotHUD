@@ -1,4 +1,4 @@
-//! Profile → Ranked. A WebView2 child for the local Steam rider page.
+//! Profile → CBR. A WebView2 child for the local Steam rider page.
 
 use std::cell::RefCell;
 use std::num::NonZeroIsize;
@@ -23,10 +23,9 @@ use crate::render::{fill_rect, measure, text, Fonts};
 use super::{bg, muted, PROFILE_SUBNAV_H};
 
 const NO_STEAM: &str = "Steam is not signed in on this PC.";
-const OPEN_FAILED: &str = "Couldn't open the Ranked page.";
+const OPEN_FAILED: &str = "Couldn't open the CBR page.";
 const LOADING: &str = "Loading";
 const LOAD_WAIT: Duration = Duration::from_secs(6);
-const PAGE_ZOOM: f64 = 0.8;
 
 static PAGE_READY: AtomicBool = AtomicBool::new(false);
 static MANUAL_REFRESH: AtomicBool = AtomicBool::new(false);
@@ -39,48 +38,21 @@ pub(crate) fn request_refresh() {
     MANUAL_REFRESH.store(true, Ordering::Relaxed);
 }
 
-/// Dismiss the mxb-ranked.com cookie notice after Blazor renders it.
-const COOKIE_NOTICE_SCRIPT: &str = r#"
+/// Tell the overlay the player page has something to show.
+const READY_SCRIPT: &str = r#"
 (() => {
-  const needle = "uses cookies to improve your experience";
-  const dismiss = () => {
-    let block = null;
-    let blockLen = 2000;
-    for (const el of document.querySelectorAll("body *")) {
-      const text = el.innerText;
-      if (!text || !text.includes(needle) || text.length >= blockLen) continue;
-      block = el;
-      blockLen = text.length;
-    }
-    if (block) {
-      let host = block;
-      while (host && host !== document.body && !host.querySelector("button")) {
-        host = host.parentElement;
-      }
-      const button = host && host !== document.body ? host.querySelector("button") : null;
-      if (button && host.innerText && host.innerText.length < 2000) {
-        if (!host.dataset.mxbCookie) {
-          host.dataset.mxbCookie = "1";
-          button.click();
-        }
-      } else if (!block.dataset.mxbCookie) {
-        block.remove();
-      }
-    }
-    markReady();
-  };
   const markReady = () => {
-    if (window.__mxbReady || !document.body) return;
-    const text = document.body.innerText.replace(needle, "").replace(/\s+/g, " ").trim();
+    if (window.__cbrReady || !document.body) return;
+    const text = document.body.innerText.replace(/\s+/g, " ").trim();
     if (text.length < 24) return;
-    window.__mxbReady = true;
+    window.__cbrReady = true;
     if (window.ipc) window.ipc.postMessage("ready");
   };
   const arm = () => {
-    dismiss();
-    if (window.__mxbCookieWatch) return;
-    window.__mxbCookieWatch = new MutationObserver(dismiss);
-    window.__mxbCookieWatch.observe(document.documentElement, {
+    markReady();
+    if (window.__cbrWatch) return;
+    window.__cbrWatch = new MutationObserver(markReady);
+    window.__cbrWatch.observe(document.documentElement, {
       childList: true,
       subtree: true,
     });
@@ -90,111 +62,20 @@ const COOKIE_NOTICE_SCRIPT: &str = r#"
 })();
 "#;
 
-/// The results table scrolls sideways, but its scrollbar sits at the bottom of the table.
-/// The bar is ours. Nothing here writes attributes onto the Blazor page.
-const TABLE_SCROLL_SCRIPT: &str = r##"
-(() => {
-  try {
-    if (window.top !== window || window.__mxbHScroll) return;
-    window.__mxbHScroll = true;
-    let bar = null;
-    let inner = null;
-    let table = null;
-    let lock = false;
-    const bound = new WeakSet();
-    const ensure = () => {
-      if (bar && !bar.isConnected) bar = null;
-      if (bar) return;
-      const style = document.createElement("style");
-      style.textContent = "#mxb-hscroll{position:fixed;bottom:0;height:14px;overflow-x:scroll;overflow-y:hidden;z-index:2147483646;display:none;background:#18191d}#mxb-hscroll::-webkit-scrollbar{height:14px}#mxb-hscroll::-webkit-scrollbar-track{background:#18191d}#mxb-hscroll::-webkit-scrollbar-thumb{background:#8c8c94;border-radius:7px}";
-      document.documentElement.appendChild(style);
-      bar = document.createElement("div");
-      bar.id = "mxb-hscroll";
-      inner = document.createElement("div");
-      inner.style.height = "1px";
-      bar.appendChild(inner);
-      document.documentElement.appendChild(bar);
-      bar.addEventListener("scroll", () => {
-        if (lock || !table) return;
-        lock = true;
-        table.scrollLeft = bar.scrollLeft;
-        lock = false;
-      }, { passive: true });
-    };
-    const widest = () => {
-      let best = null;
-      let gap = 8;
-      for (const el of document.querySelectorAll(".mud-table-container")) {
-        const extra = el.scrollWidth - el.clientWidth;
-        if (extra > gap) {
-          gap = extra;
-          best = el;
-        }
-      }
-      return best;
-    };
-    const place = () => {
-      try {
-        const next = widest();
-        if (!next) {
-          if (bar) bar.style.display = "none";
-          table = null;
-          return;
-        }
-        ensure();
-        if (next !== table) {
-          table = next;
-          if (!bound.has(table)) {
-            bound.add(table);
-            table.addEventListener("scroll", () => {
-              if (lock || !bar) return;
-              lock = true;
-              bar.scrollLeft = table.scrollLeft;
-              lock = false;
-            }, { passive: true });
-          }
-        }
-        const rect = table.getBoundingClientRect();
-        const onScreen = rect.bottom > 0 && rect.top < window.innerHeight && rect.width > 40;
-        if (!onScreen) {
-          bar.style.display = "none";
-          return;
-        }
-        bar.style.display = "block";
-        bar.style.left = Math.max(0, rect.left) + "px";
-        bar.style.width = table.clientWidth + "px";
-        inner.style.width = table.scrollWidth + "px";
-        if (Math.abs(bar.scrollLeft - table.scrollLeft) > 1) {
-          lock = true;
-          bar.scrollLeft = table.scrollLeft;
-          lock = false;
-        }
-      } catch (err) {}
-    };
-    const arm = () => {
-      place();
-      setInterval(place, 400);
-    };
-    if (document.body) arm();
-    else document.addEventListener("DOMContentLoaded", arm);
-  } catch (err) {}
-})();
-"##;
-
-/// Notice shown over the page when a link is outside mxb-ranked and Steam.
+/// Notice shown over the page when a link is outside CBR and Steam.
 const BLOCKED_NOTICE_SCRIPT: &str = r##"
 (() => {
   if (window.top !== window) return;
   let blockedUrl = "";
-  window.__mxbShowBlocked = (url) => {
+  window.__cbrShowBlocked = (url) => {
     if (typeof url === "string" && url) blockedUrl = url;
-    let panel = document.getElementById("mxb-blocked");
+    let panel = document.getElementById("cbr-blocked");
     if (!panel) {
       panel = document.createElement("div");
-      panel.id = "mxb-blocked";
-      panel.innerHTML = '<div id="mxb-blocked-card"><p>That link can\'t be opened in this app.</p><button type="button" data-open>Open in browser</button><button type="button" data-close>Close</button></div>';
+      panel.id = "cbr-blocked";
+      panel.innerHTML = '<div id="cbr-blocked-card"><p>That link can\'t be opened in this app.</p><button type="button" data-open>Open in browser</button><button type="button" data-close>Close</button></div>';
       const style = document.createElement("style");
-      style.textContent = "#mxb-blocked{position:fixed;inset:0;z-index:2147483647;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.55)}#mxb-blocked-card{width:280px;padding:20px;background:#18191d;color:#f4f4f7;font:14px sans-serif;text-align:center}#mxb-blocked-card p{margin:0 0 16px}#mxb-blocked-card button{display:block;width:100%;margin-top:8px;padding:8px 12px;border:0;background:#2a2c31;color:#f4f4f7;cursor:pointer}#mxb-blocked-card button[data-open]{background:#f4f4f7;color:#18191d}";
+      style.textContent = "#cbr-blocked{position:fixed;inset:0;z-index:2147483647;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.55)}#cbr-blocked-card{width:280px;padding:20px;background:#18191d;color:#f4f4f7;font:14px sans-serif;text-align:center}#cbr-blocked-card p{margin:0 0 16px}#cbr-blocked-card button{display:block;width:100%;margin-top:8px;padding:8px 12px;border:0;background:#2a2c31;color:#f4f4f7;cursor:pointer}#cbr-blocked-card button[data-open]{background:#f4f4f7;color:#18191d}";
       document.documentElement.appendChild(style);
       document.documentElement.appendChild(panel);
       panel.querySelector("[data-open]").addEventListener("click", () => {
@@ -207,7 +88,7 @@ const BLOCKED_NOTICE_SCRIPT: &str = r##"
     }
     panel.style.display = "flex";
   };
-  const roots = ["mxb-ranked.com", "steamcommunity.com", "steampowered.com"];
+  const roots = ["cbrservers.com", "steamcommunity.com", "steampowered.com"];
   const hostOk = (host) => {
     const name = String(host || "").replace(/\.$/, "").toLowerCase();
     return roots.some((root) => name === root || name.endsWith("." + root));
@@ -228,7 +109,7 @@ const BLOCKED_NOTICE_SCRIPT: &str = r##"
     if (!url || hostOk(url.hostname)) return;
     event.preventDefault();
     event.stopPropagation();
-    window.__mxbShowBlocked(url.href);
+    window.__cbrShowBlocked(url.href);
   }, true);
   document.addEventListener("submit", (event) => {
     const form = event.target;
@@ -237,7 +118,7 @@ const BLOCKED_NOTICE_SCRIPT: &str = r##"
     if (!url || hostOk(url.hostname)) return;
     event.preventDefault();
     event.stopPropagation();
-    window.__mxbShowBlocked(url.href);
+    window.__cbrShowBlocked(url.href);
   }, true);
 })();
 "##;
@@ -285,7 +166,7 @@ pub(crate) fn rider_url() -> Option<String> {
                 return cache.url.clone();
             }
         }
-        let url = crate::plugin::local_ranked_url();
+        let url = crate::plugin::local_cbr_url();
         *slot = Some(UrlCache {
             at: Instant::now(),
             url: url.clone(),
@@ -327,7 +208,16 @@ pub(crate) fn paint_pane(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, clip_to
     top
 }
 
-/// Show the rider page only while Profile → Ranked is the visible settings pane.
+/// Drop the CBR profile that was nested inside the MXB-Ranked WebView2 folder.
+pub(crate) fn retire_nested_profile() {
+    static DONE: OnceLock<()> = OnceLock::new();
+    DONE.get_or_init(|| {
+        let nested = app_data_dir().join("WebView2").join("cbr");
+        let _ = std::fs::remove_dir_all(nested);
+    });
+}
+
+/// Show the rider page only while Profile → CBR is the visible settings pane.
 pub(crate) fn sync(host: HWND, show: bool, top: i32, width: u32, height: u32) {
     let show = show && super::is_open();
     if !show || width == 0 || height == 0 {
@@ -374,7 +264,6 @@ fn show_page(host: HWND, url: &str, top: i32, width: u32, height: u32) {
                     return;
                 }
             }
-            let _ = crate::review::take_ranked_page_stale();
         }
         let Some(page) = slot.as_mut() else {
             return;
@@ -395,12 +284,8 @@ fn show_page(host: HWND, url: &str, top: i32, width: u32, height: u32) {
             if page.view.load_url(url).is_ok() {
                 page.url = url.to_string();
                 restart_load(page);
-                let _ = crate::review::take_ranked_page_stale();
             }
-        } else if (MANUAL_REFRESH.swap(false, Ordering::Relaxed)
-            | crate::review::take_ranked_page_stale())
-            && page.view.reload().is_ok()
-        {
+        } else if MANUAL_REFRESH.swap(false, Ordering::Relaxed) && page.view.reload().is_ok() {
             restart_load(page);
         }
         if page.top != top || page.width != width || page.height != height {
@@ -417,7 +302,6 @@ fn show_page(host: HWND, url: &str, top: i32, width: u32, height: u32) {
         let ready = PAGE_READY.load(Ordering::Relaxed) || page.started.elapsed() >= LOAD_WAIT;
         if ready && !page.visible {
             if page.view.set_visible(true).is_ok() {
-                let _ = page.view.zoom(PAGE_ZOOM);
                 page.visible = true;
             }
         } else if !ready && page.visible {
@@ -427,7 +311,7 @@ fn show_page(host: HWND, url: &str, top: i32, width: u32, height: u32) {
         }
         if page.visible && LINK_BLOCKED.swap(false, Ordering::Relaxed) {
             let script = take_blocked_url().map_or_else(
-                || "window.__mxbShowBlocked&&window.__mxbShowBlocked()".to_string(),
+                || "window.__cbrShowBlocked&&window.__cbrShowBlocked()".to_string(),
                 |url| show_blocked_script(&url),
             );
             let _ = page.view.evaluate_script(&script);
@@ -448,9 +332,7 @@ fn create_page(host: HWND, url: &str, top: i32, width: u32, height: u32) -> Resu
         .with_background_color(color)
         .with_focused(false)
         .with_visible(false)
-        .with_initialization_script(format!(
-            "{COOKIE_NOTICE_SCRIPT}{TABLE_SCROLL_SCRIPT}{BLOCKED_NOTICE_SCRIPT}"
-        ))
+        .with_initialization_script(format!("{READY_SCRIPT}{BLOCKED_NOTICE_SCRIPT}"))
         .with_on_page_load_handler(|event, url| {
             if matches!(event, PageLoadEvent::Finished)
                 && is_http(&url)
@@ -482,7 +364,6 @@ fn create_page(host: HWND, url: &str, top: i32, width: u32, height: u32) -> Resu
         })
         .build_as_child(&window)
         .map_err(|_| ())?;
-    let _ = view.zoom(PAGE_ZOOM);
     Ok(Page {
         view,
         context,
@@ -511,7 +392,7 @@ fn show_blocked_script(url: &str) -> String {
         .replace('\\', "\\\\")
         .replace('\'', "\\'")
         .replace(['\n', '\r'], "");
-    format!("window.__mxbShowBlocked&&window.__mxbShowBlocked('{escaped}')")
+    format!("window.__cbrShowBlocked&&window.__cbrShowBlocked('{escaped}')")
 }
 
 fn take_popup() -> Option<String> {
@@ -541,7 +422,7 @@ fn url_is_allowed(raw: &str) -> bool {
     let host = host.rsplit('@').next().unwrap_or(host);
     let host = host.split(':').next().unwrap_or(host);
     let host = host.trim_end_matches('.').to_ascii_lowercase();
-    host_is(&host, "mxb-ranked.com")
+    host_is(&host, "cbrservers.com")
         || host_is(&host, "steamcommunity.com")
         || host_is(&host, "steampowered.com")
 }
@@ -614,12 +495,15 @@ fn page_color() -> wry::RGBA {
     )
 }
 
-fn data_dir() -> PathBuf {
-    let dir = std::env::var_os("LOCALAPPDATA")
+fn app_data_dir() -> PathBuf {
+    std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."))
         .join("Holeshot HUD")
-        .join("WebView2");
+}
+
+fn data_dir() -> PathBuf {
+    let dir = app_data_dir().join("WebView2Cbr");
     let _ = std::fs::create_dir_all(&dir);
     dir
 }

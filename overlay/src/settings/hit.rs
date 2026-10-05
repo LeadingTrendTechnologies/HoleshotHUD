@@ -61,6 +61,7 @@ pub(crate) enum ProfileSection {
     Overview,
     Motos,
     Ranked,
+    Cbr,
     Tracks,
 }
 
@@ -70,6 +71,7 @@ impl ProfileSection {
             Self::Overview => "Overview",
             Self::Motos => "Motos",
             Self::Ranked => "MXB-Ranked",
+            Self::Cbr => "CBR",
             Self::Tracks => "Tracks",
         })
     }
@@ -79,6 +81,7 @@ impl ProfileSection {
             Self::Overview => Hit::ProfileNavOverview,
             Self::Motos => Hit::ProfileNavMotos,
             Self::Ranked => Hit::ProfileNavRanked,
+            Self::Cbr => Hit::ProfileNavCbr,
             Self::Tracks => Hit::ProfileNavTracks,
         }
     }
@@ -145,8 +148,10 @@ pub(crate) enum Hit {
     ProfileNavOverview,
     ProfileNavMotos,
     ProfileNavRanked,
+    ProfileNavCbr,
     ProfileNavTracks,
     RankedRefresh,
+    CbrRefresh,
     TrackOpen(u16),
     TrackBack,
     TrackMap,

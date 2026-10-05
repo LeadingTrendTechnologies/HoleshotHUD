@@ -335,8 +335,17 @@ const STEAM_ID64_BASE: u64 = 76561197960265728;
 
 /// Rider page for the Steam account signed in on this PC.
 pub(crate) fn local_ranked_url() -> Option<String> {
+    local_steam_id64().map(ranked_url_from_steam_id64)
+}
+
+/// CBR player page for the Steam account signed in on this PC.
+pub(crate) fn local_cbr_url() -> Option<String> {
+    local_steam_id64().map(cbr_url_from_steam_id64)
+}
+
+fn local_steam_id64() -> Option<u64> {
     if let Some(account) = active_steam_account() {
-        return ranked_url_from_account(account);
+        return steam_id64_from_account(account);
     }
     for root in steam_roots() {
         let path = root.join("config").join("loginusers.vdf");
@@ -344,23 +353,39 @@ pub(crate) fn local_ranked_url() -> Option<String> {
             continue;
         };
         if let Some(id) = most_recent_steam_id(&text) {
-            return Some(ranked_url_from_steam_id64(id));
+            return Some(id);
         }
     }
     None
 }
 
-fn ranked_url_from_account(account_id: u32) -> Option<String> {
+fn steam_id64_from_account(account_id: u32) -> Option<u64> {
     if account_id == 0 {
         return None;
     }
-    Some(ranked_url_from_steam_id64(
-        STEAM_ID64_BASE + u64::from(account_id),
-    ))
+    Some(STEAM_ID64_BASE + u64::from(account_id))
+}
+
+fn steam_guid(steam_id64: u64) -> String {
+    format!("FF{steam_id64:016X}")
+}
+
+#[cfg(test)]
+fn ranked_url_from_account(account_id: u32) -> Option<String> {
+    steam_id64_from_account(account_id).map(ranked_url_from_steam_id64)
 }
 
 fn ranked_url_from_steam_id64(steam_id64: u64) -> String {
-    format!("https://mxb-ranked.com/Rider/FF{steam_id64:016X}")
+    format!("https://mxb-ranked.com/Rider/{}", steam_guid(steam_id64))
+}
+
+#[cfg(test)]
+fn cbr_url_from_account(account_id: u32) -> Option<String> {
+    steam_id64_from_account(account_id).map(cbr_url_from_steam_id64)
+}
+
+fn cbr_url_from_steam_id64(steam_id64: u64) -> String {
+    format!("https://www.cbrservers.com/player/{}", steam_guid(steam_id64))
 }
 
 fn active_steam_account() -> Option<u32> {

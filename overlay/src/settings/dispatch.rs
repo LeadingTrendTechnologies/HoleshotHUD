@@ -143,6 +143,14 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             super::ranked::request_refresh();
             return;
         }
+        Hit::ProfileNavCbr => {
+            set_profile_section(ProfileSection::Cbr);
+            return;
+        }
+        Hit::CbrRefresh => {
+            super::cbr::request_refresh();
+            return;
+        }
         Hit::ProfileNavTracks => {
             if with_config(|c| c.experimental_unlocked()) {
                 set_profile_section(ProfileSection::Tracks);
@@ -1395,6 +1403,8 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::ProfileNavMotos
         | Hit::ProfileNavRanked
         | Hit::RankedRefresh
+        | Hit::ProfileNavCbr
+        | Hit::CbrRefresh
         | Hit::ProfileNavTracks
         | Hit::TrackOpen(_)
         | Hit::TrackBack

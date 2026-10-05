@@ -286,6 +286,8 @@ pub(crate) fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg:
                 )
             } else if profile_section == ProfileSection::Ranked {
                 super::ranked::paint_pane(px, fonts, w, h, clip_top)
+            } else if profile_section == ProfileSection::Cbr {
+                super::cbr::paint_pane(px, fonts, w, h, clip_top)
             } else {
                 pane_profile(
                     px,
@@ -518,16 +520,19 @@ pub(crate) fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg:
         }
     }
     let host = UI.lock().unwrap().as_ref().map(|u| u.host).unwrap_or_default();
-    let show_ranked = tab == Tab::Profile
-        && profile_section == ProfileSection::Ranked
+    let page_open = tab == Tab::Profile
         && reply_view.is_none()
         && !whats_new_open
         && !pit_help_open
         && clear_confirm.is_none();
+    let show_ranked = page_open && profile_section == ProfileSection::Ranked;
+    let show_cbr = page_open && profile_section == ProfileSection::Cbr;
     let top = (banner_h + TOP_H + PROFILE_SUBNAV_H).round() as i32;
     let pane_w = w.round().max(0.0) as u32;
     let pane_h = (h - top as f32).round().max(0.0) as u32;
+    super::cbr::retire_nested_profile();
     super::ranked::sync(host, show_ranked, top, pane_w, pane_h);
+    super::cbr::sync(host, show_cbr, top, pane_w, pane_h);
 }
 
 pub(crate) fn snap_align_label(align: SnapAlign) -> &'static str {
@@ -1009,6 +1014,7 @@ pub(crate) fn draw_profile_subnav(
             ProfileSection::Overview,
             ProfileSection::Motos,
             ProfileSection::Ranked,
+            ProfileSection::Cbr,
             ProfileSection::Tracks,
         ]
     } else {
@@ -1016,6 +1022,7 @@ pub(crate) fn draw_profile_subnav(
             ProfileSection::Overview,
             ProfileSection::Motos,
             ProfileSection::Ranked,
+            ProfileSection::Cbr,
         ]
     };
     for item in items {
@@ -1031,21 +1038,16 @@ pub(crate) fn draw_profile_subnav(
             hits,
         ) + 8.0;
     }
-    if section == ProfileSection::Ranked {
+    let refresh = match section {
+        ProfileSection::Ranked => Some(Hit::RankedRefresh),
+        ProfileSection::Cbr => Some(Hit::CbrRefresh),
+        _ => None,
+    };
+    if let Some(refresh) = refresh {
         let label = "Refresh";
         let bw = (measure(fonts, label, 13.0) + 28.0).max(64.0);
         let rx = (pane_w - 28.0 - bw).max(cx);
-        profile::profile_chip(
-            px,
-            fonts,
-            rx,
-            y,
-            label,
-            false,
-            Hit::RankedRefresh,
-            hover,
-            hits,
-        );
+        profile::profile_chip(px, fonts, rx, y, label, false, refresh, hover, hits);
     }
 }
 

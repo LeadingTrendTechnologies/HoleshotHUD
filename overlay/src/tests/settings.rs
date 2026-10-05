@@ -778,6 +778,7 @@ fn profile_tab_visible_when_motos_off() {
     assert!(ids.contains(&Hit::ProfileNavOverview));
     assert!(ids.contains(&Hit::ProfileNavMotos));
     assert!(ids.contains(&Hit::ProfileNavRanked));
+    assert!(ids.contains(&Hit::ProfileNavCbr));
     assert!(
         !ids.contains(&Hit::ProfileNavTracks),
         "Tracks is Labs-only until experimental is on"

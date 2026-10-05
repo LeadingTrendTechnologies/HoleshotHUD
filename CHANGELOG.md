@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.29.1
+
+- Factory Pit Board, Controller, and Map start at the size of their art. A layout you already dragged keeps its box.
+
+## 0.29.0
+
+- Profile → CBR shows the cbrservers.com player page for the Steam account signed in on this PC.
+- Profile → MXB-Ranked shows the rider page again.
+
 ## 0.28.1
 
 - French, Italian, Spanish, German, Brazilian Portuguese, and Dutch wording was corrected. A race moto is a heat, and Ranked means MXB-Ranked.
