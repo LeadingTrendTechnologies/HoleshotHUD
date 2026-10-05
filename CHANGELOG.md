@@ -1,186 +1,102 @@
 # Changelog
 
-## 0.30.1
+## 0.23.0
 
 - Flags stay on one flag while a Browser Source or the layout editor is open. Stream paint was stepping the flag a second time, so the plaque flipped between flags and would not stay up.
-
-## 0.30.0
 
 - Profile → MyMXB shows mymxb.com.
 - Profile → MyMXB is zoomed to 85%.
 - Profile → MyMXB hides third-party ads.
 - Profile → MXB-Ranked rejoins a dropped page without reloading.
 
-## 0.29.3
-
 - Motos list shows the MXB Ranked logo next to the track on mxb-ranked servers, and a smaller CBR logo on CBR servers.
 - Motos list chips are All, MXB-Ranked, CBR, and Saved.
 
-## 0.29.2
-
 - Race place follows where the bike is. Crossing the finish no longer jumps it, and no place is shown from the drop until the holeshot line. A missing place draws `-`. The pre-start countdown ending does not show a place while the gate is still up.
-
-## 0.29.1
 
 - Factory Pit Board, Controller, and Map start at the size of their art. A layout you already dragged keeps its box.
 - Falling behind the start gate no longer keeps you P1 for the rest of the open lap. Place is the grid stagger plus metres ridden since the drop.
 
-## 0.29.0
-
 - Profile → CBR shows the cbrservers.com player page for the Steam account signed in on this PC.
 - Profile → MXB-Ranked shows the rider page again.
 
-## 0.28.2
-
 - From the gate drop until the first finish, place follows where riders are on track. No place is shown before the gate drops. Passing a crashed rider, or being passed while down, updates that place.
 
-## 0.28.1
-
 - French, Italian, Spanish, German, Brazilian Portuguese, and Dutch wording was corrected. A race moto is a heat, and Ranked means MXB-Ranked.
-
-## 0.28.0
 
 - Settings → Look → Language. The app follows Windows (English, French, Italian, Spanish, German, Brazilian Portuguese, Dutch) unless you pick one. F8 and on-track labels use that language.
 - Dropdowns at the bottom of the window open upward.
 - Profile Overview can limit stats to ranked motos. All time and 14 days still apply.
 
-## 0.27.2
-
 - Profile chip title is MXB-Ranked.
-
-## 0.27.1
 
 - Groups is a top tab, before Feedback.
 
-## 0.27.0
-
 - Settings → Groups has **Show on maps**. Other riders on Map and Minimap use their group color. Your orange dot stays orange.
-
-## 0.26.0
 
 - Settings → Groups: name a group, pick an icon and a color, and add riders from the server or by name. Their icon shows beside the name on Standings, Relative, and Horizontal Standings. The first group in the list wins when a rider is in more than one.
 
-## 0.25.18
-
 - Open in browser opens the link you clicked.
-
-## 0.25.17
 
 - Profile → mxb-ranked loads again, and still blocks other sites.
 
-## 0.25.16
-
 - Profile → mxb-ranked only opens mxb-ranked.com and Steam, and tells you when a link is blocked.
-
-## 0.25.15
 
 - Profile → mxb-ranked has a Refresh button.
 
-## 0.25.14
-
 - mxb-ranked reloads on its own when a ranked session ends while that page is open.
-
-## 0.25.13
 
 - Opening settings on mxb-ranked reloads the page after a ranked session.
 
-## 0.25.12
-
 - The mxb-ranked Loading spinner uses the accent color and sits centered with the word.
-
-## 0.25.11
 
 - The time under each name on Horizontal Standings is the gap to the rider ahead. The leader shows a lap time.
 
-## 0.25.10
-
 - Your card on Horizontal Standings keeps a rounded 1px frame. The corners were clipped.
-
-## 0.25.9
 
 - Profile → mxb-ranked shows a spinner with Loading.
 
-## 0.25.8
-
 - Profile → mxb-ranked reloads the next time it is opened after a ranked session.
-
-## 0.25.7
 
 - Profile → mxb-ranked loads again. The results scrollbar no longer interrupts the page.
 
-## 0.25.6
-
 - Profile → mxb-ranked keeps a horizontal scrollbar on the wide results table.
-
-## 0.25.5
 
 - Profile → mxb-ranked is zoomed to 80% so more of the rider page fits.
 
-## 0.25.4
-
 - Profile → mxb-ranked shows Loading until the rider page has something to display.
-
-## 0.25.3
 
 - Profile → mxb-ranked is the chip name. The cookie notice on that page is dismissed.
 
-## 0.25.2
-
 - Profile → Ranked stays on screen. The settings paint no longer covers the rider page.
-
-## 0.25.1
 
 - Sectors floating type uses the same soft night-ink rim as the Session widget when panel opacity is under 40%.
 
-## 0.25.0
-
 - Profile → Ranked shows your MXB-Ranked rider page for the Steam account already signed in on this PC.
-
-## 0.24.4
 
 - Session widget leaves more space between place and the clock or laps. Panel opacity is on the Session pane after Show on overlay. At 0 the plaque border is gone. Under 40% the place, clock, and ~Lapped get a soft night-ink rim.
 
-## 0.24.3
-
 - Your card on Horizontal Standings has rounded corners. Clicking a card that is already showing does not slide the others.
-
-## 0.24.2
 
 - Your card on Horizontal Standings has a 1px accent line on all four edges.
 
-## 0.24.1
-
 - Session widget starts at the smaller Warmup plaque. Out of riders (off by default) shows place as P3/12.
-
-## 0.24.0
 
 - Session widget shows place and the session clock or lap count on one line. Turn it on under F8 → Session. The full dash can stay off.
 
-## 0.23.5
-
 - Map and Minimap rider numbers show a green or red * when a time penalty puts that rider ahead of or behind their on-track place.
-
-## 0.23.4
 
 - Ranked motos are any server named MXB-Ranked.com.
 
-## 0.23.3
-
 - Sectors settings stay hidden until Show on overlay is on.
-
-## 0.23.2
 
 - Standings and Relative bike pills are a translucent brand wash with a 1px stronger brand border. Letters stay black or white from the brand.
 - Diagnostics shows the last crash dump's local time as mm/dd/yyyy hh:mm:ss.
 - Radar Arrows drop a crashed rider after 0.75 seconds. The flash was holding for 1.75 seconds.
 
-## 0.23.1
-
 ### Live order
 
 - Places stay put when a rider reaches a sector. Crossing S1 or S2 no longer drops them behind the pack. A pass on the first lap still shows before the finish.
-
-## 0.23.0
 
 ### Live order
 
