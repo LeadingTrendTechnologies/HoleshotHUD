@@ -109,6 +109,7 @@ const NAMES = {
   standings: "Standings",
   relative: "Relative",
   dash: "Dash",
+  timer: "Session",
   ticker: "Horizontal Standings",
   map: "Map",
   minimap: "Minimap",
@@ -135,7 +136,7 @@ stageStatus.hidden = false;
 
 let preview;
 try {
-  await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=0.20.0", import.meta.url) });
+  await init({ module_or_path: new URL("./pkg/mxbo_web_preview_bg.wasm?v=0.23.0", import.meta.url) });
   preview = new Preview();
   stageStatus.hidden = true;
 } catch (err) {
@@ -246,10 +247,18 @@ function renderSettings() {
   } else if (w === "map") {
     html += styleControls("map");
     html += `<div class="section">On the map</div>`;
-    html += MAP_TOGGLES.map(([k, l]) => toggleRow(k, l)).join("");
+    for (const [k, l] of MAP_TOGGLES) {
+      html += toggleRow(k, l);
+      if (k === "map_follow" && preview.get_bool("map_follow")) {
+        html += sliderRow("map_zoom", "Zoom", 0, 100, "%");
+      }
+    }
     if (preview.get_bool("map_numbers")) {
       html += fieldRow("map_dot", "Dot number", [["num", "Number"], ["pos", "Position"]]);
+      html += fieldRow("map_you_text", "My number", [["white", "White"], ["black", "Black"]]);
     }
+    html += sliderRow("map_dot_opacity", "Dot opacity", 0, 100, "%");
+    html += toggleRow("groups_on_maps", "Show on maps");
   } else if (w === "minimap") {
     html += styleControls("mini");
     html += `<div class="section">On the minimap</div>`;
@@ -291,10 +300,14 @@ function renderSettings() {
     html += toggleRow("ticker_title", "Track name");
     html += toggleRow("ticker_autoscroll", "Autoscroll");
     html += toggleRow("ticker_slide", "Slide on pass");
+    html += toggleRow("ticker_status", "Status");
     html += `<div class="section">Side info</div>`;
     html += fieldRow("ticker_left", "Left", BOARD);
     html += fieldRow("ticker_right", "Right", BOARD);
     html += stepperRow("ticker_count", "Riders shown", 3, 15);
+  } else if (w === "timer") {
+    html += toggleRow("timer_of", "Out of riders");
+    html += styleControls("timer", "Panel opacity");
   } else if (w === "sys") {
     html += styleControls("sys", "Panel opacity");
   } else if (w === "sector") {
@@ -417,6 +430,7 @@ settings.addEventListener("change", (e) => {
     t.dataset.bool === "telemetry_bars" ||
     t.dataset.bool === "st_plaque" ||
     t.dataset.bool === "rel_plaque" ||
+    t.dataset.bool === "map_follow" ||
     t.dataset.bool === "map_numbers" ||
     t.dataset.bool === "mini_numbers" ||
     t.dataset.bool === "sector_hist" ||

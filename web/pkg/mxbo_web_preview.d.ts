@@ -1,6 +1,24 @@
 /* tslint:disable */
 /* eslint-disable */
 
+/**
+ * OBS / Browser Source live feed — no demo tick, no twin editor chrome.
+ */
+export class Live {
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * Apply a Holeshot-HUD.ini fragment (App + layout section).
+     */
+    apply_ini(text: string): void;
+    /**
+     * Ingest a raw SHM-sized Snapshot blob.
+     */
+    apply_snapshot(bytes: Uint8Array): boolean;
+    frame(width: number, height: number): Uint8Array;
+    constructor();
+}
+
 export class Preview {
     free(): void;
     [Symbol.dispose](): void;
@@ -34,7 +52,12 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
+    readonly __wbg_live_free: (a: number, b: number) => void;
     readonly __wbg_preview_free: (a: number, b: number) => void;
+    readonly live_apply_ini: (a: number, b: number, c: number) => void;
+    readonly live_apply_snapshot: (a: number, b: number, c: number) => number;
+    readonly live_frame: (a: number, b: number, c: number) => [number, number];
+    readonly live_new: () => [number, number, number];
     readonly preview_active_widget: (a: number) => [number, number];
     readonly preview_frame: (a: number, b: number, c: number) => [number, number];
     readonly preview_get_bool: (a: number, b: number, c: number) => number;
@@ -60,9 +83,9 @@ export interface InitOutput {
     readonly preview_tick: (a: number, b: number) => void;
     readonly preview_widget_on: (a: number, b: number, c: number) => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;
-    readonly __wbindgen_free: (a: number, b: number, c: number) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
+    readonly __wbindgen_free: (a: number, b: number, c: number) => void;
     readonly __externref_table_dealloc: (a: number) => void;
     readonly __wbindgen_start: () => void;
 }

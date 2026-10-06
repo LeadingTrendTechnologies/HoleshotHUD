@@ -4,12 +4,11 @@ mod motos;
 
 use mxbo_hud::config::{
     BoardField, DashField, DotLabel, FontFamily, GamepadStyle, GamepadTheme, HudConfig, LeanStyle,
-    RadarStyle, SnapAlign, StanceMode, StanceStyle, TableText, UnitPrefs, Units, WidgetId,
+    RadarStyle, RiderGroup, SnapAlign, StanceMode, StanceStyle, TableText, UnitPrefs, Units,
+    WidgetId, GROUP_COLORS,
 };
 use mxbo_hud::render::{draw, Fonts};
-use mxbo_hud::snapshot::{
-    write_name, Point, Rider, Snapshot, Standing, MAGIC, MAX_POLY, VERSION,
-};
+use mxbo_hud::snapshot::{write_name, Point, Rider, Snapshot, Standing, MAGIC, MAX_POLY, VERSION};
 use tiny_skia::{Color, Paint, PathBuilder, Pixmap, Stroke, Transform};
 use wasm_bindgen::prelude::*;
 
@@ -62,6 +61,10 @@ impl Preview {
         let mut cfg = HudConfig::new();
         cfg.font_family = FontFamily::Exo2;
         cfg.units = UnitPrefs::all(Units::Imperial);
+        let mut factory = RiderGroup::new("Factory");
+        factory.color = GROUP_COLORS[1];
+        factory.members = vec!["Eli Tomac".into(), "Jett Lawrence".into()];
+        cfg.groups.push(factory);
         show_only(&mut cfg, "standings");
         center_widget(&mut cfg, "standings");
         let mut snap = demo_snapshot();
@@ -632,7 +635,9 @@ fn flag(cfg: &HudConfig, key: &str) -> Option<bool> {
         "flag_text" => cfg.flag.flag_text,
         "ticker_title" => cfg.ticker.ticker_title,
         "ticker_autoscroll" => cfg.ticker.ticker_autoscroll,
+        "ticker_status" => cfg.ticker.ticker_status,
         "ticker_slide" => cfg.ticker.ticker_slide,
+        "groups_on_maps" => cfg.groups_on_maps,
         _ => return None,
     })
 }
@@ -732,7 +737,9 @@ fn set_flag(cfg: &mut HudConfig, key: &str, on: bool) {
         "flag_text" => cfg.flag.flag_text = on,
         "ticker_title" => cfg.ticker.ticker_title = on,
         "ticker_autoscroll" => cfg.ticker.ticker_autoscroll = on,
+        "ticker_status" => cfg.ticker.ticker_status = on,
         "ticker_slide" => cfg.ticker.ticker_slide = on,
+        "groups_on_maps" => cfg.groups_on_maps = on,
         _ => {}
     }
 }
@@ -802,7 +809,12 @@ fn set_int(cfg: &mut HudConfig, key: &str, value: i32) {
         "map_zoom" => cfg.map.map_zoom = value.clamp(0, 100),
         "map_dot_opacity" => cfg.map.map_dot_opacity = value.clamp(0, 100),
         "mini_zoom" => cfg.mini.mini_zoom = value.clamp(0, 100),
-        "radar_range" => cfg.radar.radar_range = value.clamp(mxbo_hud::config::RADAR_RANGE_MIN, mxbo_hud::config::RADAR_RANGE_MAX),
+        "radar_range" => {
+            cfg.radar.radar_range = value.clamp(
+                mxbo_hud::config::RADAR_RANGE_MIN,
+                mxbo_hud::config::RADAR_RANGE_MAX,
+            )
+        }
         "radar_bg" => cfg[WidgetId::Radar].bg = value.clamp(0, 100),
         "dash_bg" => cfg[WidgetId::Dash].bg = value.clamp(0, 100),
         "ticker_bg" => cfg[WidgetId::Ticker].bg = value.clamp(0, 100),
@@ -932,7 +944,16 @@ fn draw_edit_frame(px: &mut Pixmap, r: mxbo_hud::snapshot::Rect, sw: f32, sh: f3
         let mut paint = Paint::default();
         paint.set_color(Color::from_rgba8(r, g, b, 220));
         paint.anti_alias = true;
-        px.stroke_path(&path, &paint, &Stroke { width: 2.0, ..Stroke::default() }, Transform::identity(), None);
+        px.stroke_path(
+            &path,
+            &paint,
+            &Stroke {
+                width: 2.0,
+                ..Stroke::default()
+            },
+            Transform::identity(),
+            None,
+        );
     }
     let mut paint = Paint::default();
     paint.set_color(Color::from_rgba8(r, g, b, 255));
@@ -1024,7 +1045,11 @@ fn demo_snapshot() -> Snapshot {
             track_pos: pos,
             crashed: 0,
             name: [0; 32],
-            lean: if i as i32 + 1 == FOCUS { s.local_roll } else { 12.0 + i as f32 },
+            lean: if i as i32 + 1 == FOCUS {
+                s.local_roll
+            } else {
+                12.0 + i as f32
+            },
             ..Rider::default()
         };
         write_name(&mut s.riders[i].name, name);
@@ -1279,7 +1304,7 @@ fn refresh_standings(s: &mut Snapshot) {
             gap_ms: gap,
             gap_laps: (8 - num_laps).max(0),
             pit: 0,
-            penalty_ms: 0,
+            penalty_ms: if ri == 11 { 20_000 } else { 0 },
             crashed: 0,
             name: [0; 32],
             bike: [0; 32],
@@ -1358,4 +1383,3 @@ impl Live {
         px.data().to_vec()
     }
 }
-

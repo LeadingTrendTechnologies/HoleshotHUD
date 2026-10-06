@@ -1,5 +1,62 @@
 /* @ts-self-types="./mxbo_web_preview.d.ts" */
 
+/**
+ * OBS / Browser Source live feed — no demo tick, no twin editor chrome.
+ */
+export class Live {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        LiveFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_live_free(ptr, 0);
+    }
+    /**
+     * Apply a Holeshot-HUD.ini fragment (App + layout section).
+     * @param {string} text
+     */
+    apply_ini(text) {
+        const ptr0 = passStringToWasm0(text, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.live_apply_ini(this.__wbg_ptr, ptr0, len0);
+    }
+    /**
+     * Ingest a raw SHM-sized Snapshot blob.
+     * @param {Uint8Array} bytes
+     * @returns {boolean}
+     */
+    apply_snapshot(bytes) {
+        const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.live_apply_snapshot(this.__wbg_ptr, ptr0, len0);
+        return ret !== 0;
+    }
+    /**
+     * @param {number} width
+     * @param {number} height
+     * @returns {Uint8Array}
+     */
+    frame(width, height) {
+        const ret = wasm.live_frame(this.__wbg_ptr, width, height);
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    constructor() {
+        const ret = wasm.live_new();
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        this.__wbg_ptr = ret[0];
+        LiveFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+}
+if (Symbol.dispose) Live.prototype[Symbol.dispose] = Live.prototype.free;
+
 export class Preview {
     __destroy_into_raw() {
         const ptr = this.__wbg_ptr;
@@ -275,6 +332,9 @@ function __wbg_get_imports() {
     };
 }
 
+const LiveFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_live_free(ptr, 1));
 const PreviewFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_preview_free(ptr, 1));
@@ -294,6 +354,13 @@ function getUint8ArrayMemory0() {
         cachedUint8ArrayMemory0 = new Uint8Array(wasm.memory.buffer);
     }
     return cachedUint8ArrayMemory0;
+}
+
+function passArray8ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 1, 1) >>> 0;
+    getUint8ArrayMemory0().set(arg, ptr / 1);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
 }
 
 function passStringToWasm0(arg, malloc, realloc) {
