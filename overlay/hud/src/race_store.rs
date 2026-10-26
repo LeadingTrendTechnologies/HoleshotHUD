@@ -49,7 +49,7 @@ impl ClockMode {
             ClockMode::Gate
         } else if is_lap_race(s) {
             ClockMode::LapRace
-        } else if is_warmup(s) {
+        } else if is_warmup(s) || is_practice_session(s) {
             ClockMode::Practice
         } else if remain.is_some() || banner.contains(':') {
             ClockMode::Timed
@@ -172,8 +172,55 @@ static TRACK_ORDER: Mutex<Vec<i32>> = Mutex::new(Vec::new());
 /// half: `track_pos` is a centerline projection, so a rider taking a wide line or landing
 /// off a jump moves a metre or two on its own.
 const PASS_M: f32 = 3.0;
+/// Two published samples of one bike. A side-by-side pass is further apart than this.
+const COPIED_BODY_M: f32 = 1.0;
 /// Once they have it they keep it until they drop back inside this.
 const HOLD_M: f32 = 0.5;
+/// Two centerline samples closer than this in the world, while `track_pos` says they
+/// are much further apart, are parallel lanes or an over/under. Not a pass.
+const FOLD_WORLD_M: f32 = 12.0;
+/// Rider bodies closer than this, with a much larger along-track gap, are in the next
+/// lane. Wider than the sample cap: Farm14 put a bike 24 m away 700 m up the lap.
+/// Millcreek still took the place at 40.0–40.3 m.
+const BODY_CLOSE_M: f32 = 45.0;
+/// A folded short wrap only takes a place the centerline already has when the bodies
+/// are this close. Washougal sits on a 30 m chord (about 29–31 m, 80–210 m up the lap)
+/// and was flashing a place. Maryland's holeshot is 16 m.
+const FOLD_STRIP_M: f32 = 20.0;
+/// A refused fold stays refused until the bodies are this far apart. Washougal released
+/// a 159 m centerline lead when the gap ticked from 44.9 m to 48.7 m.
+const FOLD_RELEASE_M: f32 = 55.0;
+/// Chord over arc. A 180° hairpin is still about 0.64; a lane running back beside
+/// itself is far below this.
+const FOLD_RATIO: f32 = 0.45;
+/// A chord outside [`BODY_CLOSE_M`] and under half the spline is the lap bending
+/// back. Wolf Creek's finish chord was 229 m on a 478 m spline.
+const BEND_RATIO: f32 = 0.5;
+/// Spline gap below this is a start pack or a short straight, not the next lane.
+/// Briarcliff dropped places on a ~30 m centerline gap with the bikes ~12 m apart.
+const FOLD_ALONG_M: f32 = 80.0;
+/// Same start/finish stripe. A classification lap one sample early is this far,
+/// in metres, on a short track or a long one. Inside the next-lane body cap, so
+/// a 45 m fold stays on that rule.
+const STRIPE_M: f32 = 25.0;
+/// A same-direction gap under this is one corner, not the other side of the track.
+/// Forest flashed a place at 80–90 m with the bikes 20–40 m apart. MXB Club flashed
+/// one at 125–131 m when the bodies crossed 20 m. A wrap across the start, and the
+/// locked false leads from 159 m up, stay on the other branch.
+const FOLD_CORNER_M: f32 = 140.0;
+/// A refused coordinate's raw lead under this is still that corner once the body
+/// has walked [`BODY_CLOSE_M`] along the refusal. The straight chord can fold
+/// back inside 45 m. A lead from 159 m up stays the other branch.
+const FROZEN_CORNER_M: f32 = 155.0;
+/// A direct gap past [`FOLD_CORNER_M`] whose bikes are still this far apart.
+/// The Island dropped the leader at 143–246 m with the chord still 90–180 m.
+const SPREAD_CHORD_M: f32 = 80.0;
+/// Chord over that direct gap. The Island chords were about 0.6 of the spline.
+/// A 45 m chord at 159 m stays the other branch.
+const SPREAD_RATIO: f32 = 0.55;
+/// The published line has to be this close to `track_length` or the samples are not
+/// the lap the fraction is measured on. A short fixture line keeps the old rule.
+const POLY_LENGTH_SLACK: f32 = 0.25;
 /// Further apart than this and we cannot say who is ahead from `track_pos` alone: the
 /// fraction is measured from the centerline origin, not from the start/finish line, so
 /// only riders close together compare safely.
@@ -181,6 +228,10 @@ const PAIR_MAX_M: f32 = 250.0;
 /// One tick moving further than this is a reset, a shortcut or a network teleport, not
 /// riding, so it does not count as distance covered.
 const MAX_STEP_M: f32 = 80.0;
+/// The leader was already this close to the line when the timed clock died. That
+/// crossing finishes the lap in progress. Metres, so a short track and a long one
+/// treat the same approach the same way.
+const EXPIRY_LINE_M: f32 = 200.0;
 /// Pace a penalty is converted at before anyone has set a lap.
 const PENALTY_FALLBACK_MPS: f32 = 15.0;
 /// Small overshoot past one lap of armed travel is noise (centerline wobble near the
@@ -216,13 +267,25 @@ struct RiderProgress {
     last_frac: Option<f32>,
     /// Lap fraction while the gate was up. `None` if we never saw them on the gate.
     gate_frac: Option<f32>,
-    /// Continuous lap coordinate for a rider we saw on the gate. Set from where they
-    /// are, not from a sum of steps. `None` until the gate snapshot exists.
+    /// Continuous lap coordinate. Seeded from the first sample, gate or not, and
+    /// moved only when the spline step and the body agree.
     unwrapped: Option<f32>,
     /// A step over `MAX_STEP_M` we have not accepted yet. The next tick that stays
     /// there takes it, so one glitch does not move the place and a real jump is not lost.
     pending_frac: Option<f32>,
+    /// World position when `unwrapped` last moved. A spline jump that leaves this
+    /// put is a projection glitch, not a pass.
+    last_world: Option<(f32, f32)>,
+    /// World position on the previous sample, including ticks that refused the
+    /// coordinate. The step from here is the path, not the chord back to `last_world`.
+    sample_world: Option<(f32, f32)>,
+    /// Body path walked while the raw coordinate is refused. Reset when a sample
+    /// is accepted. A corner that folds the chord back still adds up here.
+    refused_path_m: f32,
     travelled_m: f32,
+    /// Body movement on steps the rider actually rode. A spline lap the body did not
+    /// follow is not in here, and one tick over `MAX_STEP_M` is not a lap of it.
+    body_travelled_m: f32,
     lap_base_m: f32,
     laps_at_base: i32,
     /// We saw where this lap started: gate, race-go cold arm, or a line crossing.
@@ -232,6 +295,13 @@ struct RiderProgress {
     corrupt: bool,
     /// Highest sector gate applied to this lap's base. A rise rebases travel.
     gates_seen: i32,
+    /// This sample's `track_pos` was not ridden. Ordering must not treat that
+    /// raw fraction as a pass over the coordinate we kept.
+    raw_ignored: bool,
+    /// `num_laps` rose on a sample with no `track_pos`. The coordinate stays
+    /// just past the line until a real fraction comes back. Pack pull must not
+    /// move it.
+    stripe_pin: bool,
 }
 
 static PROGRESS: Mutex<Vec<RiderProgress>> = Mutex::new(Vec::new());
@@ -276,12 +346,18 @@ fn note_progress(s: &Snapshot, clock: &SessionClock, n: usize) {
                     gate_frac: None,
                     unwrapped: None,
                     pending_frac: None,
+                    last_world: None,
+                    sample_world: None,
+                    refused_path_m: 0.0,
                     travelled_m: 0.0,
+                    body_travelled_m: 0.0,
                     lap_base_m: 0.0,
                     laps_at_base: standing.num_laps,
                     armed: false,
                     corrupt: false,
                     gates_seen: 0,
+                    raw_ignored: false,
+                    stripe_pin: false,
                 });
                 tracked.len() - 1
             }
@@ -295,20 +371,61 @@ fn note_progress(s: &Snapshot, clock: &SessionClock, n: usize) {
                 gate_frac: kept_gate,
                 unwrapped: progress.unwrapped,
                 pending_frac: None,
+                last_world: rider_world(s, standing.race_num).or(progress.last_world),
+                sample_world: rider_world(s, standing.race_num).or(progress.sample_world),
+                refused_path_m: 0.0,
                 travelled_m: 0.0,
+                body_travelled_m: 0.0,
                 lap_base_m: 0.0,
                 laps_at_base: standing.num_laps,
                 armed: true,
                 corrupt: false,
                 gates_seen: 0,
+                raw_ignored: false,
+                stripe_pin: false,
             };
             continue;
         }
-        match (progress.last_frac, frac) {
-            (Some(last), Some(now)) => {
-                let step_m = wrap_signed(now - last) * s.track_length;
-                if step_m.abs() <= MAX_STEP_M {
+        // The lap count arrived without a fraction. Keep them just past the
+        // line, ahead of a bike still at ~0, until `track_pos` returns.
+        if standing.num_laps > progress.laps_at_base && frac.is_none() {
+            let pin_frac = (STRIPE_M / s.track_length).min(0.49);
+            let into = STRIPE_M.min(s.track_length);
+            progress.stripe_pin = true;
+            progress.unwrapped = Some(standing.num_laps as f32 + pin_frac);
+            progress.pending_frac = None;
+            progress.raw_ignored = false;
+            progress.refused_path_m = 0.0;
+            progress.last_frac = Some(pin_frac);
+            progress.lap_base_m = progress.travelled_m - into;
+            progress.laps_at_base = standing.num_laps;
+            progress.armed = true;
+            progress.corrupt = false;
+            progress.gates_seen = standing.sector_gate.max(0);
+            continue;
+        }
+        if frac.is_some() {
+            progress.stripe_pin = false;
+        }
+        let world = rider_world(s, standing.race_num);
+        let step_m = match (progress.last_frac, frac) {
+            (Some(last), Some(now)) => wrap_signed(now - last) * s.track_length,
+            _ => 0.0,
+        };
+        // A step the body did not ride is not travel and not a new coordinate. A
+        // missing body does not freeze the rider. Leave the last fraction so the
+        // next tick still sees the whole unmatched step.
+        let body_missed_step = frac.is_some()
+            && step_m.abs() > PASS_M
+            && step_m.abs() <= MAX_STEP_M
+            && !body_followed(progress, world, step_m);
+        if !body_missed_step {
+            if progress.last_frac.is_some() && frac.is_some() && step_m.abs() <= MAX_STEP_M {
                     progress.travelled_m += step_m;
+                    if let Some(moved) = body_step_m(progress, world) {
+                        // One tick over the step cap is not a lap the body rode.
+                        progress.body_travelled_m += moved.min(MAX_STEP_M);
+                    }
                     if cold_arm
                         && !progress.armed
                         && !progress.corrupt
@@ -316,15 +433,20 @@ fn note_progress(s: &Snapshot, clock: &SessionClock, n: usize) {
                     {
                         progress.armed = true;
                     }
-                }
             }
-            // Missing from riders[]: freeze distance and keep armed. last_frac clears
-            // below; on reappear we resume without inventing a teleport step.
-            _ => {}
+            progress.last_frac = frac;
+            if !clock.in_gate {
+                let pack_fraction = frac.and_then(|fraction| confirming_fraction(s, standing, fraction));
+                note_unwrapped(progress, frac, s.track_length, world, pack_fraction);
+            }
+            if progress.raw_ignored {
+                add_refused_path(progress, world);
+            }
+        } else {
+            add_refused_path(progress, world);
         }
-        progress.last_frac = frac;
-        if !clock.in_gate {
-            note_unwrapped(progress, frac, s.track_length);
+        if world.is_some() {
+            progress.sample_world = world;
         }
         if standing.num_laps > progress.laps_at_base {
             progress.lap_base_m = progress.travelled_m;
@@ -333,6 +455,7 @@ fn note_progress(s: &Snapshot, clock: &SessionClock, n: usize) {
             progress.corrupt = false;
             progress.gates_seen = standing.sector_gate.max(0);
         } else if standing.num_laps < progress.laps_at_base {
+            progress.stripe_pin = false;
             progress.laps_at_base = standing.num_laps;
             progress.armed = false;
             progress.corrupt = false;
@@ -366,6 +489,56 @@ fn note_progress(s: &Snapshot, clock: &SessionClock, n: usize) {
                 }
             }
         }
+    } else {
+        // A folded group beside a larger pack is scored with that pack. Store the
+        // pull while the body is here, so a dropped position cannot freeze the
+        // projection at the front.
+        let mut pulls = Vec::new();
+        for standing in &s.standings[..n] {
+            if tracked
+                .iter()
+                .any(|progress| progress.race_num == standing.race_num && progress.stripe_pin)
+            {
+                continue;
+            }
+            if rider_world(s, standing.race_num).is_none() {
+                continue;
+            }
+            let Some(stored) = tracked
+                .iter()
+                .find(|progress| progress.race_num == standing.race_num)
+                .and_then(|progress| progress.unwrapped)
+            else {
+                continue;
+            };
+            let Some(pulled) = scored_coordinate(s, &tracked, standing) else {
+                continue;
+            };
+            if spline_gap(
+                stored.rem_euclid(1.0),
+                pulled.rem_euclid(1.0),
+                s.track_length,
+            ) < FOLD_ALONG_M
+            {
+                continue;
+            }
+            // A short gap on the raw fraction can order this pair the other way.
+            // That order does not pull back a lap the body actually rode.
+            if earned_lap_beside(s, &tracked, standing) {
+                continue;
+            }
+            if let Some(index) = tracked
+                .iter()
+                .position(|progress| progress.race_num == standing.race_num)
+            {
+                pulls.push((index, pulled));
+            }
+        }
+        for (index, pulled) in pulls {
+            tracked[index].unwrapped = Some(pulled);
+            tracked[index].raw_ignored = true;
+            tracked[index].pending_frac = None;
+        }
     }
 }
 
@@ -375,28 +548,141 @@ fn unwrap_near(prev: f32, now: f32) -> f32 {
     now + (prev - now).round()
 }
 
-/// Move the gate coordinate to where the bike is. A jump over `MAX_STEP_M` waits
-/// one tick; if the next sample stays there, that is where they are.
-fn note_unwrapped(progress: &mut RiderProgress, now: Option<f32>, track_length: f32) {
-    let (Some(now), Some(prev)) = (now, progress.unwrapped) else {
+/// Move the scored coordinate to where the bike is. The first sample is accepted.
+/// A jump over `MAX_STEP_M` waits one tick; the next sample becomes the place only
+/// when the body rode that step. Two samples of a fraction the bike did not ride
+/// stay dropped. When that fraction matches the bikes beside them, they join that
+/// pack's median instead of leaping ahead of it. Once the raw fraction is moving
+/// continuously and the body is riding that small step, the frozen coordinate
+/// snaps to that fraction. It does not have to cover the gap back to the winding
+/// the fold left behind.
+fn note_unwrapped(
+    progress: &mut RiderProgress,
+    now: Option<f32>,
+    track_length: f32,
+    world: Option<(f32, f32)>,
+    pack_fraction: Option<f32>,
+) {
+    let Some(now) = now else {
+        return;
+    };
+    let Some(prev) = progress.unwrapped else {
+        progress.unwrapped = Some(now.rem_euclid(1.0));
+        progress.refused_path_m = 0.0;
+        if world.is_some() {
+            progress.last_world = world;
+        }
         return;
     };
     let candidate = unwrap_near(prev, now);
     let step_m = (candidate - prev).abs() * track_length;
     if step_m <= MAX_STEP_M {
+        // The body is still on the previous sample. Do not walk the coordinate
+        // along a spline step it did not ride.
+        if step_m > PASS_M && !body_followed(progress, world, step_m) {
+            progress.raw_ignored = true;
+            return;
+        }
         progress.unwrapped = Some(candidate);
+        progress.raw_ignored = false;
+        progress.refused_path_m = 0.0;
+        progress.pending_frac = None;
+        if world.is_some() {
+            progress.last_world = world;
+        }
+        return;
+    }
+    if body_stayed(progress, world, step_m) {
+        if let Some(median) = pack_fraction {
+            // The raw fraction can sit ahead of the bikes the body is beside.
+            // Join their median, on the same winding as the coordinate we had.
+            progress.unwrapped = Some(unwrap_near(prev, median));
+            progress.raw_ignored = true;
+            progress.pending_frac = None;
+            if world.is_some() {
+                progress.last_world = world;
+            }
+            return;
+        }
+        progress.raw_ignored = true;
         progress.pending_frac = None;
         return;
     }
     if let Some(pending) = progress.pending_frac {
         let stay_m = wrap_signed(now - pending).abs() * track_length;
         if stay_m <= MAX_STEP_M {
-            progress.unwrapped = Some(candidate);
+            // The raw fraction is continuous. Accept it when the body rode this
+            // small step. The gap back to the frozen coordinate is the fold
+            // already refused — do not ask the body to cover it, and do not
+            // short-wrap onto that winding. A fraction that sits still, while
+            // the body has not ridden that gap, is still the jump.
+            let held_jump = stay_m <= PASS_M && !body_followed(progress, world, step_m);
+            if held_jump || !body_followed(progress, world, stay_m) {
+                progress.raw_ignored = true;
+                progress.pending_frac = None;
+                return;
+            }
+            progress.unwrapped = Some(now.rem_euclid(1.0));
+            progress.raw_ignored = false;
+            progress.refused_path_m = 0.0;
             progress.pending_frac = None;
+            if world.is_some() {
+                progress.last_world = world;
+            }
             return;
         }
     }
+    progress.raw_ignored = true;
     progress.pending_frac = Some(now);
+}
+
+/// Metres the body moved since the previous sample.
+fn sample_step_m(progress: &RiderProgress, world: Option<(f32, f32)>) -> Option<f32> {
+    let (previous_x, previous_z) = progress.sample_world?;
+    let (x, z) = world?;
+    let dx = x - previous_x;
+    let dz = z - previous_z;
+    Some((dx * dx + dz * dz).sqrt())
+}
+
+/// Add this tick's body step onto the path walked while the coordinate is refused.
+fn add_refused_path(progress: &mut RiderProgress, world: Option<(f32, f32)>) {
+    let Some(moved) = sample_step_m(progress, world) else {
+        return;
+    };
+    progress.refused_path_m += moved.min(MAX_STEP_M);
+}
+
+/// The spline stepped a long way and the bike is still where it was.
+fn body_stayed(progress: &RiderProgress, world: Option<(f32, f32)>, step_m: f32) -> bool {
+    let (Some((previous_x, previous_z)), Some((x, z))) = (progress.last_world, world) else {
+        return false;
+    };
+    let dx = x - previous_x;
+    let dz = z - previous_z;
+    let moved = (dx * dx + dz * dz).sqrt();
+    beside_on_track(moved, step_m, BODY_CLOSE_M)
+}
+
+/// The body rode this spline step. A missing body does not freeze the rider.
+/// A step inside the pass margin is too small to call a fold.
+fn body_followed(progress: &RiderProgress, world: Option<(f32, f32)>, step_m: f32) -> bool {
+    if step_m.abs() <= PASS_M {
+        return true;
+    }
+    let Some(moved) = body_step_m(progress, world) else {
+        return true;
+    };
+    moved >= step_m.abs() * FOLD_RATIO
+}
+
+/// Metres the body moved since the coordinate last accepted a sample.
+fn body_step_m(progress: &RiderProgress, world: Option<(f32, f32)>) -> Option<f32> {
+    let (previous_x, previous_z) = progress.last_world?;
+    let (x, z) = world?;
+    let dx = x - previous_x;
+    let dz = z - previous_z;
+    Some((dx * dx + dz * dz).sqrt())
 }
 
 /// Metres into the lap they are scored on, when we saw that lap start.
@@ -417,14 +703,23 @@ fn progress_corrupt(tracked: &[RiderProgress], race_num: i32) -> bool {
 }
 
 /// `track_pos` as a 0..1 lap fraction. The plugin sends metres on some tracks.
+/// An exact lap (`1`, or one track length in metres) stays at the end of this lap.
+/// `rem_euclid` would turn it into `0`, and the open-lap arc then scores that bike
+/// behind the pack still at `0.90`.
 pub(crate) fn norm_lap_pos(s: &Snapshot, pos: f32) -> f32 {
     if pos < 0.0 {
         return pos;
     }
-    if pos > 1.5 && s.track_length > 10.0 {
-        (pos / s.track_length).rem_euclid(1.0)
+    let laps = if pos > 1.5 && s.track_length > 10.0 {
+        pos / s.track_length
     } else {
-        pos.rem_euclid(1.0)
+        pos
+    };
+    let wrapped = laps.rem_euclid(1.0);
+    if wrapped == 0.0 && laps > 0.0 {
+        1.0 - f32::EPSILON
+    } else {
+        wrapped
     }
 }
 
@@ -460,11 +755,13 @@ fn rider_lap_pos(s: &Snapshot, race_num: i32) -> Option<f32> {
 }
 
 /// Live order only makes sense in a race that is running. A practice or warmup field is
-/// ranked by lap time, and on the gate everyone sits on the same stretch of track.
+/// ranked by best lap, and on the gate everyone sits on the same stretch of track.
 ///
-/// Read from the clock this tick already built rather than from `is_warmup` / `IN_GATE`:
-/// the session heuristics latch state as they answer, and re-asking them here would rearm
-/// the flag and lap machine after the banner for this frame was decided.
+/// Read from the clock this tick already built rather than from `is_warmup` /
+/// `is_practice_session` / `IN_GATE`: the session heuristics latch state as they answer,
+/// and re-asking them here would rearm the flag and lap machine after the banner for
+/// this frame was decided. `ClockMode::from_state` already folds both practice presets
+/// into [`ClockMode::Practice`].
 fn live_order_active(s: &Snapshot, clock: &SessionClock) -> bool {
     s.on_track != 0
         && s.track_length > 10.0
@@ -524,7 +821,7 @@ fn open_lap_sector_metres(s: &Snapshot, tracked: &[RiderProgress], st: &Standing
     }
     let ends = crate::sector::split_fracs();
     if ends[0] > 0.05 && ends[1] > 0.05 {
-        let frac = rider_lap_pos(s, st.race_num)?;
+        let frac = pack_lap_pos(s, tracked, st)?;
         return Some(geometric_open_lap_metres(
             s.track_length,
             st.sector_gate,
@@ -602,7 +899,8 @@ fn gate_place_metres(s: &Snapshot, tracked: &[RiderProgress], st: &Standing) -> 
     if progress.gate_frac.is_none() {
         return None;
     }
-    let signed = progress.unwrapped? - origin;
+    let stored = progress.unwrapped?;
+    let signed = scored_coordinate(s, tracked, st).unwrap_or(stored) - origin;
     let class_laps = st.num_laps as f32;
     let laps = if signed + 1.0 < class_laps {
         class_laps + signed.rem_euclid(1.0)
@@ -634,14 +932,16 @@ fn field_still_in_slots(s: &Snapshot, tracked: &[RiderProgress]) -> bool {
 }
 
 /// The gate was seen and the game has not called the holeshot yet. The front slot is
-/// not a place. A long lead with no callback stops holding.
+/// not a place. A long lead with no callback stops holding. The metres are what the
+/// body has ridden since the gate: a folded slot can sit 200 m up the lap while the
+/// bike is still in the grid.
 fn awaiting_holeshot(s: &Snapshot, tracked: &[RiderProgress]) -> bool {
     if s.holeshot_race_num > 0 {
         return false;
     }
-    let Some(origin) = gate_origin_frac(tracked) else {
+    if gate_origin_frac(tracked).is_none() {
         return false;
-    };
+    }
     let mut saw = false;
     let mut furthest = 0.0f32;
     for progress in tracked {
@@ -649,8 +949,7 @@ fn awaiting_holeshot(s: &Snapshot, tracked: &[RiderProgress]) -> bool {
             continue;
         }
         saw = true;
-        let now = progress.unwrapped.unwrap_or(origin);
-        furthest = furthest.max((now - origin) * s.track_length);
+        furthest = furthest.max(progress.body_travelled_m);
     }
     saw && furthest < HOLESHOT_FALLBACK_M
 }
@@ -676,7 +975,7 @@ fn lap_metres(s: &Snapshot, tracked: &[RiderProgress], st: &Standing) -> Option<
     if !line_known(s) {
         return None;
     }
-    let frac = rider_lap_pos(s, st.race_num)?;
+    let frac = pack_lap_pos(s, tracked, st)?;
     Some((frac - start_finish_fraction(s)).rem_euclid(1.0) * s.track_length)
 }
 
@@ -699,13 +998,1008 @@ fn track_score(s: &Snapshot, tracked: &[RiderProgress], st: &Standing) -> Option
     Some(st.num_laps as f32 * s.track_length + metres)
 }
 
+/// Length of the published centerline when it is the same lap `track_pos` is measured
+/// on. `None` when the line is missing or too short to trust.
+fn centerline_length(snapshot: &Snapshot) -> Option<f32> {
+    let count = snapshot.poly_count.max(0) as usize;
+    if count < 2 || count > snapshot.poly.len() || snapshot.track_length <= 10.0 {
+        return None;
+    }
+    let mut length = 0.0f32;
+    for index in 1..count {
+        let dx = snapshot.poly[index].x - snapshot.poly[index - 1].x;
+        let dz = snapshot.poly[index].z - snapshot.poly[index - 1].z;
+        length += (dx * dx + dz * dz).sqrt();
+    }
+    let slack = (length - snapshot.track_length).abs() / snapshot.track_length;
+    if length < 1.0 || slack > POLY_LENGTH_SLACK {
+        return None;
+    }
+    Some(length)
+}
+
+/// World point at `fraction` along the published centerline. `fraction` 0 is the
+/// first point, the centerline origin `track_pos` is measured from.
+fn centerline_sample(snapshot: &Snapshot, length: f32, fraction: f32) -> Option<(f32, f32)> {
+    let count = snapshot.poly_count.max(0) as usize;
+    if count < 2 || count > snapshot.poly.len() || length < 1.0 {
+        return None;
+    }
+    let target = fraction.rem_euclid(1.0) * length;
+    let mut walked = 0.0f32;
+    for index in 1..count {
+        let start = snapshot.poly[index - 1];
+        let end = snapshot.poly[index];
+        let dx = end.x - start.x;
+        let dz = end.z - start.z;
+        let span = (dx * dx + dz * dz).sqrt();
+        if walked + span >= target || index + 1 == count {
+            let blend = if span > 0.001 {
+                ((target - walked) / span).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            return Some((start.x + dx * blend, start.z + dz * blend));
+        }
+        walked += span;
+    }
+    None
+}
+
+/// World `x`/`z` for a rider who still has a `track_pos`. Missing when they have
+/// dropped off the bike list, unless they are the focus rider.
+fn rider_world(snapshot: &Snapshot, race_num: i32) -> Option<(f32, f32)> {
+    let count = snapshot.rider_count.max(0) as usize;
+    if let Some(rider) = snapshot.riders[..count.min(snapshot.riders.len())]
+        .iter()
+        .find(|rider| rider.race_num == race_num)
+    {
+        if rider.track_pos < 0.0 {
+            return None;
+        }
+        return Some((rider.x, rider.z));
+    }
+    let focus = if snapshot.focus_race_num > 0 {
+        snapshot.focus_race_num
+    } else {
+        snapshot.local_race_num
+    };
+    if race_num == focus && snapshot.local_track_pos >= 0.0 {
+        return Some((snapshot.local_x, snapshot.local_z));
+    }
+    None
+}
+
+fn beside_on_track(world: f32, along: f32, cap: f32) -> bool {
+    world < cap && world < along * FOLD_RATIO
+}
+
+struct NearbyRider {
+    frac: f32,
+    world: f32,
+    coordinate: f32,
+}
+
+fn spline_gap(from: f32, to: f32, track_length: f32) -> f32 {
+    wrap_signed(from - to).abs() * track_length
+}
+
+/// The short way from `from` to `to` crosses the centerline origin.
+fn fractions_wrap_across_origin(from: f32, to: f32) -> bool {
+    (from.rem_euclid(1.0) - to.rem_euclid(1.0)).abs() > 0.5
+}
+
+fn circular_median(fractions: &[f32]) -> Option<f32> {
+    let mut best = *fractions.first()?;
+    let mut best_cost = f32::MAX;
+    for &candidate in fractions {
+        let cost = fractions.iter().fold(0.0f32, |sum, fraction| {
+            sum + wrap_signed(fraction - candidate).abs()
+        });
+        if cost < best_cost {
+            best_cost = cost;
+            best = candidate;
+        }
+    }
+    Some(best)
+}
+
+fn linear_median(values: &[f32]) -> Option<f32> {
+    let mut best = *values.first()?;
+    let mut best_cost = f32::MAX;
+    for &candidate in values {
+        let cost = values
+            .iter()
+            .fold(0.0f32, |sum, value| sum + (value - candidate).abs());
+        if cost < best_cost {
+            best_cost = cost;
+            best = candidate;
+        }
+    }
+    Some(best)
+}
+
+/// Same-lap bikes within [`BODY_CLOSE_M`]. A lapped rider beside the leader is not
+/// in this set.
+fn nearby_riders(
+    snapshot: &Snapshot,
+    tracked: &[RiderProgress],
+    standing: &Standing,
+) -> Vec<NearbyRider> {
+    let Some((origin_x, origin_z)) = rider_world(snapshot, standing.race_num) else {
+        return Vec::new();
+    };
+    let count = snapshot.standing_count.max(0) as usize;
+    let mut nearby = Vec::new();
+    for other in &snapshot.standings[..count.min(snapshot.standings.len())] {
+        if other.race_num == standing.race_num
+            || other.num_laps != standing.num_laps
+            || out_of_race(other)
+        {
+            continue;
+        }
+        let Some(fraction) = rider_lap_pos(snapshot, other.race_num) else {
+            continue;
+        };
+        let Some((x, z)) = rider_world(snapshot, other.race_num) else {
+            continue;
+        };
+        let dx = x - origin_x;
+        let dz = z - origin_z;
+        let world = (dx * dx + dz * dz).sqrt();
+        if world >= BODY_CLOSE_M {
+            continue;
+        }
+        let coordinate = tracked
+            .iter()
+            .find(|progress| progress.race_num == other.race_num)
+            .and_then(|progress| progress.unwrapped)
+            .unwrap_or(fraction);
+        nearby.push(NearbyRider {
+            frac: fraction,
+            world,
+            coordinate,
+        });
+    }
+    nearby
+}
+
+/// One branch. 15% of a short lap, and never more than [`FOLD_ALONG_M`], so a
+/// 200 m track does not treat a third of the lap as one straight. On 1083 m
+/// this is still 80 m.
+fn same_branch_m(track_length: f32) -> f32 {
+    FOLD_ALONG_M.min(track_length * 0.15)
+}
+
+fn on_same_branch(fraction: f32, other: f32, track_length: f32) -> bool {
+    spline_gap(fraction, other, track_length) < same_branch_m(track_length)
+}
+
+/// The new fraction sits with at least three bikes beside this rider.
+fn confirming_fraction(snapshot: &Snapshot, standing: &Standing, fraction: f32) -> Option<f32> {
+    if snapshot.track_length <= 10.0 {
+        return None;
+    }
+    let nearby = nearby_riders(snapshot, &[], standing);
+    if nearby.len() < 3 {
+        return None;
+    }
+    let agreeing: Vec<f32> = nearby
+        .iter()
+        .filter(|rider| on_same_branch(rider.frac, fraction, snapshot.track_length))
+        .map(|rider| rider.frac)
+        .collect();
+    if agreeing.len() < 3 {
+        return None;
+    }
+    circular_median(&agreeing)
+}
+
+/// A same-lap bike further up this line, far enough that the bodies match the spline.
+/// The parallel lane inside [`BODY_CLOSE_M`] is not that bike.
+fn fraction_confirmed(snapshot: &Snapshot, standing: &Standing, fraction: f32) -> bool {
+    if snapshot.track_length <= 10.0 {
+        return false;
+    }
+    let Some((origin_x, origin_z)) = rider_world(snapshot, standing.race_num) else {
+        return false;
+    };
+    let count = snapshot.standing_count.max(0) as usize;
+    let length = snapshot.track_length;
+    snapshot.standings[..count.min(snapshot.standings.len())]
+        .iter()
+        .filter(|other| {
+            other.race_num != standing.race_num
+                && other.num_laps == standing.num_laps
+                && !out_of_race(other)
+        })
+        .any(|other| {
+            let Some(other_fraction) = rider_lap_pos(snapshot, other.race_num) else {
+                return false;
+            };
+            let along = spline_gap(fraction, other_fraction, length);
+            if along < FOLD_ALONG_M {
+                return false;
+            }
+            let Some((x, z)) = rider_world(snapshot, other.race_num) else {
+                return false;
+            };
+            let dx = x - origin_x;
+            let dz = z - origin_z;
+            let world = (dx * dx + dz * dz).sqrt();
+            world >= along * FOLD_RATIO
+        })
+}
+
+fn pull_to_pack(stored: f32, fraction: f32, pack: &[&NearbyRider], track_length: f32) -> Option<f32> {
+    let coordinates: Vec<f32> = pack.iter().map(|rider| rider.coordinate).collect();
+    let level = linear_median(&coordinates)?;
+    let snapped = unwrap_near(level, fraction);
+    let along = (snapped - stored).abs() * track_length;
+    let world = pack.iter().map(|rider| rider.world).fold(f32::MAX, f32::min);
+    if along >= FOLD_ALONG_M && beside_on_track(world, along, BODY_CLOSE_M) {
+        Some(snapped)
+    } else {
+        None
+    }
+}
+
+/// A larger same-lap group on another branch. `None` when this rider already sits
+/// with a group at least that big, or the published line between them comes back
+/// with the bikes. That chord keeps the higher fraction.
+fn dominant_branch(
+    snapshot: &Snapshot,
+    stored_fraction: f32,
+    nearby: &[NearbyRider],
+    track_length: f32,
+) -> Option<f32> {
+    let own_count = 1 + nearby
+        .iter()
+        .filter(|rider| on_same_branch(rider.frac, stored_fraction, track_length))
+        .count();
+    let mut best_seed = 0.0f32;
+    let mut best_count = 0usize;
+    let mut best_world = f32::MAX;
+    for rider in nearby {
+        if on_same_branch(rider.frac, stored_fraction, track_length) {
+            continue;
+        }
+        let count = nearby
+            .iter()
+            .filter(|other| on_same_branch(other.frac, rider.frac, track_length))
+            .count();
+        let world = nearby
+            .iter()
+            .filter(|other| on_same_branch(other.frac, rider.frac, track_length))
+            .map(|other| other.world)
+            .fold(f32::MAX, f32::min);
+        if count > best_count || (count == best_count && world < best_world) {
+            best_count = count;
+            best_seed = rider.frac;
+            best_world = world;
+        }
+    }
+    if best_count < 3 || best_count <= own_count {
+        return None;
+    }
+    let branch: Vec<&NearbyRider> = nearby
+        .iter()
+        .filter(|rider| on_same_branch(rider.frac, best_seed, track_length))
+        .collect();
+    let fractions: Vec<f32> = branch.iter().map(|rider| rider.frac).collect();
+    let median = circular_median(&fractions)?;
+    let along = spline_gap(median, stored_fraction, track_length);
+    let world = branch.iter().map(|rider| rider.world).fold(f32::MAX, f32::min);
+    if along < FOLD_ALONG_M || !beside_on_track(world, along, BODY_CLOSE_M) {
+        return None;
+    }
+    // The line between this fraction and the pack comes back as close as the bikes.
+    // A hairpin chord is that lap, so the higher fraction is not stored on the pack.
+    if lap_folded_back(snapshot, stored_fraction, median, world) {
+        return None;
+    }
+    // A projection sits ahead of the pack. A bike still behind that pack stays
+    // on its own fraction — pulling it forward invents a lead on the returning lane.
+    let ahead_of_pack = wrap_signed(stored_fraction - median) * track_length;
+    if ahead_of_pack <= 0.0 {
+        return None;
+    }
+    // A corner under FOLD_CORNER_M stays with the group already up the lap.
+    // A longer gap whose bodies are still inside the larger pack is the other
+    // branch. Wrapping across the start line is that projection either way.
+    // A group that is actually further up the lap already returned above:
+    // beside_on_track is false when the world gap matches the spline.
+    if own_count >= 3
+        && along < FOLD_CORNER_M
+        && !fractions_wrap_across_origin(stored_fraction, median)
+    {
+        return None;
+    }
+    let coordinates: Vec<f32> = branch.iter().map(|rider| rider.coordinate).collect();
+    let level = linear_median(&coordinates)?;
+    Some(unwrap_near(level, median))
+}
+
+/// Stored coordinate, pulled back to the same-lap pack when it is a fold away from
+/// the bikes beside this rider. The fraction and the lap integer both move.
+fn scored_coordinate(
+    snapshot: &Snapshot,
+    tracked: &[RiderProgress],
+    standing: &Standing,
+) -> Option<f32> {
+    let stored = tracked
+        .iter()
+        .find(|progress| progress.race_num == standing.race_num)
+        .and_then(|progress| progress.unwrapped)
+        .or_else(|| rider_lap_pos(snapshot, standing.race_num))?;
+    if snapshot.track_length <= 10.0 {
+        return Some(stored);
+    }
+    let nearby = nearby_riders(snapshot, tracked, standing);
+    if nearby.len() < 3 {
+        return Some(stored);
+    }
+    let stored_fraction = stored.rem_euclid(1.0);
+    let length = snapshot.track_length;
+    let own: Vec<&NearbyRider> = nearby
+        .iter()
+        .filter(|rider| on_same_branch(rider.frac, stored_fraction, length))
+        .collect();
+    if own.len() >= 3 {
+        if let Some(pulled) = pull_to_pack(stored, stored_fraction, &own, length) {
+            return Some(pulled);
+        }
+    }
+    if !fraction_confirmed(snapshot, standing, stored_fraction) {
+        if let Some(pulled) = dominant_branch(snapshot, stored_fraction, &nearby, length) {
+            return Some(pulled);
+        }
+    }
+    Some(stored)
+}
+
+/// Lap fraction the order is allowed to score. The pack median replaces a stored
+/// fraction that the bikes within [`BODY_CLOSE_M`] do not share.
+fn pack_lap_pos(
+    snapshot: &Snapshot,
+    tracked: &[RiderProgress],
+    standing: &Standing,
+) -> Option<f32> {
+    Some(scored_coordinate(snapshot, tracked, standing)?.rem_euclid(1.0))
+}
+
+fn has_same_lap_pack(snapshot: &Snapshot, standing: &Standing) -> bool {
+    nearby_riders(snapshot, &[], standing).len() >= 3
+}
+
+/// The published line at these two fractions comes back about as close as the bikes.
+/// The spline gap is then the long way around the lap. Bodies inside [`FOLD_STRIP_M`]
+/// are still beside each other. `false` when the line is missing or off the lap.
+fn lap_folded_back(snapshot: &Snapshot, pos_a: f32, pos_b: f32, body_gap: f32) -> bool {
+    if body_gap < FOLD_STRIP_M {
+        return false;
+    }
+    let Some(length) = centerline_length(snapshot) else {
+        return false;
+    };
+    let (Some((ax, az)), Some((bx, bz))) = (
+        centerline_sample(snapshot, length, pos_a),
+        centerline_sample(snapshot, length, pos_b),
+    ) else {
+        return false;
+    };
+    let dx = bx - ax;
+    let dz = bz - az;
+    let sample_gap = (dx * dx + dz * dz).sqrt();
+    (sample_gap - body_gap).abs() <= FOLD_WORLD_M
+}
+
+/// The two lap fractions sit on lanes that run beside each other. `track_pos` says
+/// one bike is well ahead, but the bikes themselves — or, if a body is missing, the
+/// centerline samples — are only a short distance apart. When the line itself comes
+/// back with the bikes, that gap is the lap folding, not the next lane.
+fn different_lane(
+    snapshot: &Snapshot,
+    tracked: &[RiderProgress],
+    behind: &Standing,
+    ahead: &Standing,
+) -> bool {
+    let (Some(behind_pos), Some(ahead_pos)) = (
+        pack_lap_pos(snapshot, tracked, behind),
+        pack_lap_pos(snapshot, tracked, ahead),
+    ) else {
+        return false;
+    };
+    let along = (wrap_signed(ahead_pos - behind_pos) * snapshot.track_length).abs();
+    if along <= PASS_M || along < FOLD_ALONG_M {
+        return false;
+    }
+    if let (Some((behind_x, behind_z)), Some((ahead_x, ahead_z))) = (
+        rider_world(snapshot, behind.race_num),
+        rider_world(snapshot, ahead.race_num),
+    ) {
+        let dx = ahead_x - behind_x;
+        let dz = ahead_z - behind_z;
+        let world = (dx * dx + dz * dz).sqrt();
+        if lap_folded_back(snapshot, behind_pos, ahead_pos, world) {
+            return false;
+        }
+        return beside_on_track(world, along, BODY_CLOSE_M);
+    }
+    let Some(length) = centerline_length(snapshot) else {
+        return false;
+    };
+    let (Some((behind_x, behind_z)), Some((ahead_x, ahead_z))) = (
+        centerline_sample(snapshot, length, behind_pos),
+        centerline_sample(snapshot, length, ahead_pos),
+    ) else {
+        return false;
+    };
+    let dx = ahead_x - behind_x;
+    let dz = ahead_z - behind_z;
+    let world = (dx * dx + dz * dz).sqrt();
+    beside_on_track(world, along, FOLD_WORLD_M)
+}
+
+/// World distance between two riders who still have a body. `None` when either
+/// body is missing.
+fn body_gap(snapshot: &Snapshot, race_a: i32, race_b: i32) -> Option<f32> {
+    let (ax, az) = rider_world(snapshot, race_a)?;
+    let (bx, bz) = rider_world(snapshot, race_b)?;
+    let dx = ax - bx;
+    let dz = az - bz;
+    Some((dx * dx + dz * dz).sqrt())
+}
+
+/// The rider ahead on the short wrap was already behind in `prev`, and the bodies
+/// are not yet clearly past the lane. Keep that refusal so a metre of world gap
+/// cannot release the lead.
+fn refused_fold_holds(
+    snapshot: &Snapshot,
+    prev: &[i32],
+    a: &Standing,
+    b: &Standing,
+    along_m: f32,
+) -> bool {
+    let Some(world) = body_gap(snapshot, a.race_num, b.race_num) else {
+        return false;
+    };
+    if world < FOLD_STRIP_M || world >= FOLD_RELEASE_M || world >= along_m.abs() * FOLD_RATIO {
+        return false;
+    }
+    if let (Some(pos_a), Some(pos_b)) = (
+        rider_lap_pos(snapshot, a.race_num),
+        rider_lap_pos(snapshot, b.race_num),
+    ) {
+        if lap_folded_back(snapshot, pos_a, pos_b, world) {
+            return false;
+        }
+    }
+    let (long_num, other_num) = if along_m > 0.0 {
+        (b.race_num, a.race_num)
+    } else {
+        (a.race_num, b.race_num)
+    };
+    let long_rank = prev_rank(prev, long_num);
+    let other_rank = prev_rank(prev, other_num);
+    long_rank != usize::MAX && other_rank != usize::MAX && long_rank > other_rank
+}
+
+/// Same-lap bodies in the next lane.
+/// `Some(true)` gives the place to `b`.
+///
+/// With a pack beside either rider, the corrected lap fraction is the order: the
+/// bike that fraction says is ahead takes the place. Two bikes with no pack keep
+/// the short-wrap lead from counting, so a projection onto the other branch does
+/// not pass. That projection loses a place it already holds only when the bodies
+/// are inside [`FOLD_STRIP_M`]. A chord near [`BODY_CLOSE_M`] keeps the centerline
+/// order, unless the published line comes back as close as the bikes: that lead stays.
+/// If that refusal is already the previous order, it holds until the bodies
+/// are past [`FOLD_RELEASE_M`]. A gap under [`FOLD_CORNER_M`] that does not cross
+/// the start line is one corner: the centerline order stands, including under 20 m.
+fn folded_spline_lead(
+    s: &Snapshot,
+    prev: &[i32],
+    tracked: &[RiderProgress],
+    a: &Standing,
+    b: &Standing,
+    margin: f32,
+) -> Option<bool> {
+    let pos_a = pack_lap_pos(s, tracked, a)?;
+    let pos_b = pack_lap_pos(s, tracked, b)?;
+    let along_m = wrap_signed(pos_b - pos_a) * s.track_length;
+    if along_m.abs() < FOLD_ALONG_M {
+        return None;
+    }
+    // A stored coordinate a corner ahead is not the place when the raw fraction
+    // has already stepped back inside the pack. The open-lap score uses that raw gap.
+    if a.num_laps == 0 && b.num_laps == 0 && !out_of_race(a) && !out_of_race(b) {
+        if let (Some(raw_a), Some(raw_b)) = (
+            rider_lap_pos(s, a.race_num),
+            rider_lap_pos(s, b.race_num),
+        ) {
+            let raw_m = same_lap_along_m(raw_a, raw_b, s.track_length);
+            // The stored gap can be the next lane while the raw gap is still the
+            // pack, in the same direction. Leave that pair to the raw fraction.
+            if raw_m.abs() < FOLD_ALONG_M && raw_m.abs() > margin {
+                return None;
+            }
+        }
+    }
+    // One corner on this lap. A wrap onto the other side, or a gap from
+    // [`FOLD_CORNER_M`] up, is still the branch the short chord must not promote.
+    let corner =
+        along_m.abs() < FOLD_CORNER_M && !fractions_wrap_across_origin(pos_a, pos_b);
+    let packed = has_same_lap_pack(s, a) || has_same_lap_pack(s, b);
+    if !packed && !corner && refused_fold_holds(s, prev, a, b, along_m) {
+        return Some(along_m < 0.0);
+    }
+    if !different_lane(s, tracked, a, b) {
+        return None;
+    }
+    if packed || corner {
+        return Some(along_m > margin);
+    }
+    if along_m >= FOLD_ALONG_M {
+        Some(false)
+    } else if along_m <= -FOLD_ALONG_M && line_known(s) {
+        // A missing body is not inside the strip. The last coordinate stays,
+        // so a dropped position cannot jump the riders still on the lap.
+        // Until the line is known, that close pair is not a fold either.
+        match body_gap(s, a.race_num, b.race_num) {
+            Some(world) if world < FOLD_STRIP_M => Some(true),
+            _ => None,
+        }
+    } else {
+        None
+    }
+}
+
+/// Metres from `from` to `to` on the same completed lap. The higher fraction is
+/// ahead. A gap across the origin is decided by [`origin_crossing_ahead`].
+fn same_lap_along_m(from: f32, to: f32, track_length: f32) -> f32 {
+    (to - from) * track_length
+}
+
+/// Same completed lap, when the fraction gap crosses the origin.
+/// `Some(true)` gives the place to `b`. `None` when the pair stays on one side,
+/// the bikes match the direct lead, or they are inside a close fold.
+///
+/// The rider just past the origin is ahead when the bikes match the short way.
+/// A longer gap the bikes do not match does not swap, on a short lap or a long one.
+/// A direct lead the bikes have ridden stays with the score, so an extra lap of
+/// travel still counts before `num_laps` bumps.
+fn origin_crossing_ahead(
+    snapshot: &Snapshot,
+    a: &Standing,
+    b: &Standing,
+    margin: f32,
+    use_penalty: bool,
+) -> Option<bool> {
+    let pos_a = rider_lap_pos(snapshot, a.race_num)?;
+    let pos_b = rider_lap_pos(snapshot, b.race_num)?;
+    let direct = pos_b - pos_a;
+    if direct.abs() <= 0.5 {
+        return None;
+    }
+    let direct_m = direct * snapshot.track_length;
+    let short_m = wrap_signed(direct) * snapshot.track_length;
+    let Some(world) = body_gap(snapshot, a.race_num, b.race_num) else {
+        return None;
+    };
+    if gap_matches_bodies(world, short_m) && !gap_matches_bodies(world, direct_m) {
+        let ahead_m = if use_penalty {
+            short_m + penalty_m(snapshot, a.penalty_ms - b.penalty_ms)
+        } else {
+            short_m
+        };
+        return Some(ahead_m > margin);
+    }
+    if gap_matches_bodies(world, direct_m) || world < BODY_CLOSE_M {
+        return None;
+    }
+    Some(false)
+}
+
+/// Raw gap from `behind` to `ahead` when the bodies are at least [`FOLD_RATIO`] of that
+/// distance apart. A fold, where the bikes are close and the spline gap is long, is `None`.
+/// Same completed lap: the gap is the direct fraction delta.
+fn confirmed_raw_gap(snapshot: &Snapshot, behind: &Standing, ahead: &Standing) -> Option<f32> {
+    let pos_behind = rider_lap_pos(snapshot, behind.race_num)?;
+    let pos_ahead = rider_lap_pos(snapshot, ahead.race_num)?;
+    let (behind_x, behind_z) = rider_world(snapshot, behind.race_num)?;
+    let (ahead_x, ahead_z) = rider_world(snapshot, ahead.race_num)?;
+    let along_m = same_lap_along_m(pos_behind, pos_ahead, snapshot.track_length);
+    let dx = ahead_x - behind_x;
+    let dz = ahead_z - behind_z;
+    let world = (dx * dx + dz * dz).sqrt();
+    // A short chord is the next lane only when the bodies are actually beside each
+    // other. A long chord on a looping lap is a real lead on a short track or a long one.
+    // When the published line comes back with the bikes, the spline gap is that lead.
+    if world < BODY_CLOSE_M
+        && world < along_m.abs() * FOLD_RATIO
+        && !lap_folded_back(snapshot, pos_behind, pos_ahead, world)
+    {
+        return None;
+    }
+    Some(along_m)
+}
+
+/// The bikes are about as far apart as the lap fraction says. A few metres of
+/// line width is noise. A jump that only lands near the next bike is not.
+fn gap_matches_bodies(world: f32, along: f32) -> bool {
+    let along = along.abs();
+    let slack = PASS_M.max(along * 0.15);
+    (world - along).abs() <= slack
+}
+
+/// The chord is outside [`BODY_CLOSE_M`] and under half the spline, and the
+/// centerline leader has moved at least [`BODY_CLOSE_M`] since the coordinate
+/// last accepted a sample. A projection whose body stayed put is not this bend.
+fn bent_chord_the_body_rode(
+    snapshot: &Snapshot,
+    tracked: &[RiderProgress],
+    raw_ahead: i32,
+    world: f32,
+    along_m: f32,
+) -> bool {
+    let along = along_m.abs();
+    if world < BODY_CLOSE_M || world >= along * BEND_RATIO {
+        return false;
+    }
+    let Some(progress) = tracked
+        .iter()
+        .find(|progress| progress.race_num == raw_ahead)
+    else {
+        return false;
+    };
+    let Some(moved) = body_step_m(progress, rider_world(snapshot, raw_ahead)) else {
+        return false;
+    };
+    moved >= BODY_CLOSE_M
+}
+
+/// A corner under [`FOLD_CORNER_M`]. The chord is outside the next lane, the gap
+/// does not cross the start line, and the raw leader has moved at least
+/// [`BODY_CLOSE_M`] since the coordinate last accepted a sample. A matched gap
+/// is not this corner, and a body that stayed put is still a projection.
+fn corner_the_body_rode(
+    snapshot: &Snapshot,
+    tracked: &[RiderProgress],
+    raw_ahead: i32,
+    behind: &Standing,
+    ahead: &Standing,
+    world: f32,
+    along_m: f32,
+) -> bool {
+    let along = along_m.abs();
+    if along >= FOLD_CORNER_M || world < BODY_CLOSE_M || gap_matches_bodies(world, along) {
+        return false;
+    }
+    let Some(pos_behind) = rider_lap_pos(snapshot, behind.race_num) else {
+        return false;
+    };
+    let Some(pos_ahead) = rider_lap_pos(snapshot, ahead.race_num) else {
+        return false;
+    };
+    if fractions_wrap_across_origin(pos_behind, pos_ahead) {
+        return false;
+    }
+    let Some(progress) = tracked
+        .iter()
+        .find(|progress| progress.race_num == raw_ahead)
+    else {
+        return false;
+    };
+    let Some(moved) = body_step_m(progress, rider_world(snapshot, raw_ahead)) else {
+        return false;
+    };
+    moved >= BODY_CLOSE_M
+}
+
+/// A direct gap past [`FOLD_CORNER_M`] and under half a lap. The chord is at least
+/// [`SPREAD_CHORD_M`] and more than [`SPREAD_RATIO`] of the spline, so the bikes
+/// are not folded into the next lane. The gap does not cross the start line, and
+/// the raw leader has moved at least [`BODY_CLOSE_M`] since the coordinate last
+/// accepted a sample. A matched gap is not this lead. A 45 m chord at 159 m
+/// stays the other branch.
+fn spread_chord_the_body_rode(
+    snapshot: &Snapshot,
+    tracked: &[RiderProgress],
+    raw_ahead: i32,
+    behind: &Standing,
+    ahead: &Standing,
+    world: f32,
+    along_m: f32,
+) -> bool {
+    let along = along_m.abs();
+    if along < FOLD_CORNER_M || along >= snapshot.track_length * 0.5 {
+        return false;
+    }
+    if world < SPREAD_CHORD_M || world <= along * SPREAD_RATIO || gap_matches_bodies(world, along)
+    {
+        return false;
+    }
+    let Some(pos_behind) = rider_lap_pos(snapshot, behind.race_num) else {
+        return false;
+    };
+    let Some(pos_ahead) = rider_lap_pos(snapshot, ahead.race_num) else {
+        return false;
+    };
+    if fractions_wrap_across_origin(pos_behind, pos_ahead) {
+        return false;
+    }
+    let Some(progress) = tracked
+        .iter()
+        .find(|progress| progress.race_num == raw_ahead)
+    else {
+        return false;
+    };
+    let Some(moved) = body_step_m(progress, rider_world(snapshot, raw_ahead)) else {
+        return false;
+    };
+    moved >= BODY_CLOSE_M
+}
+
+/// The raw coordinate is refused, the gap is under [`FROZEN_CORNER_M`] and does
+/// not cross the start line, and the body has walked at least [`BODY_CLOSE_M`]
+/// since that refusal. The straight chord can still be inside the next lane.
+/// A matched gap is not this corner, and a body that stayed put is still a spike.
+fn frozen_corner_the_body_rode(
+    snapshot: &Snapshot,
+    tracked: &[RiderProgress],
+    raw_ahead: i32,
+    behind: &Standing,
+    ahead: &Standing,
+    world: f32,
+    along_m: f32,
+) -> bool {
+    let along = along_m.abs();
+    if along >= FROZEN_CORNER_M || gap_matches_bodies(world, along) {
+        return false;
+    }
+    let Some(pos_behind) = rider_lap_pos(snapshot, behind.race_num) else {
+        return false;
+    };
+    let Some(pos_ahead) = rider_lap_pos(snapshot, ahead.race_num) else {
+        return false;
+    };
+    if fractions_wrap_across_origin(pos_behind, pos_ahead) {
+        return false;
+    }
+    let Some(progress) = tracked
+        .iter()
+        .find(|progress| progress.race_num == raw_ahead)
+    else {
+        return false;
+    };
+    progress.raw_ignored && progress.refused_path_m >= BODY_CLOSE_M
+}
+
+/// `Some(true)` when `b` keeps the raw lead on a refused corner. `None` when
+/// this pair is not that corner.
+fn frozen_corner_order(
+    snapshot: &Snapshot,
+    tracked: &[RiderProgress],
+    a: &Standing,
+    b: &Standing,
+    margin: f32,
+    use_penalty: bool,
+    along_m: f32,
+    world: f32,
+) -> Option<bool> {
+    if along_m.abs() <= margin {
+        return None;
+    }
+    let raw_ahead = if along_m > 0.0 { b.race_num } else { a.race_num };
+    let raw_behind = if along_m > 0.0 { a } else { b };
+    let raw_leader = if along_m > 0.0 { b } else { a };
+    if !frozen_corner_the_body_rode(
+        snapshot,
+        tracked,
+        raw_ahead,
+        raw_behind,
+        raw_leader,
+        world,
+        along_m,
+    ) {
+        return None;
+    }
+    let ahead_m = if use_penalty {
+        along_m + penalty_m(snapshot, a.penalty_ms - b.penalty_ms)
+    } else {
+        along_m
+    };
+    Some(ahead_m > margin)
+}
+
+/// The stored coordinate is about a lap ahead of a bike beside this rider, and
+/// the body travel matches that lap. Pack pull does not take the lap back.
+fn earned_lap_beside(
+    snapshot: &Snapshot,
+    tracked: &[RiderProgress],
+    standing: &Standing,
+) -> bool {
+    let count = snapshot.standing_count.max(0) as usize;
+    snapshot.standings[..count.min(snapshot.standings.len())]
+        .iter()
+        .filter(|other| {
+            other.race_num != standing.race_num
+                && other.num_laps == standing.num_laps
+                && !out_of_race(other)
+        })
+        .any(|other| {
+            let Some(world) = body_gap(snapshot, standing.race_num, other.race_num) else {
+                return false;
+            };
+            if world >= BODY_CLOSE_M {
+                return false;
+            }
+            let Some(pos_standing) = rider_lap_pos(snapshot, standing.race_num) else {
+                return false;
+            };
+            let Some(pos_other) = rider_lap_pos(snapshot, other.race_num) else {
+                return false;
+            };
+            let along_m = same_lap_along_m(pos_standing, pos_other, snapshot.track_length);
+            stored_lap_crossed(tracked, standing, other, along_m, snapshot.track_length)
+        })
+}
+
+/// The stored coordinate and the wrapped fraction disagree by a full lap, and the
+/// rider with the higher coordinate has body travel about that much further. A
+/// spline lap the body did not ride is not a crossing.
+fn stored_lap_crossed(
+    tracked: &[RiderProgress],
+    a: &Standing,
+    b: &Standing,
+    along_m: f32,
+    track_length: f32,
+) -> bool {
+    let Some(progress_a) = tracked.iter().find(|progress| progress.race_num == a.race_num) else {
+        return false;
+    };
+    let Some(progress_b) = tracked.iter().find(|progress| progress.race_num == b.race_num) else {
+        return false;
+    };
+    let (Some(coord_a), Some(coord_b)) = (progress_a.unwrapped, progress_b.unwrapped) else {
+        return false;
+    };
+    let coord_m = (coord_b - coord_a) * track_length;
+    if (coord_m - along_m).abs() < track_length - LAP_OVERFLOW_SLACK_M {
+        return false;
+    }
+    let travelled_m = if coord_b >= coord_a {
+        progress_b.body_travelled_m - progress_a.body_travelled_m
+    } else {
+        progress_a.body_travelled_m - progress_b.body_travelled_m
+    };
+    // A missed lap is most of that lap, on a short track or a long one. The slack is
+    // the same noise the tracker already allows past one lap.
+    (travelled_m - coord_m.abs()).abs() <= track_length * 0.25
+}
+
+/// The laps the lower classification is short have been ridden since the last counted
+/// lap. A coordinate that has reached the higher lap without that travel is not a
+/// crossing. The slack is a quarter of this lap, on a short track or a long one.
+fn rode_the_laps_short(
+    tracked: &[RiderProgress],
+    fewer: &Standing,
+    more_laps: i32,
+    track_length: f32,
+) -> bool {
+    let Some(progress) = tracked
+        .iter()
+        .find(|progress| progress.race_num == fewer.race_num)
+    else {
+        return false;
+    };
+    let laps_short = (more_laps - fewer.num_laps) as f32;
+    if laps_short <= 0.0 {
+        return false;
+    }
+    let into_lap = progress.travelled_m - progress.lap_base_m;
+    into_lap + track_length * 0.25 >= laps_short * track_length
+}
+
+/// Short-way metres from `a` to `b` when that gap and the bodies are both inside
+/// [`STRIPE_M`]. Positive means `b` is ahead. `None` when either gap is wider, or a
+/// body is missing. The window is metres, so a short track and a long one match.
+fn stripe_along(snapshot: &Snapshot, a: &Standing, b: &Standing) -> Option<f32> {
+    let pos_a = rider_lap_pos(snapshot, a.race_num)?;
+    let pos_b = rider_lap_pos(snapshot, b.race_num)?;
+    let along_m = wrap_signed(pos_b - pos_a) * snapshot.track_length;
+    if along_m.abs() > STRIPE_M {
+        return None;
+    }
+    let world = body_gap(snapshot, a.race_num, b.race_num)?;
+    if world > STRIPE_M {
+        return None;
+    }
+    Some(along_m)
+}
+
+/// `b` is the extra copy of a body that already belongs to a better game place.
+/// That copy does not take the place. A side-by-side pass is further than a metre.
+fn copied_behind_owner(snapshot: &Snapshot, b: &Standing) -> bool {
+    let Some(pos_b) = rider_lap_pos(snapshot, b.race_num) else {
+        return false;
+    };
+    let count = snapshot.standing_count.max(0) as usize;
+    let limit = count.min(snapshot.standings.len());
+    snapshot.standings[..limit].iter().any(|other| {
+        other.race_num != b.race_num
+            && other.position < b.position
+            && other.num_laps == b.num_laps
+            && !out_of_race(other)
+            && rider_lap_pos(snapshot, other.race_num)
+                .is_some_and(|pos| (pos - pos_b).abs() <= 0.001)
+            && body_gap(snapshot, other.race_num, b.race_num)
+                .is_some_and(|world| world < COPIED_BODY_M)
+    })
+}
+
+/// The classification lap is the place. The bodies agree with the raw fraction, so a
+/// coordinate a lap ahead of `num_laps` is not a pass. A close fold is the other
+/// branch: the fewer-lap bike is beside them, not ahead.
+fn classified_lap_holds(snapshot: &Snapshot, fewer: &Standing, more: &Standing) -> bool {
+    let Some(fewer_pos) = rider_lap_pos(snapshot, fewer.race_num) else {
+        return false;
+    };
+    let Some(more_pos) = rider_lap_pos(snapshot, more.race_num) else {
+        return false;
+    };
+    let Some(world) = body_gap(snapshot, fewer.race_num, more.race_num) else {
+        return false;
+    };
+    let along = wrap_signed(fewer_pos - more_pos) * snapshot.track_length;
+    if gap_matches_bodies(world, along) {
+        return true;
+    }
+    beside_on_track(world, along.abs(), BODY_CLOSE_M) && along.abs() >= FOLD_ALONG_M
+}
+
+/// Opening lap, same side of the lap: the spline is at least a pack length apart
+/// and the bodies are still inside the next-lane cap. That branch does not take
+/// the place. `Some(true)` gives it to `b` only when the game already has `b` ahead.
+fn opening_pack_fold(s: &Snapshot, a: &Standing, b: &Standing) -> Option<bool> {
+    if a.num_laps != 0 || b.num_laps != 0 {
+        return None;
+    }
+    if a.position <= 0 || b.position <= 0 {
+        return None;
+    }
+    let pos_a = rider_lap_pos(s, a.race_num)?;
+    let pos_b = rider_lap_pos(s, b.race_num)?;
+    let direct = pos_b - pos_a;
+    if direct.abs() > 0.5 {
+        return None;
+    }
+    let along = direct.abs() * s.track_length;
+    if along < FOLD_ALONG_M {
+        return None;
+    }
+    let world = body_gap(s, a.race_num, b.race_num)?;
+    if world > BODY_CLOSE_M {
+        return None;
+    }
+    Some(b.position < a.position)
+}
+
 /// `b` is ahead of `a` on score by enough to take the place. The margin is only so two
 /// bikes on the same stretch do not swap every frame: `HOLD_M` once `b` already holds it,
 /// `PASS_M` to take it. Lap count is always in the score; `use_penalty` subtracts each
 /// rider's own time penalty (live order) or ignores it (on-track order).
 ///
 /// With no tracker and no known line, only a same-lap pair inside `PAIR_MAX_M` can move.
-/// Further apart than that is not trustworthy.
+/// Further apart than that is not trustworthy. A rider with fewer completed laps does not
+/// take the place by a higher fraction on the earlier lap, or while the higher lap is
+/// still a short gap ahead on the lap ring. Their coordinate still can once they have
+/// crossed and are further into that lap, and the travel since the last counted lap
+/// covers the laps they are short. A lead whose bikes sit close together,
+/// or whose centerline samples do when a body is missing, is the next lane, not a pass.
+/// That rider does not keep the place when the game already had them ahead. A penalty
+/// still reorders a pair whose positions are a real distance apart.
 fn score_ahead(
     s: &Snapshot,
     prev: &[i32],
@@ -722,6 +2016,114 @@ fn score_ahead(
     } else {
         PASS_M
     };
+    if a.num_laps == b.num_laps && !out_of_race(a) && !out_of_race(b) {
+        if copied_behind_owner(s, b) {
+            return false;
+        }
+        // Opening lap: a branch a pack-length up the spline, bodies still one
+        // group, is not a pass. The game order holds until the branches meet.
+        // A gap under 80 m still falls through and takes the place.
+        if let Some(give_place_to_b) = opening_pack_fold(s, a, b) {
+            return give_place_to_b;
+        }
+        // The bodies are on this fraction, including past one step and past the
+        // stripe. A stored fold does not get a vote, and a coordinate a lap off
+        // does not either unless that rider's body rode the lap. A jump the body
+        // did not ride is not this gap, unless the bikes already match it. A
+        // matching gap is the place past 80 m too, even when that coordinate is
+        // still ignored. Inside one step the bodies are the order even when that
+        // lap was ridden. A longer raw gap still keeps a lap the bodies do not
+        // match.
+        // A chord outside 45 m and under half the spline is the lap bending back,
+        // once the centerline leader has ridden away from the frozen coordinate.
+        // A corner under 140 m is that lead too, even when the chord is past
+        // half the spline. A refused coordinate under 155 m keeps the raw lead
+        // once the body has walked 45 m, including when the chord folds inside
+        // 45 m. Past that cap, a chord of at least 80 m and more than 0.55 of
+        // the gap keeps the raw lead once the body has moved. A 45 m chord at
+        // 159 m stays the other branch.
+        if let Some(along_m) = confirmed_raw_gap(s, a, b) {
+            let raw_ahead = if along_m > 0.0 { b.race_num } else { a.race_num };
+            let world = body_gap(s, a.race_num, b.race_num);
+            let ridden_lap_veto = along_m.abs() > MAX_STEP_M
+                && stored_lap_crossed(tracked, a, b, along_m, s.track_length);
+            if world.is_some_and(|gap| gap_matches_bodies(gap, along_m))
+                && along_m.abs() > margin
+                && !ridden_lap_veto
+            {
+                let ahead_m = if use_penalty {
+                    along_m + penalty_m(s, a.penalty_ms - b.penalty_ms)
+                } else {
+                    along_m
+                };
+                return ahead_m > margin;
+            }
+            let raw_behind = if along_m > 0.0 { a } else { b };
+            let raw_leader = if along_m > 0.0 { b } else { a };
+            if along_m.abs() > margin
+                && world.is_some_and(|gap| {
+                    bent_chord_the_body_rode(s, tracked, raw_ahead, gap, along_m)
+                        || corner_the_body_rode(
+                            s,
+                            tracked,
+                            raw_ahead,
+                            raw_behind,
+                            raw_leader,
+                            gap,
+                            along_m,
+                        )
+                        || spread_chord_the_body_rode(
+                            s,
+                            tracked,
+                            raw_ahead,
+                            raw_behind,
+                            raw_leader,
+                            gap,
+                            along_m,
+                        )
+                })
+            {
+                let ahead_m = if use_penalty {
+                    along_m + penalty_m(s, a.penalty_ms - b.penalty_ms)
+                } else {
+                    along_m
+                };
+                return ahead_m > margin;
+            }
+            let chord_under_45 = tracked
+                .iter()
+                .find(|progress| progress.race_num == raw_ahead)
+                .and_then(|progress| body_step_m(progress, rider_world(s, raw_ahead)))
+                .is_some_and(|moved| moved < BODY_CLOSE_M);
+            if chord_under_45 {
+                if let Some(gap) = world {
+                    if let Some(give_place_to_b) = frozen_corner_order(
+                        s, tracked, a, b, margin, use_penalty, along_m, gap,
+                    ) {
+                        return give_place_to_b;
+                    }
+                }
+            }
+        } else if let (Some(pos_a), Some(pos_b)) = (
+            rider_lap_pos(s, a.race_num),
+            rider_lap_pos(s, b.race_num),
+        ) {
+            let along_m = same_lap_along_m(pos_a, pos_b, s.track_length);
+            if let Some(gap) = body_gap(s, a.race_num, b.race_num) {
+                if let Some(give_place_to_b) = frozen_corner_order(
+                    s, tracked, a, b, margin, use_penalty, along_m, gap,
+                ) {
+                    return give_place_to_b;
+                }
+            }
+        }
+        if let Some(give_place_to_b) = folded_spline_lead(s, prev, tracked, a, b, margin) {
+            return give_place_to_b;
+        }
+        if let Some(give_place_to_b) = origin_crossing_ahead(s, a, b, margin, use_penalty) {
+            return give_place_to_b;
+        }
+    }
     let (score_a, score_b) = if use_penalty {
         (rider_score(s, tracked, a), rider_score(s, tracked, b))
     } else {
@@ -729,10 +2131,135 @@ fn score_ahead(
     };
     if let (Some(score_a), Some(score_b)) = (score_a, score_b) {
         let delta = score_b - score_a;
+        // The bodies match the raw fraction, on any lap. A stored coordinate a sector
+        // ahead of that gap does not keep the place.
+        if a.num_laps == b.num_laps && !out_of_race(a) && !out_of_race(b) {
+            if let Some(along_m) = confirmed_raw_gap(s, a, b) {
+                let raw_ahead = if along_m > 0.0 { b } else { a };
+                let raw_behind = if along_m > 0.0 { a } else { b };
+                let raw_was_ignored = |race_num: i32| {
+                    tracked.iter().any(|progress| {
+                        progress.race_num == race_num && progress.raw_ignored
+                    })
+                };
+                // A matching gap already returned above, before a stored fold can
+                // veto it. A jump the body did not ride can still land on the
+                // other side of a fold. The line coming back makes that gap look
+                // real, and the jumped rider is the one it puts behind.
+                let behind_in_the_fold = raw_was_ignored(raw_behind.race_num)
+                    && body_gap(s, a.race_num, b.race_num).is_some_and(|world| {
+                        beside_on_track(world, along_m.abs(), BODY_CLOSE_M)
+                    });
+                // A matching gap already returned above. What is left is a short
+                // step, or a jump the body did not ride. `confirmed_raw_gap`
+                // still returns that short gap when a jump lands just ahead of
+                // a bike a few metres away. The bodies match only inside one
+                // step here. An earlier fold that left `raw_ignored` set does
+                // not block that lead.
+                let bodies_match_fraction = along_m.abs() <= MAX_STEP_M
+                    && body_gap(s, a.race_num, b.race_num)
+                        .is_some_and(|world| gap_matches_bodies(world, along_m));
+                if (!raw_was_ignored(raw_ahead.race_num) || bodies_match_fraction)
+                    && !behind_in_the_fold
+                    && along_m.abs() > margin
+                    && delta.abs() > margin
+                    && delta.signum() != along_m.signum()
+                {
+                    // The stored coordinate is a full lap off the wrapped fraction only
+                    // when that rider crossed. A start/finish score can look the same
+                    // without the coordinate having moved. On the stripe the bodies are
+                    // only a few metres apart, so that lap does not beat the short way.
+                    let lap_crossed = stored_lap_crossed(tracked, a, b, along_m, s.track_length);
+                    let on_stripe = along_m.abs() <= STRIPE_M
+                        && body_gap(s, a.race_num, b.race_num)
+                            .is_some_and(|world| world <= STRIPE_M);
+                    if !lap_crossed || on_stripe {
+                        let ahead_m = if use_penalty {
+                            along_m + penalty_m(s, a.penalty_ms - b.penalty_ms)
+                        } else {
+                            along_m
+                        };
+                        return ahead_m > margin;
+                    }
+                }
+            }
+        }
+        // The open-lap arc from S2 back to S1 is cut in half. Two bikes a few
+        // metres apart can score a sector apart. Under a pack gap, the raw
+        // fraction wins. A stored coordinate the body did not ride is not that gap.
+        if a.num_laps == 0 && b.num_laps == 0 && !out_of_race(a) && !out_of_race(b) {
+            if let (Some(pos_a), Some(pos_b)) = (
+                rider_lap_pos(s, a.race_num),
+                rider_lap_pos(s, b.race_num),
+            ) {
+                let along_m = same_lap_along_m(pos_a, pos_b, s.track_length);
+                // Same direction as the score still counts. The stored-lane veto
+                // below would cancel a pack gap the body is actually riding.
+                if along_m.abs() < FOLD_ALONG_M && along_m.abs() > margin && delta.abs() > margin
+                {
+                    let ahead_m = if use_penalty {
+                        along_m + penalty_m(s, a.penalty_ms - b.penalty_ms)
+                    } else {
+                        along_m
+                    };
+                    // The raw gap is under a pack length, so it is not the next lane.
+                    return ahead_m > margin;
+                }
+            }
+        }
+        // A higher fraction on an earlier lap is not that lap. Reaching it in the
+        // coordinate is not enough while the higher lap is still ahead the short way
+        // round the ring, or while the travel since the last counted lap does not
+        // cover the laps they are short. Half a lap is the flip, and the slack is a
+        // quarter of this lap, so a short track and a long one agree.
+        if a.num_laps != b.num_laps && !out_of_race(a) && !out_of_race(b) {
+            let (fewer, more) = if b.num_laps < a.num_laps {
+                (b, a)
+            } else {
+                (a, b)
+            };
+            // Bodies on the same stretch, or a close fold, keep the lap count.
+            // A coordinate that ran ahead of the classification does not pass.
+            if classified_lap_holds(s, fewer, more) {
+                return b.num_laps > a.num_laps;
+            }
+            // One classification lap, bodies and the short way both inside the
+            // stripe. The coordinates already have them together, so the place is
+            // those metres. A real lap up is about one track length apart and
+            // still takes the lap.
+            if (a.num_laps - b.num_laps).abs() == 1 {
+                if let Some(along_m) = stripe_along(s, a, b) {
+                    let score_gap = (score_a - score_b).abs();
+                    if score_gap + STRIPE_M < s.track_length {
+                        let ahead_m = if use_penalty {
+                            along_m + penalty_m(s, a.penalty_ms - b.penalty_ms)
+                        } else {
+                            along_m
+                        };
+                        return ahead_m > margin;
+                    }
+                }
+            }
+            let (fewer_score, more_laps, fewer, more) = if b.num_laps < a.num_laps {
+                (score_b, a.num_laps, b, a)
+            } else {
+                (score_a, b.num_laps, a, b)
+            };
+            let reached = fewer_score >= more_laps as f32 * s.track_length
+                && rode_the_laps_short(tracked, fewer, more_laps, s.track_length);
+            let higher_lap_still_ahead = rider_lap_pos(s, fewer.race_num)
+                .zip(rider_lap_pos(s, more.race_num))
+                .is_some_and(|(fewer_frac, more_frac)| {
+                    wrap_signed(more_frac - fewer_frac) * s.track_length > margin
+                });
+            if !reached || higher_lap_still_ahead {
+                return b.num_laps > a.num_laps;
+            }
+        }
         // Clear lead on the tracker. Within the pass margin, fall through so a
         // close wrap (cold-arm with equal travel, side-by-side) can still decide.
         if delta > margin {
-            return true;
+            return !different_lane(s, tracked, a, b);
         }
         if delta < -margin {
             return false;
@@ -741,20 +2268,23 @@ fn score_ahead(
     if a.num_laps != b.num_laps || out_of_race(a) || out_of_race(b) {
         return false;
     }
-    let (Some(pos_a), Some(pos_b)) = (rider_lap_pos(s, a.race_num), rider_lap_pos(s, b.race_num))
+    if let Some(give_place_to_b) = origin_crossing_ahead(s, a, b, margin, use_penalty) {
+        return give_place_to_b;
+    }
+    let (Some(pos_a), Some(pos_b)) = (pack_lap_pos(s, tracked, a), pack_lap_pos(s, tracked, b))
     else {
         return false;
     };
-    let wrap_m = wrap_signed(pos_b - pos_a) * s.track_length;
-    if wrap_m.abs() > PAIR_MAX_M {
+    let along_m = same_lap_along_m(pos_a, pos_b, s.track_length);
+    if along_m.abs() > PAIR_MAX_M {
         return false;
     }
     let ahead_m = if use_penalty {
-        wrap_m + penalty_m(s, a.penalty_ms - b.penalty_ms)
+        along_m + penalty_m(s, a.penalty_ms - b.penalty_ms)
     } else {
-        wrap_m
+        along_m
     };
-    ahead_m > margin
+    ahead_m > margin && !different_lane(s, tracked, a, b)
 }
 
 /// A crashed bike with no live `track_pos` can still be passed when we held a fraction
@@ -764,6 +2294,65 @@ fn rider_can_move(s: &Snapshot, tracked: &[RiderProgress], st: &Standing) -> boo
         return false;
     }
     rider_lap_pos(s, st.race_num).is_some() || track_score(s, tracked, st).is_some()
+}
+
+static LAP0_PENDING_LIVE: Mutex<Vec<i32>> = Mutex::new(Vec::new());
+static LAP0_PENDING_TRACK: Mutex<Vec<i32>> = Mutex::new(Vec::new());
+
+fn opening_lap(s: &Snapshot, n: usize) -> bool {
+    n > 0 && s.standings[..n].iter().all(|row| row.num_laps <= 0)
+}
+
+fn place_shift(prev: &[i32], next: &[i32]) -> i32 {
+    let mut worst = 0i32;
+    for (index, race_num) in next.iter().enumerate() {
+        if let Some(old) = prev.iter().position(|num| num == race_num) {
+            worst = worst.max((index as i32 - old as i32).abs());
+        }
+    }
+    worst
+}
+
+/// On the opening lap a jump of more than one spot waits until the next sample
+/// still wants that order. One projection flip does not move the dash. A pass
+/// that is still there on the next tick does.
+fn hold_opening_lap(prev: &[i32], candidate: &[i32], pending: &mut Vec<i32>) -> Vec<i32> {
+    if prev.is_empty() || place_shift(prev, candidate) <= 1 {
+        pending.clear();
+        return candidate.to_vec();
+    }
+    if pending.as_slice() == candidate {
+        pending.clear();
+        return candidate.to_vec();
+    }
+    *pending = candidate.to_vec();
+    prev.to_vec()
+}
+
+fn order_from_nums(s: &Snapshot, n: usize, nums: &[i32], fallback: &[usize]) -> Vec<usize> {
+    if nums.len() != n {
+        return fallback.to_vec();
+    }
+    let mut order = Vec::with_capacity(n);
+    for race_num in nums {
+        match s.standings[..n]
+            .iter()
+            .position(|row| row.race_num == *race_num)
+        {
+            Some(index) => order.push(index),
+            None => return fallback.to_vec(),
+        }
+    }
+    order
+}
+
+fn clear_opening_lap_pending() {
+    if let Ok(mut pending) = LAP0_PENDING_LIVE.lock() {
+        pending.clear();
+    }
+    if let Ok(mut pending) = LAP0_PENDING_TRACK.lock() {
+        pending.clear();
+    }
 }
 
 /// Bubble movable slots in `order` by [`score_ahead`]. `use_penalty` selects live vs
@@ -795,10 +2384,45 @@ fn bubble_live_slots(
     }
 }
 
-/// Indices into `s.standings[..n]`, P1 first. Running riders are ordered by
+/// Game classification place, with unranked rows after the scored field.
+fn game_place_key(st: &Standing, index: usize) -> i32 {
+    if st.position > 0 {
+        st.position
+    } else {
+        index as i32 + MAX_STANDINGS as i32
+    }
+}
+
+/// Practice and warmup: fastest valid lap first. Riders with no time stay in the game's
+/// order behind everyone who has one.
+fn order_by_best_lap(s: &Snapshot, order: &mut [usize]) {
+    order.sort_by(|&left_index, &right_index| {
+        let left = &s.standings[left_index];
+        let right = &s.standings[right_index];
+        let left_timed = left.best_lap_ms > 0;
+        let right_timed = right.best_lap_ms > 0;
+        match (left_timed, right_timed) {
+            (true, true) => left
+                .best_lap_ms
+                .cmp(&right.best_lap_ms)
+                .then_with(|| {
+                    game_place_key(left, left_index).cmp(&game_place_key(right, right_index))
+                })
+                .then(left_index.cmp(&right_index)),
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            (false, false) => game_place_key(left, left_index)
+                .cmp(&game_place_key(right, right_index))
+                .then(left_index.cmp(&right_index)),
+        }
+    });
+}
+
+/// Indices into `s.standings[..n]`, P1 first. In a race, running riders are ordered by
 /// [`rider_score`] (track progress minus their own penalty), bubbled so one tick can move
 /// a rider through the whole pack. Riders we cannot place stay in their scored slot.
 /// Also publishes [`TRACK_ORDER`] (same bubble without penalties) while live order is on.
+/// Practice and warmup sort by best lap instead, and do not bubble.
 fn live_order(s: &Snapshot, clock: &SessionClock, n: usize) -> Vec<usize> {
     note_progress(s, clock, n);
     let (in_slots, awaiting_line) = PROGRESS
@@ -813,14 +2437,11 @@ fn live_order(s: &Snapshot, clock: &SessionClock, n: usize) -> Vec<usize> {
     let holding = in_slots || awaiting_line || start_gate_up(s);
     HOLDING_GATE.store(holding, Ordering::Relaxed);
     let mut order: Vec<usize> = (0..n).collect();
-    order.sort_by_key(|&i| {
-        let p = s.standings[i].position;
-        if p > 0 {
-            p
-        } else {
-            i as i32 + MAX_STANDINGS as i32
-        }
-    });
+    if matches!(clock.mode, ClockMode::Practice) {
+        order_by_best_lap(s, &mut order);
+    } else {
+        order.sort_by_key(|&i| game_place_key(&s.standings[i], i));
+    }
     if n > 1 && live_order_active(s, clock) && !holding {
         let prev_live = LIVE_ORDER.lock().map(|g| g.clone()).unwrap_or_default();
         let prev_track = TRACK_ORDER.lock().map(|g| g.clone()).unwrap_or_default();
@@ -828,6 +2449,22 @@ fn live_order(s: &Snapshot, clock: &SessionClock, n: usize) -> Vec<usize> {
         let mut track = order.clone();
         bubble_live_slots(s, &mut order, &prev_live, &tracked, true);
         bubble_live_slots(s, &mut track, &prev_track, &tracked, false);
+        if opening_lap(s, n) {
+            let live_nums: Vec<i32> = order.iter().map(|&i| s.standings[i].race_num).collect();
+            let track_nums: Vec<i32> = track.iter().map(|&i| s.standings[i].race_num).collect();
+            let held_live = match LAP0_PENDING_LIVE.lock() {
+                Ok(mut pending) => hold_opening_lap(&prev_live, &live_nums, &mut pending),
+                Err(_) => live_nums,
+            };
+            let held_track = match LAP0_PENDING_TRACK.lock() {
+                Ok(mut pending) => hold_opening_lap(&prev_track, &track_nums, &mut pending),
+                Err(_) => track_nums,
+            };
+            order = order_from_nums(s, n, &held_live, &order);
+            track = order_from_nums(s, n, &held_track, &track);
+        } else {
+            clear_opening_lap_pending();
+        }
         if let Ok(mut g) = TRACK_ORDER.lock() {
             g.clear();
             g.extend(track.iter().map(|&i| s.standings[i].race_num));
@@ -839,6 +2476,7 @@ fn live_order(s: &Snapshot, clock: &SessionClock, n: usize) -> Vec<usize> {
         // The gate order is not a race place. Publishing it made the next tick
         // "correct" qualifying positions instead of starting from location.
         // The same hold covers the slots, the game's gate state, and the run to the holeshot line.
+        clear_opening_lap_pending();
         if let Ok(mut g) = LIVE_ORDER.lock() {
             g.clear();
         }
@@ -867,6 +2505,11 @@ pub fn live_position(race_num: i32) -> i32 {
         .ok()
         .map(|g| place_in_order(&g, race_num))
         .unwrap_or(0)
+}
+
+/// Published live order, P1 first, as race numbers. Empty on the gate and until the holeshot.
+pub fn live_order_nums() -> Vec<i32> {
+    LIVE_ORDER.lock().map(|g| g.clone()).unwrap_or_default()
 }
 
 /// On-track place (penalties ignored), `0` when live order is off or unknown.
@@ -973,6 +2616,11 @@ fn build_field(s: &Snapshot, clock: &SessionClock) -> RaceField {
         .iter()
         .find(|r| r.race_num == focus_num)
         .copied();
+    let practice = matches!(clock.mode, ClockMode::Practice);
+    let leader_best_ms = order.iter().find_map(|&si| {
+        let ms = s.standings[si].best_lap_ms;
+        (ms > 0).then_some(ms)
+    });
 
     for (i, &si) in order.iter().enumerate() {
         let mut st = s.standings[si];
@@ -987,22 +2635,51 @@ fn build_field(s: &Snapshot, clock: &SessionClock) -> RaceField {
         if is_leader {
             leader = Some(i);
         }
-        // Gaps are still the game's, so a fresh pass can leave the pair's gap to the
+        // Race gaps stay the game's, so a fresh pass can leave the pair's gap to the
         // leader the wrong way round for a moment: interval is a size, never negative.
-        let (interval_ms, interval_laps) = if i == 0 {
-            (0, 0)
-        } else {
-            let ahead = &s.standings[order[i - 1]];
-            let lap_delta = st.gap_laps - ahead.gap_laps;
-            if lap_delta != 0 {
-                (0, lap_delta.abs())
+        // Practice and warmup gaps are best-lap deltas, matching the lap-time order.
+        let (interval_ms, interval_laps, gap_to_focus_ms, gap_to_focus_laps) = if practice {
+            if let Some(leader_best) = leader_best_ms.filter(|_| st.best_lap_ms > 0) {
+                st.gap_ms = st.best_lap_ms - leader_best;
+                st.gap_laps = 0;
             } else {
-                ((st.gap_ms - ahead.gap_ms).abs(), 0)
+                st.gap_ms = 0;
+                st.gap_laps = 0;
             }
-        };
-        let (gap_to_focus_ms, gap_to_focus_laps) = match focus_st {
-            Some(f) => (st.gap_ms - f.gap_ms, st.gap_laps - f.gap_laps),
-            None => (0, 0),
+            let interval = if i == 0 {
+                (0, 0)
+            } else {
+                let ahead_ms = s.standings[order[i - 1]].best_lap_ms;
+                if st.best_lap_ms > 0 && ahead_ms > 0 {
+                    ((st.best_lap_ms - ahead_ms).abs(), 0)
+                } else {
+                    (0, 0)
+                }
+            };
+            let to_focus = match focus_st {
+                Some(f) if st.best_lap_ms > 0 && f.best_lap_ms > 0 => {
+                    (st.best_lap_ms - f.best_lap_ms, 0)
+                }
+                _ => (0, 0),
+            };
+            (interval.0, interval.1, to_focus.0, to_focus.1)
+        } else {
+            let interval = if i == 0 {
+                (0, 0)
+            } else {
+                let ahead = &s.standings[order[i - 1]];
+                let lap_delta = st.gap_laps - ahead.gap_laps;
+                if lap_delta != 0 {
+                    (0, lap_delta.abs())
+                } else {
+                    ((st.gap_ms - ahead.gap_ms).abs(), 0)
+                }
+            };
+            let to_focus = match focus_st {
+                Some(f) => (st.gap_ms - f.gap_ms, st.gap_laps - f.gap_laps),
+                None => (0, 0),
+            };
+            (interval.0, interval.1, to_focus.0, to_focus.1)
         };
         rows.push(RaceRow {
             standing: st,
@@ -1345,6 +3022,10 @@ pub(crate) static SAW_SESSION_TIME: AtomicI32 = AtomicI32::new(0);
 pub(crate) static SESSION_EXPIRED: AtomicI32 = AtomicI32::new(0);
 pub(crate) static OVERTIME_BASE_LAP: AtomicI32 = AtomicI32::new(-1);
 pub(crate) static OVERTIME_LOCAL_BASE: AtomicI32 = AtomicI32::new(-1);
+/// `1` when the frozen base should swallow the leader's next single lap. They were
+/// already within [`EXPIRY_LINE_M`] of the line when the clock died, so that crossing
+/// finishes the lap in progress and does not start extras.
+pub(crate) static OVERTIME_LINE_ARM: AtomicI32 = AtomicI32::new(0);
 pub(crate) static CACHED_SESSION_LAPS: AtomicI32 = AtomicI32::new(0);
 pub(crate) static CHECKERED_LATCH: AtomicI32 = AtomicI32::new(0);
 /// The lap the white flag was waved on, and when it went up, in `anim_now` ms. The wave
@@ -1415,6 +3096,13 @@ static LAST_LEAD_FRAC: AtomicI32 = AtomicI32::new(-1);
 /// climb back out of a republished start board is not read as the race clock expiring.
 /// `-1` when the clock is running normally.
 static DIP_FROM_CLOCK: AtomicI32 = AtomicI32::new(-1);
+/// A second long drop inside one dip. The dash stays on the pre-dip clock until
+/// the raw time comes back, instead of walking down the stair.
+static CLOCK_STAIR: AtomicBool = AtomicBool::new(false);
+/// Remain captured when the game republished the 8–15 s start board. 0 when the clock is live.
+static BOARD_HOLD_REMAIN: AtomicI32 = AtomicI32::new(0);
+/// `anim_now` in milliseconds when that remain was captured.
+static BOARD_HOLD_AT_MS: AtomicI32 = AtomicI32::new(0);
 
 #[cfg(test)]
 pub(crate) fn session_test_lock() -> std::sync::MutexGuard<'static, ()> {
@@ -1535,11 +3223,15 @@ pub(crate) fn lap_diff_ms(race_num: i32) -> Option<i32> {
 pub(crate) fn reset_session_clock_track() {
     LAST_SESSION_CLOCK.store(0, Ordering::Relaxed);
     DIP_FROM_CLOCK.store(-1, Ordering::Relaxed);
+    CLOCK_STAIR.store(false, Ordering::Relaxed);
+    BOARD_HOLD_REMAIN.store(0, Ordering::Relaxed);
+    BOARD_HOLD_AT_MS.store(0, Ordering::Relaxed);
     SESSION_CLOCK_MODE.store(0, Ordering::Relaxed);
     SAW_SESSION_TIME.store(0, Ordering::Relaxed);
     SESSION_EXPIRED.store(0, Ordering::Relaxed);
     OVERTIME_BASE_LAP.store(-1, Ordering::Relaxed);
     OVERTIME_LOCAL_BASE.store(-1, Ordering::Relaxed);
+    OVERTIME_LINE_ARM.store(0, Ordering::Relaxed);
     CACHED_SESSION_LAPS.store(0, Ordering::Relaxed);
     CHECKERED_LATCH.store(0, Ordering::Relaxed);
     WHITE_WAVE_LAP.store(-1, Ordering::Relaxed);
@@ -1575,6 +3267,7 @@ pub(crate) fn reset_session_clock_track() {
     if let Ok(mut g) = TRACK_ORDER.lock() {
         g.clear();
     }
+    clear_opening_lap_pending();
     if let Ok(mut g) = PROGRESS.lock() {
         g.clear();
     }
@@ -1588,6 +3281,22 @@ pub(crate) fn reset_session_clock_track() {
             *g = RaceStore::default();
         }
     }
+}
+
+/// Keep the captured remain moving while the game holds the 8–15 s board.
+/// Elapsed time is wall time from the first junk sample, so a one-frame board
+/// still shows the last second and a longer stop does not freeze then skip.
+fn held_board_remain(anchor: i32) -> i32 {
+    let now_ms = (anim_now() * 1000.0) as i32;
+    let captured = BOARD_HOLD_REMAIN.load(Ordering::Relaxed);
+    let (remain, at_ms) = if captured > 0 {
+        (captured, BOARD_HOLD_AT_MS.load(Ordering::Relaxed))
+    } else {
+        BOARD_HOLD_REMAIN.store(anchor, Ordering::Relaxed);
+        BOARD_HOLD_AT_MS.store(now_ms, Ordering::Relaxed);
+        (anchor, now_ms)
+    };
+    (remain - now_ms.saturating_sub(at_ms)).max(0)
 }
 
 fn note_timed_extras_hint(s: &Snapshot) {
@@ -1803,9 +3512,49 @@ pub fn is_practice_session(s: &Snapshot) -> bool {
     matches!(session_preset(s, false), Some(SessionPreset::Practice))
 }
 
+/// Lap count or race minutes once a race moto has published a length.
+/// Practice, warmup, and spectate stay empty.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RaceDistance {
+    Laps(i32),
+    Minutes(i32),
+}
+
+pub fn published_race_distance(s: &Snapshot) -> Option<RaceDistance> {
+    if session_preset(s, false) != Some(SessionPreset::Race) {
+        return None;
+    }
+    if is_lap_race(s) {
+        let laps = s.session_laps;
+        return (laps >= 2).then_some(RaceDistance::Laps(laps));
+    }
+    let total = session_len_ms(s.session_length);
+    let minutes = session_len_minutes(total);
+    if minutes >= 1 && standard_race_minutes(total) {
+        Some(RaceDistance::Minutes(minutes))
+    } else {
+        None
+    }
+}
+
 /// Short warmup (not Practice). Motos stores those laps on the race visit.
 pub(crate) fn skip_warmup_laps(s: &Snapshot) -> bool {
     is_warmup(s) && !is_practice_session(s)
+}
+
+/// A 4–29 minute length the standard set skips (7:00+2). Timed when the live
+/// clock is sitting on that length. A later dump to 16:20 is not this clock.
+fn published_length_countdown(s: &Snapshot) -> bool {
+    if !extra_laps_field(s.session_laps) {
+        return false;
+    }
+    let total = session_len_ms(s.session_length);
+    let minutes = session_len_minutes(total);
+    if !(4..=29).contains(&minutes) || standard_race_minutes(total) {
+        return false;
+    }
+    let clock = s.session_time_ms.max(0);
+    (clock - total).abs() < 30_000
 }
 
 pub(crate) fn is_lap_race(s: &Snapshot) -> bool {
@@ -1818,6 +3567,14 @@ pub(crate) fn is_lap_race(s: &Snapshot) -> bool {
         return false;
     }
     note_timed_extras_hint(s);
+    // 7:00+2 publishes a 4 s board before the length. That latches a lap moto.
+    // A clock on the published length is the race, and the hint keeps the
+    // countdown after it leaves that band.
+    if published_length_countdown(s) {
+        LAP_MOTO_GATE.store(0, Ordering::Relaxed);
+        TIMED_EXTRAS_HINT.store(1, Ordering::Relaxed);
+        return false;
+    }
     // A 2–4-lap moto that already ran its gate stays a lap race even if extras-hint
     // later sees a glitched 5–60 min clock.
     if LAP_MOTO_GATE.load(Ordering::Relaxed) == 1 {
@@ -1856,7 +3613,14 @@ pub(crate) fn lap_race_text(s: &Snapshot) -> String {
     if i_finished(s) {
         return format!("{} / {}", laps_done(s).min(n), n);
     }
-    format!("{} / {}", race_lap(s).min(n), n)
+    // A 2-lap moto counts crossings: the opening lap is 0/2, and the finish
+    // line starts 1/2. Longer motos still show the lap you are on.
+    let shown = if s.session_laps == 2 {
+        laps_done(s).clamp(0, n)
+    } else {
+        race_lap(s).min(n)
+    };
+    format!("{} / {}", shown, n)
 }
 
 pub(crate) fn leader_num_laps(s: &Snapshot) -> i32 {
@@ -1871,10 +3635,32 @@ pub(crate) fn leader_num_laps(s: &Snapshot) -> i32 {
         .max(0)
 }
 
+/// Metres still to the line for the race leader. `None` when the line or the
+/// leader's position is unknown.
+fn leader_metres_to_line(s: &Snapshot) -> Option<f32> {
+    if !line_known(s) || s.track_length <= 10.0 {
+        return None;
+    }
+    let race_num = leader_race_num(s)?;
+    let pos = rider_lap_pos(s, race_num)?;
+    Some(forward_frac(pos, start_finish_fraction(s)) * s.track_length)
+}
+
 pub(crate) fn overtime_base(s: &Snapshot) -> i32 {
     let mut base = OVERTIME_BASE_LAP.load(Ordering::Relaxed);
     let local = focus_num_laps(s);
     let lead = leader_num_laps(s);
+    // A near-line expiry crossing finishes the lap already under way. Swallow that
+    // single step before it can count as extras. A jump of more than one is not it.
+    if OVERTIME_LINE_ARM.load(Ordering::Relaxed) == 1 && base > 0 {
+        if lead == base + 1 {
+            OVERTIME_BASE_LAP.store(lead, Ordering::Relaxed);
+            OVERTIME_LINE_ARM.store(0, Ordering::Relaxed);
+            base = lead;
+        } else if lead > base + 1 {
+            OVERTIME_LINE_ARM.store(0, Ordering::Relaxed);
+        }
+    }
     let local0 = OVERTIME_LOCAL_BASE.load(Ordering::Relaxed);
     // extras_started without recursing: leader past the frozen expiry base.
     let started = overtime_active(s) && base > 0 && lead > base;
@@ -1887,6 +3673,8 @@ pub(crate) fn overtime_base(s: &Snapshot) -> i32 {
         if lead > 0 {
             OVERTIME_BASE_LAP.store(lead, Ordering::Relaxed);
             base = lead;
+            let near_line = leader_metres_to_line(s).is_some_and(|metres| metres <= EXPIRY_LINE_M);
+            OVERTIME_LINE_ARM.store(i32::from(near_line), Ordering::Relaxed);
         } else if base < 0 {
             return -1;
         }
@@ -2182,16 +3970,30 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
     } else {
         raw
     };
-    // Game republishes the 8s/10s board during a live race; keep the real remaining clock.
-    if armed && last > 60_000 && clock >= 8_000 && clock <= 15_000 && clock + 20_000 < last {
-        clock = last;
+    // Game republishes the 8s/10s board during a live race. Keep counting the
+    // captured remain by wall time until the real clock comes back.
+    let board_anchor = {
+        let held = BOARD_HOLD_REMAIN.load(Ordering::Relaxed);
+        if held > 60_000 { held } else { last }
+    };
+    if armed
+        && !in_gate_now
+        && clock >= 8_000
+        && clock <= 15_000
+        && clock + 20_000 < board_anchor
+        && board_anchor > 60_000
+    {
+        clock = held_board_remain(board_anchor);
+    } else {
+        BOARD_HOLD_REMAIN.store(0, Ordering::Relaxed);
     }
     // A start board can land anywhere, not just the 8–15s window: 04:43 → 00:05 → 04:42
     // has been seen mid-moto. Remember where such a dip started, because the way back up
     // out of it is the frame that otherwise reads as the clock having run out.
-    let dip_from = DIP_FROM_CLOCK.load(Ordering::Relaxed);
+    let mut dip_from = DIP_FROM_CLOCK.load(Ordering::Relaxed);
     if dip_from < 0 && armed && !in_gate_now && last > 0 && clock > 0 && last - clock > 30_000 {
         DIP_FROM_CLOCK.store(last, Ordering::Relaxed);
+        dip_from = last;
     }
     // Still down in the dip, and back out of it: back within half a minute of where the dip
     // began means the board was never the clock and no time ran out. A clock that really
@@ -2202,8 +4004,21 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
     if resumed || (!dipping && last > 0 && clock < last && last - clock <= 5_000) {
         DIP_FROM_CLOCK.store(-1, Ordering::Relaxed);
     }
-    // The dip itself still reaches the dash: in one frame it is not tellable from a clock
-    // that genuinely ran down that far. Only the climb back out gives it away.
+    // One drop of more than 30 s can be a real countdown between two samples, so
+    // that sample still shows. A further drop inside the same dip is the green-flag
+    // stair: keep the pre-dip clock, and show the raw time again once it is back
+    // within 30 s. That return is not the clock running out.
+    let another_step =
+        dipping && last > 0 && last != dip_from && last > clock && last - clock > 15_000;
+    if another_step {
+        CLOCK_STAIR.store(true, Ordering::Relaxed);
+    }
+    if !dipping {
+        CLOCK_STAIR.store(false, Ordering::Relaxed);
+    }
+    if dipping && CLOCK_STAIR.load(Ordering::Relaxed) {
+        clock = dip_from;
+    }
     let near_full = near_session_total(clock, total);
     let last_near_full = last > 0 && near_session_total(last, total);
     let started = moving(s) || s.current_lap > 1;
@@ -2285,7 +4100,14 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
     let drop_off_gate = in_gate && last >= 8_000 && clock < 500;
     let leave_gate = in_gate && !gate_clock && !near_full && clock > 180_000;
     let wait_off_gate = in_gate && !gate_clock && near_full;
-    let board_restart = in_gate && !post && last > 0 && clock > last + 2_000 && clock <= 180_000;
+    // A timed race has already left the only short board. A 30 s stair above 3 minutes
+    // is still that board, not the race clock. A lap moto never reaches this branch.
+    let timed_hold = s.session_laps > 0 && clock > 180_000;
+    let board_restart = in_gate
+        && !post
+        && last > 0
+        && clock > last + 2_000
+        && (clock <= 180_000 || timed_hold);
     // Timed: first gate board only. After it runs down or jumps up (45s/30s),
     // show race length — do not re-enter a short countdown.
     let gate = gate_clock && !drop_off_gate && !armed && !board_restart;
@@ -2295,7 +4117,10 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
         && clock < last
         && last - clock >= 50
         && last - clock < 5_000;
-    let waiting_for_race = (post || board_restart) && !armed && !race_ticking && clock <= 180_000;
+    let waiting_for_race = (post || board_restart)
+        && !armed
+        && !race_ticking
+        && (clock <= 180_000 || timed_hold);
 
     if drop_off_gate {
         IN_GATE.store(0, Ordering::Relaxed);
@@ -2316,6 +4141,7 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
         SAW_SESSION_TIME.store(0, Ordering::Relaxed);
         OVERTIME_BASE_LAP.store(-1, Ordering::Relaxed);
         OVERTIME_LOCAL_BASE.store(-1, Ordering::Relaxed);
+        OVERTIME_LINE_ARM.store(0, Ordering::Relaxed);
         CHECKERED_LATCH.store(0, Ordering::Relaxed);
         let shown = wait_display_ms(total, clock);
         LAST_SESSION_CLOCK.store(shown.max(total), Ordering::Relaxed);
@@ -2345,6 +4171,7 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
         SAW_SESSION_TIME.store(0, Ordering::Relaxed);
         OVERTIME_BASE_LAP.store(-1, Ordering::Relaxed);
         OVERTIME_LOCAL_BASE.store(-1, Ordering::Relaxed);
+        OVERTIME_LINE_ARM.store(0, Ordering::Relaxed);
         CHECKERED_LATCH.store(0, Ordering::Relaxed);
         RACE_ARMED.store(0, Ordering::Relaxed);
     } else if race_ticking {
@@ -2377,6 +4204,7 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
         SESSION_EXPIRED.store(0, Ordering::Relaxed);
         OVERTIME_BASE_LAP.store(-1, Ordering::Relaxed);
         OVERTIME_LOCAL_BASE.store(-1, Ordering::Relaxed);
+        OVERTIME_LINE_ARM.store(0, Ordering::Relaxed);
         CHECKERED_LATCH.store(0, Ordering::Relaxed);
     } else if !gate && last > 0 && clock + 400 < last {
         SESSION_CLOCK_MODE.store(1, Ordering::Relaxed);
@@ -2427,6 +4255,7 @@ pub(crate) fn session_remain_ms(s: &Snapshot) -> Option<i32> {
             SESSION_EXPIRED.store(0, Ordering::Relaxed);
             OVERTIME_BASE_LAP.store(-1, Ordering::Relaxed);
             OVERTIME_LOCAL_BASE.store(-1, Ordering::Relaxed);
+            OVERTIME_LINE_ARM.store(0, Ordering::Relaxed);
             CHECKERED_LATCH.store(0, Ordering::Relaxed);
             return Some(remain);
         }
@@ -2834,12 +4663,14 @@ fn format_session_banner(s: &Snapshot, remain: Option<i32>) -> (char, String) {
         }
         OVERTIME_BASE_LAP.store(-1, Ordering::Relaxed);
         OVERTIME_LOCAL_BASE.store(-1, Ordering::Relaxed);
+        OVERTIME_LINE_ARM.store(0, Ordering::Relaxed);
         return ('\u{f11e}', lap_race_text(s));
     }
     if let Some(remain) = remain {
         if remain > 1000 && SESSION_EXPIRED.load(Ordering::Relaxed) == 0 {
             OVERTIME_BASE_LAP.store(-1, Ordering::Relaxed);
             OVERTIME_LOCAL_BASE.store(-1, Ordering::Relaxed);
+            OVERTIME_LINE_ARM.store(0, Ordering::Relaxed);
         }
         if overtime_active(s) {
             return ('\u{f11e}', overtime_lap_text(s));
@@ -2860,16 +4691,19 @@ fn format_session_banner(s: &Snapshot, remain: Option<i32>) -> (char, String) {
         // Only show extras text when the timed clock has actually expired.
         OVERTIME_BASE_LAP.store(-1, Ordering::Relaxed);
         OVERTIME_LOCAL_BASE.store(-1, Ordering::Relaxed);
+        OVERTIME_LINE_ARM.store(0, Ordering::Relaxed);
         ('\u{f11e}', overtime_lap_text(s))
     } else if s.session_laps > 0 {
         OVERTIME_BASE_LAP.store(-1, Ordering::Relaxed);
         OVERTIME_LOCAL_BASE.store(-1, Ordering::Relaxed);
+        OVERTIME_LINE_ARM.store(0, Ordering::Relaxed);
         ('\u{f11e}', format!("{} / {}", race_lap(s), s.session_laps))
     } else if SESSION_EXPIRED.load(Ordering::Relaxed) == 1 {
         ('\u{f2f2}', String::new())
     } else {
         OVERTIME_BASE_LAP.store(-1, Ordering::Relaxed);
         OVERTIME_LOCAL_BASE.store(-1, Ordering::Relaxed);
+        OVERTIME_LINE_ARM.store(0, Ordering::Relaxed);
         ('\u{f2f2}', format_session_clock(s.session_time_ms))
     }
 }
@@ -2899,8 +4733,11 @@ pub struct ClockSample {
     pub locked_len: i32,
     pub ot_local: i32,
     pub ot_lead: i32,
-    /// 0 none, 1 white, 2 checkered.
+    /// Count-only white/checkered: 0 none, 1 white, 2 checkered. Stays white for
+    /// the whole last lap. The dash wave is `shown`.
     pub flag: i32,
+    /// Flag the plaque draws: 0 none, 1 white, 2 checkered, 3 yellow, 4 blue, 5 red.
+    pub shown: i32,
     pub laps_left: i32,
 }
 
@@ -2938,6 +4775,7 @@ pub fn clock_sample(s: &Snapshot) -> ClockSample {
         ot_local: OVERTIME_LOCAL_BASE.load(Ordering::Relaxed),
         ot_lead: OVERTIME_BASE_LAP.load(Ordering::Relaxed),
         flag,
+        shown: store.race_flag,
         laps_left: laps_left(s).unwrap_or(-1),
     }
 }

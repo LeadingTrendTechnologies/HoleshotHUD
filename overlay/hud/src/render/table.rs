@@ -551,6 +551,7 @@ pub(crate) struct TableBoard<'a, C: BoardCol> {
     ink: Color,
     ink_dim: Color,
     out_c: Color,
+    glass: bool,
     foot: &'a [BoardField; 3],
 }
 
@@ -566,6 +567,7 @@ pub(crate) struct TableRow<'a, C: BoardCol> {
     pub(crate) ink: Color,
     pub(crate) ink_dim: Color,
     pub(crate) out_c: Color,
+    glass: bool,
 }
 
 pub(crate) fn plaque_cap_a(a: u8) -> u8 {
@@ -612,6 +614,7 @@ pub(crate) fn draw_table_board<C: BoardCol>(
     );
     let w = hug_board_w(x, pad, max_w, &slots);
     let a = background_alpha(look.bg);
+    let glass = look.bg < 40;
     if a > 0 {
         fill_round(px, x, y, w, h, 6.0, Color::from_rgba8(8, 8, 10, a));
         fill_round(
@@ -627,9 +630,9 @@ pub(crate) fn draw_table_board<C: BoardCol>(
             fill_rect(px, rrt, Color::from_rgba8(4, 4, 6, plaque_cap_a(a)));
         }
     }
-    draw_board_bar(px, fonts, s, cfg, look.head, x, y, w, head_h);
+    draw_board_bar(px, fonts, s, cfg, look.head, x, y, w, head_h, glass);
     if let Some(msg) = empty {
-        text(
+        text_halo(
             px,
             fonts,
             msg,
@@ -638,8 +641,9 @@ pub(crate) fn draw_table_board<C: BoardCol>(
             y + head_h + 10.0,
             text_dim(),
             false,
+            glass,
         );
-        paint_table_footer(px, fonts, s, cfg, look.foot, x, y, w, h, foot_h, a);
+        paint_table_footer(px, fonts, s, cfg, look.foot, x, y, w, h, foot_h, a, glass);
         return;
     }
 
@@ -690,6 +694,7 @@ pub(crate) fn draw_table_board<C: BoardCol>(
             hdr_y,
             hdr_c,
             right,
+            glass,
         );
     }
     cy += col_h;
@@ -708,13 +713,14 @@ pub(crate) fn draw_table_board<C: BoardCol>(
         body_y: cy,
         foot_h,
         a,
-        you_bg: you_row_bg(look.hl),
+        you_bg: you_row_bg(look.hl, look.bg),
         stripe_c: stripe_row_bg(a),
         stripe: look.stripe,
         bar_end,
         ink,
         ink_dim,
         out_c,
+        glass,
         foot: look.foot,
     };
     body(&mut board);
@@ -730,6 +736,7 @@ pub(crate) fn draw_table_board<C: BoardCol>(
         board.h,
         board.foot_h,
         board.a,
+        board.glass,
     );
 }
 
@@ -745,6 +752,7 @@ pub(crate) fn paint_table_footer(
     h: f32,
     foot_h: f32,
     a: u8,
+    glass: bool,
 ) {
     if foot_h <= 0.0 {
         return;
@@ -754,7 +762,7 @@ pub(crate) fn paint_table_footer(
             fill_rect(px, rrt, Color::from_rgba8(4, 4, 6, plaque_cap_a(a)));
         }
     }
-    draw_board_bar(px, fonts, s, cfg, foot, x, y + h - foot_h, w, foot_h);
+    draw_board_bar(px, fonts, s, cfg, foot, x, y + h - foot_h, w, foot_h, glass);
 }
 
 impl<C: BoardCol> TableBoard<'_, C> {
@@ -776,6 +784,7 @@ impl<C: BoardCol> TableBoard<'_, C> {
         let ink = self.ink;
         let ink_dim = self.ink_dim;
         let out_c = self.out_c;
+        let glass = self.glass;
         if self.stripe && a > 0 {
             for vis_i in 0..ids.len() {
                 if vis_i % 2 == 1 {
@@ -809,6 +818,7 @@ impl<C: BoardCol> TableBoard<'_, C> {
                     ink,
                     ink_dim,
                     out_c,
+                    glass,
                 },
             );
         }
@@ -917,6 +927,7 @@ pub(crate) fn paint_table_row<C: BoardCol>(
                 color,
                 star,
                 right,
+                row.glass,
             );
         } else {
             col_text(
@@ -929,6 +940,7 @@ pub(crate) fn paint_table_row<C: BoardCol>(
                 row.cy + 4.0,
                 color,
                 right,
+                row.glass,
             );
         }
     }

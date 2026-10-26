@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.24.0
+
+Fuel fill from practice, and a chevron back to the track. Both stay off until Settings → Labs → Experimental features is on.
+
+### Strategy
+
+- Profile → Strategy recommends how much fuel to put in the tank from practice burn and the race length. A pit refill is ignored. The number is what you type in the garage.
+- A full tank shows how many laps and minutes it covers. A timed race also shows about how many laps that is. Fast laps that burn more set the fill. The last three laps, the spread without one slow lap, and your last race on this track are on the same page.
+- Warmup laps are kept apart from practice. The fill waits until that visit has three laps, and a ready warmup replaces the practice fill.
+- The fill leaves an extra lap and a half, or about 15% on a timed race, so the tank is not empty at the flag.
+
+### Guide
+
+- The Guide widget and the dash chevron stay off until Experimental features is on. Turning that on brings back whatever you had saved.
+- The chevron points you back onto the track after you join, crash, or leave the line. Dash and Guide share the same aim.
+
+### Place
+
+- Practice and warmup rank by best lap. A rider further around the track does not take the place.
+- A bike beside you on a folded track, or a position jump the bike did not ride, does not take the place.
+- A 2-lap moto counts crossings: 0/2 on the opening lap, 1/2 after the finish line.
+
+### Clock
+
+- A 10:00 race stays 10:00 when the game later sends 7:00 or 15:00 as milliseconds.
+- White comes down after the 5 second wave. Timed extras wait for the next line when the leader was already close to the finish as the clock died.
+
 ## 0.23.0
 
 Language, groups, and your MyMXB, MXB-Ranked, and CBR pages.

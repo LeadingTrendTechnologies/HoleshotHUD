@@ -342,20 +342,21 @@ pub(crate) fn write_sprites(ui: &Path, accent: [u8; 3]) -> Result<(), String> {
     write_round(&ui.join("tabv2.tga"), 200, 36, charcoal, pip)?;
     write_seg_track(&ui.join("segtrack.tga"), charcoal, hair)?;
     write_round(&ui.join("optionstabtrack.tga"), 900, 36, charcoal, hair)?;
-    write_seg(&ui.join("segl1.tga"), SegCap::Left, None, None)?;
+    // Idle cells are solid charcoal. A clear sprite lets the game draw its
+    // default parallelogram, which reads as a slash between neighbors.
+    write_seg(&ui.join("segl1.tga"), SegCap::Left, Some(charcoal), None)?;
     write_seg(&ui.join("segl2.tga"), SegCap::Left, Some(wash), Some(pip))?;
-    write_seg(&ui.join("segr1.tga"), SegCap::Right, None, None)?;
+    write_seg(&ui.join("segr1.tga"), SegCap::Right, Some(charcoal), None)?;
     write_seg(&ui.join("segr2.tga"), SegCap::Right, Some(wash), Some(pip))?;
-    write_seg(&ui.join("segm1.tga"), SegCap::Mid, None, None)?;
+    write_seg(&ui.join("segm1.tga"), SegCap::Mid, Some(charcoal), None)?;
     write_seg(&ui.join("segm2.tga"), SegCap::Mid, Some(wash), Some(pip))?;
     // Vertical side-tab group (Event Info / Results / Track Info).
-    // Idle clear like horizontal segs — vsegtrack is the continuous rail.
     write_round(&ui.join("vsegtrack.tga"), 110, 220, charcoal, hair)?;
-    write_seg(&ui.join("sevt1.tga"), SegCap::Top, None, None)?;
+    write_seg(&ui.join("sevt1.tga"), SegCap::Top, Some(charcoal), None)?;
     write_seg(&ui.join("sevt2.tga"), SegCap::Top, Some(wash), Some(pip))?;
-    write_seg(&ui.join("sevm1.tga"), SegCap::Mid, None, None)?;
+    write_seg(&ui.join("sevm1.tga"), SegCap::Mid, Some(charcoal), None)?;
     write_seg(&ui.join("sevm2.tga"), SegCap::Mid, Some(wash), Some(pip))?;
-    write_seg(&ui.join("sevb1.tga"), SegCap::Bottom, None, None)?;
+    write_seg(&ui.join("sevb1.tga"), SegCap::Bottom, Some(charcoal), None)?;
     write_seg(&ui.join("sevb2.tga"), SegCap::Bottom, Some(wash), Some(pip))?;
 
     for (name, w, h) in [
@@ -378,7 +379,8 @@ pub(crate) fn write_sprites(ui: &Path, accent: [u8; 3]) -> Result<(), String> {
     write_glass_alpha(&ui.join("setupboard_l.tga"), 620, 670, 12.0, 160)?;
     write_glass_alpha(&ui.join("setupboard_r.tga"), 940, 670, 12.0, 160)?;
     // Wide short track strip — same glass as boards; radius capped by height.
-    write_glass_alpha(&ui.join("setupbar.tga"), 1580, 56, 12.0, 160)?;
+    // Daylight pit: 160 reads as the stock grey veil. These two sit on the sky.
+    write_glass_alpha(&ui.join("setupbar.tga"), 1580, 56, 12.0, 230)?;
     write_glass_alpha(&ui.join("trackinfoboard.tga"), 940, 700, 12.0, 160)?;
     write_glass_alpha(&ui.join("bikeboard.tga"), 600, 460, 12.0, 160)?;
     write_glass_alpha(&ui.join("biketrackboard.tga"), 320, 70, 12.0, 160)?;
@@ -386,7 +388,7 @@ pub(crate) fn write_sprites(ui: &Path, accent: [u8; 3]) -> Result<(), String> {
     write_glass_alpha(&ui.join("profilesboard.tga"), 1580, 730, 12.0, 160)?;
     write_glass_alpha(&ui.join("profilemodifyboard.tga"), 600, 300, 12.0, 160)?;
     write_glass_alpha(&ui.join("profiledeleteboard.tga"), 600, 200, 12.0, 160)?;
-    write_glass_alpha(&ui.join("raceinfoboard.tga"), 1380, 670, 12.0, 160)?;
+    write_glass_alpha(&ui.join("raceinfoboard.tga"), 1380, 670, 12.0, 230)?;
     write_glass_alpha(&ui.join("testpanelboard.tga"), 400, 200, 12.0, 160)?;
     // Corner caps over live track bitmaps (square TGA → rounded look).
     write_round_mask(&ui.join("trackmapmask.tga"), 650, 650, 28.0, 160)?;
@@ -812,15 +814,12 @@ pub(crate) fn write_seg(
     let w = 110u32;
     let h = 36u32;
     let mut px = Pixmap::new(w, h).ok_or("pixmap")?;
-    let inset = 2.0;
-    let rw = w as f32 - inset * 2.0;
-    let rh = h as f32 - inset * 2.0;
     let r = 6.0;
     if let Some(wash) = wash {
-        fill_seg(&mut px, inset, inset, rw, rh, r, cap, wash);
+        fill_seg(&mut px, 0.0, 0.0, w as f32, h as f32, r, cap, wash);
     }
     if let Some(stroke) = stroke {
-        stroke_seg(&mut px, inset, inset, rw, rh, r, cap, stroke);
+        stroke_seg(&mut px, 0.0, 0.0, w as f32, h as f32, r, cap, stroke);
     }
     write_tga(path, &px)
 }

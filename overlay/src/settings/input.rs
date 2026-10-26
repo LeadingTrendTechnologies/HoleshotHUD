@@ -320,6 +320,7 @@ pub(crate) fn is_slider(hit: Hit) -> bool {
             | Hit::TelemetryBg
             | Hit::PitBg
             | Hit::TimerBg
+            | Hit::GuideBg
             | Hit::StW(_)
             | Hit::RelW(_)
             | Hit::Font(_)
@@ -474,6 +475,7 @@ pub(crate) fn apply_slide(hit: Hit, mx: f32, x: f32, w: f32, min: i32, max: i32)
         Hit::TelemetryBg => c[WidgetId::Telemetry].bg = v,
         Hit::PitBg => c[WidgetId::Pitboard].bg = v,
         Hit::TimerBg => c[WidgetId::Timer].bg = v,
+        Hit::GuideBg => c[WidgetId::Guide].bg = v,
         Hit::StW(i) => {
             if let Some(f) = c.standings.st_order.get(i as usize).copied() {
                 f.set_width(c, v);
@@ -816,6 +818,11 @@ pub(crate) fn hit_label(hit: Hit) -> String {
         Hit::TabProfile => "Profile".into(),
         Hit::TabFeedback => "Feedback".into(),
         Hit::ProfileNavOverview => "Overview".into(),
+        Hit::ProfileNavStrategy => "Strategy".into(),
+        Hit::StrategyLaps => "Lap race".into(),
+        Hit::StrategyMinutes => "Timed race".into(),
+        Hit::StrategyDec => "Shorter race".into(),
+        Hit::StrategyInc => "Longer race".into(),
         Hit::ProfileNavMotos => "Motos".into(),
         Hit::ProfileNavMyMxb => "MyMXB".into(),
         Hit::ProfileNavRanked => "MXB-Ranked".into(),
@@ -867,6 +874,7 @@ pub(crate) fn hit_label(hit: Hit) -> String {
         Hit::TabTelemetry => "Telemetry".into(),
         Hit::TabPitboard => "Pit Board".into(),
         Hit::TabTimer => "Session".into(),
+        Hit::TabGuide => "Guide".into(),
         Hit::PitBrowse => "PNG or JPEG. An empty name uses the file name. A picture with no board.json starts as one slot.".into(),
         Hit::PitExport => "Save this pit board folder, plate.png and board.json".into(),
         Hit::PitImport => "Open a board.json that has plate.png beside it".into(),
@@ -919,7 +927,9 @@ pub(crate) fn hit_label(hit: Hit) -> String {
             &[("preset", mxbo_hud::i18n::t(p.label()))],
         ),
         Hit::PresetCopyAll => "Replace all presets with this layout".into(),
-        Hit::FeatureSector => "Experimental features (Tracks)".into(),
+        Hit::FeatureSector => {
+            "Experimental features (Guide, Strategy, Tracks)".into()
+        }
         Hit::GameUi => "MX Bikes menus".into(),
         Hit::StShow
         | Hit::RelShow
@@ -937,7 +947,8 @@ pub(crate) fn hit_label(hit: Hit) -> String {
         | Hit::GamepadShow
         | Hit::TelemetryShow
         | Hit::PitShow
-        | Hit::TimerShow => "Show on overlay".into(),
+        | Hit::TimerShow
+        | Hit::GuideShow => "Show on overlay".into(),
         Hit::TimerOf => "Out of riders".into(),
         Hit::QuitApp => "Quit overlay".into(),
         Hit::Font(_) => "Font size".into(),
@@ -955,7 +966,8 @@ pub(crate) fn hit_label(hit: Hit) -> String {
         | Hit::GamepadBg
         | Hit::TelemetryBg
         | Hit::PitBg
-        | Hit::TimerBg => "Panel opacity".into(),
+        | Hit::TimerBg
+        | Hit::GuideBg => "Panel opacity".into(),
         Hit::StHl | Hit::RelHl | Hit::TickerHl => "Row highlight".into(),
         Hit::StStripe | Hit::RelStripe => "Alternating rows".into(),
         Hit::StPlaque | Hit::RelPlaque => "Show plaques".into(),
@@ -1041,6 +1053,7 @@ pub(crate) fn hit_label(hit: Hit) -> String {
         Hit::DashRed => "Red flag".into(),
         Hit::DashSimple => "Simple dash".into(),
         Hit::DashShiftColor => "Shift color".into(),
+        Hit::DashGuide => "Track guide".into(),
         Hit::MapSectors => "Sector lines".into(),
         Hit::MapZoom => "Zoom".into(),
         Hit::MapDotOpacity => "Dot opacity".into(),
@@ -1383,6 +1396,7 @@ pub(crate) fn nudge_slider(hit: Hit, delta: i32) {
         Hit::TelemetryBg => c[WidgetId::Telemetry].bg,
         Hit::PitBg => c[WidgetId::Pitboard].bg,
         Hit::TimerBg => c[WidgetId::Timer].bg,
+        Hit::GuideBg => c[WidgetId::Guide].bg,
         Hit::StW(i) => c
             .standings.st_order
             .get(i as usize)
@@ -1432,6 +1446,7 @@ pub(crate) fn nudge_slider(hit: Hit, delta: i32) {
         Hit::TelemetryBg => c[WidgetId::Telemetry].bg = v,
         Hit::PitBg => c[WidgetId::Pitboard].bg = v,
         Hit::TimerBg => c[WidgetId::Timer].bg = v,
+        Hit::GuideBg => c[WidgetId::Guide].bg = v,
         Hit::StW(i) => {
             if let Some(f) = c.standings.st_order.get(i as usize).copied() {
                 f.set_width(c, v);

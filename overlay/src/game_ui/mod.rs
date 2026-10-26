@@ -79,7 +79,7 @@ mod tests {
         apply(&game, DEFAULT_PRIMARY).unwrap();
         let man = fs::read_to_string(ui.join(MANIFEST)).unwrap();
         assert!(man.contains("accent=#FF9430"));
-        assert!(man.contains("pack=5"));
+        assert!(man.contains(&format!("pack={PACK_REV}")));
         assert!(man.contains("main.mnu"));
         assert!(man.contains("english.str"));
         assert!(man.contains("splash.tga"));
@@ -613,22 +613,35 @@ mod tests {
         );
         assert!(join.contains("sprite fieldbox.tga"));
         assert!(ui.join("fieldbox.tga").is_file());
-        assert!(join.contains("name ID_HIDEEMPTY_BG"));
-        assert!(join.contains("name ID_HIDEMISSING_BG"));
-        assert!(join.contains("sprite button1.tga"));
+        assert!(
+            !join.contains("name ID_HIDEEMPTY_BG") && !join.contains("name ID_HIDEMISSING_BG"),
+            "Hide checks sit on the board with no button plaques"
+        );
         let missing = join
             .split("name ID_FILTERMISSINGCONTENTS")
             .nth(1)
             .unwrap()
-            .split("name ID_HIDEEMPTY_BG")
+            .split("name ID_FILTEREMTPY")
             .next()
             .unwrap();
         assert!(
             missing.contains(&format!("color {}", argb(255, TEXT))),
             "Hide Missing label matches Hide Empty ink"
         );
-        assert!(join.contains("rect 0.590000 0.150000 0.722000 0.184000"));
-        assert!(join.contains("rect 0.412000 0.152000 0.575000 0.182000"));
+        assert!(join.contains(&format!(
+            "rect 0.590000 {HEADER_Y0:.6} 0.722000 {HEADER_Y1:.6}"
+        )));
+        assert!(join.contains(&format!(
+            "rect 0.412000 {HEADER_Y0:.6} 0.575000 {HEADER_Y1:.6}"
+        )));
+        assert!(
+            join.contains("rect 0.020000 0.862000 0.145000 0.894000"),
+            "Refresh sits in the board footer"
+        );
+        assert!(
+            join.contains(&format!("rect 0.860000 {CHROME_Y0:.6} 0.970000 {CHROME_Y1:.6}")),
+            "Join is the content-sized skew"
+        );
         assert!(join.contains("align center"));
         assert!(join.contains("name ID_KEEP_EXTRA"));
         assert!(!join.contains("0.066667"));
@@ -919,8 +932,23 @@ mod tests {
                 bar_px[bari + 2],
                 bar_px[bari + 3]
             ],
-            [0, 0, 0, 160],
-            "setupbar uses the same glass alpha as boards"
+            [0, 0, 0, 230],
+            "pit session strip is solid night-ink, not the stock veil"
+        );
+        let race = fs::read(ui.join("raceinfoboard.tga")).unwrap();
+        let race_w = u16::from_le_bytes([race[12], race[13]]) as usize;
+        let race_h = u16::from_le_bytes([race[14], race[15]]) as usize;
+        let race_px = &race[18..];
+        let race_i = ((race_h / 2) * race_w + race_w / 2) * 4;
+        assert_eq!(
+            [
+                race_px[race_i],
+                race_px[race_i + 1],
+                race_px[race_i + 2],
+                race_px[race_i + 3]
+            ],
+            [0, 0, 0, 230],
+            "event sheet is solid night-ink, not the stock veil"
         );
         assert!(setup.contains("sprite1 done1.tga"));
         assert!(setup.contains(&format!(
@@ -1713,7 +1741,8 @@ mod tests {
                 "\titem_button\r\n\t{\r\n\t\tname id_garage\r\n\t\tbutton\r\n\t\t{\r\n\t\t\trect 0.718750 0.966667 0.843750 1.000000\r\n\t\t\tsprite2 b_button2.tga\r\n\t\t\tsprite3 b_button3.tga\r\n\t\t}\r\n",
                 "\t\ttextid garage\r\n\t\ttext\r\n\t\t{\r\n\t\t\tpos 0.000000 0.005556\r\n\t\t\talign center\r\n\t\t}\r\n",
                 "\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 0 0 0\r\n\t\tcolor3 255 0 0 0\r\n\t}\r\n",
-                "\titem_button\r\n\t{\r\n\t\tname ID_PHOTO\r\n\t\tbutton\r\n\t\t{\r\n\t\t\trect 0.243750 0.966667 0.262500 1.000000\r\n\t\t}\r\n\t}\r\n",
+                "\titem_button\r\n\t{\r\n\t\tname ID_PHOTO\r\n\t\tbutton\r\n\t\t{\r\n\t\t\trect 0.243750 0.966667 0.262500 1.000000\r\n\t\t\tsprite1 b_home1.tga\r\n\t\t\tsprite2 b_home2.tga\r\n\t\t\tsprite3 b_home3.tga\r\n\t\t}\r\n",
+                "\t\tcolor1 255 255 255 255\r\n\t\tcolor2 255 0 255 255\r\n\t\tcolor3 0 0 0 0\r\n\t}\r\n",
                 "\titem_tab\r\n\t{\r\n\t\tname id_eventinfo\r\n\t\tgroup 0\r\n",
                 "\t\trect 0.006250 0.200000 0.131250 0.233333\r\n",
                 "\t\tsprite1 tabv1.tga\r\n\t\tsprite2 tabv2.tga\r\n",
@@ -1771,9 +1800,11 @@ mod tests {
             .unwrap();
         assert!(!pit.contains("backcolor 240 170 180 190"));
         assert!(!pit.contains("backcolor 127 0 0 0"));
+        assert!(pit.contains("name ID_WEATHER_BAR\n"));
+        assert!(pit.contains("sprite setupbar.tga"));
         assert!(
-            !pit.contains("sprite setupbar.tga"),
-            "Practice clears weather — no frost bar"
+            !pit.contains("name ID_RACEINFO_BAR\n"),
+            "practice has no race-info strip"
         );
         assert!(pit.contains("name ID_PITGROUP\n"));
         assert!(pit.contains("sprite optionstabtrack.tga"));
@@ -1799,6 +1830,11 @@ mod tests {
         assert!(pit.contains(&format!(
             "rect 0.155000 {SETUP_CHROME_Y0:.6} 0.185000 {SETUP_CHROME_Y1:.6}"
         )));
+        let photo = pit.split("name ID_PHOTO\n").nth(1).unwrap();
+        assert!(photo.contains("sprite1 b_home1.tga"));
+        assert!(photo.contains(&format!("color1 {}", argb(255, TEXT))));
+        assert!(photo.contains(&format!("color2 {}", argb(255, DEFAULT_PRIMARY))));
+        assert!(photo.contains(&format!("color3 {}", argb(255, DEFAULT_PRIMARY))));
         let info = mnu
             .split("name idd_eventinfo\n")
             .nth(1)
@@ -1924,6 +1960,125 @@ mod tests {
     }
 
     #[test]
+    fn splice_test_restyles_photo_and_trainer() {
+        let game = temp_game();
+        let ui = game.join("ui");
+        fs::write(
+            ui.join("test.mnu"),
+            concat!(
+                "dialog\r\n{\r\n\tname idd_trainer\r\n",
+                "\titem_bitmap\r\n\t{\r\n\t\tname ID_BITMAP\r\n\t\trect 0.131250 0.200000 0.993750 0.944444\r\n\t\tsprite dialog1380x670t.tga\r\n\t}\r\n",
+                "\titem_button\r\n\t{\r\n\t\tname ID_SAVE\r\n\t\tbutton\r\n\t\t{\r\n\t\t\trect 0.275000 0.244444 0.408125 0.277778\r\n\t\t\tsprite1 button1.tga\r\n\t\t}\r\n",
+                "\t\ttext\r\n\t\t{\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\talign right\r\n\t\t}\r\n\t}\r\n",
+                "\titem_button\r\n\t{\r\n\t\tname ID_ADD\r\n\t\tbutton\r\n\t\t{\r\n\t\t\trect 0.137500 0.522222 0.262500 0.555556\r\n\t\t}\r\n",
+                "\t\ttext\r\n\t\t{\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\talign right\r\n\t\t}\r\n\t}\r\n",
+                "\titem_button\r\n\t{\r\n\t\tname ID_REMOVE\r\n\t\tbutton\r\n\t\t{\r\n\t\t\trect 0.325000 0.522222 0.450000 0.555556\r\n\t\t}\r\n",
+                "\t\ttext\r\n\t\t{\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\talign right\r\n\t\t}\r\n\t}\r\n",
+                "\titem_list\r\n\t{\r\n\t\tname ID_LIST\r\n\t\tlist\r\n\t\t{\r\n\t\t\tcolor2 255 45 45 180\r\n\t\t\tbackcolor 255 220 220 220\r\n\t\t}\r\n\t}\r\n}\r\n\r\n",
+                "dialog\r\n{\r\n\tname idd_trainer_save\r\n",
+                "\titem_bitmap\r\n\t{\r\n\t\tname ID_BITMAP\r\n\t\tsprite dialog600x600.tga\r\n\t}\r\n",
+                "\titem_darkbox\r\n\t{\r\n\t\tname ID_DARKBOX\r\n\t\trect 0.318750 0.788889 0.681250 0.822222\r\n\t\tcolor 127 0 0 0\r\n\t}\r\n",
+                "\titem_editbox\r\n\t{\r\n\t\tname id_trainername\r\n\t\teditbox\r\n\t\t{\r\n\t\t\tbackcolor 255 220 220 220\r\n\t\t}\r\n\t\trect 0.318750 0.211111 0.681250 0.233333\r\n\t}\r\n",
+                "\titem_button\r\n\t{\r\n\t\tname id_ok\r\n\t\tbutton\r\n\t\t{\r\n\t\t\tsprite2 b_button2.tga\r\n\t\t\tsprite3 b_button3.tga\r\n\t\t}\r\n",
+                "\t\ttext\r\n\t\t{\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\talign left\r\n\t\t}\r\n\t}\r\n",
+                "\titem_button\r\n\t{\r\n\t\tname id_cancel\r\n\t\tbutton\r\n\t\t{\r\n\t\t\tsprite2 b_button2.tga\r\n\t\t\tsprite3 b_button3.tga\r\n\t\t}\r\n",
+                "\t\ttext\r\n\t\t{\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\talign left\r\n\t\t}\r\n\t}\r\n}\r\n\r\n",
+                "dialog\r\n{\r\n\tname idd_trainer_add\r\n",
+                "\titem_bitmap\r\n\t{\r\n\t\tname ID_BITMAP\r\n\t\tsprite dialog600x600.tga\r\n\t}\r\n",
+                "\titem_button\r\n\t{\r\n\t\tname id_ok\r\n\t\tbutton\r\n\t\t{\r\n\t\t\tsprite2 button2.tga\r\n\t\t\tsprite3 button3.tga\r\n\t\t}\r\n",
+                "\t\ttext\r\n\t\t{\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\talign left\r\n\t\t}\r\n\t}\r\n",
+                "\titem_button\r\n\t{\r\n\t\tname id_cancel\r\n\t\tbutton\r\n\t\t{\r\n\t\t\tsprite2 button2.tga\r\n\t\t\tsprite3 button3.tga\r\n\t\t}\r\n",
+                "\t\ttext\r\n\t\t{\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\talign left\r\n\t\t}\r\n\t}\r\n}\r\n\r\n",
+                "dialog\r\n{\r\n\tname idd_trainer_overwrite\r\n",
+                "\titem_bitmap\r\n\t{\r\n\t\tname ID_BITMAP\r\n\t\trect 0.312500 0.388889 0.687500 0.611111\r\n\t\tsprite dialog600x200.tga\r\n\t}\r\n",
+                "\titem_darkbox\r\n\t{\r\n\t\tname ID_DARKBOX2\r\n\t\trect 0.318750 0.566667 0.681250 0.600000\r\n\t\tcolor 127 0 0 0\r\n\t}\r\n",
+                "\titem_button\r\n\t{\r\n\t\tname ID_YES\r\n\t\tbutton\r\n\t\t{\r\n\t\t\tsprite2 b_button2.tga\r\n\t\t\tsprite3 b_button3.tga\r\n\t\t}\r\n",
+                "\t\ttext\r\n\t\t{\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\talign left\r\n\t\t}\r\n\t}\r\n",
+                "\titem_button\r\n\t{\r\n\t\tname ID_NO\r\n\t\tbutton\r\n\t\t{\r\n\t\t\tsprite2 b_button2.tga\r\n\t\t\tsprite3 b_button3.tga\r\n\t\t}\r\n",
+                "\t\ttext\r\n\t\t{\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\talign right\r\n\t\t}\r\n\t}\r\n}\r\n\r\n",
+                "dialog\r\n{\r\n\tname idd_photo\r\n",
+                "\titem_text\r\n\t{\r\n\t\tname ID_TEXT\r\n\t\ttextid photo\r\n\t\tcolor 255 240 240 240\r\n\t\tbackcolor 127 0 0 0\r\n\t}\r\n",
+                "\titem_darkbox\r\n\t{\r\n\t\tname ID_DARKBOX\r\n\t\trect 0.000000 0.966667 1.000000 1.000000\r\n\t\tcolor 127 0 0 0\r\n\t}\r\n",
+                "\titem_button\r\n\t{\r\n\t\tname id_back\r\n\t\tbutton\r\n\t\t{\r\n\t\t\trect 0.000000 0.966667 0.100000 1.000000\r\n\t\t\tsprite2 back1.tga\r\n\t\t\tsprite3 back2.tga\r\n\t\t}\r\n",
+                "\t\ttextid Back\r\n\t\ttext\r\n\t\t{\r\n\t\t\tpos 0.006250 0.005556\r\n\t\t\talign left\r\n\t\t}\r\n",
+                "\t\tcolor1 255 240 240 240\r\n\t\tcolor2 255 0 0 0\r\n\t\tcolor3 255 0 0 0\r\n\t}\r\n}\r\n"
+            ),
+        )
+        .unwrap();
+        apply(&game, DEFAULT_PRIMARY).unwrap();
+        let mnu = fs::read_to_string(ui.join("test.mnu")).unwrap();
+        let trainer = mnu
+            .split("name idd_trainer\n")
+            .nth(1)
+            .unwrap()
+            .split("\ndialog\n")
+            .next()
+            .unwrap();
+        assert!(trainer.contains(&format!("color2 {}", argb(255, DEFAULT_PRIMARY))));
+        assert!(!trainer.contains("color2 255 45 45 180"));
+        for name in ["ID_SAVE", "ID_ADD", "ID_REMOVE"] {
+            let btn = trainer.split(&format!("name {name}\n")).nth(1).unwrap();
+            assert!(btn.contains("align center"), "{name}");
+            assert!(!btn.contains("align right"), "{name}");
+        }
+        for pane in ["idd_trainer_save", "idd_trainer_add"] {
+            let body = mnu
+                .split(&format!("name {pane}\n"))
+                .nth(1)
+                .unwrap()
+                .split("\ndialog\n")
+                .next()
+                .unwrap();
+            assert!(body.contains("sprite replayboard.tga"), "{pane}");
+            assert!(!body.contains("dialog600x600.tga"), "{pane}");
+            assert!(body.contains("sprite1 button1.tga"), "{pane}");
+            let ok = body.split("name id_ok\n").nth(1).unwrap();
+            assert!(ok.contains("align center"), "{pane} ok");
+        }
+        let save = mnu
+            .split("name idd_trainer_save\n")
+            .nth(1)
+            .unwrap()
+            .split("\ndialog\n")
+            .next()
+            .unwrap();
+        assert!(save.contains("sprite fieldbox.tga"));
+        let overwrite = mnu
+            .split("name idd_trainer_overwrite\n")
+            .nth(1)
+            .unwrap()
+            .split("\ndialog\n")
+            .next()
+            .unwrap();
+        assert!(overwrite.contains("sprite profiledeleteboard.tga"));
+        assert!(!overwrite.contains("dialog600x200.tga"));
+        assert!(overwrite.contains("sprite1 button1.tga"));
+        assert!(overwrite
+            .split("name ID_YES\n")
+            .nth(1)
+            .unwrap()
+            .contains("align center"));
+        let photo = mnu
+            .split("name idd_photo\n")
+            .nth(1)
+            .unwrap()
+            .split("\ndialog\n")
+            .next()
+            .unwrap();
+        assert!(!photo.contains("backcolor 127 0 0 0"));
+        assert!(photo.contains(&format!(
+            "rect 0.000000 {SETUP_CHROME_Y0:.6} 1.000000 {SETUP_CHROME_Y1:.6}"
+        )));
+        assert!(photo.contains(&format!(
+            "rect 0.030000 {SETUP_CHROME_Y0:.6} 0.140000 {SETUP_CHROME_Y1:.6}"
+        )));
+        assert!(photo.contains("sprite1 back1.tga"));
+        let back = photo.split("name id_back\n").nth(1).unwrap();
+        assert!(back.contains("align center"));
+        let _ = fs::remove_dir_all(&game);
+    }
+
+    #[test]
     fn main_mnu_exit_confirm_uses_solid_board() {
         let mnu = main_mnu(DEFAULT_PRIMARY);
         let exit = mnu
@@ -1940,6 +2095,40 @@ mod tests {
         assert!(exit.contains("sprite3 button3.tga"));
         assert!(!exit.contains("b_button"));
         assert!(exit.contains("color 160 0 0 0"));
+    }
+
+    #[test]
+    fn race_info_dims_labels_and_centers_select_gate() {
+        let body = concat!(
+            "dialog\n{\n\tname idd_race_info\n",
+            "\titem_bitmap\n\t{\n\t\tname ID_BITMAP\n",
+            "\t\trect 0.131250 0.200000 0.993750 0.944444\n\t\tsprite dialog1380x670t.tga\n\t}\n",
+            "\titem_text\n\t{\n\t\tname ID_TEXT\n\t\ttextid class\n\t\tcolor 255 0 0 0\n\t}\n",
+            "\titem_text\n\t{\n\t\tname ID_CLASS\n\t\tcolor 255 40 40 40\n\t}\n",
+            "\titem_button\n\t{\n\t\tname ID_GATECHOOSE\n\t\ttext\n\t\t{\n",
+            "\t\t\tpos 0.006250 0.005556\n\t\t\talign right\n\t\t}\n\t}\n}\n",
+        );
+        let out = restyle_race_info_board(body, DEFAULT_PRIMARY);
+        let label = out
+            .split("name ID_TEXT\n")
+            .nth(1)
+            .unwrap()
+            .split("\n\titem_")
+            .next()
+            .unwrap();
+        assert!(label.contains(&format!("color {}", argb(255, DIM))));
+        let value = out
+            .split("name ID_CLASS\n")
+            .nth(1)
+            .unwrap()
+            .split("\n\titem_")
+            .next()
+            .unwrap();
+        assert!(value.contains(&format!("color {}", argb(255, TEXT))));
+        assert!(!value.contains(&format!("color {}", argb(255, DIM))));
+        let gate = out.split("name ID_GATECHOOSE\n").nth(1).unwrap();
+        assert!(gate.contains("align center"));
+        assert!(!gate.contains("align right"));
     }
 
     #[test]
@@ -2056,8 +2245,10 @@ mod tests {
         )));
         assert!(pit.contains("sprite optionstabtrack.tga"));
         assert!(pit.contains(&format!(
-            "rect {PIT_GROUP_X0:.6} {SETUP_CHROME_Y0:.6} {PIT_GROUP_X1:.6} {SETUP_CHROME_Y1:.6}"
+            "rect {PIT_GROUP_X0:.6} {SETUP_CHROME_Y0:.6} {:.6} {SETUP_CHROME_Y1:.6}",
+            CHAT_SLOT.1
         )));
+        assert!(!pit.contains("segr1.tga"), "race-pit Garage stays a square mid cell");
         let (sx0, sx1) = pit_group_slot(0);
         let (gx0, gx1) = pit_group_slot(2);
         assert!(pit.contains(&format!(
@@ -2089,8 +2280,8 @@ mod tests {
         assert!(chat.contains(&format!(
             "rect {cx0:.6} {SETUP_CHROME_Y0:.6} {cx1:.6} {SETUP_CHROME_Y1:.6}"
         )));
-        assert!(chat.contains("sprite1 button1.tga"));
-        assert!(!chat.contains("segm1.tga"));
+        assert!(chat.contains("sprite1 segr1.tga"));
+        assert!(!chat.contains("button1.tga"));
         assert!(!chat.contains("0.190625 0.966667"));
         let entries = mnu
             .split("name idd_race_entries\n")

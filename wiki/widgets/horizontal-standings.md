@@ -17,7 +17,7 @@ Settings subtitle: “Your name is highlighted in the field”.
 - Optional title: `WARMUP` / `LAP RACE` / `TIMED` / `EXTRA` / `SESSION` plus track name. Warmup is 10:00 (or 12/15/20 / 30+ min practice) with no extras; not a leftover 8-minute race.
 - Side slots (`ticker_left` / `ticker_right`) are `BoardField` (default Lap, Air). **Fuel**, **Fuel %**, **Setup**, **Gap ahead**, **Gap behind**, **Delta**, **Last** / **Last lap diff** / **Current**, **Gap to leader**, **Engine**, **Penalty**, and **Server** are options. **Last lap diff** is your last completed lap minus the one before it (not Delta versus best): green faster, red slower, `0.000` the same, `--` until two laps. Ahead/behind are live-order place neighbors. That live gap is not the number on the card.
 - Cards show position, name, and the classification interval to the rider one place ahead (`+1.234` or `+1L`, same as the Standings interval). The leader (live P1, including you) shows a lap time: last lap, then your snapshot last lap when that card is you, then best. Session-best lap is purple. Position gets a trailing green/red `*` when live place ≠ on-track place due to penalties (see [live race order](../live-order.md)).
-- Your card is a left-to-right fade of the accent with a 1px line on all four edges and 4px rounded corners. **Row highlight** opacity is adjustable in settings (`ticker_hl`, default 50 — same scale as Standings / Relative) and scales that fade and that frame. Standings and Relative keep a top-and-bottom line only.
+- Your card is a left-to-right fade of the accent with a 1px line on all four edges and 4px rounded corners. **Row highlight** opacity is adjustable in settings (`ticker_hl`, default 50 — same scale as Standings / Relative) and scales that fade and that frame. Standings and Relative keep a top-and-bottom line only. The wash stays at that spider alpha when **Background** is 78% or higher, and thickens as **Background** drops (2.5× at 0%).
 - Optional **Status** (`ticker_status`, default off) appends a finish / crash / DNS / OUT / DSQ / pit icon at the **end** of each card. Finished riders show only the flag. When on, gap stays gap (status is not written over it). When off, DNS/OUT/DSQ/PIT still replace the gap text for out riders (legacy).
 - In replay / spectate, clicking a card follows that rider (same camera path as standings names).
 - **Riders shown** (`ticker_count`, 3–15) is a target; `hstand_layout` shrinks to what fits at a minimum card width.
@@ -39,9 +39,18 @@ Settings subtitle: “Your name is highlighted in the field”.
 - With **Status** on, keep gap/delta on the card and put the mark at the trailing edge — do not replace gap with status text.
 - Finished riders show only the Status finish flag — not crash / pit / DNS / OUT / DSQ on top of it.
 - **Slide on pass** off must snap cards to new slots (no `HS_SLIDE` ease). Autoscroll and keep-you-in-view scroll stay independent.
+- Your-card wash stays at the spider alpha when **Background** is 78% or higher. Below that it thickens (2.5× at 0%). **Row highlight** still scales it.
 
 ## Change log
 
+- 2026-10-20 — Practice and warmup cards follow best-lap order, same as Standings. Track position does not change the place.
+- 2026-10-08 — A folded gate is not the holeshot. See [live race order](../live-order.md).
+- 2026-10-08 — A dropped position does not take the place. See [live race order](../live-order.md).
+- 2026-10-08 — A group 120 m or more up the lap, still inside the larger pack, does not take the lead. See [live race order](../live-order.md).
+- 2026-10-08 — A corner of about 80 m keeps the place when the bikes are 20–40 m apart across it. See [live race order](../live-order.md).
+- 2026-10-08 — An unridden jump across a fold does not drop the place while the bike is still beside that pack. See [live race order](../live-order.md).
+- 2026-10-08 — An unridden spline jump that lands beside three bikes joins their median instead of flashing ahead of them. See [live race order](../live-order.md).
+- 2026-10-08 — Your card's wash stays at the spider alpha when **Background** is 78% or higher, and thickens as **Background** drops (2.5× at 0%) so it still reads on a clear panel. **Row highlight** still scales it.
 - 2026-10-04 — Card place is blank on the gate, then follows track location through the first lap, including a pass on a crashed bike. See [live race order](../live-order.md).
 - 2026-10-04 — A rider listed on the Groups tab gets that group's icon in the group color, immediately left of the name. The gap line stays put. The first group in the list wins.
 - 2026-10-03 — The line under each name is the classification interval to the rider ahead. The leader's card shows a lap time. It was the gap versus you, and your card always showed your last lap.

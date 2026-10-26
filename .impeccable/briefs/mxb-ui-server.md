@@ -27,9 +27,12 @@ One session row lights orange with a left pip; Join is the only skew plaque.
 THESIS: The live session list sits on a floating night-ink board; studio stays around it. Not a full-bleed table, not overlay HUD tabs.
 OWN-WORLD: Night-ink 8px plaque, hairline #2A2A2E, ExtraBold Italic, orange pip + tab-on wash, Join as the only content-sized skew.
 STORY: Rider scans the real 12-col list, filters, Join. Same dests as MX Bikes.
-FIRST VIEWPORT: Inset board on grey studio. Host / Filter / Hide empty / missing on top. List in the card. Local / World and Join on the card. Helmet and dirt can peek at the edges.
+FIRST VIEWPORT: One inset board. Host, Filter, and plain Hide checks sit inside the top. List fills the card. Refresh, Info, and Password sit inside the bottom. Chrome under the board: Back, Local/World, Spectate, My Bike, content-sized Join skew.
 FORM: Inset board (user lock); specified pair, no seed.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 
+## Approved comp
+`.impeccable/mocks/server-list-board.jpg` (plan direction; header-tabs and tall-list comps were not chosen).
+
 ## Unresolved
-None. Inset board is packed in `game_ui.rs` (`multijoin.mnu` splice).
+None. Inset board is packed in `browser_list` / `browser_chrome`.

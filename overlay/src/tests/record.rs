@@ -24,6 +24,25 @@ fn track_change_starts_a_new_session() {
 }
 
 #[test]
+fn track_change_after_the_session_ends_starts_a_new_session() {
+    let mut g = SessionGate::default();
+    assert_eq!(g.update("Meadow", 0, 600_000, 30_000, 4, 1), SessionEvent::Continue);
+    assert_eq!(g.update("", 0, 0, 0, 0, 0), SessionEvent::RaceEnded);
+    assert_eq!(
+        g.update("Farm14", 1, 480_000, 40_000, 0, 1),
+        SessionEvent::NewSession
+    );
+}
+
+#[test]
+fn same_track_after_a_dropout_keeps_the_session() {
+    let mut g = SessionGate::default();
+    assert_eq!(g.update("Glen", 4, 0, 40_000, 3, 1), SessionEvent::Continue);
+    assert_eq!(g.update("", 0, 0, 0, 0, 0), SessionEvent::RaceEnded);
+    assert_eq!(g.update("Glen", 4, 0, 39_000, 3, 1), SessionEvent::Continue);
+}
+
+#[test]
 fn lap_count_change_starts_a_new_session() {
     let mut g = SessionGate::default();
     g.update("Glen", 4, 0, 40_000, 3, 1);
@@ -41,12 +60,52 @@ fn clock_reset_starts_a_new_session() {
 }
 
 #[test]
+fn same_track_lap_drop_starts_a_new_session() {
+    let mut g = SessionGate::default();
+    g.update("Glen", 1, 480_000, 90_000, 5, 1);
+    assert_eq!(
+        g.update("Glen", 1, 480_000, 800, 0, 1),
+        SessionEvent::NewSession
+    );
+}
+
+#[test]
 fn timed_plus_one_expiry_keeps_the_same_session() {
     let mut g = SessionGate::default();
     g.update("Timberline", 1, 480_000, 30_000, 6, 1);
     assert_eq!(
         g.update("Timberline", 1, 480_000, 1_020, 7, 1),
         SessionEvent::Continue
+    );
+}
+
+#[test]
+fn six_lap_finish_clock_dip_keeps_the_same_session() {
+    let mut g = SessionGate::default();
+    g.update("Monster Mountain", 6, 0, 30_000, 6, 1);
+    assert_eq!(
+        g.update("Monster Mountain", 6, 0, 1_020, 7, 1),
+        SessionEvent::Continue
+    );
+}
+
+#[test]
+fn lap_race_then_timed_session_starts_a_new_session() {
+    let mut g = SessionGate::default();
+    g.update("Monster Mountain", 6, 0, 30_000, 7, 1);
+    assert_eq!(
+        g.update("Monster Mountain", 0, 600_000, 540_630, 0, 1),
+        SessionEvent::NewSession
+    );
+}
+
+#[test]
+fn timed_session_then_lap_race_starts_a_new_session() {
+    let mut g = SessionGate::default();
+    g.update("Monster Mountain", 0, 600_000, 30_000, 0, 1);
+    assert_eq!(
+        g.update("Monster Mountain", 6, 0, 24_060, 0, 1),
+        SessionEvent::NewSession
     );
 }
 
@@ -148,4 +207,61 @@ fn racing_thresholds_need_clock_or_lap() {
     let mut g = SessionGate::default();
     assert_eq!(g.update("Glen", 4, 0, 3_001, 0, 1), SessionEvent::Continue);
     assert!(g.saw_race);
+}
+
+fn folded_place_snap() -> mxbo_hud::shm::Snapshot {
+    use mxbo_hud::shm::{write_name, Rider, Snapshot, Standing};
+    let mut snap = Snapshot::default();
+    snap.track_length = 200.0;
+    snap.focus_race_num = 12;
+    snap.local_race_num = 12;
+    snap.standing_count = 2;
+    snap.rider_count = 2;
+    snap.standings[0] = Standing {
+        race_num: 1,
+        position: 1,
+        num_laps: 5,
+        ..Standing::default()
+    };
+    snap.standings[1] = Standing {
+        race_num: 12,
+        position: 2,
+        num_laps: 5,
+        ..Standing::default()
+    };
+    snap.riders[0] = Rider {
+        race_num: 1,
+        x: 50.0,
+        z: 0.0,
+        track_pos: 0.25,
+        ..Rider::default()
+    };
+    snap.riders[1] = Rider {
+        race_num: 12,
+        x: 50.0,
+        z: 4.0,
+        track_pos: 0.75,
+        ..Rider::default()
+    };
+    write_name(&mut snap.track_name, "SX");
+    snap
+}
+
+#[test]
+fn place_line_logs_a_folded_pair_once() {
+    let snap = folded_place_snap();
+    let mut trace = PlaceTrace::default();
+    let line = trace
+        .consider(&snap, &[1, 12], 1_500)
+        .expect("first order");
+    assert!(line.contains("\"evt\":\"place\""), "{line}");
+    assert!(line.contains("\"track\":\"SX\""), "{line}");
+    assert!(line.contains("\"you\":12"), "{line}");
+    assert!(line.contains("\"live\":2"), "{line}");
+    assert!(line.contains("\"frac\":0.250"), "{line}");
+    assert!(line.contains("\"frac\":0.750"), "{line}");
+    assert!(line.contains("\"x\":50.0"), "{line}");
+    assert!(line.contains("\"z\":4.0"), "{line}");
+    assert!(trace.consider(&snap, &[1, 12], 2_000).is_none());
+    assert!(trace.consider(&snap, &[], 2_000).is_none());
 }

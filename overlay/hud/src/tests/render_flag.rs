@@ -89,6 +89,43 @@ fn the_run_in_flag_stays_out_across_the_line() {
     assert_eq!(CHECKERED_LATCH.load(Ordering::Relaxed), 1);
 }
 
+/// Stopped just past the line, the white wave is over. The 80 m post-line band
+/// must not keep it up. The same 50 m sits inside that band on a short lap and a
+/// long one.
+fn stopped_inside_the_post_line_band_drops_white(track_length: f32) {
+    reset_session();
+    let mut s = live_snap();
+    s.track_length = track_length;
+    s.sf_meters = track_length;
+    s.session_length = 0;
+    s.session_laps = 4;
+    s.session_time_ms = 0;
+    s.local_speed = 18.0;
+    s.standings[0].num_laps = 2;
+    s.standings[1].num_laps = 2;
+    s.current_lap = 3;
+    ride_to(&mut s, 0.50);
+    assert_eq!(ride_lap_to_line(&mut s), DashFlag::White, "run-in onto the last lap");
+    let into = 50.0 / track_length;
+    s.standings[1].num_laps = 3;
+    s.current_lap = 4;
+    assert_eq!(ride_to(&mut s, into), DashFlag::White, "wave on the crossing");
+    s.local_speed = 0.0;
+    age_white_wave();
+    assert_eq!(
+        ride_to(&mut s, into),
+        DashFlag::None,
+        "{track_length} m: white does not stay up while stopped in the first 80 m"
+    );
+}
+
+#[test]
+fn a_stopped_bike_drops_white_on_a_short_lap_and_a_long_one() {
+    let _g = session_lock();
+    stopped_inside_the_post_line_band_drops_white(400.0);
+    stopped_inside_the_post_line_band_drops_white(1100.0);
+}
+
 /// With no centerline and no learned line, the window position is a guess, so the early
 /// white is suppressed. Lap counting still delivers white and checkered.
 #[test]

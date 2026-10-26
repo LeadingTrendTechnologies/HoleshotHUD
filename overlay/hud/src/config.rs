@@ -1053,10 +1053,11 @@ pub enum WidgetId {
     Telemetry,
     Pitboard,
     Timer,
+    Guide,
 }
 
 impl WidgetId {
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 18] = [
         Self::Standings,
         Self::Relative,
         Self::Map,
@@ -1074,8 +1075,9 @@ impl WidgetId {
         Self::Telemetry,
         Self::Pitboard,
         Self::Timer,
+        Self::Guide,
     ];
-    pub const COUNT: usize = 17;
+    pub const COUNT: usize = 18;
 
     pub fn idx(self) -> usize {
         self as usize
@@ -1195,6 +1197,12 @@ impl WidgetId {
                 w: 0.0645,
                 h: 0.0337,
             },
+            Self::Guide => Rect {
+                x: 0.486,
+                y: 0.80,
+                w: 0.028,
+                h: 0.050,
+            },
         }
     }
 
@@ -1202,7 +1210,7 @@ impl WidgetId {
         match self {
             Self::Standings | Self::Relative => 78,
             Self::Radar | Self::Ticker | Self::Stance | Self::Lean => 86,
-            Self::Gamepad | Self::Map | Self::Minimap | Self::Delta => 0,
+            Self::Gamepad | Self::Map | Self::Minimap | Self::Delta | Self::Guide => 0,
             Self::Dash | Self::Sys | Self::Sector | Self::Telemetry | Self::Timer => 82,
             Self::Pitboard => 100,
             Self::Flag => 100,
@@ -1330,6 +1338,13 @@ impl WidgetId {
                 font: "timer_font",
                 bold: "timer_bold",
                 bg: "timer_bg",
+            },
+            Self::Guide => WidgetIni {
+                rect: "guide",
+                show: "show_guide",
+                font: "guide_font",
+                bold: "guide_bold",
+                bg: "guide_bg",
             },
         }
     }
@@ -2216,6 +2231,9 @@ pub struct DashLayout {
     pub dash_simple: bool,
     /// Flush Dash gear faint red at the shift light or limiter. Off by default.
     pub dash_shift_color: bool,
+    /// Chevron under the gear after a join, crash, off-track, or wrong-way.
+    /// On by default. A missing ini key stays on.
+    pub dash_guide: bool,
     pub dash_left: DashField,
     pub dash_mid: DashField,
     pub dash_right: DashField,
@@ -2466,6 +2484,7 @@ impl HudLayout {
                 dash_red: false,
                 dash_simple: false,
                 dash_shift_color: false,
+                dash_guide: true,
                 dash_left: DashField::Engine,
                 dash_mid: DashField::Air,
                 dash_right: DashField::Best,
@@ -3421,9 +3440,17 @@ impl HudConfig {
         cols
     }
 
-    /// Settings → Labs → Experimental features. Gates Profile → Tracks.
+    /// Settings → Labs → Experimental features. Gates Profile → Tracks, Profile → Strategy, and Guide.
     pub fn experimental_unlocked(&self) -> bool {
         self.experimental
+    }
+
+    pub fn guide_widget_visible(&self) -> bool {
+        self.experimental && self[WidgetId::Guide].show
+    }
+
+    pub fn dash_guide_on(&self) -> bool {
+        self.experimental && self.dash.dash_guide
     }
 
     pub fn gamepad_visible(&self) -> bool {
@@ -3908,6 +3935,7 @@ impl HudLayout {
                 mix_style(&mut mix, self, WidgetId::Timer);
                 mix.flag(self.timer.timer_of);
             }
+            WidgetId::Guide => mix_style(&mut mix, self, WidgetId::Guide),
         }
         mix.finish()
     }
@@ -3939,6 +3967,7 @@ impl HudLayout {
             WidgetId::Telemetry => self.telemetry = source.telemetry.clone(),
             WidgetId::Pitboard => self.pit = source.pit.clone(),
             WidgetId::Timer => self.timer = source.timer.clone(),
+            WidgetId::Guide => {}
         }
     }
 
@@ -4081,6 +4110,7 @@ impl HudLayout {
         mix.flag(self.dash.dash_red);
         mix.flag(self.dash.dash_simple);
         mix.flag(self.dash.dash_shift_color);
+        mix.flag(self.dash.dash_guide);
         mix.text(self.dash.dash_left.key());
         mix.text(self.dash.dash_mid.key());
         mix.text(self.dash.dash_right.key());
@@ -4434,6 +4464,7 @@ impl DashLayout {
         "dash_red" => self.dash_red = b,
         "dash_simple" => self.dash_simple = b,
         "dash_shift_color" => self.dash_shift_color = b,
+        "dash_guide" => self.dash_guide = b,
         "dash_left" => self.dash_left = DashField::parse(val),
         "dash_mid" => self.dash_mid = DashField::parse(val),
         "dash_right" => self.dash_right = DashField::parse(val),
@@ -4646,6 +4677,7 @@ fn layout_ini(l: &HudLayout) -> String {
     let telemetry = l[WidgetId::Telemetry];
     let pit = l[WidgetId::Pitboard];
     let timer = l[WidgetId::Timer];
+    let guide = l[WidgetId::Guide];
     format!(
         "standings_x={}\nstandings_y={}\nstandings_w={}\nstandings_h={}\n\
          relative_x={}\nrelative_y={}\nrelative_w={}\nrelative_h={}\n\
@@ -4664,9 +4696,10 @@ fn layout_ini(l: &HudLayout) -> String {
          telemetry_x={}\ntelemetry_y={}\ntelemetry_w={}\ntelemetry_h={}\n\
          pitboard_x={}\npitboard_y={}\npitboard_w={}\npitboard_h={}\n\
          timer_x={}\ntimer_y={}\ntimer_w={}\ntimer_h={}\n\
+         guide_x={}\nguide_y={}\nguide_w={}\nguide_h={}\n\
          show_standings={}\nshow_relative={}\nshow_map={}\nshow_minimap={}\nshow_radar={}\n\
          show_dash={}\nshow_ticker={}\nshow_sys={}\nshow_sector={}\nshow_delta={}\n\
-         show_stance={}\nshow_flag={}\nshow_lean={}\nshow_gamepad={}\nshow_telemetry={}\nshow_pitboard={}\nshow_timer={}\n\
+         show_stance={}\nshow_flag={}\nshow_lean={}\nshow_gamepad={}\nshow_telemetry={}\nshow_pitboard={}\nshow_timer={}\nshow_guide={}\n\
          standings_rows={}\nrelative_count={}\nticker_count={}\n\
          st_pos={}\nst_num={}\nst_name={}\nst_gap={}\nst_interval={}\nst_laps={}\nst_current={}\n\
          st_best={}\nst_last={}\nst_status={}\nst_bike={}\nst_penalty={}\nst_crashed={}\nst_category={}\nst_lapdiff={}\n\
@@ -4687,7 +4720,7 @@ fn layout_ini(l: &HudLayout) -> String {
          mini_others={}\nmini_sf={}\nmini_sectors={}\nmini_numbers={}\nmini_arrows={}\nmini_crown={}\n\
          mini_place={}\nmini_dot={}\nmini_bg={}\nmini_zoom={}\nmini_font={}\nmini_bold={}\n\
          radar_sides={}\nradar_rear={}\nradar_rings={}\nradar_style={}\nradar_range={}\nradar_bg={}\nradar_font={}\nradar_bold={}\n\
-         dash_rev={}\ndash_yellow={}\ndash_blue={}\ndash_red={}\ndash_simple={}\ndash_shift_color={}\ndash_left={}\ndash_mid={}\ndash_right={}\n\
+         dash_rev={}\ndash_yellow={}\ndash_blue={}\ndash_red={}\ndash_simple={}\ndash_shift_color={}\ndash_guide={}\ndash_left={}\ndash_mid={}\ndash_right={}\n\
          dash_bg={}\ndash_font={}\ndash_bold={}\n\
          ticker_left={}\nticker_right={}\nticker_title={}\nticker_autoscroll={}\nticker_status={}\nticker_slide={}\n\
          ticker_bg={}\nticker_hl={}\nticker_font={}\nticker_bold={}\n\
@@ -4707,7 +4740,8 @@ fn layout_ini(l: &HudLayout) -> String {
          pit_sponsor={}\npit_art={}\npit_board={}\npit_text={}\npit_vars={}\npit_when={}\n\
          pit_yellow={}\npit_blue={}\n\
          pit_bg={}\npit_font={}\npit_bold={}\n\
-         timer_bg={}\ntimer_font={}\ntimer_bold={}\ntimer_of={}",
+         timer_bg={}\ntimer_font={}\ntimer_bold={}\ntimer_of={}\n\
+         guide_bg={}\nguide_font={}\nguide_bold={}",
         st.rect.x, st.rect.y, st.rect.w, st.rect.h,
         rel.rect.x, rel.rect.y, rel.rect.w, rel.rect.h,
         map.rect.x, map.rect.y, map.rect.w, map.rect.h,
@@ -4725,9 +4759,10 @@ fn layout_ini(l: &HudLayout) -> String {
         telemetry.rect.x, telemetry.rect.y, telemetry.rect.w, telemetry.rect.h,
         pit.rect.x, pit.rect.y, pit.rect.w, pit.rect.h,
         timer.rect.x, timer.rect.y, timer.rect.w, timer.rect.h,
+        guide.rect.x, guide.rect.y, guide.rect.w, guide.rect.h,
         ini_flag(st.show), ini_flag(rel.show), ini_flag(map.show), ini_flag(mini.show), ini_flag(radar.show),
         ini_flag(dash.show), ini_flag(ticker.show), ini_flag(sys.show), ini_flag(sector.show), ini_flag(delta.show),
-        ini_flag(stance.show), ini_flag(flag.show), ini_flag(lean.show), ini_flag(gamepad.show), ini_flag(telemetry.show), ini_flag(pit.show), ini_flag(timer.show),
+        ini_flag(stance.show), ini_flag(flag.show), ini_flag(lean.show), ini_flag(gamepad.show), ini_flag(telemetry.show), ini_flag(pit.show), ini_flag(timer.show), ini_flag(guide.show),
         l.standings.standings_rows, l.relative.relative_count, l.ticker.ticker_count,
         ini_flag(l.standings.st_pos), ini_flag(l.standings.st_num), ini_flag(l.standings.st_name), ini_flag(l.standings.st_gap), ini_flag(l.standings.st_interval), ini_flag(l.standings.st_laps), ini_flag(l.standings.st_current),
         ini_flag(l.standings.st_best), ini_flag(l.standings.st_last), ini_flag(l.standings.st_status), ini_flag(l.standings.st_bike), ini_flag(l.standings.st_penalty), ini_flag(l.standings.st_crashed), ini_flag(l.standings.st_category), ini_flag(l.standings.st_lapdiff),
@@ -4750,7 +4785,7 @@ fn layout_ini(l: &HudLayout) -> String {
         ini_flag(l.mini.mini_others), ini_flag(l.mini.mini_sf), ini_flag(l.mini.mini_sectors), ini_flag(l.mini.mini_numbers), ini_flag(l.mini.mini_arrows), ini_flag(l.mini.mini_crown),
         ini_flag(l.mini.mini_place), l.mini.mini_dot.key(), mini.bg, l.mini.mini_zoom, mini.font, ini_flag(mini.bold),
         ini_flag(l.radar.radar_sides), ini_flag(l.radar.radar_rear), ini_flag(l.radar.radar_rings), l.radar.radar_style.key(), l.radar.radar_range, radar.bg, radar.font, ini_flag(radar.bold),
-        ini_flag(l.dash.dash_rev), ini_flag(l.dash.dash_yellow), ini_flag(l.dash.dash_blue), ini_flag(l.dash.dash_red), ini_flag(l.dash.dash_simple), ini_flag(l.dash.dash_shift_color), l.dash.dash_left.key(), l.dash.dash_mid.key(), l.dash.dash_right.key(),
+        ini_flag(l.dash.dash_rev), ini_flag(l.dash.dash_yellow), ini_flag(l.dash.dash_blue), ini_flag(l.dash.dash_red), ini_flag(l.dash.dash_simple), ini_flag(l.dash.dash_shift_color), ini_flag(l.dash.dash_guide), l.dash.dash_left.key(), l.dash.dash_mid.key(), l.dash.dash_right.key(),
         dash.bg, dash.font, ini_flag(dash.bold),
         l.ticker.ticker_left.key(), l.ticker.ticker_right.key(), ini_flag(l.ticker.ticker_title), ini_flag(l.ticker.ticker_autoscroll), ini_flag(l.ticker.ticker_status), ini_flag(l.ticker.ticker_slide),
         ticker.bg, l.ticker.ticker_hl, ticker.font, ini_flag(ticker.bold),
@@ -4781,6 +4816,7 @@ fn layout_ini(l: &HudLayout) -> String {
         format_primary_color(l.pit.pit_blue),
         pit.bg, pit.font, ini_flag(pit.bold),
         timer.bg, timer.font, ini_flag(timer.bold), ini_flag(l.timer.timer_of),
+        guide.bg, guide.font, ini_flag(guide.bold),
     )
 }
 

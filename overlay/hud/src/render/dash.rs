@@ -670,9 +670,11 @@ pub(crate) fn draw_unit_stack(
 pub(crate) fn draw_simple_dash(
     px: &mut Pixmap,
     fonts: &Fonts,
+    s: &Snapshot,
     d: &DashLay,
     a: u8,
     shift_warn: bool,
+    guide_up: bool,
 ) {
     if let Some(path) = chamfer_path(d.x, d.y, d.w, d.h, d.cut) {
         if a > 0 {
@@ -710,7 +712,7 @@ pub(crate) fn draw_simple_dash(
         &d.gear,
         d.gear_n,
         d.gear_x + d.gear_w * 0.5,
-        d.main_y + (d.main_h - d.gear_n) * 0.45,
+        gear_text_y(d, guide_up),
         ink,
         true,
     );
@@ -730,6 +732,7 @@ pub(crate) fn draw_simple_dash(
         unit,
     );
 
+    draw_track_guide(px, s, d, guide_up);
     draw_dash_wrap(px, fonts, d);
 }
 
@@ -770,13 +773,16 @@ pub(crate) fn draw_dash(
     grow: f32,
 ) {
     let d = dash_layout(fonts, s, cfg, sw, sh, flag, grow);
+    let guide_up = guide_lifted(s, cfg);
     if d.simple {
         draw_simple_dash(
             px,
             fonts,
+            s,
             &d,
             background_alpha(cfg[WidgetId::Dash].bg),
             cfg.dash.dash_shift_color && crate::telemetry::shift_warn(s),
+            guide_up,
         );
         return;
     }
@@ -845,7 +851,7 @@ pub(crate) fn draw_dash(
         &d.gear,
         d.gear_n,
         d.gear_x + d.gear_w * 0.5,
-        d.main_y + (d.main_h - d.gear_n) * 0.42,
+        gear_text_y(&d, guide_up),
         shift_gear_col(s, cfg.dash.dash_shift_color, white),
         true,
     );
@@ -934,6 +940,7 @@ pub(crate) fn draw_dash(
         dash_pos_col(),
         d.pstar,
         true,
+        false,
     );
     let lap_y = d.main_y + d.main_h * 0.68;
     text(
@@ -982,11 +989,60 @@ pub(crate) fn draw_dash(
                 ink.unwrap_or(white),
                 *star,
                 false,
+                false,
             );
             fx += place_width(fonts, label, d.fsz, *star) + foot_gap;
         }
     }
 
+    draw_track_guide(px, s, &d, guide_up);
     // Last: wrap sits on the outer edge so the body cannot cover it.
     draw_dash_wrap(px, fonts, &d);
+}
+
+/// Gear digit baseline. Lifted pins it near the top of the gear cell so the
+/// arrow fits underneath. Hidden keeps the resting fraction.
+pub(crate) fn gear_text_y(d: &DashLay, lifted: bool) -> f32 {
+    let frac = if d.simple { 0.45 } else { 0.42 };
+    let resting = d.main_y + (d.main_h - d.gear_n) * frac;
+    if !lifted {
+        return resting;
+    }
+    let top = d.main_y + d.main_h * 0.04;
+    top.min(resting)
+}
+
+pub(crate) fn guide_lifted(s: &Snapshot, cfg: &HudConfig) -> bool {
+    cfg.dash_guide_on() && crate::track_guide::visible(s).is_some()
+}
+
+/// Center and size of the guide arrow, in the gap under the lifted gear digit.
+pub(crate) fn guide_slot(d: &DashLay) -> (f32, f32, f32) {
+    let digit_top = gear_text_y(d, true);
+    let digit_bottom = digit_top + d.gear_n;
+    let column_bottom = d.main_y + d.main_h;
+    let gap = (column_bottom - digit_bottom).max(0.0);
+    let mut height = (gap * 0.5).clamp(4.0, d.gear_w * 0.22);
+    if gap >= 4.0 {
+        height = height.min(gap);
+    }
+    let center_y = if gap >= height {
+        digit_bottom + gap * 0.5
+    } else {
+        column_bottom - height * 0.5
+    };
+    (d.gear_x + d.gear_w * 0.5, center_y, height)
+}
+
+fn draw_track_guide(px: &mut Pixmap, s: &Snapshot, d: &DashLay, guide_up: bool) {
+    if !guide_up {
+        return;
+    }
+    let Some(bearing) = crate::track_guide::visible(s) else {
+        return;
+    };
+    let (center_x, center_y, height) = guide_slot(d);
+    // Simple dash already fills the gear tile with the accent, so ink stays readable.
+    let color = if d.simple { ink_on(accent()) } else { accent() };
+    paint_guide_chevron(px, center_x, center_y, bearing.angle, height, color);
 }

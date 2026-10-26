@@ -134,6 +134,29 @@ static void testUnsetSessionLengthPublishesZero()
     CHECK(publish(state, {}).sessionLength == 0);
 }
 
+static void testTenMinuteExtraKeepsLock(int laterLength)
+{
+    PluginState state;
+    SPluginsRaceSession_t session{};
+    session.m_iSession = 7;
+    session.m_iSessionState = 16;
+    session.m_iSessionLength = 10;
+    session.m_iSessionNumLaps = 1;
+    state.setSession(session);
+
+    SPluginsRaceSessionState_t sessionState{};
+    sessionState.m_iSession = 7;
+    sessionState.m_iSessionState = 16;
+    sessionState.m_iSessionLength = laterLength;
+    state.setSessionState(sessionState);
+
+    const MxboShmSnapshot snap = publish(state, {});
+    CHECK(snap.sessionLength == 10);
+    CHECK(snap.sessionLaps == 1);
+    CHECK(state.sessionLength() == 10);
+    CHECK(state.sessionLaps() == 1);
+}
+
 static void testSeqlockStore()
 {
     PluginState state;
@@ -176,6 +199,8 @@ int main()
     testStandingsCopy();
     testGarageHidesRidersUntilTelemetry();
     testUnsetSessionLengthPublishesZero();
+    testTenMinuteExtraKeepsLock(420000);
+    testTenMinuteExtraKeepsLock(900000);
     testSeqlockStore();
     testMissingIniDoesNotCreateFile();
     if (g_fails)

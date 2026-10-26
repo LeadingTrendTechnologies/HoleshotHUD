@@ -41,10 +41,12 @@ mod dash;
 mod delta;
 mod flag;
 mod gamepad;
+mod guide;
 mod lean;
 mod map;
 mod minimap;
 mod radar;
+pub(crate) use radar::radar_axes;
 mod relative;
 mod sector;
 mod stance;
@@ -58,6 +60,7 @@ pub(crate) use dash::*;
 pub(crate) use delta::*;
 pub(crate) use flag::*;
 pub(crate) use gamepad::*;
+pub(crate) use guide::*;
 pub(crate) use lean::*;
 pub(crate) use map::*;
 pub(crate) use minimap::*;
@@ -197,15 +200,20 @@ fn paint_place_at(
     digit_col: Color,
     star: Option<Color>,
     bold: bool,
+    glass: bool,
 ) {
-    if bold {
+    if glass {
+        text_halo(px, fonts, digits, size, x, y, digit_col, false, true);
+    } else if bold {
         text_bold(px, fonts, digits, size, x, y, digit_col, false);
     } else {
         text(px, fonts, digits, size, x, y, digit_col, false);
     }
     if let Some(star_col) = star {
         let sx = x + measure(fonts, digits, size);
-        if bold {
+        if glass {
+            text_halo(px, fonts, "*", size, sx, y, star_col, false, true);
+        } else if bold {
             text_bold(px, fonts, "*", size, sx, y, star_col, false);
         } else {
             text(px, fonts, "*", size, sx, y, star_col, false);
@@ -224,6 +232,7 @@ fn col_place_text(
     digit_col: Color,
     star: Option<Color>,
     right: bool,
+    glass: bool,
 ) {
     if digits.is_empty() && star.is_none() {
         return;
@@ -253,6 +262,7 @@ fn col_place_text(
         digit_col,
         star_draw,
         false,
+        glass,
     );
 }
 
@@ -688,6 +698,12 @@ fn draw_widgets<After>(
             return;
         }
     }
+    if cfg.guide_widget_visible() && included(WidgetId::Guide) {
+        draw_guide(px, s, cfg, sw, sh);
+        if !after_widget(WidgetId::Guide, px) {
+            return;
+        }
+    }
 }
 
 fn try_rect(x: f32, y: f32, w: f32, h: f32) -> Option<Rect> {
@@ -881,6 +897,16 @@ fn draw_layout(px: &mut Pixmap, s: &Snapshot, cfg: &HudConfig, sw: f32, sh: f32)
             cfg[WidgetId::Timer].rect.y * sh,
             cfg[WidgetId::Timer].rect.w * sw,
             cfg[WidgetId::Timer].rect.h * sh,
+            false,
+        );
+    }
+    if cfg.guide_widget_visible() {
+        layout_box(
+            px,
+            cfg[WidgetId::Guide].rect.x * sw,
+            cfg[WidgetId::Guide].rect.y * sh,
+            cfg[WidgetId::Guide].rect.w * sw,
+            cfg[WidgetId::Guide].rect.h * sh,
             false,
         );
     }
@@ -1135,14 +1161,25 @@ fn fill_h_fade_mask(
     px.fill_rect(rrt, &paint, Transform::identity(), mask);
 }
 
-/// Spider-scaled wash: full chroma, alpha 52 at default 50% highlight.
-fn highlight_alpha(opacity_pct: i32) -> u8 {
-    ((52u32 * opacity_pct.clamp(0, 100) as u32) / 50).min(255) as u8
+/// Spider-scaled wash: full chroma, alpha 52 at default 50% highlight when
+/// Background is the standings default (78%) or higher. Below that the wash
+/// thickens linearly to 2.5× at Background 0% so a clear panel still reads.
+fn highlight_alpha(opacity_pct: i32, bg_pct: i32) -> u8 {
+    let base = 52u32 * opacity_pct.clamp(0, 100) as u32 / 50;
+    let bg = bg_pct.clamp(0, 100) as u32;
+    const ANCHOR: u32 = 78;
+    let alpha = if bg >= ANCHOR {
+        base
+    } else {
+        let scale = 100 + (ANCHOR - bg) * 150 / ANCHOR;
+        base * scale / 100
+    };
+    alpha.min(255) as u8
 }
 
-fn you_row_bg(opacity_pct: i32) -> Color {
+fn you_row_bg(opacity_pct: i32, bg_pct: i32) -> Color {
     let [r, g, b] = accent_rgb();
-    Color::from_rgba8(r, g, b, highlight_alpha(opacity_pct))
+    Color::from_rgba8(r, g, b, highlight_alpha(opacity_pct, bg_pct))
 }
 
 /// Extra black only reads while the game still shows through. Opaque night-ink
@@ -1161,12 +1198,12 @@ fn stripe_row_bg(panel_a: u8) -> Color {
     Color::from_rgba8(rgb, rgb, rgb, (dark_a + light_a) as u8)
 }
 
-fn lapping_row_bg(opacity_pct: i32) -> Color {
-    Color::from_rgba8(59, 130, 246, highlight_alpha(opacity_pct))
+fn lapping_row_bg(opacity_pct: i32, bg_pct: i32) -> Color {
+    Color::from_rgba8(59, 130, 246, highlight_alpha(opacity_pct, bg_pct))
 }
 
-fn lapped_row_bg(opacity_pct: i32) -> Color {
-    Color::from_rgba8(239, 68, 68, highlight_alpha(opacity_pct))
+fn lapped_row_bg(opacity_pct: i32, bg_pct: i32) -> Color {
+    Color::from_rgba8(239, 68, 68, highlight_alpha(opacity_pct, bg_pct))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1324,11 +1361,11 @@ fn group_map_fill(cfg: &HudConfig, s: &Snapshot, rider: &Rider) -> Color {
     rider_dot_col(s, rider.race_num)
 }
 
-fn lap_row_bg(rel: LapRel, opacity_pct: i32) -> Option<Color> {
+fn lap_row_bg(rel: LapRel, opacity_pct: i32, bg_pct: i32) -> Option<Color> {
     match rel {
         LapRel::Same => None,
-        LapRel::LappingMe => Some(lapping_row_bg(opacity_pct)),
-        LapRel::LappedByMe => Some(lapped_row_bg(opacity_pct)),
+        LapRel::LappingMe => Some(lapping_row_bg(opacity_pct, bg_pct)),
+        LapRel::LappedByMe => Some(lapped_row_bg(opacity_pct, bg_pct)),
     }
 }
 
@@ -1342,6 +1379,7 @@ fn col_text(
     y: f32,
     color: Color,
     right: bool,
+    glass: bool,
 ) {
     if s.is_empty() {
         return;
@@ -1352,7 +1390,7 @@ fn col_text(
     } else {
         x
     };
-    text(px, fonts, &t, size, tx, y, color, false);
+    text_halo(px, fonts, &t, size, tx, y, color, false, glass);
 }
 
 fn draw_count_track(
@@ -1763,7 +1801,25 @@ fn hold_across_line(s: &Snapshot, flag: DashFlag) -> DashFlag {
         RUN_IN_FLAG.store(0, Ordering::Relaxed);
         return flag;
     }
+    // The post-line band is 80 m on every lap. Sitting in it after a crash must
+    // not keep white up once the wave has finished. Checkered still covers the
+    // frame or two before the lap count catches up.
+    if held == DashFlag::White && white_wave_aged_out(s) {
+        RUN_IN_FLAG.store(0, Ordering::Relaxed);
+        return flag;
+    }
     held
+}
+
+/// The white wave for this lap has already run its `WHITE_WAVE_MS`. A hold from
+/// the run-in does not start a second one. `false` until this lap has waved.
+fn white_wave_aged_out(s: &Snapshot) -> bool {
+    if WHITE_WAVE_LAP.load(Ordering::Relaxed) != focus_num_laps(s) {
+        return false;
+    }
+    // Same subtraction as `white_wave`. Aging the stamp in tests pulls it
+    // backwards, including through zero, so a positive stamp is not required.
+    now_ms().wrapping_sub(WHITE_WAVE_AT.load(Ordering::Relaxed)) > WHITE_WAVE_MS
 }
 
 /// How long the white stays up after it is waved.
@@ -2302,6 +2358,7 @@ fn draw_board_bar(
     y: f32,
     w: f32,
     h: f32,
+    glass: bool,
 ) {
     let pad = 8.0;
     let slot_w = ((w - pad * 2.0) / 3.0).max(1.0);
@@ -2339,7 +2396,7 @@ fn draw_board_bar(
         if ch != '\0' {
             icon(px, fonts, ch, icon_s, sx, ty + 0.5, text_col(), false);
         }
-        paint_place_at(px, fonts, &label, fsz, sx + iw, ty, ink, star, false);
+        paint_place_at(px, fonts, &label, fsz, sx + iw, ty, ink, star, false, glass);
     }
 }
 
@@ -3470,6 +3527,10 @@ struct CenterlineHit {
     z: f32,
     forward: Option<(f32, f32)>,
     dist2: f32,
+    looped: bool,
+    segment_end: usize,
+    along_m: f32,
+    lap_m: f32,
 }
 
 /// Nearest point on the centerline, plus a tangent 22 m ahead. `dist2` is meters squared.
@@ -3520,7 +3581,77 @@ fn nearest_centerline(s: &Snapshot, n: usize, px: f32, pz: f32) -> Option<Center
         z,
         forward,
         dist2: best,
+        looped,
+        segment_end,
+        along_m: arc_to(s, n, segment_end, along),
+        lap_m: polyline_length(s, n, looped),
     })
+}
+
+/// Nearest centerline sample, with how far it sits along the lap.
+pub(crate) struct LineFix {
+    pub x: f32,
+    pub z: f32,
+    pub dist_m: f32,
+    pub along_m: f32,
+    pub lap_m: f32,
+    pub looped: bool,
+    pub segment_end: usize,
+}
+
+pub(crate) fn line_fix(s: &Snapshot, n: usize, px: f32, pz: f32) -> Option<LineFix> {
+    let hit = nearest_centerline(s, n, px, pz)?;
+    Some(LineFix {
+        x: hit.x,
+        z: hit.z,
+        dist_m: hit.dist2.sqrt(),
+        along_m: hit.along_m,
+        lap_m: hit.lap_m,
+        looped: hit.looped,
+        segment_end: hit.segment_end,
+    })
+}
+
+/// Point `meters` ahead of a remembered sample, along track travel.
+pub(crate) fn line_ahead(s: &Snapshot, n: usize, fix: &LineFix, meters: f32) -> (f32, f32) {
+    if let Some(point) = walk_ahead(s, n, fix.looped, fix.segment_end, fix.x, fix.z, meters) {
+        return point;
+    }
+    let a = &s.poly[fix.segment_end.saturating_sub(1) % n];
+    let b = &s.poly[fix.segment_end % n];
+    let dx = b.x - a.x;
+    let dz = b.z - a.z;
+    let len = (dx * dx + dz * dz).sqrt();
+    if len < 1e-3 {
+        return (fix.x, fix.z);
+    }
+    (fix.x + dx / len * meters, fix.z + dz / len * meters)
+}
+
+fn arc_to(s: &Snapshot, n: usize, segment_end: usize, t: f32) -> f32 {
+    let mut meters = 0.0;
+    let start = segment_end.saturating_sub(1);
+    for i in 0..start {
+        meters += segment_len(s, n, i);
+    }
+    meters + segment_len(s, n, start) * t
+}
+
+fn polyline_length(s: &Snapshot, n: usize, looped: bool) -> f32 {
+    let segments = if looped { n } else { n.saturating_sub(1) };
+    let mut meters = 0.0;
+    for i in 0..segments {
+        meters += segment_len(s, n, i);
+    }
+    meters
+}
+
+fn segment_len(s: &Snapshot, n: usize, i: usize) -> f32 {
+    let a = &s.poly[i % n];
+    let b = &s.poly[(i + 1) % n];
+    let dx = b.x - a.x;
+    let dz = b.z - a.z;
+    (dx * dx + dz * dz).sqrt()
 }
 
 fn centerline_forward(
@@ -3528,12 +3659,32 @@ fn centerline_forward(
     n: usize,
     looped: bool,
     segment_end: usize,
+    x: f32,
+    z: f32,
+) -> Option<(f32, f32)> {
+    let (ahead_x, ahead_z) = walk_ahead(s, n, looped, segment_end, x, z, 22.0)?;
+    let fx = ahead_x - x;
+    let fz = ahead_z - z;
+    let len = (fx * fx + fz * fz).sqrt();
+    if len < 0.4 {
+        return None;
+    }
+    Some((fx / len, fz / len))
+}
+
+/// Walk `meters` along the polyline from `(x, z)` on the segment that ends at `segment_end`.
+fn walk_ahead(
+    s: &Snapshot,
+    n: usize,
+    looped: bool,
+    segment_end: usize,
     mut x: f32,
     mut z: f32,
+    meters: f32,
 ) -> Option<(f32, f32)> {
     let origin_x = x;
     let origin_z = z;
-    let mut remain = 22.0;
+    let mut remain = meters;
     let mut i = segment_end;
     for _ in 0..n + 2 {
         if remain <= 0.05 {
@@ -3562,11 +3713,10 @@ fn centerline_forward(
     }
     let fx = x - origin_x;
     let fz = z - origin_z;
-    let len = (fx * fx + fz * fz).sqrt();
-    if len < 0.4 {
+    if fx * fx + fz * fz < 0.16 {
         return None;
     }
-    Some((fx / len, fz / len))
+    Some((x, z))
 }
 
 fn track_forward(s: &Snapshot, n: usize, px: f32, pz: f32) -> Option<(f32, f32)> {

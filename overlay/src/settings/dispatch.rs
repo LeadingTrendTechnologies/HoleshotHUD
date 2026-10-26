@@ -130,6 +130,28 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             set_profile_section(ProfileSection::Overview);
             return;
         }
+        Hit::ProfileNavStrategy => {
+            if with_config(|c| c.experimental_unlocked()) {
+                set_profile_section(ProfileSection::Strategy);
+            }
+            return;
+        }
+        Hit::StrategyLaps => {
+            mxbo_review::strategy::select_mode(true);
+            return;
+        }
+        Hit::StrategyMinutes => {
+            mxbo_review::strategy::select_mode(false);
+            return;
+        }
+        Hit::StrategyDec => {
+            mxbo_review::strategy::nudge(-1);
+            return;
+        }
+        Hit::StrategyInc => {
+            mxbo_review::strategy::nudge(1);
+            return;
+        }
         Hit::ProfileNavMotos => {
             set_profile_section(ProfileSection::Motos);
             open_live_analyze(true);
@@ -445,6 +467,12 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         }
         Hit::TabTimer => {
             set_tab(Tab::Timer);
+            return;
+        }
+        Hit::TabGuide => {
+            if with_config(|c| c.experimental_unlocked()) {
+                set_tab(Tab::Guide);
+            }
             return;
         }
         Hit::PresetCopyOpen => {
@@ -1195,6 +1223,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::DashRed => c.dash.dash_red = !c.dash.dash_red,
         Hit::DashSimple => c.dash.dash_simple = !c.dash.dash_simple,
         Hit::DashShiftColor => c.dash.dash_shift_color = !c.dash.dash_shift_color,
+        Hit::DashGuide => c.dash.dash_guide = !c.dash.dash_guide,
         Hit::TickerShow => c[WidgetId::Ticker].show ^= true,
         Hit::SysShow => c[WidgetId::Sys].show ^= true,
         Hit::SysAppShow(i) => c.toggle_sys_app(i as usize),
@@ -1216,6 +1245,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         Hit::TelemetryShow => c[WidgetId::Telemetry].show ^= true,
         Hit::PitShow => c[WidgetId::Pitboard].show ^= true,
         Hit::TimerShow => c[WidgetId::Timer].show ^= true,
+        Hit::GuideShow => c[WidgetId::Guide].show ^= true,
         Hit::TimerOf => c.timer.timer_of ^= true,
         Hit::PitReset => {
             let (text, _, places) = factory_pack();
@@ -1414,6 +1444,11 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::DiagCopy
         | Hit::TabProfile
         | Hit::ProfileNavOverview
+        | Hit::ProfileNavStrategy
+        | Hit::StrategyLaps
+        | Hit::StrategyMinutes
+        | Hit::StrategyDec
+        | Hit::StrategyInc
         | Hit::ProfileNavMotos
         | Hit::ProfileNavMyMxb
         | Hit::MyMxbRefresh
@@ -1453,6 +1488,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::TabTelemetry
         | Hit::TabPitboard
         | Hit::TabTimer
+        | Hit::TabGuide
         | Hit::MapDotOpen
         | Hit::MapYouTextOpen
         | Hit::MiniDotOpen
@@ -1585,6 +1621,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::TelemetryBg
         | Hit::PitBg
         | Hit::TimerBg
+        | Hit::GuideBg
         | Hit::PitBrowse
         | Hit::PitName
         | Hit::PitBoardOpen
@@ -1635,9 +1672,14 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
     }
     if id == Hit::FeatureSector && !with_config(|c| c.experimental_unlocked()) {
         if let Some(ui) = UI.lock().unwrap().as_mut() {
-            if ui.profile_section == ProfileSection::Tracks {
+            if ui.profile_section == ProfileSection::Tracks
+                || ui.profile_section == ProfileSection::Strategy
+            {
                 ui.profile_section = ProfileSection::Overview;
                 ui.tracks_selected = None;
+            }
+            if ui.tab == Tab::Guide {
+                ui.tab = Tab::Dash;
             }
         }
     }

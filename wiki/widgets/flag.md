@@ -19,7 +19,7 @@ Fresh install: `show_flag = false`, `flag_yellow = false`, `flag_blue = false`, 
 - Do not let a one-frame crash clear hand the cloth to blue or red. Yellow holds `YELLOW_HOLD_MS` after the last live nearby crash.
 - Do not wave blue or red for a crashed rider. A downed backmarker is yellow (or nothing), not red.
 - Do not draw a plaque when the flag is down. Empty slot, except the Ctrl layout box.
-- Do not invent a second flag machine. White wave, checkered latch, run-in hold, and `finish_earned` live in `dash_race_flag`.
+- Do not invent a second flag machine. White wave, checkered latch, run-in hold, and `finish_earned` live in `dash_race_flag`. The run-in hold does not keep white up after the 5 s wave, including while you are still inside the first 80 m. Checkered still covers the frame or two before the lap count catches up.
 - Do not tick `flag_anim_step` from both Dash and Flags. One step per frame.
 - Do not step the flag from stream paint when the overlay already painted that sample. `draw_each` reads the cached flag.
 - Do not hide Dash wrap when Flags is on. They are independent.
@@ -35,6 +35,7 @@ Fresh install: `show_flag = false`, `flag_yellow = false`, `flag_blue = false`, 
 
 ## Change log
 
+- 2026-10-08 — White does not stay up for the rest of the first 80 m after the 5 s wave. A crash just past the line was holding the flag until you left the track. The run-in hold still covers the frame or two before the lap count catches up, on a short lap and a long one. Checkered across the line is unchanged.
 - 2026-10-05 — Stream paint no longer steps the flag again. A Browser Source was advancing the same wave, hold, and run-in on its own clock, so the plaque flipped between flags and would not stay up.
 - 2026-10-01 — Same white/checkered timing as Dash: timed +2 lapped on `0/2` or `1/2` shows the checkered on the line that would start `2/2`.
 - 2026-10-01 — Same white/checkered timing as Dash: timed +1 on `0/1` shows the checkered when the leader has already finished the lap that lapped you. A finish with no pass does not.

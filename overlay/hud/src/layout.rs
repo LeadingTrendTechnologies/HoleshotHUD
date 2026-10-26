@@ -59,6 +59,7 @@ pub fn parse_target(name: &str) -> Option<WidgetId> {
         "telemetry" => WidgetId::Telemetry,
         "pitboard" | "pit" => WidgetId::Pitboard,
         "timer" | "session" => WidgetId::Timer,
+        "guide" => WidgetId::Guide,
         _ => return None,
     })
 }
@@ -90,6 +91,7 @@ pub fn min_px(id: WidgetId) -> (f32, f32) {
         WidgetId::Telemetry => (220.0, 64.0),
         WidgetId::Pitboard => (200.0, 110.0),
         WidgetId::Timer => (80.0, 22.0),
+        WidgetId::Guide => (36.0, 36.0),
     }
 }
 

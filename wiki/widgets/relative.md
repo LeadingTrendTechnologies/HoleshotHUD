@@ -46,6 +46,8 @@ Default columns on: Number, Name, Gap, Fastest, Last lap.
 - Missing `rel_stripe` in the ini keeps alternating rows on.
 - Missing `rel_plaque` / `rel_plaque_text` keep plaques on with black ink.
 - Alternating rows must still read at **Background** 100% (lift, not extra black on night-ink).
+- Your-row and blue/red washes stay at the spider alpha when **Background** is 78% or higher. Below that they thicken (2.5× at 0%). **Row highlight** still scales them.
+- Under 40% **Background**, rim floating type with the soft circle outline. Do not rim the rider-count / track plaques, bike pills, status marks, or group icons. Do not switch this back to a hard 8-neighbor rim.
 - Fuel header/footer is liters/US gallons (`Fuel`) or tank percent (`Fuel %`). Empty volume is `0.0`; `--` / `--%` only when tank size is missing.
 - Setup header/footer is the loaded bike setup filename stem. `--` when `RunInit` has not sent it. Restart MX Bikes after the V13 plugin.
 - Ctrl+resize chrome is the hugged plaque (column pack × row stack), not leftover widget glass. Dragging it larger grows Name / nearby count.
@@ -54,6 +56,8 @@ Default columns on: Number, Name, Gap, Fastest, Last lap.
 
 ## Change log
 
+- 2026-10-08 — Under 40% **Background**, column headers, row type, places, header/footer slots, and the empty line get the same soft night-ink rim as Session. Plaques, bike pills, status marks, and group icons stay bare.
+- 2026-10-08 — Your-row and blue/red washes stay at the spider alpha when **Background** is 78% or higher, and thicken as **Background** drops (2.5× at 0%) so they still read on a clear panel. **Row highlight** still scales them.
 - 2026-10-04 — Place column follows the open-lap grid order: blank on the gate, then track location, including a pass on a crashed bike. See [live race order](../live-order.md).
 - 2026-10-04 — A rider listed on the Groups tab gets that group's icon in the group color, immediately left of the name. Same mark as Standings. The first group in the list wins.
 - 2026-10-02 — Bike-column pills use a translucent brand wash and a 1px stronger brand border. Letters stay black or white from the brand (`ink_on`).

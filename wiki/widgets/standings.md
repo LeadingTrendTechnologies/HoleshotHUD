@@ -47,13 +47,15 @@ Default columns on: Position, Number, Name, Gap to leader, Fastest, Last lap.
 - **Last lap diff** is not Delta. Delta is versus best. The column stays off unless `st_lapdiff` is set.
 - Practice / warmup **Laps** for you can follow `current_lap - 1` when classification skipped a crashed crossing. Do not do that in a moto.
 - Empty field shows “Waiting for race data”, not a blank panel.
-- Rows and places come from the live order, not the raw `s.standings` array. The row window and slide animation follow it.
+- Rows and places come from the live order, not the raw `s.standings` array. The row window and slide animation follow it. A bike under 45 m away does not take the place when `track_pos` puts them at least 80 m further up the lap, and on the same lap they do not keep that place when the game already had them ahead. A spline jump the bike does not follow does not move the place, with or without a gate snapshot. On lap 1, riders under 80 m apart stay in lap-fraction order when the sector-arc cut scores them the other way.
 - Click-to-follow only runs while the plugin sees `SpectateVehicles` (replay / spectate). It must not steal the camera while you are riding.
 - Leaving replay must drop camera focus back to you. A stuck spectate target keeps their row highlighted and starves the dash of your telemetry.
 - Leaving spectate for the garage must hide the board. Leftover rider positions are not a session once `SpectateVehicles` stops.
 - Missing `st_stripe` in the ini keeps alternating rows on.
 - Missing `st_plaque` / `st_plaque_text` keep plaques on with black ink.
 - Alternating rows must still read at **Background** 100% (lift, not extra black on night-ink).
+- Your-row wash stays at the spider alpha when **Background** is 78% or higher. Below that it thickens (2.5× at 0%). **Row highlight** still scales it.
+- Under 40% **Background**, rim floating type with the soft circle outline. Do not rim the rider-count / track plaques, bike pills, status marks, or group icons. Do not switch this back to a hard 8-neighbor rim.
 - Fuel header/footer is liters/US gallons (`Fuel`) or tank percent (`Fuel %`). Empty volume is `0.0`; `--` / `--%` only when tank size is missing.
 - Setup header/footer is the loaded bike setup filename stem. `--` when `RunInit` has not sent it. Restart MX Bikes after the V13 plugin.
 - Ctrl+resize chrome is the hugged plaque (column pack × row stack), not leftover widget glass. Dragging it larger still grows Name / Rows — do not leave the orange box as a no-op hug.
@@ -63,6 +65,25 @@ Default columns on: Position, Number, Name, Gap to leader, Fastest, Last lap.
 
 ## Change log
 
+- 2026-10-20 — Practice and warmup (including Testing Setup and a long practice with leaked extras) rank by best lap. A rider further around the track does not take the place. Gap and interval on that board are best-lap deltas; a rider with no lap stays behind with a blank gap. Race motos still follow [live race order](../live-order.md).
+- 2026-10-09 — A refused centerline fold does not leave you at the back after the bikes and the lap fraction agree again. See [live race order](../live-order.md).
+- 2026-10-08 — Under 40% **Background**, column headers, row type, places, header/footer slots, and the empty line get the same soft night-ink rim as Session. Plaques, bike pills, status marks, and group icons stay bare.
+- 2026-10-08 — A folded gate is not the holeshot. See [live race order](../live-order.md).
+- 2026-10-08 — A dropped position does not take the place. See [live race order](../live-order.md).
+- 2026-10-08 — A group 120 m or more up the lap, still inside the larger pack, does not take the lead. See [live race order](../live-order.md).
+- 2026-10-08 — A corner of about 80 m keeps the place when the bikes are 20–40 m apart across it. See [live race order](../live-order.md).
+- 2026-10-08 — An unridden jump across a fold does not drop the place while the bike is still beside that pack. See [live race order](../live-order.md).
+- 2026-10-08 — An unridden spline jump that lands beside three bikes joins their median instead of flashing ahead of them. See [live race order](../live-order.md).
+- 2026-10-08 — Your-row wash stays at the spider alpha when **Background** is 78% or higher, and thickens as **Background** drops (2.5× at 0%) so the highlight still reads on a clear panel. **Row highlight** still scales it.
+- 2026-10-07 — A bike about 30 m away, with `track_pos` a long way up the lap, does not flash a place. A lead refused near 45 m does not jump through when the gap ticks a few metres wider. See [live race order](../live-order.md).
+- 2026-10-07 — A bike about 45 m away, with `track_pos` a long way up the lap, does not flash a place. See [live race order](../live-order.md).
+- 2026-10-06 — A same-lap fold does not keep the place when the game already listed that rider ahead. See [live race order](../live-order.md).
+- 2026-10-06 — On lap 1, a pack under 80 m apart does not swap places because of the sector-arc cut. See [live race order](../live-order.md).
+- 2026-10-06 — A bike under 45 m away does not change the place when `track_pos` puts them much further up the lap. See [live race order](../live-order.md).
+- 2026-10-06 — A lap-fraction jump the bike does not follow does not change the place, even when the gate was never seen. See [live race order](../live-order.md).
+- 2026-10-06 — A pack gap under 80 m still changes the place. A lap-fraction jump the bike does not follow does not. See [live race order](../live-order.md).
+- 2026-10-06 — A bike under 40 m away does not change the place when `track_pos` puts them much further up the lap. See [live race order](../live-order.md).
+- 2026-10-06 — A rider beside you on the next lane of a folded track does not change the place. See [live race order](../live-order.md).
 - 2026-10-05 — No place from the drop until the holeshot line. See [live race order](../live-order.md).
 - 2026-10-05 — Falling behind the gate no longer keeps that rider P1 for the rest of the open lap. See [live race order](../live-order.md).
 - 2026-10-04 — No place on the gate. From the drop until the first finish, place is where riders are on track, including a pass on a crashed bike. See [live race order](../live-order.md).

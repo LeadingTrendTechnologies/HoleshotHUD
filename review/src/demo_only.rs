@@ -106,6 +106,10 @@ pub fn clear_profile() {}
 
 pub fn clear_motos() {}
 
+pub fn last_race_best_ms(_track: &str) -> Option<i32> {
+    None
+}
+
 pub fn storage_bytes() -> u64 {
     0
 }

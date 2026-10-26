@@ -25,6 +25,7 @@ pub fn controls_json(id: WidgetId, lay: &HudLayout) -> String {
         WidgetId::Telemetry => telemetry(&mut out, lay),
         WidgetId::Pitboard => pitboard(&mut out, lay),
         WidgetId::Timer => timer(&mut out, lay),
+        WidgetId::Guide => {}
     }
     out.finish()
 }

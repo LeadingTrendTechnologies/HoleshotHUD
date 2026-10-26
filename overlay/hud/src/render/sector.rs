@@ -433,7 +433,7 @@ pub(crate) fn draw_sector(
         let ry = live_bottom + 4.0 + (row_i + ri) as f32 * hist_row_h;
         if row.fastest {
             if let Some(wash) = try_rect(x + pad_x, ry, inner_w, hist_row_h - 1.0) {
-                fill_rect(px, wash, you_row_bg(72));
+                fill_rect(px, wash, you_row_bg(72, 100));
             }
         }
         text_halo(

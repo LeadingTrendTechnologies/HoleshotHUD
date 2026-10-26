@@ -443,7 +443,14 @@ pub(crate) fn draw_ticker_card(
     let is_focus = row.race_num == focus.race_num;
     let out = standing_status(row).is_some() && standing_status(row) != Some("PIT");
     if is_focus {
-        fill_fade_card(px, x, y, w, h, you_row_bg(cfg.ticker.ticker_hl));
+        fill_fade_card(
+            px,
+            x,
+            y,
+            w,
+            h,
+            you_row_bg(cfg.ticker.ticker_hl, cfg[WidgetId::Ticker].bg),
+        );
     }
     let pos_s = (h * 0.38).clamp(14.0, 20.0);
     let pos_y = y + (h - pos_s) * 0.5;
@@ -466,6 +473,7 @@ pub(crate) fn draw_ticker_card(
         Color::from_rgba8(12, 12, 14, 255),
         star,
         true,
+        false,
     );
     let accent_c = bike_color(&bytes_as_text(&row.bike), &bytes_as_text(&row.category));
     let bar_x = x + 4.0 + pos_s + 3.0;

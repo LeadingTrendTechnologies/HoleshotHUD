@@ -764,7 +764,9 @@ fn pane_app_labs(
     text(
         px,
         fonts,
-        "Adds Profile → Tracks. Off until you turn this on.",
+        &mxbo_hud::i18n::t(
+            "Adds Guide, Profile → Strategy, and Profile → Tracks. Off until you turn this on.",
+        ),
         11.0,
         x + 4.0,
         y + 2.0,

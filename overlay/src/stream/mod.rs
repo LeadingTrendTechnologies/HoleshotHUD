@@ -924,6 +924,7 @@ fn crop_rect_for(
             Some(cfg[id].rect)
         }
         WidgetId::Timer if cfg[id].show => Some(cfg[id].rect),
+        WidgetId::Guide if cfg.guide_widget_visible() => Some(cfg[id].rect),
         _ => None,
     }
 }
@@ -1790,6 +1791,7 @@ fn widget_key(id: WidgetId) -> &'static str {
         WidgetId::Telemetry => "telemetry",
         WidgetId::Pitboard => "pitboard",
         WidgetId::Timer => "timer",
+        WidgetId::Guide => "guide",
     }
 }
 
@@ -1812,6 +1814,7 @@ fn widget_label(id: WidgetId) -> &'static str {
         WidgetId::Telemetry => "Telemetry",
         WidgetId::Pitboard => "Pit Board",
         WidgetId::Timer => "Session",
+        WidgetId::Guide => "Guide",
     }
 }
 
@@ -1830,8 +1833,13 @@ fn stream_layout_json() -> String {
     config::with_config(|cfg| {
         let live = cfg.active_preset;
         let lay = cfg.stream_slot(edit);
+        let listed: Vec<WidgetId> = WidgetId::ALL
+            .iter()
+            .copied()
+            .filter(|id| *id != WidgetId::Guide || cfg.experimental_unlocked())
+            .collect();
         let mut widgets = String::from("[");
-        for (i, id) in WidgetId::ALL.iter().enumerate() {
+        for (i, id) in listed.iter().enumerate() {
             if i > 0 {
                 widgets.push(',');
             }

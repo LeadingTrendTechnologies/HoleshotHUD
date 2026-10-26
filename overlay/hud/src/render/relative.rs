@@ -126,7 +126,11 @@ pub(crate) fn draw_relative(
                             || st.is_some_and(|r| r.crashed != 0 || matches!(r.state, 1 | 3 | 4));
                         if is_self {
                             row.fill_you(px);
-                        } else if let Some(bg) = lap_row_bg(lap_rel(s, rider.race_num), hl) {
+                        } else if let Some(bg) = lap_row_bg(
+                            lap_rel(s, rider.race_num),
+                            hl,
+                            cfg[WidgetId::Relative].bg,
+                        ) {
                             row.fill(px, bg);
                         }
                         let name_c = if out { row.out_c } else { row.ink };

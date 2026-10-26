@@ -376,6 +376,12 @@ void PluginState::applySessionLength(int len)
         {
             return;
         }
+        // 7:00 in milliseconds is not a race length and not practice. It is remaining time.
+        if (len >= 1000 && !raceMinutes(len) && !practiceSized(len))
+        {
+            m_sessionRemain = len;
+            return;
+        }
         m_sessionLength = len;
         return;
     }
@@ -384,6 +390,21 @@ void PluginState::applySessionLength(int len)
         // Locked minutes + a larger 15–180 value is the gate / remaining seconds.
         if (m_sessionLength < 60 && !likelyStartCountdown(m_sessionLength) && likelyStartCountdown(len))
         {
+            m_sessionRemain = len;
+            return;
+        }
+        // A minute lock is only replaced by that same length in milliseconds.
+        // 15:00 (900000) and 7:00 (420000) are a different total.
+        if (m_sessionLength > 0 && m_sessionLength < 60 && !likelyStartCountdown(m_sessionLength)
+            && len >= 1000)
+        {
+            const int sameMs = m_sessionLength * 60000;
+            const int delta = len - sameMs;
+            if (delta <= 30000 && delta >= -30000 && raceMinutes(len))
+            {
+                m_sessionLength = len;
+                return;
+            }
             m_sessionRemain = len;
             return;
         }
@@ -457,8 +478,10 @@ void PluginState::setSession(const SPluginsRaceSession_t& s)
     }
     // Warmup 10:00 then race 8:00 + 2L is a new format — don't keep the 10 minute lock.
     // A 4+ lap moto still ignores leftover 8:00 / 10:00 even if extras republish.
+    // A millisecond length that is not a race or practice total is not a new format.
+    const bool millisecondBlob = len >= 1000 && !raceMinutes(len) && !practiceSized(len);
     if ((newKind || newFormat) && len > 0 && !likelyStartCountdown(len) && !practiceSized(len)
-        && !(m_sessionLaps >= 4 && leftoverTimedLength(len)))
+        && !(m_sessionLaps >= 4 && leftoverTimedLength(len)) && !millisecondBlob)
     {
         m_sessionLength = len;
         m_sessionRemain = len;

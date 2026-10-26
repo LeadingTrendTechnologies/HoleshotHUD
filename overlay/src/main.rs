@@ -293,6 +293,7 @@ fn main() {
         let root = std::path::PathBuf::from(local).join("Holeshot HUD");
         mxbo_hud::track_pb::set_store_dir(root.join("track-pbs"));
         crate::review::init(root.join("reviews"));
+        mxbo_review::strategy::init(root.join("reviews"));
     }
     let clock_log_path = crate::record::path();
     match clock_log_path {
@@ -724,17 +725,26 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
                 mxbo_hud::delta::tick(s);
                 mxbo_hud::sector::tick(s);
                 mxbo_hud::pitboard::tick(s);
+                mxbo_hud::track_guide::tick(s);
                 let record = crate::config::with_config(|c| c.review);
                 crate::review::tick(s, record && !spectating);
+                if crate::config::with_config(|c| c.experimental_unlocked()) {
+                    mxbo_review::strategy::tick(s);
+                }
             }
         } else if hitch_hold {
             if let Some(s) = last_snap.as_ref() {
                 mxbo_hud::delta::tick(s);
                 mxbo_hud::sector::tick(s);
                 mxbo_hud::pitboard::tick(s);
+                mxbo_hud::track_guide::tick(s);
             }
         } else {
+            mxbo_hud::track_guide::tick(&mxbo_hud::shm::Snapshot::default());
             crate::review::tick(&mxbo_hud::shm::Snapshot::default(), false);
+            if crate::config::with_config(|c| c.experimental_unlocked()) {
+                mxbo_review::strategy::tick(&mxbo_hud::shm::Snapshot::default());
+            }
         }
         let hud =
             if overlay_on && (live || hitch_hold || layout_on || (settings_open && in_session)) {
@@ -807,6 +817,11 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
         } else {
             let cfg = crate::config::with_config(|c| c.for_overlay());
             paint(&cfg);
+        }
+        if live {
+            if let Some(snap) = hud {
+                crate::record::note_places(snap);
+            }
         }
         {
             let (stream_cfg, stream_rev) =

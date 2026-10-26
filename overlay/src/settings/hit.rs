@@ -33,6 +33,7 @@ pub(crate) enum Tab {
     Telemetry,
     Pitboard,
     Timer,
+    Guide,
 }
 
 impl Tab {
@@ -59,6 +60,7 @@ pub(crate) enum AppSection {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ProfileSection {
     Overview,
+    Strategy,
     Motos,
     MyMxb,
     Ranked,
@@ -70,6 +72,7 @@ impl ProfileSection {
     pub(crate) fn label(self) -> &'static str {
         mxbo_hud::i18n::t(match self {
             Self::Overview => "Overview",
+            Self::Strategy => "Strategy",
             Self::Motos => "Motos",
             Self::MyMxb => "MyMXB",
             Self::Ranked => "MXB-Ranked",
@@ -81,6 +84,7 @@ impl ProfileSection {
     pub(crate) fn hit(self) -> Hit {
         match self {
             Self::Overview => Hit::ProfileNavOverview,
+            Self::Strategy => Hit::ProfileNavStrategy,
             Self::Motos => Hit::ProfileNavMotos,
             Self::MyMxb => Hit::ProfileNavMyMxb,
             Self::Ranked => Hit::ProfileNavRanked,
@@ -149,7 +153,12 @@ pub(crate) enum Hit {
     TabProfile,
     TabFeedback,
     ProfileNavOverview,
+    ProfileNavStrategy,
     ProfileNavMotos,
+    StrategyLaps,
+    StrategyMinutes,
+    StrategyDec,
+    StrategyInc,
     ProfileNavMyMxb,
     ProfileNavRanked,
     ProfileNavCbr,
@@ -223,6 +232,7 @@ pub(crate) enum Hit {
     TabTelemetry,
     TabPitboard,
     TabTimer,
+    TabGuide,
     Preset(SessionPreset),
     PresetCopyOpen,
     PresetCopyTo(SessionPreset),
@@ -239,6 +249,7 @@ pub(crate) enum Hit {
     DashRed,
     DashSimple,
     DashShiftColor,
+    DashGuide,
     TickerShow,
     SysShow,
     SysAppShow(u8),
@@ -265,6 +276,8 @@ pub(crate) enum Hit {
     TimerShow,
     TimerOf,
     TimerBg,
+    GuideShow,
+    GuideBg,
     PitBrowse,
     PitName,
     PitBoardOpen,

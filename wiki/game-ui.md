@@ -139,7 +139,7 @@ Track “clean up this screen” work. Status is about **pack treatment**, not p
 | View Replays | `viewreplays.mnu` | Spliced | Same family as Profiles |
 | Replay HUD | `replay.mnu` | Spliced | Frost panels + plaques |
 | Multi pit / race info | `multiclient.mnu` | Spliced | `restyle_pit_shell` |
-| Practice pit / test panel | `test.mnu` | Spliced | Pit shell + panels |
+| Practice pit / test panel | `test.mnu` | Spliced | Pit shell, weather bar, photo chrome, trainer save/add/overwrite |
 | Garage | `garage.mnu` | Spliced | Setup bars + panes |
 | Host Setup | `hostsetup.mnu` → `idd_host_setup` | Spliced | Glass + chrome (2026-09) |
 | Race Setup shell | `hostsetup.mnu` → `idd_race_setup` | Spliced | Title / track bar / chrome (2026-09) |

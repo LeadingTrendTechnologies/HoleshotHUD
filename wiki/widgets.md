@@ -14,6 +14,7 @@ When you change a widget, append a dated entry to that widget’s **Change log**
 | Minimap | Minimap | `Minimap` | [minimap.md](widgets/minimap.md) |
 | Radar | Radar | `Radar` | [radar.md](widgets/radar.md) |
 | Dash | Dash | `Dash` | [dash.md](widgets/dash.md) |
+| Guide | Guide | `Guide` | [guide.md](widgets/guide.md) |
 | Flags | Flags | `Flag` | [flag.md](widgets/flag.md) |
 | Horizontal Standings | H-Standings | `Ticker` | [horizontal-standings.md](widgets/horizontal-standings.md) |
 | Systems | Systems | `Sys` | [systems.md](widgets/systems.md) |
@@ -56,6 +57,7 @@ Add a bullet under **Change log** on the widget page:
 
 ## Change log
 
+- 2026-10-19 — Guide shipped. A draggable chevron that shares the dash track guide. See [guide.md](widgets/guide.md).
 - 2026-10-03 — Wishlists and the unread-signals note live under [future/](future/widgets.md), so shipped widget pages stay in this index.
 - 2026-10-02 — Session shipped. Place and the session clock or laps on one line. See [session.md](widgets/session.md).
 - 2026-10-01 — Broadcast gaps live on [stream-broadcast.md](future/stream-broadcast.md), so streaming is not treated as “no new widgets.”

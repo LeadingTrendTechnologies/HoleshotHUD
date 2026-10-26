@@ -152,6 +152,7 @@ fn default_hud_hides_every_widget() {
     assert_eq!(cfg[WidgetId::Dash].rect.h, 0.115);
     assert!(!cfg.dash.dash_simple);
     assert!(!cfg.dash.dash_shift_color);
+    assert!(cfg.dash.dash_guide);
     assert!(!cfg.dash.dash_yellow);
     assert!(!cfg.dash.dash_blue);
     assert!(!cfg.dash.dash_red);

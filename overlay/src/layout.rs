@@ -36,6 +36,7 @@ pub struct Editor {
     telemetry: Option<Rect>,
     pitboard: Option<Rect>,
     timer: Option<Rect>,
+    guide: Option<Rect>,
     st_w_name: Option<i32>,
     rel_w_name: Option<i32>,
     standings_rows: Option<i32>,
@@ -83,6 +84,7 @@ impl Editor {
             || self.telemetry.is_some()
             || self.pitboard.is_some()
             || self.timer.is_some()
+            || self.guide.is_some()
             || self.st_w_name.is_some()
             || self.rel_w_name.is_some()
             || self.standings_rows.is_some()
@@ -131,6 +133,9 @@ impl Editor {
         }
         if let Some(s) = self.timer {
             cfg[WidgetId::Timer].rect = s;
+        }
+        if let Some(s) = self.guide {
+            cfg[WidgetId::Guide].rect = s;
         }
         if let Some(r) = self.standings {
             cfg[WidgetId::Standings].rect = r;
@@ -230,6 +235,7 @@ impl Editor {
                 WidgetId::Telemetry => self.telemetry = Some(r),
                 WidgetId::Pitboard => self.pitboard = Some(r),
                 WidgetId::Timer => self.timer = Some(r),
+                WidgetId::Guide => self.guide = Some(r),
             }
             apply_table_resize(self, cfg, d, r, ow, oh);
             let _ = overlay;
@@ -262,6 +268,7 @@ impl Editor {
         self.telemetry = None;
         self.pitboard = None;
         self.timer = None;
+        self.guide = None;
         self.st_w_name = None;
         self.rel_w_name = None;
         self.standings_rows = None;
@@ -289,6 +296,7 @@ impl Editor {
         let telemetry = self.telemetry;
         let pitboard = self.pitboard;
         let timer = self.timer;
+        let guide = self.guide;
         crate::config::update_config(|cfg| {
             let lay = cfg.live_mut();
             lay[WidgetId::Map].rect = map;
@@ -335,6 +343,9 @@ impl Editor {
             }
             if let Some(s) = timer {
                 lay[WidgetId::Timer].rect = s;
+            }
+            if let Some(s) = guide {
+                lay[WidgetId::Guide].rect = s;
             }
             if let Some(w) = self.st_w_name {
                 lay.standings.st_w_name = w;
@@ -395,6 +406,7 @@ fn rect_of(s: &Snapshot, ed: &Editor, cfg: &HudConfig, t: WidgetId) -> Rect {
         WidgetId::Telemetry => ed.telemetry.unwrap_or(cfg[WidgetId::Telemetry].rect),
         WidgetId::Pitboard => ed.pitboard.unwrap_or(cfg[WidgetId::Pitboard].rect),
         WidgetId::Timer => ed.timer.unwrap_or(cfg[WidgetId::Timer].rect),
+        WidgetId::Guide => ed.guide.unwrap_or(cfg[WidgetId::Guide].rect),
     }
 }
 
@@ -417,6 +429,7 @@ fn shown(s: &Snapshot, cfg: &HudConfig, t: WidgetId) -> bool {
         WidgetId::Telemetry => cfg[WidgetId::Telemetry].show,
         WidgetId::Pitboard => cfg[WidgetId::Pitboard].show,
         WidgetId::Timer => cfg[WidgetId::Timer].show,
+        WidgetId::Guide => cfg.guide_widget_visible(),
     }
 }
 
@@ -429,7 +442,8 @@ fn hit(
     ow: i32,
     oh: i32,
 ) -> Option<(WidgetId, Handle)> {
-    const ORDER: [WidgetId; 17] = [
+    const ORDER: [WidgetId; 18] = [
+        WidgetId::Guide,
         WidgetId::Timer,
         WidgetId::Dash,
         WidgetId::Ticker,

@@ -42,6 +42,7 @@ mod feedback;
 mod groups;
 mod pit_help;
 mod profile;
+mod strategy;
 mod cbr;
 mod mymxb;
 mod ranked;

@@ -74,7 +74,7 @@ Lat/long G-meter with a peak marker.
 
 Consumption tracking, not just a tank readout.
 
-- Level is already **Overlay** (`fuel` / `maxFuel`) and shows in Dash / Standings / Relative / ticker footers. This widget is **rate**: L/lap or gal/lap, remaining laps, maybe a session total.
+- Level is already **Overlay** (`fuel` / `maxFuel`) and shows in Dash / Standings / Relative / ticker footers. This widget is **rate**: L/lap or gal/lap, remaining laps, maybe a session total. The pre-race fill lives on F8 Profile → Strategy, not on this widget.
 - Derive from `fuel` vs completed laps / `local_track_pos`. No extra plugin field.
 - Do not treat a refill or a reset as a huge burn. Need a baseline after leaving pits / starting a lap.
 

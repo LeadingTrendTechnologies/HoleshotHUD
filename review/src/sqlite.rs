@@ -655,6 +655,35 @@ match filter {
     rows
 }
 
+/// Your best lap on the newest race visit for this track. Practice visits are not included.
+pub fn last_race_best_ms(track: &str) -> Option<i32> {
+    if track.is_empty() {
+        return None;
+    }
+    let st = live();
+    let c = st.conn.as_ref()?;
+    let ms = c
+        .query_row(
+            "SELECT (
+                SELECT MIN(r.best_ms) FROM riders r
+                WHERE r.session_id = s.id AND r.race_num = s.your_race_num AND r.best_ms >= 20000
+             )
+             FROM sessions s
+             WHERE s.practice = 0 AND s.track = ?1
+               AND EXISTS (
+                   SELECT 1 FROM laps l
+                   WHERE l.session_id = s.id AND l.race_num = s.your_race_num AND l.ms >= 20000
+               )
+             ORDER BY s.started DESC
+             LIMIT 1",
+            params![track],
+            |row| row.get::<_, Option<i32>>(0),
+        )
+        .ok()
+        .flatten()?;
+    (ms >= 20_000).then_some(ms)
+}
+
 fn session_you_won(c: &Connection, id: i64, rider_count: i32) -> bool {
     let Ok((practice, kind, your_race_num)) = c.query_row(
         "SELECT practice, kind, your_race_num FROM sessions WHERE id = ?1",

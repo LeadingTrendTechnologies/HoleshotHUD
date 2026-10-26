@@ -149,6 +149,14 @@ pub(crate) fn widget_pane_spec(id: WidgetId) -> WidgetPaneSpec {
             bg: Hit::TimerBg,
             bg_label: "Panel opacity",
         },
+        WidgetId::Guide => WidgetPaneSpec {
+            id,
+            title: "Guide",
+            subtitle: "Chevron back to the track. Same guide as Dash",
+            show: Hit::GuideShow,
+            bg: Hit::GuideBg,
+            bg_label: "Panel opacity",
+        },
     }
 }
 
@@ -1004,6 +1012,20 @@ pub(crate) fn pane_dash(
                 hover,
                 hits,
             );
+            if cfg.experimental_unlocked() {
+                y = toggle_row(
+                    px,
+                    fonts,
+                    x,
+                    y,
+                    w,
+                    "Track guide",
+                    cfg.dash.dash_guide,
+                    Hit::DashGuide,
+                    hover,
+                    hits,
+                );
+            }
             y = toggle_row(
                 px,
                 fonts,
@@ -2725,6 +2747,31 @@ pub(crate) fn pane_gamepad(
             );
             pane_style(px, fonts, spec, cfg, hover, hits, x, y, w)
         },
+    )
+}
+
+pub(crate) fn pane_guide(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    cfg: &HudConfig,
+    hover: Option<Hit>,
+    hits: &mut Vec<HitBox>,
+    x: f32,
+    y: f32,
+    w: f32,
+) -> f32 {
+    let spec = widget_pane_spec(WidgetId::Guide);
+    open_widget_pane(
+        px,
+        fonts,
+        cfg,
+        hover,
+        hits,
+        x,
+        y,
+        w,
+        spec,
+        |_px, _fonts, y, _shown, _hits| y,
     )
 }
 

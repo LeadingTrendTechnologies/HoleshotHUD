@@ -29,7 +29,7 @@ pub(crate) fn draw(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32) {
 pub(crate) fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg: &HudConfig) {
     let pending = crate::feedback::pending_reply();
     let (
-        tab,
+        mut tab,
         hover,
         focus,
         open_drop,
@@ -99,11 +99,20 @@ pub(crate) fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg:
             ui.map(|u| u.tracks_pan_z).unwrap_or(0.0),
         )
     };
-    if profile_section == ProfileSection::Tracks && !cfg.experimental_unlocked() {
-        profile_section = ProfileSection::Overview;
-        if let Some(ui) = UI.lock().unwrap().as_mut() {
-            ui.profile_section = ProfileSection::Overview;
-            ui.tracks_selected = None;
+    if !cfg.experimental_unlocked() {
+        if profile_section == ProfileSection::Tracks || profile_section == ProfileSection::Strategy
+        {
+            profile_section = ProfileSection::Overview;
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.profile_section = ProfileSection::Overview;
+                ui.tracks_selected = None;
+            }
+        }
+        if tab == Tab::Guide {
+            tab = Tab::Dash;
+            if let Some(ui) = UI.lock().unwrap().as_mut() {
+                ui.tab = Tab::Dash;
+            }
         }
     }
     let banner = crate::update::manual_banner(
@@ -238,7 +247,9 @@ pub(crate) fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg:
             cw,
         ),
         Tab::Review | Tab::Profile => {
-            if profile_section == ProfileSection::Motos || tab == Tab::Review {
+            if profile_section == ProfileSection::Strategy && tab == Tab::Profile {
+                strategy::pane_strategy(px, fonts, hover, &mut hits, x, py, cw, cfg.units)
+            } else if profile_section == ProfileSection::Motos || tab == Tab::Review {
                 let b = pane_review(
                     px,
                     fonts,
@@ -339,6 +350,7 @@ pub(crate) fn draw_with_cfg(px: &mut Pixmap, fonts: &Fonts, w: f32, h: f32, cfg:
         Tab::Telemetry => pane_telemetry(px, fonts, &cfg, hover, &mut hits, x, py, cw),
         Tab::Pitboard => pane_pitboard(px, fonts, &cfg, hover, open_drop, &mut hits, x, py, cw),
         Tab::Timer => pane_timer(px, fonts, &cfg, hover, &mut hits, x, py, cw),
+        Tab::Guide => pane_guide(px, fonts, &cfg, hover, &mut hits, x, py, cw),
     };
     if widgets {
         let sticky_bottom = clip_top + 10.0 + PRESET_STRIP_H;
@@ -574,6 +586,7 @@ pub(crate) fn widget_short_name(id: WidgetId) -> &'static str {
         WidgetId::Telemetry => "Telemetry",
         WidgetId::Pitboard => "Pit Board",
         WidgetId::Timer => "Session",
+        WidgetId::Guide => "Guide",
     })
 }
 
@@ -826,7 +839,7 @@ pub(crate) fn paint_focus(px: &mut Pixmap, hits: &[HitBox], focus: Option<Hit>) 
 }
 
 pub(crate) fn widget_groups(cfg: &HudConfig) -> Vec<(&'static str, Vec<(Tab, Hit, &'static str, bool)>)> {
-    let cockpit = vec![
+    let mut cockpit = vec![
         (Tab::Dash, Hit::TabDash, "Dash", cfg[WidgetId::Dash].show),
         (
             Tab::Timer,
@@ -874,6 +887,14 @@ pub(crate) fn widget_groups(cfg: &HudConfig) -> Vec<(&'static str, Vec<(Tab, Hit
             cfg[WidgetId::Pitboard].show,
         ),
     ];
+    if cfg.experimental_unlocked() {
+        cockpit.push((
+            Tab::Guide,
+            Hit::TabGuide,
+            "Guide",
+            cfg[WidgetId::Guide].show,
+        ));
+    }
     let mut groups = vec![
         (
             "Boards",
@@ -1005,7 +1026,7 @@ pub(crate) fn draw_profile_subnav(
     px: &mut Pixmap,
     fonts: &Fonts,
     section: ProfileSection,
-    show_tracks: bool,
+    experimental: bool,
     hover: Option<Hit>,
     hits: &mut Vec<HitBox>,
     x: f32,
@@ -1013,9 +1034,10 @@ pub(crate) fn draw_profile_subnav(
     pane_w: f32,
 ) {
     let mut cx = x;
-    let items: &[ProfileSection] = if show_tracks {
+    let items: &[ProfileSection] = if experimental {
         &[
             ProfileSection::Overview,
+            ProfileSection::Strategy,
             ProfileSection::Motos,
             ProfileSection::MyMxb,
             ProfileSection::Ranked,
@@ -1747,6 +1769,20 @@ pub(crate) fn nav_icon(px: &mut Pixmap, hit: Hit, cx: f32, cy: f32, c: Color) {
             icon_stroke_circle(px, cx, cy, 6.2, c);
             icon_stroke_line(px, cx, cy, cx, cy - 3.4, c, 1.4);
             icon_stroke_line(px, cx, cy, cx + 2.6, cy + 1.2, c, 1.4);
+        }
+        Hit::TabGuide => {
+            let mut pb = PathBuilder::new();
+            pb.move_to(cx, cy - 6.2);
+            pb.line_to(cx + 6.4, cy + 4.4);
+            pb.line_to(cx, cy + 1.0);
+            pb.line_to(cx - 6.4, cy + 4.4);
+            pb.close();
+            if let Some(path) = pb.finish() {
+                let mut paint = Paint::default();
+                paint.set_color(c);
+                paint.anti_alias = true;
+                px.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+            }
         }
         Hit::QuitApp => {
             icon_stroke_circle(px, cx, cy, 6.2, c);

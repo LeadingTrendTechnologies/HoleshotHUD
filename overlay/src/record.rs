@@ -14,6 +14,10 @@ const LAST_RACE: &str = "last-race.jsonl";
 const RACE_SEND: &str = "race-send.jsonl";
 const MAX_LOG: usize = 2 * 1024 * 1024;
 const MAX_SEND_LOG: usize = 700 * 1024;
+/// One race is kept in full. A new race replaces the file. The feedback upload
+/// still clips to `MAX_SEND_LOG`.
+const KEEP_FULL_RACE_LOG: bool = true;
+const PLACE_GAP_MS: u128 = 250;
 
 static LOG: Mutex<Option<ClockLog>> = Mutex::new(None);
 
@@ -43,6 +47,13 @@ pub fn tick(snap: &Snapshot) {
     }
 }
 
+/// After the frame that published the live order. One line when that order changes.
+pub fn note_places(snap: &Snapshot) {
+    if let Some(log) = live().as_mut() {
+        log.note_places(snap);
+    }
+}
+
 pub struct ClockLog {
     writer: Option<BufWriter<File>>,
     path: PathBuf,
@@ -57,6 +68,7 @@ pub struct ClockLog {
     last_key: Option<(i32, i32, i32, i32, i32, i32, i32, i32, i32)>,
     lines: u32,
     gate: SessionGate,
+    places: PlaceTrace,
 }
 
 impl ClockLog {
@@ -75,6 +87,7 @@ impl ClockLog {
             last_key: None,
             lines: 0,
             gate: SessionGate::default(),
+            places: PlaceTrace::default(),
         };
         log.open(false);
         log
@@ -138,6 +151,18 @@ impl ClockLog {
         self.write_line(snap, &sample);
     }
 
+    fn note_places(&mut self, snap: &Snapshot) {
+        if self.writer.is_none() {
+            return;
+        }
+        let order = mxbo_hud::live_order_nums();
+        let now_ms = self.started.elapsed().as_millis();
+        let Some(line) = self.places.consider(snap, &order, now_ms) else {
+            return;
+        };
+        self.append_line(&line);
+    }
+
     fn reset(&mut self) {
         self.archive_last();
         self.gate.saw_race = false;
@@ -167,6 +192,7 @@ impl ClockLog {
         self.last_key = None;
         self.started = Instant::now();
         self.truncated = false;
+        self.places = PlaceTrace::default();
         let mut errors = String::new();
         for dir in log_dirs() {
             if let Err(e) = fs::create_dir_all(&dir) {
@@ -175,12 +201,20 @@ impl ClockLog {
             }
             remove_old_logs(&dir);
             let path = dir.join(RACE_LOG);
-            let (existing, was_big) = if clear {
+            let (mut existing, was_big) = if clear {
                 (String::new(), false)
             } else {
                 read_tail(&path)
             };
-            let rewrite = clear || existing.trim().is_empty() || was_big;
+            // A launch must not continue the previous moto. That file becomes
+            // `last-race.jsonl`, and this one starts at the header.
+            let prior_race = !clear && raw_has_race(&existing);
+            if prior_race {
+                let dest = dir.join(LAST_RACE);
+                let _ = fs::write(&dest, existing.as_bytes());
+                existing.clear();
+            }
+            let rewrite = clear || prior_race || existing.trim().is_empty() || was_big;
             let mut opts = OpenOptions::new();
             opts.create(true).write(true);
             if rewrite {
@@ -206,10 +240,10 @@ impl ClockLog {
                         if !self.body.ends_with('\n') {
                             self.body.push('\n');
                         }
-                        if trim_body(&mut self.body) {
+                        if !KEEP_FULL_RACE_LOG && trim_body(&mut self.body) {
                             self.truncated = true;
                         }
-                        self.truncated |= was_big;
+                        self.truncated |= was_big && !KEEP_FULL_RACE_LOG;
                         if rewrite {
                             let _ = w.write_all(self.body.as_bytes());
                             let _ = w.flush();
@@ -222,7 +256,8 @@ impl ClockLog {
                         self.last_path = last.clone();
                         self.last_ready = log_has_race(&last);
                         self.last_len = file_len(&last) as usize;
-                        self.last_truncated = self.last_len as u64 > MAX_LOG as u64;
+                        self.last_truncated =
+                            !KEEP_FULL_RACE_LOG && self.last_len as u64 > MAX_LOG as u64;
                     }
                     self.writer = Some(w);
                     write_boot(&format!("ok {}", self.path.display()));
@@ -239,7 +274,7 @@ impl ClockLog {
         let t = self.started.elapsed().as_secs_f32();
         let track = bytes_as_text(&snap.track_name);
         let line = format!(
-            "{{\"t\":{t:.2},\"seq\":{},\"track\":\"{}\",\"len\":{},\"laps\":{},\"time\":{},\"cur\":{},\"lap_ms\":{},\"last_ms\":{},\"spd\":{:.1},\"pos\":{:.3},\"on\":{},\"ll\":{},\"ld\":{},\"n\":{},\"dash\":\"{}\",\"rem\":{},\"mode\":{},\"gate\":{},\"arm\":{},\"exp\":{},\"saw\":{},\"lock\":{},\"otl\":{},\"otb\":{},\"flag\":{},\"left\":{}}}",
+            "{{\"t\":{t:.2},\"seq\":{},\"track\":\"{}\",\"len\":{},\"laps\":{},\"time\":{},\"cur\":{},\"lap_ms\":{},\"last_ms\":{},\"spd\":{:.1},\"pos\":{:.3},\"on\":{},\"ll\":{},\"ld\":{},\"n\":{},\"dash\":\"{}\",\"rem\":{},\"mode\":{},\"gate\":{},\"arm\":{},\"exp\":{},\"saw\":{},\"lock\":{},\"otl\":{},\"otb\":{},\"flag\":{},\"shown\":{},\"left\":{}}}",
             s.seq,
             json_escape(&track),
             s.session_length,
@@ -265,12 +300,17 @@ impl ClockLog {
             s.ot_local,
             s.ot_lead,
             s.flag,
+            s.shown,
             s.laps_left,
         );
-        self.body.push_str(&line);
+        self.append_line(&line);
+    }
+
+    fn append_line(&mut self, line: &str) {
+        self.body.push_str(line);
         self.body.push('\n');
         self.lines += 1;
-        if trim_body(&mut self.body) {
+        if !KEEP_FULL_RACE_LOG && trim_body(&mut self.body) {
             self.truncated = true;
             self.rewrite_file();
             return;
@@ -312,6 +352,96 @@ impl Drop for ClockLog {
     }
 }
 
+#[derive(Default)]
+struct PlaceTrace {
+    last_order: Vec<i32>,
+    last_write_ms: u128,
+    seen: bool,
+}
+
+impl PlaceTrace {
+    /// `Some` when this order should be written. The same order is skipped. A blank
+    /// place (gate, or not yet at the holeshot) is skipped. A change inside 250 ms
+    /// waits until the window opens, then the order still in effect is written.
+    fn consider(&mut self, snap: &Snapshot, order: &[i32], now_ms: u128) -> Option<String> {
+        if focus_place(snap, order) <= 0 {
+            return None;
+        }
+        if self.last_order == order {
+            return None;
+        }
+        if self.seen && now_ms.saturating_sub(self.last_write_ms) < PLACE_GAP_MS {
+            return None;
+        }
+        self.last_order = order.to_vec();
+        self.last_write_ms = now_ms;
+        self.seen = true;
+        Some(format_place_line(snap, order, now_ms))
+    }
+}
+
+fn focus_race_num(snap: &Snapshot) -> i32 {
+    if snap.focus_race_num > 0 {
+        snap.focus_race_num
+    } else {
+        snap.local_race_num
+    }
+}
+
+fn focus_place(snap: &Snapshot, order: &[i32]) -> i32 {
+    let you = focus_race_num(snap);
+    if you <= 0 {
+        return 0;
+    }
+    order
+        .iter()
+        .position(|&race_num| race_num == you)
+        .map(|index| index as i32 + 1)
+        .unwrap_or(0)
+}
+
+fn format_place_line(snap: &Snapshot, order: &[i32], now_ms: u128) -> String {
+    let you = focus_race_num(snap);
+    let live = focus_place(snap, order);
+    let track = bytes_as_text(&snap.track_name);
+    let standing_count = snap.standing_count.max(0) as usize;
+    let rider_count = snap.rider_count.max(0) as usize;
+    let mut riders = String::new();
+    for (index, race_num) in order.iter().enumerate() {
+        if index > 0 {
+            riders.push(',');
+        }
+        let standing = snap.standings[..standing_count.min(snap.standings.len())]
+            .iter()
+            .find(|row| row.race_num == *race_num);
+        let game_place = standing.map(|row| row.position).unwrap_or(0);
+        let laps = standing.map(|row| row.num_laps).unwrap_or(0);
+        let rider = snap.riders[..rider_count.min(snap.riders.len())]
+            .iter()
+            .find(|row| row.race_num == *race_num);
+        let (fraction, x, z) = rider
+            .map(|row| (row.track_pos, row.x, row.z))
+            .unwrap_or((-1.0, 0.0, 0.0));
+        riders.push_str(&format!(
+            "{{\"n\":{race_num},\"g\":{game_place},\"p\":{},\"laps\":{laps},\"frac\":{fraction:.3},\"x\":{x:.1},\"z\":{z:.1}}}",
+            index as i32 + 1
+        ));
+    }
+    let mut order_json = String::new();
+    for (index, race_num) in order.iter().enumerate() {
+        if index > 0 {
+            order_json.push(',');
+        }
+        order_json.push_str(&race_num.to_string());
+    }
+    format!(
+        "{{\"t\":{:.2},\"evt\":\"place\",\"track\":\"{}\",\"len\":{:.0},\"you\":{you},\"live\":{live},\"order\":[{order_json}],\"riders\":[{riders}]}}",
+        now_ms as f32 / 1000.0,
+        json_escape(&track),
+        snap.track_length,
+    )
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SessionEvent {
     Continue,
@@ -324,7 +454,11 @@ struct SessionGate {
     track: String,
     laps: i32,
     time_ms: i32,
+    current_lap: i32,
     saw_race: bool,
+    /// The last moto ended on an empty snapshot. The track name is kept so the next
+    /// different track starts a new file. A later sample on this same track does not.
+    closed: bool,
 }
 
 impl SessionGate {
@@ -341,22 +475,27 @@ impl SessionGate {
         if empty {
             if self.saw_race {
                 self.saw_race = false;
-                self.track.clear();
-                self.time_ms = 0;
-                self.laps = 0;
+                self.closed = true;
                 return SessionEvent::RaceEnded;
             }
             return SessionEvent::Continue;
         }
         let track = track.trim();
         let racing = current_lap > 0 || time_ms > 8000 || (on_track != 0 && time_ms > 3000);
-        let clock_restart = self.time_ms >= 20_000
-            && time_ms < 2_500
-            && !(self.laps > 0 && laps == self.laps && laps > 0 && laps <= 4);
-        let new_session = self.saw_race
-            && ((!self.track.is_empty() && !track.is_empty() && self.track != track)
-                || (self.laps > 0 && laps > 0 && self.laps != laps)
-                || clock_restart);
+        // A lap race and a timed extra both dip the clock while the lap count is
+        // still rising. That is the same moto. A drop that also resets the lap
+        // count is a new one, on a 6-lap or on a timed race.
+        let same_moto = self.laps > 0 && laps == self.laps && current_lap >= self.current_lap;
+        let clock_restart = self.time_ms >= 20_000 && time_ms < 2_500 && !same_moto;
+        let laps_changed = self.laps > 0 && laps > 0 && self.laps != laps;
+        // A lap race and a timed session on the same track are different motos.
+        // The finish dip keeps the lap limit, so that clock drop stays one file.
+        let kind_changed =
+            self.saw_race && ((self.laps > 0 && laps == 0) || (self.laps == 0 && laps > 0));
+        let track_changed = !self.track.is_empty() && !track.is_empty() && self.track != track;
+        let new_session = (track_changed && (self.saw_race || self.closed))
+            || (self.saw_race && (laps_changed || clock_restart))
+            || kind_changed;
         self.track = if track.is_empty() {
             self.track.clone()
         } else {
@@ -364,10 +503,13 @@ impl SessionGate {
         };
         self.laps = laps;
         self.time_ms = time_ms;
+        self.current_lap = current_lap;
         if new_session {
+            self.closed = false;
             self.saw_race = racing;
             return SessionEvent::NewSession;
         }
+        self.closed = false;
         if racing {
             self.saw_race = true;
         }
@@ -500,7 +642,7 @@ fn read_tail(path: &Path) -> (String, bool) {
     let Ok(mut f) = File::open(path) else {
         return (String::new(), false);
     };
-    if meta.len() <= MAX_LOG as u64 {
+    if KEEP_FULL_RACE_LOG || meta.len() <= MAX_LOG as u64 {
         let mut data = String::new();
         let _ = f.read_to_string(&mut data);
         return (data, false);

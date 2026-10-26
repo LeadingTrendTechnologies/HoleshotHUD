@@ -17,7 +17,7 @@ use super::sprites::{
 use super::{BAK_DIR, MANIFEST};
 
 /// Bump when MNU splice / sprite pack logic changes so accent-matched sync still rewrites.
-pub(crate) const PACK_REV: u32 = 6;
+pub(crate) const PACK_REV: u32 = 11;
 
 pub(crate) static NEED_GAME_RESTART: AtomicBool = AtomicBool::new(false);
 

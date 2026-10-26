@@ -1,6 +1,8 @@
 mod profile;
 pub use profile::*;
 
+pub mod strategy;
+
 #[path = "server_brand.rs"]
 mod server_names;
 pub use server_names::*;

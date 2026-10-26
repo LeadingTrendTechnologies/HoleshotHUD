@@ -765,6 +765,7 @@ fn profile_tab_visible_when_motos_off() {
     {
         let mut g = crate::config::CONFIG.lock().unwrap();
         g.review = false;
+        g.experimental = false;
     }
     refresh_palette();
     let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
@@ -778,6 +779,10 @@ fn profile_tab_visible_when_motos_off() {
     let ids = hit_ids(&hits);
     assert!(ids.contains(&Hit::TabProfile));
     assert!(ids.contains(&Hit::ProfileNavOverview));
+    assert!(
+        !ids.contains(&Hit::ProfileNavStrategy),
+        "Strategy is Labs-only until experimental is on"
+    );
     assert!(ids.contains(&Hit::ProfileNavMotos));
     assert!(ids.contains(&Hit::ProfileNavMyMxb));
     assert!(ids.contains(&Hit::ProfileNavRanked));
@@ -809,9 +814,57 @@ fn profile_nav_tracks_when_experimental() {
     let hits = UI.lock().unwrap().as_ref().unwrap().hits.clone();
     let ids = hit_ids(&hits);
     assert!(ids.contains(&Hit::ProfileNavTracks));
+    assert!(ids.contains(&Hit::ProfileNavStrategy));
     {
         let mut g = crate::config::CONFIG.lock().unwrap();
         g.experimental = false;
+    }
+    *UI.lock().unwrap() = None;
+}
+
+#[test]
+fn guide_waits_for_labs() {
+    let _g = crate::review::serial();
+    let dash_show = {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        let dash_show = g[WidgetId::Dash].show;
+        g.experimental = false;
+        g[WidgetId::Dash].show = true;
+        dash_show
+    };
+    refresh_palette();
+    let fonts = Fonts::for_family(FontFamily::Exo2).expect("Exo 2");
+    let mut ui = dummy_ui(false);
+    ui.tab = Tab::Dash;
+    *UI.lock().unwrap() = Some(ui);
+    let mut px = Pixmap::new(1000, 720).expect("pixmap");
+    draw(&mut px, &fonts, 1000.0, 720.0);
+    let ids = hit_ids(&UI.lock().unwrap().as_ref().unwrap().hits);
+    assert!(!ids.contains(&Hit::TabGuide));
+    assert!(!ids.contains(&Hit::DashGuide));
+    let mut cfg = HudConfig::new();
+    assert!(
+        !widget_groups(&cfg)
+            .iter()
+            .any(|(_, items)| items.iter().any(|item| item.0 == Tab::Guide))
+    );
+    cfg.experimental = true;
+    assert!(
+        widget_groups(&cfg)
+            .iter()
+            .any(|(_, items)| items.iter().any(|item| item.0 == Tab::Guide))
+    );
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        g.experimental = true;
+    }
+    draw(&mut px, &fonts, 1000.0, 720.0);
+    let ids = hit_ids(&UI.lock().unwrap().as_ref().unwrap().hits);
+    assert!(ids.contains(&Hit::DashGuide));
+    {
+        let mut g = crate::config::CONFIG.lock().unwrap();
+        g.experimental = false;
+        g[WidgetId::Dash].show = dash_show;
     }
     *UI.lock().unwrap() = None;
 }

@@ -106,6 +106,8 @@ pub(crate) fn live_snap() -> Snapshot {
         relative_count: 3,
         local_gear: 3,
         local_rpm: 7200,
+        // Race 1. An unknown kind with no length is open practice and ranks by best lap.
+        session_kind: 6,
         engine_temp: 82.0,
         air_temp: 21.0,
         fuel: 5.6,
@@ -426,6 +428,7 @@ pub(crate) fn leader_goes_past(s: &mut Snapshot) {
 pub(crate) fn lap_moto_after_gate_glitch_shows_laps(laps: i32, length: i32) {
     reset_session();
     let mut s = live_snap();
+    s.session_kind = -1;
     s.session_length = length;
     s.session_laps = laps;
     s.session_time_ms = 45_350;
@@ -442,10 +445,12 @@ pub(crate) fn lap_moto_after_gate_glitch_shows_laps(laps: i32, length: i32) {
     assert_eq!(session_banner(&s).1, "00:01");
     s.session_time_ms = 980_000;
     s.local_speed = 4.0;
-    let want = format!("1 / {laps}");
+    // A 2-lap moto counts crossings, so the opening lap is 0 / 2. Longer motos
+    // show the lap you are on. Length 7 at 16:20 is still that lap moto.
+    let opening = if laps == 2 { 0 } else { 1 };
     assert_eq!(
         session_banner(&s).1,
-        want,
+        format!("{opening} / {laps}"),
         "{laps}-lap length={length} glitched 16:20 is not a timed clock"
     );
     assert!(is_lap_race(&s), "{laps}-lap length={length} must stay a lap race");
@@ -454,7 +459,7 @@ pub(crate) fn lap_moto_after_gate_glitch_shows_laps(laps: i32, length: i32) {
     s.current_lap = 2;
     assert_eq!(
         session_banner(&s).1,
-        format!("2 / {laps}"),
+        format!("{} / {laps}", opening + 1),
         "{laps}-lap elapsed clock must not replace laps"
     );
 }
@@ -543,10 +548,18 @@ pub(crate) fn radar_arrow_snap_behind() -> (Snapshot, HudConfig) {
 
 /// Both on the same lap, focus (#12) scored second but `along` metres up the track on the
 /// leader. Track length is 1000 m in the fixture, so a metre is 0.001 of a lap.
+/// `x` moves with the fraction so a real lead is also far in the world.
 pub(crate) fn pass_the_leader(s: &mut Snapshot, along: f32) {
     s.riders[0].track_pos = 0.500;
     s.riders[1].track_pos = 0.500 + along / 1000.0;
     s.local_track_pos = s.riders[1].track_pos;
+    let length = s.track_length.max(1.0);
+    s.riders[0].x = s.riders[0].track_pos * length;
+    s.riders[0].z = 0.0;
+    s.riders[1].x = s.riders[1].track_pos * length;
+    s.riders[1].z = 0.0;
+    s.local_x = s.riders[1].x;
+    s.local_z = 0.0;
 }
 
 /// Ride every listed rider from where they are to `target` (a lap fraction, may run past
@@ -570,9 +583,13 @@ pub(crate) fn ride_field_to(s: &mut Snapshot, targets: &[(i32, f32)]) {
             let pos = (start + (target - start) * along).rem_euclid(1.0);
             if let Some(r) = s.riders[..count].iter_mut().find(|r| r.race_num == *num) {
                 r.track_pos = pos;
-            }
-            if *num == s.focus_race_num {
-                s.local_track_pos = pos;
+                r.x = pos * s.track_length;
+                r.z = 0.0;
+                if *num == s.focus_race_num {
+                    s.local_track_pos = pos;
+                    s.local_x = r.x;
+                    s.local_z = 0.0;
+                }
             }
         }
         let _ = RaceStore::tick(s);

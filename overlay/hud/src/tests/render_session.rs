@@ -281,6 +281,7 @@ fn lap_rel_off_in_warmup() {
     let _g = session_lock();
     reset_session();
     let mut s = live_snap();
+    s.session_kind = -1;
     s.session_length = 10;
     s.session_laps = 0;
     s.standings[0].num_laps = 6;
@@ -570,6 +571,74 @@ fn timed_plus_one_shows_white_then_checkered() {
     assert_eq!(dash_race_flag(&s), DashFlag::None);
 }
 
+/// The 80 m flag window, on whatever lap length the test is using. `0.96` is inside
+/// it on a short lap and past it on a long one.
+fn ride_into_flag_window(s: &mut Snapshot, track_length: f32) -> DashFlag {
+    for pos in [0.10, 0.30, 0.50, 0.70] {
+        ride_to(s, pos);
+    }
+    ride_to(s, 1.0 - 40.0 / track_length)
+}
+
+/// Leader within 200 m of the line when the clock dies. That crossing finishes the
+/// lap already under way. Extras, and your checkered, wait for the next line.
+/// Metres, so the same gap arms on a short lap and a long one.
+fn near_line_expiry_holds_the_checkered(track_length: f32, metres_to_line: f32) {
+    let mut s = live_snap();
+    s.track_length = track_length;
+    s.sf_meters = track_length;
+    s.riders[0].track_pos = 1.0 - metres_to_line / track_length;
+    expire_timed_extras(&mut s, 1);
+    s.local_speed = 18.0;
+    s.standings[0].num_laps = 6;
+    assert!(
+        !extras_started(&s),
+        "{track_length} m: {metres_to_line} m out, the first line does not start extras"
+    );
+    assert_ne!(dash_race_flag(&s), DashFlag::Checkered);
+    assert_eq!(session_banner(&s).1, "0/1");
+    s.standings[0].num_laps = 7;
+    assert!(extras_started(&s), "{track_length} m: the next line starts extras");
+    assert_ne!(
+        dash_race_flag(&s),
+        DashFlag::Checkered,
+        "you are still on the uncounted lap"
+    );
+    assert_eq!(ride_into_flag_window(&mut s, track_length), DashFlag::White);
+    cross_line(&mut s, 6, 7);
+    assert_eq!(dash_race_flag(&s), DashFlag::White, "white as the extra starts");
+    age_white_wave();
+    assert_eq!(ride_to(&mut s, 0.50), DashFlag::None);
+    assert_eq!(cross_line(&mut s, 7, 8), DashFlag::Checkered);
+}
+
+#[test]
+fn a_leader_inside_200m_at_expiry_does_not_checkered_a_lap_early() {
+    let _g = session_lock();
+    near_line_expiry_holds_the_checkered(500.0, 80.0);
+    near_line_expiry_holds_the_checkered(2480.0, 90.0);
+}
+
+/// Further than 200 m, the first post-expiry line is still the white flag.
+#[test]
+fn a_leader_beyond_200m_at_expiry_keeps_the_white_flag_line() {
+    let _g = session_lock();
+    let mut s = live_snap();
+    s.track_length = 2480.0;
+    s.sf_meters = 2480.0;
+    s.riders[0].track_pos = 1.0 - 250.0 / 2480.0;
+    expire_timed_extras(&mut s, 1);
+    s.local_speed = 18.0;
+    s.standings[0].num_laps = 6;
+    assert!(extras_started(&s), "250 m out, the first line starts extras");
+    assert_eq!(ride_to(&mut s, 0.40), DashFlag::None);
+    assert_eq!(ride_into_flag_window(&mut s, 2480.0), DashFlag::White);
+    cross_line(&mut s, 6, 7);
+    assert_eq!(dash_race_flag(&s), DashFlag::White);
+    age_white_wave();
+    assert_eq!(cross_line(&mut s, 7, 8), DashFlag::Checkered);
+}
+
 #[test]
 fn timed_plus_one_first_extra_crossing_is_white_not_checkered() {
     let _g = session_lock();
@@ -666,6 +735,7 @@ fn ticker_title_warmup_not_timed_or_lap_race() {
     let _g = session_lock();
     reset_session();
     let mut s = live_snap();
+    s.session_kind = -1;
     s.session_length = 10;
     s.session_laps = 0;
     s.session_time_ms = 10 * 60 * 1000;
@@ -954,6 +1024,7 @@ fn lapped_tag_tracks_the_classification_gap() {
 
     // Warmup has no leader to be a lap behind.
     let mut warm = s;
+    warm.session_kind = -1;
     warm.session_laps = 0;
     warm.session_length = 10;
     assert!(is_warmup(&warm));
@@ -1835,6 +1906,42 @@ fn gate_clock_stays_countdown_even_if_lap_already_advanced() {
     assert!(!overtime_active(&s));
 }
 
+/// Temecula, still on the gate: after the short board the game walks 09:30, 09:00,
+/// down through 03:30 in one second. Each step is 30 s, and the race is not armed.
+/// The dash stays on the race length until the live clock ticks.
+#[test]
+fn a_timed_gate_stair_above_three_minutes_stays_on_race_length() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_length = 10;
+    s.session_laps = 1;
+    s.session_time_ms = 23_000;
+    s.current_lap = 1;
+    s.local_speed = 0.0;
+    s.standings[0].num_laps = 0;
+    s.standings[1].num_laps = 0;
+    assert_eq!(session_banner(&s).1, "00:23");
+    s.session_time_ms = 1_000;
+    assert_eq!(session_banner(&s).1, "00:01");
+    for clock in [
+        570_000, 540_000, 510_000, 480_000, 450_000, 420_000, 390_000, 360_000, 330_000, 300_000,
+        270_000, 240_000, 210_000,
+    ] {
+        s.session_time_ms = clock;
+        assert_eq!(
+            session_banner(&s).1,
+            "10:00",
+            "stair-step {clock} stays on the race length"
+        );
+    }
+    s.session_time_ms = 600_000;
+    let _ = session_remain_ms(&s);
+    s.session_time_ms = 599_000;
+    s.local_speed = 18.0;
+    assert_eq!(session_banner(&s).1, "09:59");
+}
+
 #[test]
 fn long_timed_race_does_not_expire_on_green_clock_sweep() {
     let _g = session_lock();
@@ -1924,6 +2031,52 @@ fn three_lap_unset_length_after_gate_shows_laps_not_elapsed_clock() {
     s.standings[1].num_laps = 1;
     s.current_lap = 2;
     assert_eq!(session_banner(&s).1, "2 / 3", "elapsed clock mid-moto must not replace laps");
+}
+
+#[test]
+fn seven_minute_plus_two_keeps_the_countdown_after_a_short_gate() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_kind = 7;
+    s.session_length = 0;
+    s.session_laps = 2;
+    s.session_time_ms = 4_000;
+    s.current_lap = 1;
+    s.local_speed = 0.0;
+    s.standings[0].num_laps = 0;
+    s.standings[1].num_laps = 0;
+    assert_eq!(session_banner(&s).1, "00:04");
+
+    s.session_length = 7;
+    s.session_time_ms = 7 * 60 * 1000;
+    s.local_speed = 18.0;
+    s.current_lap = 2;
+    let start = session_banner(&s).1;
+    assert!(
+        start.contains(':') && !start.contains('/'),
+        "7:00+2 after the gate is a clock, got {start}"
+    );
+    assert!(!is_lap_race(&s));
+    s.session_time_ms = 7 * 60 * 1000 - 1_000;
+    let ticking = session_banner(&s).1;
+    assert_eq!(ticking, "06:59");
+
+    s.standings[0].num_laps = 1;
+    s.standings[1].num_laps = 1;
+    s.current_lap = 2;
+    s.session_time_ms = 7 * 60 * 1000 - 2_000;
+    let crossed = session_banner(&s).1;
+    assert_eq!(crossed, "06:58", "a crossing with time left stays on the clock");
+
+    s.session_time_ms = 400;
+    assert_eq!(session_remain_ms(&s), Some(0));
+    assert_eq!(session_banner(&s).1, "0/2");
+    s.standings[0].num_laps = 2;
+    assert_eq!(session_banner(&s).1, "0/2", "leader cross must not increment");
+    s.standings[1].num_laps = 2;
+    s.current_lap = 3;
+    assert_eq!(session_banner(&s).1, "1/2", "first extra cross starts the extra");
 }
 
 #[test]
@@ -2300,6 +2453,55 @@ fn armed_countdown_ignores_near_full_length_republish() {
     );
     s.session_time_ms = 8 * 60 * 1000 - 3_000;
     assert_eq!(session_banner(&s).1, "07:57");
+    assert!(!overtime_active(&s));
+}
+
+/// A live 15:00 that the game replaces with the 8 s board keeps counting.
+/// One frame still shows the last second. A few seconds of that board do not
+/// freeze, and the real sample on the way back is not expiry.
+#[test]
+fn armed_countdown_counts_through_a_start_board_hold() {
+    let _g = session_lock();
+    reset_session();
+    let mut s = live_snap();
+    s.session_length = 15;
+    s.session_laps = 1;
+    s.session_time_ms = 43_980;
+    s.current_lap = 1;
+    s.local_speed = 0.0;
+    s.standings[0].num_laps = 0;
+    s.standings[1].num_laps = 0;
+    assert_eq!(session_banner(&s).1, "00:43");
+    s.session_time_ms = 1_980;
+    assert_eq!(session_banner(&s).1, "00:01");
+    s.session_time_ms = 15 * 60 * 1000;
+    assert_eq!(session_banner(&s).1, "15:00");
+    s.session_time_ms = 15 * 60 * 1000 - 2_000;
+    s.local_speed = 18.0;
+    assert_eq!(session_banner(&s).1, "14:58");
+    s.session_time_ms = 8_000;
+    assert_eq!(
+        session_banner(&s).1,
+        "14:58",
+        "one frame of the start board still shows the last second"
+    );
+    std::thread::sleep(std::time::Duration::from_millis(2_500));
+    let held = session_remain_ms(&s).expect("the countdown stays live");
+    assert!(
+        (893_500..896_500).contains(&held),
+        "a 15:00 remain replaced by 8000 keeps counting, remain {held}"
+    );
+    let shown = session_banner(&s).1;
+    assert!(
+        shown == "14:56" || shown == "14:55" || shown == "14:54",
+        "the dash keeps counting through the board, got {shown}"
+    );
+    s.session_time_ms = held - 400;
+    let back = session_remain_ms(&s).expect("the real clock is not expiry");
+    assert!(
+        (held - 2_000..held).contains(&back),
+        "the return {back} stays with the countdown from {held}"
+    );
     assert!(!overtime_active(&s));
 }
 

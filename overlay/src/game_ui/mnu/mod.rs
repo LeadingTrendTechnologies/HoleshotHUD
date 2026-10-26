@@ -20,13 +20,18 @@ pub(crate) const OPTIONS_PANES: &[&str] = &[
 ];
 
 /// Inset night-ink board. List Y stays stock so rows still bind.
-/// Board starts at the list so Host / Filter / Hide sit on the studio.
+/// Board starts above the list so Host / Filter / Hide sit inside the card.
 /// Card ends above the chrome row so Back / Local / World / Join stay visible.
 pub(crate) const CARD_X0: f32 = 0.006;
 
 pub(crate) const LIST_Y0: f32 = 0.188889;
 
-pub(crate) const CARD_Y0: f32 = LIST_Y0;
+pub(crate) const CARD_Y0: f32 = 0.100;
+
+/// Header band inside the board, above the stock list.
+pub(crate) const HEADER_Y0: f32 = 0.118;
+
+pub(crate) const HEADER_Y1: f32 = 0.158;
 
 pub(crate) const CARD_X1: f32 = 0.994;
 
@@ -173,6 +178,14 @@ pub(crate) const TEST_LAPS: &str = "idd_laps";
 pub(crate) const TEST_TRACKINFO_PIT: &str = "idd_track_info_pit";
 
 pub(crate) const TEST_TRAINER: &str = "idd_trainer";
+
+pub(crate) const TEST_TRAINER_SAVE: &str = "idd_trainer_save";
+
+pub(crate) const TEST_TRAINER_ADD: &str = "idd_trainer_add";
+
+pub(crate) const TEST_TRAINER_OVERWRITE: &str = "idd_trainer_overwrite";
+
+pub(crate) const TEST_PHOTO: &str = "idd_photo";
 
 pub(crate) const GARAGE_DIALOG: &str = "idd_garage";
 
@@ -1088,7 +1101,7 @@ pub(crate) fn restyle_testing_pit(body: &str, accent: [u8; 3]) -> String {
 pub(crate) enum PitShellKind {
     /// Multiplayer pit: frosted race + weather bars; To Track / Join plaques.
     Multi,
-    /// Practice hub: clear weather strip only; To Track is `id_start`; photo on chrome.
+    /// Practice hub: frosted weather bar only; To Track is `id_start`; photo on chrome.
     Practice,
 }
 
@@ -1111,7 +1124,12 @@ pub(crate) fn restyle_pit_shell(body: &str, accent: [u8; 3], kind: PitShellKind)
             );
         }
         PitShellKind::Practice => {
-            // Practice: remove the beige weather wash — no frosted bar.
+            // Weather strip only — practice has no race-info line.
+            let bar = "\titem_bitmap\n\t{\n\t\tname ID_WEATHER_BAR\n\t\trect 0.006250 0.166667 0.993750 0.188889\n\t\tsprite setupbar.tga\n\t}\n";
+            s = s.replace(
+                "\titem_text\n\t{\n\t\tname id_weather\n",
+                &format!("{bar}\titem_text\n\t{{\n\t\tname id_weather\n"),
+            );
         }
     }
     s = s.replace("backcolor 240 170 180 190", "backcolor 0 0 0 0");
@@ -1140,9 +1158,13 @@ pub(crate) fn restyle_pit_shell(body: &str, accent: [u8; 3], kind: PitShellKind)
         "rect 0.875000 0.966667 1.000000 1.000000",
         &format!("rect 0.800000 {SETUP_CHROME_Y0:.6} 0.970000 {SETUP_CHROME_Y1:.6}"),
     );
-    // Segment track behind Settings / Replay / Garage.
+    // Segment track behind Settings / Replay / Garage. Race pit also covers Chat.
+    let track_x1 = match kind {
+        PitShellKind::Multi => CHAT_SLOT.1,
+        PitShellKind::Practice => PIT_GROUP_X1,
+    };
     let track = format!(
-        "\titem_bitmap\n\t{{\n\t\tname ID_PITGROUP\n\t\trect {PIT_GROUP_X0:.6} {SETUP_CHROME_Y0:.6} {PIT_GROUP_X1:.6} {SETUP_CHROME_Y1:.6}\n\t\tsprite optionstabtrack.tga\n\t}}\n"
+        "\titem_bitmap\n\t{{\n\t\tname ID_PITGROUP\n\t\trect {PIT_GROUP_X0:.6} {SETUP_CHROME_Y0:.6} {track_x1:.6} {SETUP_CHROME_Y1:.6}\n\t\tsprite optionstabtrack.tga\n\t}}\n"
     );
     let track_anchor = match kind {
         PitShellKind::Multi => "id_totrack",
@@ -1173,10 +1195,22 @@ pub(crate) fn restyle_pit_shell(body: &str, accent: [u8; 3], kind: PitShellKind)
             "rect 0.243750 0.966667 0.262500 1.000000",
             &format!("rect 0.155000 {SETUP_CHROME_Y0:.6} 0.185000 {SETUP_CHROME_Y1:.6}"),
         );
+        // Camera glyph stays; ink matches Back. No label to center.
+        s = paint_bike_chrome_button(&s, "ID_PHOTO", &idle, &hot, &hot);
+        if let Some(at) = s.find("name ID_PHOTO\n") {
+            let end = s[at..].find("\n\titem_").map(|i| at + i).unwrap_or(s.len());
+            let btn = s[at..end].replace("color3 0 0 0 0", &format!("color3 {hot}"));
+            s.replace_range(at..end, &btn);
+        }
     }
     s = set_button_sprites(&s, "ID_SETTINGS", "segl1.tga", "segl2.tga", "segl2.tga");
     s = set_button_sprites(&s, "id_replay", "segm1.tga", "segm2.tga", "segm2.tga");
-    s = set_button_sprites(&s, "id_garage", "segr1.tga", "segr2.tga", "segr2.tga");
+    // Race pit Chat continues the bar, so Garage stays square. Practice has no Chat.
+    let (garage_idle, garage_hot) = match kind {
+        PitShellKind::Multi => ("segm1.tga", "segm2.tga"),
+        PitShellKind::Practice => ("segr1.tga", "segr2.tga"),
+    };
+    s = set_button_sprites(&s, "id_garage", garage_idle, garage_hot, garage_hot);
     for name in ["id_back", "ID_SETTINGS", "id_replay", "id_garage"] {
         s = center_bike_chrome_button(&s, name, tip_y);
         s = paint_bike_chrome_button(&s, name, &idle, &hot, &hot);
@@ -1284,8 +1318,8 @@ pub(crate) fn restyle_chatswitch(body: &str, accent: [u8; 3]) -> String {
             CHAT_SLOT.0, CHAT_SLOT.1
         ),
     );
-    // Solid charcoal plaque — mid-seg sprites are clear (for Settings|Replay|Garage only).
-    s = set_button_sprites(&s, "ID_CHAT", "button1.tga", "button2.tga", "button3.tga");
+    // Rounded right cap so the race-pit bar ends on Chat.
+    s = set_button_sprites(&s, "ID_CHAT", "segr1.tga", "segr2.tga", "segr2.tga");
     s = center_bike_chrome_button(&s, "ID_CHAT", tip_y);
     s = paint_bike_chrome_button(&s, "ID_CHAT", &idle, &hot, &hot);
     s
@@ -1344,6 +1378,36 @@ pub(crate) fn restyle_race_entries(body: &str, accent: [u8; 3]) -> String {
     s = s.replace("color1 255 80 80 80", &format!("color1 {text}"));
     s = s.replace("color2 255 127 127 127", &format!("color2 {text}"));
     s = s.replace("color3 255 0 255 255", &format!("color3 {hot}"));
+    s
+}
+
+/// Event Info labels (`textid` rows) stay dim; values stay the bright body ink.
+fn dim_race_info_labels(body: &str) -> String {
+    let dim = argb(255, DIM);
+    let mut s = body.to_string();
+    let mut search = 0;
+    while let Some(rel) = s[search..].find("\titem_text\n") {
+        let at = search + rel;
+        let end = s[at + 1..]
+            .find("\n\titem_")
+            .map(|i| at + 1 + i)
+            .unwrap_or(s.len());
+        let block = s[at..end].to_string();
+        if block.contains("textid ") {
+            if let Some(color_at) = block.find("\tcolor ") {
+                let line_end = block[color_at..]
+                    .find('\n')
+                    .map(|i| color_at + i)
+                    .unwrap_or(block.len());
+                let mut next = block;
+                next.replace_range(color_at..line_end, &format!("\tcolor {dim}"));
+                s.replace_range(at..end, &next);
+                search = at + next.len();
+                continue;
+            }
+        }
+        search = end;
+    }
     s
 }
 
@@ -1457,7 +1521,8 @@ pub(crate) fn restyle_race_info_board(body: &str, accent: [u8; 3]) -> String {
             s.replace_range(at..item_end, &btn);
         }
     }
-    s
+    s = center_button_label(&s, "ID_GATECHOOSE");
+    dim_race_info_labels(&s)
 }
 
 /// Results / standings child lists — glass fill + readable sort headers.
@@ -1514,12 +1579,23 @@ pub(crate) fn splice_test(ui: &Path, bak: Option<&Path>, accent: [u8; 3]) -> Res
         out.push('\n');
         if name.eq_ignore_ascii_case(TESTING_PIT) {
             out.push_str(&restyle_testing_pit(&body, accent));
+        } else if name.eq_ignore_ascii_case(TEST_TRAINER) {
+            out.push_str(&restyle_trainer_board(&body, accent));
         } else if name.eq_ignore_ascii_case(TEST_EVENTINFO)
             || name.eq_ignore_ascii_case(TEST_LAPS)
             || name.eq_ignore_ascii_case(TEST_TRACKINFO_PIT)
-            || name.eq_ignore_ascii_case(TEST_TRAINER)
         {
             out.push_str(&restyle_race_info_board(&body, accent));
+        } else if name.eq_ignore_ascii_case(TEST_TRAINER_SAVE)
+            || name.eq_ignore_ascii_case(TEST_TRAINER_ADD)
+        {
+            out.push_str(&restyle_trainer_save(&body, accent));
+        } else if name.eq_ignore_ascii_case(TEST_TRAINER_OVERWRITE) {
+            out.push_str(&restyle_yes_no_glass_confirm(
+                &body, accent, "ID_YES", "ID_NO",
+            ));
+        } else if name.eq_ignore_ascii_case(TEST_PHOTO) {
+            out.push_str(&restyle_photo(&body, accent));
         } else if name.eq_ignore_ascii_case(TEST_PANEL) {
             out.push_str(&restyle_test_panel(&body, accent));
         } else if name.eq_ignore_ascii_case(TESTING_EXIT) {
@@ -1533,6 +1609,35 @@ pub(crate) fn splice_test(ui: &Path, bak: Option<&Path>, accent: [u8; 3]) -> Res
     }
     write_text(&ui.join("test.mnu"), &out)?;
     Ok(true)
+}
+
+/// Trainer board — race-info glass, centered actions, accent list selection.
+fn restyle_trainer_board(body: &str, accent: [u8; 3]) -> String {
+    let hot = argb(255, accent);
+    let mut s = restyle_race_info_board(body, accent);
+    s = s.replace("color2 255 45 45 180", &format!("color2 {hot}"));
+    let tip_y = (0.033334 - 0.022222) * 0.5;
+    for name in ["ID_SAVE", "ID_ADD", "ID_REMOVE"] {
+        s = center_bike_chrome_button(&s, name, tip_y);
+    }
+    s
+}
+
+/// Trainer save / add — same glass save dialog as export.
+fn restyle_trainer_save(body: &str, accent: [u8; 3]) -> String {
+    let mut s = restyle_export_save(body, accent);
+    s = set_button_sprites(&s, "id_ok", "button1.tga", "button2.tga", "button3.tga");
+    set_button_sprites(&s, "id_cancel", "button1.tga", "button2.tga", "button3.tga")
+}
+
+/// Photo viewer — clear title, chrome Back. The shot itself stays full-bleed.
+fn restyle_photo(body: &str, accent: [u8; 3]) -> String {
+    let mut s = recolor_profiles_dialog(body, accent);
+    s = clear_title_wash(&s);
+    s = clear_footer_bar(&s);
+    s = force_idle_plaques(&s);
+    s = lift_chrome_rect(&s, "rect 0.000000 0.966667 0.100000 1.000000", 0.030000, 0.140000);
+    paint_chrome_row(&s, accent, &["id_back"], &[])
 }
 
 /// On-track Practice menu (Continue / Return To Pit / Replay / Settings).
@@ -2714,13 +2819,13 @@ pub(crate) fn browser_list(
             r#"	item_bitmap
 	{{
 		name ID_FILTER_BG
-		rect 0.412000 0.152000 0.575000 0.182000
+		rect 0.412000 {hy0:.6} 0.575000 {hy1:.6}
 		sprite fieldbox.tga
 	}}
 	item_editbox
 	{{
 		name ID_FILTER
-		rect 0.412000 0.152000 0.575000 0.182000
+		rect 0.412000 {hy0:.6} 0.575000 {hy1:.6}
 		editbox
 		{{
 			password 0
@@ -2742,7 +2847,7 @@ pub(crate) fn browser_list(
 	item_text
 	{{
 		name ID_TEXT
-		rect 0.300000 0.152000 0.410000 0.182000
+		rect 0.300000 {hy0:.6} 0.410000 {hy1:.6}
 		text
 		{{
 			font main.fnt
@@ -2755,6 +2860,8 @@ pub(crate) fn browser_list(
 		backcolor 0 0 0 0
 	}}
 "#,
+            hy0 = HEADER_Y0,
+            hy1 = HEADER_Y1,
             idle = argb(255, TEXT),
             dim = argb(255, DIM),
             ink = argb(255, INK),
@@ -2778,7 +2885,7 @@ dialog
 		tooltip TT_browser
 		list
 		{{
-			rect 0.012500 0.188889 0.987500 0.855556
+			rect 0.012500 {list_y:.6} 0.987500 0.855556
 			spacing 0.022222
 			numcolumns 12
 			columnsize0 {c0:.6}
@@ -2848,7 +2955,7 @@ dialog
 		name id_refreshlist
 		button
 		{{
-			rect 0.360000 0.862000 0.480000 0.894000
+			rect 0.020000 0.862000 0.145000 0.894000
 			{sprites}
 			sample1 ui_button_over.wav
 			sample2 ui_button_click.wav
@@ -2870,7 +2977,7 @@ dialog
 		name id_host
 		button
 		{{
-			rect 0.032000 0.155000 0.157000 0.188000
+			rect 0.020000 {hy0:.6} 0.155000 {hy1:.6}
 			{sprites}
 			sample1 ui_button_over.wav
 			sample2 ui_button_click.wav
@@ -2879,7 +2986,7 @@ dialog
 		text
 		{{
 			font main.fnt
-			pos 0.000000 0.005556
+			pos 0.000000 0.010000
 			fontsize 0.020000
 			align center
 		}}
@@ -2935,7 +3042,7 @@ dialog
 		name ID_SERVERINFO
 		button
 		{{
-			rect 0.490000 0.862000 0.610000 0.894000
+			rect 0.155000 0.862000 0.260000 0.894000
 			{sprites}
 			sample1 ui_button_over.wav
 			sample2 ui_button_click.wav
@@ -2952,16 +3059,10 @@ dialog
 		color2 {hot}
 		color3 {hot}
 	}}
-	item_bitmap
-	{{
-		name ID_HIDEMISSING_BG
-		rect 0.730000 0.150000 0.975000 0.184000
-		sprite button1.tga
-	}}
 	item_checkbox
 	{{
 		name ID_FILTERMISSINGCONTENTS
-		rect 0.735000 0.152000 0.970000 0.182000
+		rect 0.735000 {hy0:.6} 0.970000 {hy1:.6}
 		spriteposx 0.000000
 		spriteposy 0.004444
 		spritesizex 0.012500
@@ -2979,16 +3080,10 @@ dialog
 		textid filter_servers_missingcontent
 		color {idle}
 	}}
-	item_bitmap
-	{{
-		name ID_HIDEEMPTY_BG
-		rect 0.590000 0.150000 0.722000 0.184000
-		sprite button1.tga
-	}}
 	item_checkbox
 	{{
 		name ID_FILTEREMTPY
-		rect 0.595000 0.152000 0.718000 0.182000
+		rect 0.590000 {hy0:.6} 0.722000 {hy1:.6}
 		spriteposx 0.000000
 		spriteposy 0.004444
 		spritesizex 0.012500
@@ -3010,6 +3105,9 @@ dialog
 "#,
         card = browser_card_fill(),
         sprites = dest_sprites(),
+        list_y = LIST_Y0,
+        hy0 = HEADER_Y0,
+        hy1 = HEADER_Y1,
         idle = argb(255, TEXT),
         hot = argb(255, accent),
         dim = argb(255, DIM),
@@ -3165,7 +3263,7 @@ dialog
 		name id_join
 		button
 		{{
-			rect 0.800000 {cy0:.6} 0.970000 {cy1:.6}
+			rect 0.860000 {cy0:.6} 0.970000 {cy1:.6}
 			sprite1 done1.tga
 			sprite2 done1.tga
 			sprite3 done2.tga

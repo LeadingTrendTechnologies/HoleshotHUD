@@ -12,6 +12,9 @@ use super::*;
 
 static SESSION_RIDERS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
+/// Names stay clickable for the whole visit. `Hit::GroupCheck` is a `u8`.
+const SESSION_LIST_CAP: usize = u8::MAX as usize;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum GroupField {
     Name,
@@ -37,9 +40,21 @@ thread_local! {
 }
 
 pub fn set_session_riders(snap: Option<&crate::shm::Snapshot>) {
-    let names = snap.map(session_names).unwrap_or_default();
+    let Some(snap) = snap else {
+        if let Ok(mut slot) = SESSION_RIDERS.lock() {
+            slot.clear();
+        }
+        GROUP_EDIT.with(|edit| edit.borrow_mut().checks.clear());
+        return;
+    };
+    let names = session_names(snap);
     if let Ok(mut slot) = SESSION_RIDERS.lock() {
-        *slot = names;
+        for name in names {
+            push_session_name(&mut slot, &name);
+            if slot.len() >= SESSION_LIST_CAP {
+                break;
+            }
+        }
     }
 }
 
@@ -699,7 +714,7 @@ fn paint_group_editor(
         cy += 4.0;
         text(px, fonts, mxbo_hud::i18n::t("ON THIS SERVER"), 10.0, x, cy, dim(), false);
         cy += 16.0;
-        for (index, name) in session.iter().enumerate().take(64) {
+        for (index, name) in session.iter().enumerate().take(SESSION_LIST_CAP) {
             let in_group = group
                 .members
                 .iter()
@@ -838,5 +853,42 @@ fn paint_check(px: &mut tiny_skia::Pixmap, fonts: &Fonts, x: f32, y: f32, on: bo
         icon(px, fonts, '\u{f00c}', 9.0, x + 7.0, y + 2.0, ink(), true);
     } else {
         outlined(px, x, y, 14.0, 14.0, 3.0, bg());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn named_snap(rider_names: &[&str], standing_names: &[&str]) -> crate::shm::Snapshot {
+        let mut snap = crate::shm::Snapshot::default();
+        snap.rider_count = rider_names.len() as i32;
+        for (index, name) in rider_names.iter().enumerate() {
+            crate::shm::write_name(&mut snap.riders[index].name, name);
+        }
+        snap.standing_count = standing_names.len() as i32;
+        for (index, name) in standing_names.iter().enumerate() {
+            crate::shm::write_name(&mut snap.standings[index].name, name);
+        }
+        snap
+    }
+
+    #[test]
+    fn departed_riders_stay_until_the_session_ends() {
+        set_session_riders(None);
+        let first = named_snap(&["Ada"], &["Bea"]);
+        set_session_riders(Some(&first));
+        assert_eq!(session_riders(), ["Ada", "Bea"]);
+
+        GROUP_EDIT.with(|edit| edit.borrow_mut().checks.push("Ada".into()));
+
+        let later = named_snap(&["ada", "Cy"], &[]);
+        set_session_riders(Some(&later));
+        assert_eq!(session_riders(), ["Ada", "Bea", "Cy"]);
+        GROUP_EDIT.with(|edit| assert_eq!(edit.borrow().checks, ["Ada".to_string()]));
+
+        set_session_riders(None);
+        assert!(session_riders().is_empty());
+        GROUP_EDIT.with(|edit| assert!(edit.borrow().checks.is_empty()));
     }
 }
