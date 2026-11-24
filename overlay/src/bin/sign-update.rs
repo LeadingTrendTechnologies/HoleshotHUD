@@ -44,11 +44,12 @@ fn generate(directory: Option<String>) -> Result<(), String> {
     Ok(())
 }
 
+const SECRET_COMMENT: &str = "untrusted comment: Holeshot HUD update key";
+
 fn sign(secret: Option<String>, zip: Option<String>) -> Result<(), String> {
     let secret = secret.ok_or("sign needs the secret key path")?;
     let zip = zip.ok_or("sign needs the zip path")?;
-    let secret_key = minisign::SecretKey::from_file(&secret, Some(String::new()))
-        .map_err(|error| error.to_string())?;
+    let secret_key = load_secret_key(&secret)?;
     let public_key =
         minisign::PublicKey::from_secret_key(&secret_key).map_err(|error| error.to_string())?;
     let mut file = fs::File::open(&zip).map_err(|error| error.to_string())?;
@@ -65,6 +66,35 @@ fn sign(secret: Option<String>, zip: Option<String>) -> Result<(), String> {
     Ok(())
 }
 
+/// Windows keeps a GitHub secret on one line, so the comment and the key can arrive joined.
+fn normalize_secret_key(raw: &str) -> Result<String, String> {
+    let lines: Vec<&str> = raw
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect();
+    if lines.len() >= 2 {
+        return Ok(format!("{}\n{}\n", lines[0], lines[1]));
+    }
+    let line = lines.first().copied().unwrap_or("").trim();
+    let key = line
+        .strip_prefix(SECRET_COMMENT)
+        .map(str::trim)
+        .filter(|key| !key.is_empty())
+        .unwrap_or(line);
+    if key.is_empty() || key.contains(' ') {
+        return Err("Update secret key is not a minisign secret key.".into());
+    }
+    Ok(format!("{SECRET_COMMENT}\n{key}\n"))
+}
+
+fn load_secret_key(path: &str) -> Result<minisign::SecretKey, String> {
+    let raw = fs::read_to_string(path).map_err(|error| error.to_string())?;
+    let boxed = minisign::SecretKeyBox::from_string(&normalize_secret_key(&raw)?)
+        .map_err(|error| error.to_string())?;
+    minisign::SecretKey::from_box(boxed, Some(String::new())).map_err(|error| error.to_string())
+}
+
 fn crate_signature_ok(
     public_key: &minisign::PublicKey,
     bytes: &[u8],
@@ -79,4 +109,19 @@ fn crate_signature_ok(
         false,
     )
     .is_ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_secret_key;
+
+    #[test]
+    fn collapsed_secret_key_becomes_two_lines() {
+        let collapsed = "untrusted comment: Holeshot HUD update keyQUJDRA==";
+        let got = normalize_secret_key(collapsed).unwrap();
+        assert_eq!(
+            got,
+            "untrusted comment: Holeshot HUD update key\nQUJDRA==\n"
+        );
+    }
 }

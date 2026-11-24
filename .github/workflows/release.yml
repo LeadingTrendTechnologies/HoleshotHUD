@@ -54,20 +54,38 @@ jobs:
         run: powershell -NoProfile -ExecutionPolicy Bypass -File tools/pack.ps1
 
       - name: Sign release zip
-        env:
-          HOLESHOT_UPDATE_SECRET_KEY: ${{ secrets.HOLESHOT_UPDATE_SECRET_KEY }}
-        shell: pwsh
+        shell: node {0}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:HOLESHOT_UPDATE_SECRET_KEY)) {
-            throw "HOLESHOT_UPDATE_SECRET_KEY is not set"
+          const fs = require('fs');
+          const path = require('path');
+          const { spawnSync } = require('child_process');
+          const key = path.join(process.env.RUNNER_TEMP, 'holeshot-update.key');
+          const secret = `
+          ${{ secrets.HOLESHOT_UPDATE_SECRET_KEY }}
+          `.trim();
+          if (!secret) {
+            console.error('HOLESHOT_UPDATE_SECRET_KEY is not set');
+            process.exit(1);
           }
-          $key = Join-Path $env:RUNNER_TEMP "holeshot-update.key"
-          $utf8 = New-Object System.Text.UTF8Encoding $false
-          [System.IO.File]::WriteAllText($key, $env:HOLESHOT_UPDATE_SECRET_KEY, $utf8)
-          $zip = Get-ChildItem dist\*.zip | Select-Object -First 1 -ExpandProperty FullName
-          & .\overlay\target\release\sign-update.exe sign $key $zip
-          if ($LASTEXITCODE -ne 0) { throw "Could not sign the release zip" }
-          Remove-Item $key -Force
+          fs.writeFileSync(key, secret.endsWith('\n') ? secret : secret + '\n');
+          try {
+            const zips = fs.readdirSync('dist').filter((name) => name.endsWith('.zip'));
+            if (zips.length === 0) {
+              console.error('No release zip');
+              process.exit(1);
+            }
+            const result = spawnSync(
+              path.join('overlay', 'target', 'release', 'sign-update.exe'),
+              ['sign', key, path.join('dist', zips[0])],
+              { stdio: 'inherit' }
+            );
+            if (result.status !== 0) {
+              console.error('Could not sign the release zip');
+              process.exit(result.status || 1);
+            }
+          } finally {
+            fs.rmSync(key, { force: true });
+          }
 
       - uses: actions/upload-artifact@v4
         with:
