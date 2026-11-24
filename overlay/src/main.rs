@@ -258,6 +258,10 @@ fn main() {
     if let Some(dir) = dump_menu_shots_path() {
         dump_menu_shots_and_exit(&dir);
     }
+    if std::env::args().any(|a| a == "--undo-game-files") {
+        crate::uninstall::undo_game_files();
+        std::process::exit(0);
+    }
     if std::env::args().any(|a| a == "--apply-update") {
         match crate::update::apply_staged_from_args() {
             Ok(()) => std::process::exit(0),
@@ -384,14 +388,6 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
 
     let mut game = find_game_hwnd();
     let mut last_game_pid = crate::startup::mx_bikes_pid();
-    let mut restart_hint = false;
-    if let Some(path) = crate::plugin::game_exe() {
-        let wrote = compat::ensure_disable_fullscreen_optimizations(&path);
-        restart_hint = wrote && last_game_pid.is_some();
-    }
-    if let Some(path) = last_game_pid.and_then(compat::exe_path_for_pid) {
-        restart_hint = compat::ensure_disable_fullscreen_optimizations(&path);
-    }
     let (mut x, mut y, mut w, mut h) = game
         .and_then(client_screen_rect)
         .unwrap_or_else(primary_screen);
@@ -467,15 +463,12 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
             if pid != last_game_pid {
                 let had_game = last_game_pid.is_some();
                 last_game_pid = pid;
-                if let Some(path) = pid.and_then(compat::exe_path_for_pid) {
-                    let wrote = compat::ensure_disable_fullscreen_optimizations(&path);
-                    restart_hint = wrote && had_game;
+                if pid.is_some() {
                     // Fresh MX Bikes process: keep menu pack on the Look primary.
                     if !had_game {
                         crate::game_ui::sync_quiet();
                     }
                 } else {
-                    restart_hint = false;
                     shm = None;
                     cmd = None;
                     last_snap = None;
@@ -800,7 +793,7 @@ unsafe fn run(mut fonts: Fonts, mut font_family: crate::config::FontFamily) {
                 w as u32,
                 h as u32,
                 age,
-                overlay_on && restart_hint,
+                false,
                 overlay_on
                     && (crate::plugin::needs_restart()
                         || shm_miss_since.is_some_and(|t| t.elapsed() >= Duration::from_secs(2))),

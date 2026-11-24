@@ -1,6 +1,15 @@
 use super::*;
 
 #[test]
+fn sent_log_keeps_the_file_name_only() {
+    let raw = "{\"v\":1,\"file\":\"C:\\\\Users\\\\sam\\\\AppData\\\\Local\\\\Holeshot HUD\\\\logs\\\\race.jsonl\"}\n{\"cur\":1,\"t\":\"x\"}\n";
+    let sent = redact_log_file_field(raw);
+    assert!(sent.contains("\"file\":\"race.jsonl\""), "{sent}");
+    assert!(!sent.to_lowercase().contains("users"), "{sent}");
+    assert!(sent.contains("{\"cur\":1,\"t\":\"x\"}"), "{sent}");
+}
+
+#[test]
 fn json_roundtrip_keeps_newlines() {
     let tickets = vec![Ticket {
         id: "abc".into(),

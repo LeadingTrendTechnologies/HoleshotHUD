@@ -41,6 +41,7 @@ function Remove-HudFilesFrom([string]$dir) {
             "Uninstall.ps1",
             "Uninstall.bat",
             "README.txt",
+            "THIRD-PARTY.txt",
             "Holeshot-HUD.ini",
             "mxbo.ini",
             "gamedir.txt",
@@ -120,7 +121,46 @@ function Remove-PluginFromGame([string]$game) {
     }
 }
 
+function Clear-GameCompatFlag {
+    $layers = 'Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers'
+    $base = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($layers, $true)
+    if (-not $base) { return }
+    foreach ($name in @($base.GetValueNames())) {
+        if ($name -notmatch '(?i)(^|\\)mxbikes\.exe$') { continue }
+        $current = [string]$base.GetValue($name)
+        $tokens = @($current -split '\s+' | Where-Object { $_ -and ($_ -ine 'DISABLEDXMAXIMIZEDWINDOWEDMODE') })
+        $left = ($tokens -join ' ').Trim()
+        if ($left -eq '' -or $left -eq '~') {
+            $base.DeleteValue($name, $false)
+        } elseif ($left -ne $current.Trim()) {
+            $base.SetValue($name, $left)
+        }
+    }
+    $base.Close()
+}
+
+function Remove-TempLogs {
+    $dir = Join-Path $env:TEMP "Holeshot HUD"
+    if (Test-Path -LiteralPath $dir) {
+        Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Invoke-UndoGameFiles {
+    foreach ($dir in @($InstallDir, $DataDir) | Select-Object -Unique) {
+        $exe = Join-Path $dir "Holeshot-HUD.exe"
+        if (-not (Test-Path -LiteralPath $exe)) { continue }
+        try {
+            Start-Process -FilePath $exe -ArgumentList '--undo-game-files' -Wait -WindowStyle Hidden | Out-Null
+        } catch {}
+        break
+    }
+}
+
 Get-Process -Name "Holeshot-HUD", "mxbo-overlay", "MXBO Overlay", "Holeshot HUD" -ErrorAction SilentlyContinue | Stop-Process -Force
+Invoke-UndoGameFiles
+Clear-GameCompatFlag
+Remove-TempLogs
 Remove-Item -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'Holeshot HUD' -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'Holeshot HUD game' -Force -ErrorAction SilentlyContinue
 

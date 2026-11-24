@@ -64,65 +64,6 @@ namespace
         return p;
     }
 
-    void ensureOverlayCompat()
-    {
-        wchar_t exe[MAX_PATH]{};
-        if (!GetModuleFileNameW(nullptr, exe, MAX_PATH))
-        {
-            return;
-        }
-        HKEY key = nullptr;
-        if (RegCreateKeyExW(
-                HKEY_CURRENT_USER,
-                L"Software\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags\\Layers",
-                0,
-                nullptr,
-                0,
-                KEY_READ | KEY_WRITE,
-                nullptr,
-                &key,
-                nullptr) != ERROR_SUCCESS)
-        {
-            return;
-        }
-        wchar_t val[512]{};
-        DWORD type = 0;
-        DWORD bytes = sizeof(val);
-        const wchar_t* flag = L"DISABLEDXMAXIMIZEDWINDOWEDMODE";
-        std::wstring next = L"~ ";
-        if (RegQueryValueExW(key, exe, nullptr, &type, reinterpret_cast<LPBYTE>(val), &bytes) == ERROR_SUCCESS &&
-            type == REG_SZ)
-        {
-            next = val;
-            if (next.find(flag) != std::wstring::npos)
-            {
-                RegCloseKey(key);
-                return;
-            }
-            if (!next.empty() && next.back() != L' ')
-            {
-                next += L' ';
-            }
-            next += flag;
-            if (next[0] != L'~')
-            {
-                next = L"~ " + next;
-            }
-        }
-        else
-        {
-            next += flag;
-        }
-        RegSetValueExW(
-            key,
-            exe,
-            0,
-            REG_SZ,
-            reinterpret_cast<const BYTE*>(next.c_str()),
-            static_cast<DWORD>((next.size() + 1) * sizeof(wchar_t)));
-        RegCloseKey(key);
-    }
-
     FILETIME g_iniWriteTime{};
 
     void breadcrumb(const char* name)
@@ -243,7 +184,6 @@ __declspec(dllexport) int Startup(char* _szSavePath)
         g_layoutDirty = true;
 #endif
         g_shm.open();
-        ensureOverlayCompat();
         crash_log::install(&g_state);
         crash_log::flushTrail();
         return kTelemetryHz;

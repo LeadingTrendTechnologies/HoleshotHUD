@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.24.1
+
+Uninstall clears the game compatibility flag, temp logs, and menu or pitboard overrides. A bug report sends the race-log file name. Browser Source ignores other websites.
+
+### Uninstall
+
+- The fullscreen-optimizations flag on `mxbikes.exe` is removed, including from Windows Settings.
+- Temp logs under `%TEMP%\Holeshot HUD` are removed.
+- Menu files and the pitboard override are restored on every uninstall path. The `ui.holeshot-bak` copy is deleted after that restore.
+- Pit boards saved under `Documents\PiBoSo\MX Bikes\Holeshot-HUD` stay.
+- This build does not set the fullscreen-optimizations flag. Uninstall still removes it when an older version set it.
+
+### Updates
+
+- An update zip must match the signature from the key in the app, and the GitHub SHA-256, before it is installed.
+
+### Feedback
+
+- The attached race log keeps the file name. The Windows path stays on disk.
+
+### Stream
+
+- Browser Source answers `127.0.0.1` and `localhost`. Another site's Origin gets 403.
+
 ## 0.24.0
 
 Fuel fill from practice, and a chevron back to the track. Both stay off until Settings → Labs → Experimental features is on.

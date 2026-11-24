@@ -27,14 +27,21 @@ pub fn confirm(host: HWND) -> bool {
     }
 }
 
-/// Start uninstall and return true if the overlay should quit.
-pub fn start(host: HWND) -> bool {
-    crate::startup::set_enabled(false);
-    crate::plugin::remove();
-    if let Some(game) = crate::plugin::game_dir() {
+/// Restore menu files and the pitboard override, and drop the compat flag and temp logs.
+pub fn undo_game_files() {
+    for game in crate::plugin::candidate_game_dirs() {
         let _ = crate::game_ui::remove(&game);
         crate::stock_pitboard::remove(&game);
     }
+    crate::compat::clear_disable_fullscreen_optimizations();
+    let _ = std::fs::remove_dir_all(std::env::temp_dir().join("Holeshot HUD"));
+}
+
+/// Start uninstall and return true if the overlay should quit.
+pub fn start(host: HWND) -> bool {
+    crate::startup::set_enabled(false);
+    undo_game_files();
+    crate::plugin::remove();
     crate::tray::remove();
     if launch_inno() || launch_sidecar_script() || launch_fallback() {
         true
@@ -111,6 +118,20 @@ Start-Sleep -Milliseconds 600
 if ('{plugin}') {{ Remove-Item -LiteralPath '{plugin}' -Force -ErrorAction SilentlyContinue }}
 Remove-Item -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'Holeshot HUD' -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'Holeshot HUD game' -Force -ErrorAction SilentlyContinue
+$layers = 'Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers'
+$base = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($layers, $true)
+if ($base) {{
+  foreach ($name in @($base.GetValueNames())) {{
+    if ($name -notmatch '(?i)(^|\\)mxbikes\.exe$') {{ continue }}
+    $current = [string]$base.GetValue($name)
+    $tokens = @($current -split '\s+' | Where-Object {{ $_ -and ($_ -ine 'DISABLEDXMAXIMIZEDWINDOWEDMODE') }})
+    $left = ($tokens -join ' ').Trim()
+    if ($left -eq '' -or $left -eq '~') {{ $base.DeleteValue($name, $false) }}
+    elseif ($left -ne $current.Trim()) {{ $base.SetValue($name, $left) }}
+  }}
+  $base.Close()
+}}
+Remove-Item -LiteralPath (Join-Path $env:TEMP 'Holeshot HUD') -Recurse -Force -ErrorAction SilentlyContinue
 $desktop = [Environment]::GetFolderPath('Desktop')
 $start = Join-Path ([Environment]::GetFolderPath('StartMenu')) 'Programs'
 foreach ($name in @('Holeshot HUD', 'MXBO Overlay')) {{

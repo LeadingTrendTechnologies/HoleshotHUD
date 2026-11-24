@@ -4,15 +4,18 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use windows::core::{w, PCSTR, PCWSTR, PWSTR};
-use windows::Win32::Foundation::{CloseHandle, BOOL, HWND, LPARAM, POINT, RECT};
+use windows::Win32::Foundation::{
+    CloseHandle, BOOL, ERROR_MORE_DATA, ERROR_NO_MORE_ITEMS, ERROR_SUCCESS, HWND, LPARAM, POINT,
+    RECT,
+};
 use windows::Win32::Graphics::Gdi::{
     ClientToScreen, GetMonitorInfoW, MonitorFromPoint, MonitorFromWindow, MONITORINFO,
     MONITOR_DEFAULTTONEAREST,
 };
 use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
 use windows::Win32::System::Registry::{
-    RegCloseKey, RegCreateKeyExW, RegQueryValueExW, RegSetValueExW, HKEY_CURRENT_USER, KEY_READ,
-    KEY_WRITE, REG_SZ,
+    RegCloseKey, RegDeleteValueW, RegEnumValueW, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW,
+    HKEY, HKEY_CURRENT_USER, KEY_READ, KEY_WRITE, REG_SZ,
 };
 use windows::Win32::System::Threading::{
     GetExitCodeProcess, OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_FORMAT,
@@ -350,72 +353,146 @@ pub fn exe_path_for_pid(pid: u32) -> Option<String> {
     }
 }
 
-/// Returns true if the flag was missing and we just wrote it.
-/// The running game must restart for that to take effect; a later launch already has it.
-pub fn ensure_disable_fullscreen_optimizations(exe_path: &str) -> bool {
-    let mut name: Vec<u16> = exe_path.encode_utf16().collect();
-    name.push(0);
+#[derive(Debug, PartialEq, Eq)]
+enum LayersEdit {
+    Keep,
+    Delete,
+    Replace(String),
+}
+
+/// Drop only our fullscreen-optimizations token. An empty remainder, or a lone `~`,
+/// means the value itself can go. Other tokens the user set stay.
+fn layers_value_without_flag(existing: &str) -> LayersEdit {
+    let mut removed = false;
+    let mut kept = Vec::new();
+    for token in existing.split_whitespace() {
+        if token.eq_ignore_ascii_case(FLAG) {
+            removed = true;
+        } else {
+            kept.push(token);
+        }
+    }
+    if !removed {
+        return LayersEdit::Keep;
+    }
+    let next = kept.join(" ");
+    if next.is_empty() || next == "~" {
+        LayersEdit::Delete
+    } else {
+        LayersEdit::Replace(next)
+    }
+}
+
+fn is_mxbikes_exe_value(name: &str) -> bool {
+    name.rsplit(['\\', '/'])
+        .next()
+        .unwrap_or(name)
+        .eq_ignore_ascii_case("mxbikes.exe")
+}
+
+/// Remove `DISABLEDXMAXIMIZEDWINDOWEDMODE` from every `mxbikes.exe` Layers value.
+pub fn clear_disable_fullscreen_optimizations() {
     unsafe {
-        let mut key = Default::default();
-        if RegCreateKeyExW(
+        let mut key = HKEY::default();
+        if RegOpenKeyExW(
             HKEY_CURRENT_USER,
             w!("Software\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags\\Layers"),
             0,
-            None,
-            Default::default(),
             KEY_READ | KEY_WRITE,
-            None,
             &mut key,
-            None,
         )
         .is_err()
         {
-            return false;
+            return;
         }
-        let mut buf = [0u16; 512];
-        let mut bytes = (buf.len() * 2) as u32;
-        let mut ty = REG_SZ;
-        let existing = if RegQueryValueExW(
+        for name in mxbikes_layer_names(key) {
+            apply_layers_edit(key, &name);
+        }
+        let _ = RegCloseKey(key);
+    }
+}
+
+fn mxbikes_layer_names(key: HKEY) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut name = vec![0u16; 2048];
+    let mut index = 0u32;
+    loop {
+        let mut name_len = name.len() as u32;
+        let err = unsafe {
+            RegEnumValueW(
+                key,
+                index,
+                PWSTR(name.as_mut_ptr()),
+                &mut name_len,
+                None,
+                None,
+                None,
+                None,
+            )
+        };
+        if err == ERROR_NO_MORE_ITEMS {
+            break;
+        }
+        if err == ERROR_MORE_DATA {
+            let need = (name_len as usize).max(name.len().saturating_mul(2)).max(1);
+            name.resize(need, 0);
+            continue;
+        }
+        if err != ERROR_SUCCESS {
+            break;
+        }
+        let text = String::from_utf16_lossy(&name[..name_len as usize]);
+        if is_mxbikes_exe_value(&text) {
+            names.push(text);
+        }
+        index += 1;
+    }
+    names
+}
+
+fn apply_layers_edit(key: HKEY, name: &str) {
+    let mut wide_name: Vec<u16> = name.encode_utf16().collect();
+    wide_name.push(0);
+    let mut buf = [0u16; 512];
+    let mut bytes = (buf.len() * 2) as u32;
+    let mut ty = REG_SZ;
+    let existing = unsafe {
+        if RegQueryValueExW(
             key,
-            PCWSTR(name.as_ptr()),
+            PCWSTR(wide_name.as_ptr()),
             None,
             Some(&mut ty),
             Some(buf.as_mut_ptr() as *mut u8),
             Some(&mut bytes),
         )
-        .is_ok()
+        .is_err()
         {
-            let n = (bytes as usize / 2).saturating_sub(1).min(buf.len());
-            String::from_utf16_lossy(&buf[..n])
-        } else {
-            String::new()
-        };
-        if existing.to_uppercase().contains(FLAG) {
-            let _ = RegCloseKey(key);
-            return false;
+            return;
         }
-        let mut next = if existing.trim().is_empty() {
-            format!("~ {FLAG}")
-        } else {
-            format!("{} {FLAG}", existing.trim())
-        };
-        if !next.starts_with('~') {
-            next = format!("~ {next}");
+        let n = (bytes as usize / 2).saturating_sub(1).min(buf.len());
+        String::from_utf16_lossy(&buf[..n])
+    };
+    match layers_value_without_flag(&existing) {
+        LayersEdit::Keep => {}
+        LayersEdit::Delete => unsafe {
+            let _ = RegDeleteValueW(key, PCWSTR(wide_name.as_ptr()));
+        },
+        LayersEdit::Replace(next) => {
+            let mut wide: Vec<u16> = next.encode_utf16().collect();
+            wide.push(0);
+            unsafe {
+                let _ = RegSetValueExW(
+                    key,
+                    PCWSTR(wide_name.as_ptr()),
+                    0,
+                    REG_SZ,
+                    Some(std::slice::from_raw_parts(
+                        wide.as_ptr() as *const u8,
+                        wide.len() * size_of::<u16>(),
+                    )),
+                );
+            }
         }
-        let mut wide: Vec<u16> = next.encode_utf16().collect();
-        wide.push(0);
-        let _ = RegSetValueExW(
-            key,
-            PCWSTR(name.as_ptr()),
-            0,
-            REG_SZ,
-            Some(std::slice::from_raw_parts(
-                wide.as_ptr() as *const u8,
-                wide.len() * size_of::<u16>(),
-            )),
-        );
-        let _ = RegCloseKey(key);
-        true
     }
 }
 

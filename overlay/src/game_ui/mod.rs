@@ -335,6 +335,7 @@ mod tests {
         assert!(game.join(BAK_DIR).join("main.mnu").is_file());
         remove(&game).unwrap();
         assert!(!ui.join(MANIFEST).is_file());
+        assert!(!game.join(BAK_DIR).exists());
         assert_eq!(fs::read_to_string(ui.join("keep-me.txt")).unwrap(), "stay");
         assert_eq!(fs::read_to_string(ui.join("main.mnu")).unwrap(), "stock");
         let _ = fs::remove_dir_all(&game);
@@ -398,10 +399,13 @@ mod tests {
         let ui = game.join("ui");
         fs::write(ui.join("main.mnu"), b"stock").unwrap();
         fs::write(ui.join("keep-me.txt"), b"stay").unwrap();
+        fs::create_dir_all(game.join(BAK_DIR)).unwrap();
+        fs::write(game.join(BAK_DIR).join("old.txt"), b"leftover").unwrap();
         remove(&game).unwrap();
         assert_eq!(fs::read_to_string(ui.join("main.mnu")).unwrap(), "stock");
         assert_eq!(fs::read_to_string(ui.join("keep-me.txt")).unwrap(), "stay");
         assert!(!ui.join(MANIFEST).is_file());
+        assert!(!game.join(BAK_DIR).exists());
         let _ = fs::remove_dir_all(&game);
     }
 

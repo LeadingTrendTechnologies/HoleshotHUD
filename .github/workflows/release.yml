@@ -47,8 +47,27 @@ jobs:
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress
 
+      - name: List third-party crates
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File tools/third-party.ps1
+
       - name: Pack installer
         run: powershell -NoProfile -ExecutionPolicy Bypass -File tools/pack.ps1
+
+      - name: Sign release zip
+        env:
+          HOLESHOT_UPDATE_SECRET_KEY: ${{ secrets.HOLESHOT_UPDATE_SECRET_KEY }}
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:HOLESHOT_UPDATE_SECRET_KEY)) {
+            throw "HOLESHOT_UPDATE_SECRET_KEY is not set"
+          }
+          $key = Join-Path $env:RUNNER_TEMP "holeshot-update.key"
+          $utf8 = New-Object System.Text.UTF8Encoding $false
+          [System.IO.File]::WriteAllText($key, $env:HOLESHOT_UPDATE_SECRET_KEY, $utf8)
+          $zip = Get-ChildItem dist\*.zip | Select-Object -First 1 -ExpandProperty FullName
+          & .\overlay\target\release\sign-update.exe sign $key $zip
+          if ($LASTEXITCODE -ne 0) { throw "Could not sign the release zip" }
+          Remove-Item $key -Force
 
       - uses: actions/upload-artifact@v4
         with:
@@ -56,6 +75,7 @@ jobs:
           path: |
             dist/HoleshotHUD-Setup.exe
             dist/*.zip
+            dist/*.minisig
 
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
@@ -64,5 +84,6 @@ jobs:
           files: |
             dist/HoleshotHUD-Setup.exe
             dist/*.zip
+            dist/*.minisig
           body_path: CHANGELOG.md
           generate_release_notes: true

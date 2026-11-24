@@ -313,7 +313,7 @@ pub(crate) const MENU_SPLICES: &[MenuSplice] = &[
 
 pub fn remove_pack(ui: &Path, bak: Option<&Path>) -> Result<(), String> {
     if !ui.join(MANIFEST).is_file() {
-        return Ok(());
+        return delete_backup(bak);
     }
     let listed = read_manifest_files(ui);
     for name in listed {
@@ -329,6 +329,16 @@ pub fn remove_pack(ui: &Path, bak: Option<&Path>) -> Result<(), String> {
         }
     }
     let _ = fs::remove_file(ui.join(MANIFEST));
+    delete_backup(bak)
+}
+
+fn delete_backup(bak: Option<&Path>) -> Result<(), String> {
+    let Some(bak) = bak else {
+        return Ok(());
+    };
+    if bak.exists() {
+        fs::remove_dir_all(bak).map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 

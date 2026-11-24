@@ -1,5 +1,8 @@
 build/
 dist/
+installer/THIRD-PARTY.txt
+holeshot-update.key
+holeshot-update.pub
 out/
 overlay/target/
 overlay/*-out/

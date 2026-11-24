@@ -90,11 +90,6 @@ pub fn needs_restart() -> bool {
     NEED_RETRY.load(Ordering::Relaxed) || NEED_GAME_RESTART.load(Ordering::Relaxed)
 }
 
-pub fn game_exe() -> Option<String> {
-    let p = game_dir()?.join("mxbikes.exe");
-    p.is_file().then(|| p.to_string_lossy().into_owned())
-}
-
 pub fn remove() {
     if let Some(dir) = game_dir().map(|g| g.join("plugins")) {
         let _ = fs::remove_file(dir.join(PLUGIN_FILE));
@@ -272,6 +267,42 @@ pub fn game_dir() -> Option<PathBuf> {
         }
     }
     None
+}
+
+/// Every MX Bikes folder we already know how to find. Does not remember a new one.
+pub fn candidate_game_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Ok(dir) = std::env::var("MXBIKES_DIR") {
+        let path = PathBuf::from(dir);
+        if looks_like_game(&path) {
+            dirs.push(path);
+        }
+    }
+    if let Some(path) = saved_game_dir() {
+        if looks_like_game(&path) {
+            dirs.push(path);
+        }
+    }
+    for lib in steam_libraries() {
+        let path = lib.join("steamapps").join("common").join("MX Bikes");
+        if looks_like_game(&path) {
+            dirs.push(path);
+        }
+    }
+    for path in [
+        r"C:\Program Files (x86)\Steam\steamapps\common\MX Bikes",
+        r"C:\Steam\steamapps\common\MX Bikes",
+        r"D:\Steam\steamapps\common\MX Bikes",
+        r"E:\Steam\steamapps\common\MX Bikes",
+    ] {
+        let path = PathBuf::from(path);
+        if looks_like_game(&path) {
+            dirs.push(path);
+        }
+    }
+    dirs.sort();
+    dirs.dedup();
+    dirs
 }
 
 fn looks_like_game(p: &Path) -> bool {

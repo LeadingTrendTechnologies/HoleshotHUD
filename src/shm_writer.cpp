@@ -13,18 +13,114 @@
 
 #include <windows.h>
 
+#include <vector>
+
+namespace
+{
+
+// Current user and SYSTEM. The overlay runs as that user, so it can still map the view.
+struct MappingSecurity
+{
+    SECURITY_ATTRIBUTES attributes{};
+    SECURITY_DESCRIPTOR descriptor{};
+    std::vector<unsigned char> acl;
+    bool ready = false;
+};
+
+bool buildMappingSecurity(MappingSecurity& security)
+{
+    HANDLE token = nullptr;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token))
+    {
+        return false;
+    }
+    DWORD needed = 0;
+    GetTokenInformation(token, TokenUser, nullptr, 0, &needed);
+    std::vector<unsigned char> userInfo(needed == 0 ? 1 : needed);
+    if (!GetTokenInformation(
+            token,
+            TokenUser,
+            userInfo.data(),
+            static_cast<DWORD>(userInfo.size()),
+            &needed))
+    {
+        CloseHandle(token);
+        return false;
+    }
+    CloseHandle(token);
+    PSID userSid = reinterpret_cast<TOKEN_USER*>(userInfo.data())->User.Sid;
+
+    SID_IDENTIFIER_AUTHORITY authority = SECURITY_NT_AUTHORITY;
+    PSID systemSid = nullptr;
+    if (!AllocateAndInitializeSid(
+            &authority,
+            1,
+            SECURITY_LOCAL_SYSTEM_RID,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            &systemSid))
+    {
+        return false;
+    }
+
+    const DWORD aclBytes = sizeof(ACL)
+        + 2 * (sizeof(ACCESS_ALLOWED_ACE) - sizeof(DWORD))
+        + GetLengthSid(userSid)
+        + GetLengthSid(systemSid);
+    security.acl.resize(aclBytes);
+    auto* acl = reinterpret_cast<PACL>(security.acl.data());
+    const bool ok = InitializeAcl(acl, aclBytes, ACL_REVISION)
+        && AddAccessAllowedAce(acl, ACL_REVISION, FILE_MAP_ALL_ACCESS, userSid)
+        && AddAccessAllowedAce(acl, ACL_REVISION, FILE_MAP_ALL_ACCESS, systemSid)
+        && InitializeSecurityDescriptor(&security.descriptor, SECURITY_DESCRIPTOR_REVISION)
+        && SetSecurityDescriptorDacl(&security.descriptor, TRUE, acl, FALSE);
+    FreeSid(systemSid);
+    if (!ok)
+    {
+        security.acl.clear();
+        return false;
+    }
+    security.attributes.nLength = sizeof(security.attributes);
+    security.attributes.lpSecurityDescriptor = &security.descriptor;
+    security.attributes.bInheritHandle = FALSE;
+    security.ready = true;
+    return true;
+}
+
+} // namespace
+
 bool ShmWriter::open()
 {
     close();
+    MappingSecurity security;
+    const bool haveSecurity = buildMappingSecurity(security);
+    SECURITY_ATTRIBUTES* attributes = haveSecurity ? &security.attributes : nullptr;
     const DWORD bytes = static_cast<DWORD>(sizeof(MxboShmSnapshot));
     SetLastError(0);
     m_map = CreateFileMappingW(
         INVALID_HANDLE_VALUE,
-        nullptr,
+        attributes,
         PAGE_READWRITE,
         0,
         bytes,
         MXBO_SHM_NAME);
+    if (!m_map && attributes)
+    {
+        attributes = nullptr;
+        SetLastError(0);
+        m_map = CreateFileMappingW(
+            INVALID_HANDLE_VALUE,
+            nullptr,
+            PAGE_READWRITE,
+            0,
+            bytes,
+            MXBO_SHM_NAME);
+    }
     if (!m_map)
     {
         return false;
@@ -66,7 +162,7 @@ bool ShmWriter::open()
 
     m_cmdMap = CreateFileMappingW(
         INVALID_HANDLE_VALUE,
-        nullptr,
+        attributes,
         PAGE_READWRITE,
         0,
         static_cast<DWORD>(sizeof(MxboShmCmd)),

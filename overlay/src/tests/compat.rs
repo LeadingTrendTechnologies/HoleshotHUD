@@ -38,6 +38,42 @@ fn quit_defers_taskbar_restore_only_while_the_game_is_up() {
 }
 
 #[test]
+fn compat_flag_removal_keeps_other_tokens() {
+    assert_eq!(
+        layers_value_without_flag("~ DISABLEDXMAXIMIZEDWINDOWEDMODE"),
+        LayersEdit::Delete
+    );
+    assert_eq!(
+        layers_value_without_flag("disabledxmaximizedwindowedmode"),
+        LayersEdit::Delete
+    );
+    assert_eq!(
+        layers_value_without_flag("~ HIGHDPIAWARE DISABLEDXMAXIMIZEDWINDOWEDMODE"),
+        LayersEdit::Replace("~ HIGHDPIAWARE".into())
+    );
+    assert_eq!(
+        layers_value_without_flag("~ DISABLEDXMAXIMIZEDWINDOWEDMODE HIGHDPIAWARE"),
+        LayersEdit::Replace("~ HIGHDPIAWARE".into())
+    );
+    assert_eq!(
+        layers_value_without_flag("~ HIGHDPIAWARE"),
+        LayersEdit::Keep
+    );
+}
+
+#[test]
+fn compat_flag_only_matches_mxbikes_exe() {
+    assert!(is_mxbikes_exe_value(
+        r"D:\Steam\steamapps\common\MX Bikes\mxbikes.exe"
+    ));
+    assert!(is_mxbikes_exe_value(
+        r"D:\Steam\steamapps\common\MX Bikes\MXBikes.exe"
+    ));
+    assert!(!is_mxbikes_exe_value(r"D:\Steam\mxbikes.exe.bak"));
+    assert!(!is_mxbikes_exe_value(r"C:\Games\other.exe"));
+}
+
+#[test]
 fn restore_taskbar_pid_reads_flag_and_value() {
     assert_eq!(
         restore_taskbar_pid(["Holeshot-HUD.exe", "--restore-taskbar", "4242"]),

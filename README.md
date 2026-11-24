@@ -2,6 +2,8 @@
 
 Standings, relative, horizontal standings, map, minimap, and radar for [MX Bikes](https://store.steampowered.com/app/655500/MX_Bikes/).
 
+Holeshot HUD is released under the MIT licence. See [LICENSE](LICENSE).
+
 ## Preview
 
 A browser demo of the same HUD widgets lives in [`web/`](web/). Build it with `build-web.bat`, then serve the `web` folder.
@@ -34,7 +36,7 @@ Uninstall from Windows Settings, or run `Uninstall.bat` in the install folder.
 
 The plugin (`Holeshot-HUD.dlo`) reads the game and writes shared memory. The overlay is a transparent window on top of MX Bikes.
 
-Layout is saved to `Documents\PiBoSo\MX Bikes\Holeshot-HUD.ini`. Uninstall deletes that file and AppData leftovers so a reinstall is a fresh install.
+Layout is saved to `Documents\PiBoSo\MX Bikes\Holeshot-HUD.ini`. Uninstall deletes that file, AppData leftovers, temp logs, the fullscreen-optimizations flag on `mxbikes.exe` if an older version set it, and any menu or pitboard overrides. Pit boards saved under `Documents\PiBoSo\MX Bikes\Holeshot-HUD` stay.
 
 Restart MX Bikes after installing or updating the plugin.
 

@@ -1598,6 +1598,13 @@ fn handle_conn(
     let path = parts.next().unwrap_or("/");
     let path_only = path.split('?').next().unwrap_or(path);
 
+    if !origin_is_local(&req_head) {
+        let _ = stream.write_all(
+            b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+        );
+        return;
+    }
+
     if method == "POST" && path_only == "/api/stream-viewport" {
         let body = read_http_body(&req_head, header_bytes, &mut stream);
         if let (Some(width), Some(height)) =
@@ -1747,9 +1754,47 @@ fn read_http_body(req_head: &str, first: &[u8], stream: &mut TcpStream) -> Strin
     String::from_utf8_lossy(&body).into_owned()
 }
 
+/// Missing Origin is a local client. A browser on another site sends its own Origin.
+fn origin_is_local(req_head: &str) -> bool {
+    match origin_header(req_head) {
+        None => true,
+        Some(origin) => origin_host_is_loopback(origin),
+    }
+}
+
+fn origin_header(req_head: &str) -> Option<&str> {
+    for line in req_head.lines() {
+        let Some((name, value)) = line.split_once(':') else {
+            continue;
+        };
+        if name.eq_ignore_ascii_case("Origin") {
+            return Some(value.trim());
+        }
+    }
+    None
+}
+
+fn origin_host_is_loopback(origin: &str) -> bool {
+    let Some(scheme_end) = origin.find("://") else {
+        return false;
+    };
+    let scheme = &origin[..scheme_end];
+    if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
+        return false;
+    }
+    let rest = &origin[scheme_end + 3..];
+    let hostport = rest.split(['/', '?', '#']).next().unwrap_or(rest);
+    let host = if let Some(wrapped) = hostport.strip_prefix('[') {
+        wrapped.split(']').next().unwrap_or("")
+    } else {
+        hostport.split(':').next().unwrap_or(hostport)
+    };
+    host == "127.0.0.1" || host.eq_ignore_ascii_case("localhost")
+}
+
 fn write_json(stream: &mut TcpStream, body: &str) {
     let header = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {}\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
         body.len()
     );
     let _ = stream.write_all(header.as_bytes());
@@ -2374,3 +2419,38 @@ const STREAM_HTML: &str = r#"<!DOCTYPE html>
 </body>
 </html>
 "#;
+
+#[cfg(test)]
+mod tests {
+    use super::origin_is_local;
+
+    #[test]
+    fn missing_origin_is_local() {
+        assert!(origin_is_local(
+            "GET / HTTP/1.1\r\nHost: 127.0.0.1:8765\r\n\r\n"
+        ));
+    }
+
+    #[test]
+    fn loopback_origin_is_local() {
+        assert!(origin_is_local(
+            "POST /api/stream-layout HTTP/1.1\r\nOrigin: http://127.0.0.1:8765\r\n\r\n"
+        ));
+        assert!(origin_is_local(
+            "GET /ws HTTP/1.1\r\nOrigin: http://localhost:8765\r\n\r\n"
+        ));
+        assert!(origin_is_local(
+            "GET / HTTP/1.1\r\nOrigin: HTTP://LOCALHOST\r\n\r\n"
+        ));
+    }
+
+    #[test]
+    fn other_sites_are_refused() {
+        assert!(!origin_is_local(
+            "POST /api/stream-layout HTTP/1.1\r\nOrigin: https://evil.example\r\n\r\n"
+        ));
+        assert!(!origin_is_local(
+            "GET /ws HTTP/1.1\r\nOrigin: null\r\n\r\n"
+        ));
+    }
+}

@@ -33,6 +33,8 @@ Copy-Item (Join-Path $Root "installer\install-plugin.ps1") (Join-Path $stage "In
 Copy-Item (Join-Path $Root "installer\uninstall.ps1") (Join-Path $stage "Uninstall.ps1")
 Copy-Item (Join-Path $Root "installer\uninstall.bat") (Join-Path $stage "Uninstall.bat")
 Copy-Item (Join-Path $Root "installer\README.txt") (Join-Path $stage "README.txt")
+& (Join-Path $Root "tools\third-party.ps1")
+Copy-Item (Join-Path $Root "installer\THIRD-PARTY.txt") (Join-Path $stage "THIRD-PARTY.txt")
 
 $zip = Join-Path $dist "$name.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }

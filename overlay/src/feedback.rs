@@ -719,11 +719,12 @@ fn payload_json(
         json_escape(std::env::consts::ARCH),
     );
     if let Some(log) = log {
+        let sent = redact_log_file_field(&log.body);
         s.push_str(&format!(
             ",\"log_name\":\"{}\",\"log_truncated\":{},\"log\":\"{}\"",
             json_escape(&log.name),
             if log.truncated { "true" } else { "false" },
-            json_escape(&log.body),
+            json_escape(&sent),
         ));
         if let Some(track) = log.track.as_deref() {
             s.push_str(&format!(",\"track\":\"{}\"", json_escape(track)));
@@ -762,9 +763,71 @@ fn plain_report(kind: Kind, rating: u8, message: &str, log: Option<&FeedbackLog>
             body.push_str(&format!("\nTrack: {track}\n"));
         }
         body.push_str("\n--- last race log ---\n");
-        body.push_str(&log_excerpt(&log.body, 12_000));
+        body.push_str(&log_excerpt(&redact_log_file_field(&log.body), 12_000));
     }
     body
+}
+
+/// The on-disk header stores the absolute path. What we send keeps the file name.
+fn redact_log_file_field(body: &str) -> String {
+    let (first, rest) = match body.find('\n') {
+        Some(index) => (&body[..index], &body[index..]),
+        None => (body, ""),
+    };
+    const KEY: &str = "\"file\":\"";
+    if !first.contains("\"v\":1") {
+        return body.to_string();
+    }
+    let Some(key_at) = first.find(KEY) else {
+        return body.to_string();
+    };
+    let value_at = key_at + KEY.len();
+    let bytes = first.as_bytes();
+    let mut end = value_at;
+    while end < bytes.len() {
+        if bytes[end] == b'\\' {
+            end = end.saturating_add(2);
+            continue;
+        }
+        if bytes[end] == b'"' {
+            break;
+        }
+        end += 1;
+    }
+    if end >= bytes.len() || bytes[end] != b'"' {
+        return body.to_string();
+    }
+    let unescaped = unescape_json_string(&first[value_at..end]);
+    let name = unescaped
+        .rsplit(['\\', '/'])
+        .next()
+        .filter(|part| !part.is_empty())
+        .unwrap_or("race.jsonl");
+    let mut out = String::with_capacity(body.len());
+    out.push_str(&first[..value_at]);
+    out.push_str(&json_escape(name));
+    out.push_str(&first[end..]);
+    out.push_str(rest);
+    out
+}
+
+fn unescape_json_string(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut chars = raw.chars();
+    while let Some(ch) = chars.next() {
+        if ch == '\\' {
+            match chars.next() {
+                Some('n') => out.push('\n'),
+                Some('r') => out.push('\r'),
+                Some('t') => out.push('\t'),
+                Some(other) => out.push(other),
+                None => out.push('\\'),
+            }
+        } else {
+            out.push(ch);
+        }
+    }
+    out
 }
 
 fn log_excerpt(s: &str, max: usize) -> String {

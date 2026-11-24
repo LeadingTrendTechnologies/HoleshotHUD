@@ -22,8 +22,10 @@ Use
 Uninstall
 ---------
 Run Uninstall.bat from the install folder (or Windows Settings → Apps).
-That also deletes saved layout (Documents\PiBoSo\MX Bikes\Holeshot-HUD.ini)
-and AppData logs / the remembered game folder path.
+That deletes the saved layout (Documents\PiBoSo\MX Bikes\Holeshot-HUD.ini),
+AppData logs, temp logs, the fullscreen-optimizations flag on mxbikes.exe
+if an older version set it, and any menu or pitboard overrides.
+Pit boards saved under Documents\PiBoSo\MX Bikes\Holeshot-HUD stay.
 
 Notes
 -----
@@ -32,3 +34,4 @@ The overlay copies the plugin again on launch if it is missing or outdated.
 The game folder is remembered in %LOCALAPPDATA%\Holeshot HUD\gamedir.txt
 Layout is saved to Documents\PiBoSo\MX Bikes\Holeshot-HUD.ini
 Icons use Font Awesome Free (https://fontawesome.com/license/free)
+Rust crates built into the program are listed in THIRD-PARTY.txt

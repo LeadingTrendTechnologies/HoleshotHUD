@@ -5,6 +5,7 @@ fn available() -> UpdateState {
         version: "9.9.9".into(),
         url: "https://github.com/LeadingTrendTechnologies/HoleshotHUD/releases/download/v9.9.9/Holeshot-HUD-9.9.9-windows-x64.zip".into(),
         digest: "a".repeat(64),
+        signature: "https://github.com/LeadingTrendTechnologies/HoleshotHUD/releases/download/v9.9.9/Holeshot-HUD-9.9.9-windows-x64.zip.minisig".into(),
     }
 }
 
@@ -80,7 +81,8 @@ fn json_download_url_prefers_windows_x64_zip() {
         "tag_name": "v9.9.9",
         "assets": [
             {"name":"app.tar.gz","browser_download_url":"https://github.com/LeadingTrendTechnologies/HoleshotHUD/releases/download/v9.9.9/app.tar.gz","digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
-            {"name":"Holeshot-HUD-9.9.9-windows-x64.zip","browser_download_url":"https://github.com/LeadingTrendTechnologies/HoleshotHUD/releases/download/v9.9.9/Holeshot-HUD-9.9.9-windows-x64.zip","digest":"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}
+            {"name":"Holeshot-HUD-9.9.9-windows-x64.zip","browser_download_url":"https://github.com/LeadingTrendTechnologies/HoleshotHUD/releases/download/v9.9.9/Holeshot-HUD-9.9.9-windows-x64.zip","digest":"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},
+            {"name":"Holeshot-HUD-9.9.9-windows-x64.zip.minisig","browser_download_url":"https://github.com/LeadingTrendTechnologies/HoleshotHUD/releases/download/v9.9.9/Holeshot-HUD-9.9.9-windows-x64.zip.minisig"}
         ]
     }"#;
     let rel = parse_latest_release(body).expect("zip");
@@ -91,6 +93,10 @@ fn json_download_url_prefers_windows_x64_zip() {
     assert_eq!(
         rel.digest,
         "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    );
+    assert_eq!(
+        rel.signature,
+        "https://github.com/LeadingTrendTechnologies/HoleshotHUD/releases/download/v9.9.9/Holeshot-HUD-9.9.9-windows-x64.zip.minisig"
     );
 }
 
@@ -103,6 +109,38 @@ fn rejects_non_github_zip_url() {
         ]
     }"#;
     assert!(parse_latest_release(body).is_err());
+}
+
+#[test]
+fn rejects_a_zip_with_no_signature() {
+    let body = r#"{
+        "tag_name": "v1.0.0",
+        "assets": [
+            {"name":"Holeshot-HUD-1.0.0-windows-x64.zip","browser_download_url":"https://github.com/LeadingTrendTechnologies/HoleshotHUD/releases/download/v1.0.0/Holeshot-HUD-1.0.0-windows-x64.zip","digest":"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}
+        ]
+    }"#;
+    assert!(parse_latest_release(body).is_err());
+}
+
+#[test]
+fn signature_accepts_its_key_and_rejects_another() {
+    let message = b"holeshot-update";
+    let pair = minisign::KeyPair::generate_encrypted_keypair(Some(String::new())).unwrap();
+    let other = minisign::KeyPair::generate_encrypted_keypair(Some(String::new())).unwrap();
+    let signature = minisign::sign(Some(&pair.pk), &pair.sk, std::io::Cursor::new(message), None, None)
+        .unwrap()
+        .into_string();
+    assert!(signature_is_valid(
+        &pair.pk.to_base64(),
+        message,
+        &signature
+    ));
+    assert!(!signature_is_valid(
+        &other.pk.to_base64(),
+        message,
+        &signature
+    ));
+    assert!(!signature_is_valid(&pair.pk.to_base64(), b"other", &signature));
 }
 
 #[test]

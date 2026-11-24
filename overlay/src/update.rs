@@ -15,6 +15,8 @@ use crate::util::{json_array_slice, json_string};
 
 const REPO: &str = "LeadingTrendTechnologies/HoleshotHUD";
 const UA: &str = "mxbo-overlay";
+/// Minisign public key. The private key is not in this repository.
+const UPDATE_PUBLIC_KEY: &str = "RWT0JpV1brlxW+0WclDYGnxODmCVXghmuSfj52Omk515ap2zkufrnar2";
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const DETACHED_PROCESS: u32 = 0x0000_0008;
 const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
@@ -34,6 +36,7 @@ pub enum UpdateState {
         version: String,
         url: String,
         digest: String,
+        signature: String,
     },
     Downloading,
     Failed(String),
@@ -167,6 +170,7 @@ pub fn check() {
                         version: rel.version,
                         url: rel.url,
                         digest: rel.digest,
+                        signature: rel.signature,
                     }
                 } else {
                     UpdateState::Current
@@ -186,10 +190,12 @@ pub fn install() {
                 version,
                 url,
                 digest,
+                signature,
             } => ReleaseZip {
                 version: version.clone(),
                 url: url.clone(),
                 digest: digest.clone(),
+                signature: signature.clone(),
             },
             _ => return,
         }
@@ -205,6 +211,7 @@ struct ReleaseZip {
     version: String,
     url: String,
     digest: String,
+    signature: String,
 }
 
 fn latest_release_in(timeout: Duration) -> Result<ReleaseZip, String> {
@@ -237,10 +244,16 @@ fn parse_latest_release(body: &str) -> Result<ReleaseZip, String> {
     }
     let digest = parse_sha256_digest(&zip.digest)
         .ok_or_else(|| "Release zip is missing a SHA-256 digest.".to_string())?;
+    let signature = signature_url_for(&zip.url, body)
+        .ok_or_else(|| "Release zip has no signature.".to_string())?;
+    if !release_sig_url_ok(&signature, &zip.url) {
+        return Err("Release signature URL is not the Holeshot HUD GitHub download.".into());
+    }
     Ok(ReleaseZip {
         version: tag.trim_start_matches('v').to_string(),
         url: zip.url,
         digest,
+        signature,
     })
 }
 
@@ -301,6 +314,46 @@ fn json_object_at(s: &str) -> Option<&str> {
     None
 }
 
+fn release_sig_url_ok(url: &str, zip_url: &str) -> bool {
+    release_zip_url_ok(zip_url) && url == format!("{zip_url}.minisig")
+}
+
+fn signature_url_for(zip_url: &str, body: &str) -> Option<String> {
+    let want = format!("{zip_url}.minisig");
+    let assets = json_array_slice(body, "assets")?;
+    let mut search = assets;
+    while let Some(rel) = search.find('{') {
+        let Some(obj) = json_object_at(&search[rel..]) else {
+            search = &search[rel + 1..];
+            continue;
+        };
+        if json_string(obj, "browser_download_url").as_deref() == Some(want.as_str()) {
+            return Some(want);
+        }
+        search = &search[rel + 1..];
+    }
+    None
+}
+
+/// True when `signature_text` is a minisign signature of `file` for `public_key`.
+pub(crate) fn signature_is_valid(public_key: &str, file: &[u8], signature_text: &str) -> bool {
+    let Ok(key) = minisign::PublicKey::from_base64(public_key.trim()) else {
+        return false;
+    };
+    let Ok(signature) = minisign::SignatureBox::from_string(signature_text) else {
+        return false;
+    };
+    minisign::verify(
+        &key,
+        &signature,
+        std::io::Cursor::new(file),
+        true,
+        false,
+        false,
+    )
+    .is_ok()
+}
+
 fn release_zip_url_ok(url: &str) -> bool {
     let lower = url.trim().to_ascii_lowercase();
     if !lower
@@ -337,6 +390,15 @@ fn apply(rel: &ReleaseZip) -> Result<(), String> {
     if got != rel.digest {
         let _ = fs::remove_dir_all(&work);
         return Err("Update zip did not match the GitHub SHA-256 digest.".into());
+    }
+    let sig_path = work.join("update.zip.minisig");
+    download(&rel.signature, &sig_path)?;
+    let bytes = fs::read(&zip).map_err(|e| format!("Could not read update: {e}"))?;
+    let sig_text =
+        fs::read_to_string(&sig_path).map_err(|e| format!("Could not read update signature: {e}"))?;
+    if !signature_is_valid(UPDATE_PUBLIC_KEY, &bytes, &sig_text) {
+        let _ = fs::remove_dir_all(&work);
+        return Err("Update zip signature did not match.".into());
     }
     let extracted = work.join("extracted");
     fs::create_dir_all(&extracted).map_err(|e| format!("Could not create extract folder: {e}"))?;
