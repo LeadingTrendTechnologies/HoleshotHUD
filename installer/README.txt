@@ -35,3 +35,4 @@ The game folder is remembered in %LOCALAPPDATA%\Holeshot HUD\gamedir.txt
 Layout is saved to Documents\PiBoSo\MX Bikes\Holeshot-HUD.ini
 Icons use Font Awesome Free (https://fontawesome.com/license/free)
 Rust crates built into the program are listed in THIRD-PARTY.txt
+The MIT licence is LICENSE. Bundled fonts and their licence are OFL.txt.

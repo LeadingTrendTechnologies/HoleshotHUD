@@ -26,12 +26,23 @@ foreach ($pkg in $meta["packages"]) {
     $lines.Add(("{0} {1} ({2})" -f $pkg["name"], $pkg["version"], $license))
 }
 $sorted = @($lines | Sort-Object)
+$oflPath = Join-Path $Root "overlay\hud\fonts\OFL.txt"
+$ofl = Get-Content -LiteralPath $oflPath -Raw
+$preambleAt = $ofl.IndexOf("SIL OPEN FONT LICENSE")
+if ($preambleAt -lt 0) { throw "OFL.txt is missing its licence heading" }
+$fontNote = $ofl.Substring(0, $preambleAt).Trim()
 $header = @(
     "Third-party Rust crates built into Holeshot HUD."
     "Each line is the crate name, version, and SPDX license identifier."
     "Font Awesome Free icons: https://fontawesome.com/license/free"
     ""
 )
+$fonts = @(
+    ""
+    $fontNote
+    ""
+    "The full font licence is OFL.txt, beside this file."
+)
 $out = Join-Path $Root "installer\THIRD-PARTY.txt"
-($header + $sorted) -join "`r`n" | Set-Content -LiteralPath $out -Encoding utf8
+($header + $sorted + $fonts) -join "`r`n" | Set-Content -LiteralPath $out -Encoding utf8
 Write-Host "Wrote $out ($($sorted.Count) crates)"

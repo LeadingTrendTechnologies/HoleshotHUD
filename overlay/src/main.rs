@@ -285,11 +285,15 @@ fn main() {
     }
     let loaded = crate::config::HudConfig::load_file();
     // Waiter path: show the HUD as soon as MX Bikes is up. Do not block on GitHub.
-    if loaded.auto_update_on_launch && !wait_for_game && crate::update::apply_on_launch() {
+    if loaded.check_for_updates
+        && loaded.auto_update_on_launch
+        && !wait_for_game
+        && crate::update::apply_on_launch()
+    {
         crate::startup::handover_game_waiter();
         return;
     }
-    if !loaded.auto_update_on_launch {
+    if loaded.check_for_updates && !loaded.auto_update_on_launch {
         crate::update::check();
     }
     crate::record::init();

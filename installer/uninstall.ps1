@@ -41,6 +41,8 @@ function Remove-HudFilesFrom([string]$dir) {
             "Uninstall.ps1",
             "Uninstall.bat",
             "README.txt",
+            "LICENSE",
+            "OFL.txt",
             "THIRD-PARTY.txt",
             "Holeshot-HUD.ini",
             "mxbo.ini",

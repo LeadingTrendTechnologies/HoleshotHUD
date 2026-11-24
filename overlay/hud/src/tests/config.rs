@@ -172,6 +172,27 @@ fn default_hud_hides_every_widget() {
 }
 
 #[test]
+fn check_for_updates_defaults_on_and_round_trips() {
+    let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("mxbo-ini-updates-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("Holeshot-HUD.ini");
+    std::fs::write(&path, "first_install_version=0.1.0\n").unwrap();
+    std::env::set_var("MXBO_TEST_INI", &path);
+    let mut cfg = HudConfig::load_file();
+    assert!(cfg.check_for_updates, "missing check_for_updates= stays on");
+    assert!(!cfg.auto_update_on_launch);
+    cfg.check_for_updates = false;
+    cfg.save();
+    let loaded = HudConfig::load_file();
+    let text = std::fs::read_to_string(&path).unwrap();
+    std::env::remove_var("MXBO_TEST_INI");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(!loaded.check_for_updates);
+    assert!(text.contains("check_for_updates=0"));
+}
+
+#[test]
 fn review_defaults_off_and_round_trips() {
     let _g = INI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let dir = std::env::temp_dir().join(format!("mxbo-ini-review-{}", std::process::id()));

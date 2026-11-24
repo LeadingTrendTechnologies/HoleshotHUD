@@ -508,6 +508,7 @@ pub(crate) enum Hit {
     StreamOpenEditUrl,
     StreamCopyGameToStream,
     FeatureSector,
+    CheckForUpdates,
     AutoUpdateOnLaunch,
     QuitApp,
     Uninstall,

@@ -50,6 +50,8 @@ Source: "{#SourceDir}\Install-Plugin.ps1"; DestDir: "{app}"; Flags: ignoreversio
 Source: "{#SourceDir}\Uninstall.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\Uninstall.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\README.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceDir}\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceDir}\OFL.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\THIRD-PARTY.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]

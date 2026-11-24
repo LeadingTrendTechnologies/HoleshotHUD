@@ -2750,6 +2750,8 @@ pub struct HudConfig {
     pub stream_enabled: bool,
     /// Last bound localhost port for the stream page (0 = use default).
     pub stream_port: u16,
+    /// F8 Settings → Updates. Off skips the GitHub check at startup.
+    pub check_for_updates: bool,
     pub auto_update_on_launch: bool,
     /// Last version whose What's new modal was dismissed with Got it.
     pub whats_new_seen: String,
@@ -2800,6 +2802,7 @@ impl HudConfig {
             open_with_game: false,
             stream_enabled: false,
             stream_port: 0,
+            check_for_updates: true,
             auto_update_on_launch: false,
             whats_new_seen: String::new(),
             first_install_version: String::new(),
@@ -3290,7 +3293,7 @@ impl HudConfig {
              [App]\n\
              font_family={}\nprimary_color={}\nunits={}\nunits_speed={}\nunits_liquids={}\nunits_temperature={}\n\
              settings_key={}\nsettings_theme={}\nlanguage={}\nsettings_x={}\nsettings_y={}\nstart_with_windows={}\nminimize_on_close={}\n\
-             close_with_game={}\nopen_with_game={}\nstream_enabled={}\nstream_port={}\nauto_update_on_launch={}\nwhats_new_seen={}\n\
+             close_with_game={}\nopen_with_game={}\nstream_enabled={}\nstream_port={}\ncheck_for_updates={}\nauto_update_on_launch={}\nwhats_new_seen={}\n\
              first_install_version={}\nexperimental={}\nreview={}\ningame_hud={}\ngame_ui={}\n\
              game_ui_match_primary={}\ngame_ui_primary_color={}\n\
              game_ui_splash_path={}\ngame_ui_loading_path={}\nstance_bind={}\nactive_preset={}\n\
@@ -3313,6 +3316,7 @@ impl HudConfig {
             ini_flag(self.open_with_game),
             ini_flag(self.stream_enabled),
             self.stream_port,
+            ini_flag(self.check_for_updates),
             ini_flag(self.auto_update_on_launch),
             self.whats_new_seen,
             self.first_install_version,
@@ -3807,6 +3811,7 @@ fn apply_app_key(
                 cfg.stream_port = n;
             }
         }
+        "check_for_updates" => cfg.check_for_updates = b,
         "auto_update_on_launch" => cfg.auto_update_on_launch = b,
         "whats_new_seen" => cfg.whats_new_seen = val.trim().to_string(),
         "first_install_version" => {

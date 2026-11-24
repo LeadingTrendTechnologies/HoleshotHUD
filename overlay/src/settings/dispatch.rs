@@ -934,10 +934,29 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
             crate::config::update_config(|c| c.copy_game_edit_to_stream());
             return;
         }
+        Hit::CheckForUpdates => {
+            close_drop();
+            let on = crate::config::with_config(|c| !c.check_for_updates);
+            crate::config::update_config(|c| {
+                c.check_for_updates = on;
+                if !on {
+                    c.auto_update_on_launch = false;
+                }
+            });
+            if on {
+                crate::update::check();
+            }
+            return;
+        }
         Hit::AutoUpdateOnLaunch => {
             close_drop();
             let on = crate::config::with_config(|c| !c.auto_update_on_launch);
-            crate::config::update_config(|c| c.auto_update_on_launch = on);
+            crate::config::update_config(|c| {
+                c.auto_update_on_launch = on;
+                if on {
+                    c.check_for_updates = true;
+                }
+            });
             if !on {
                 crate::update::check();
             }
@@ -1583,6 +1602,7 @@ pub(crate) fn dispatch(id: Hit, p: (f32, f32)) {
         | Hit::StreamOpenUrl
         | Hit::StreamOpenEditUrl
         | Hit::StreamCopyGameToStream
+        | Hit::CheckForUpdates
         | Hit::AutoUpdateOnLaunch
         | Hit::QuitApp
         | Hit::Uninstall

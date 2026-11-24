@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.24.2
+
+Startup can skip the GitHub update check. The zip and Setup include the MIT licence and the bundled font licence.
+
+### Updates
+
+- Settings → Updates → Check for updates. It is on until you turn it off. Off, Holeshot HUD does not contact GitHub at startup.
+- Turning that off also turns off Update automatically on launch. Turning automatic updates on turns the check back on.
+
+### Release files
+
+- `LICENSE` is the MIT licence.
+- `OFL.txt` is the licence for Exo 2, Teko, Goldman, Montserrat, and Roboto. `THIRD-PARTY.txt` names them.
+
 ## 0.24.1
 
 Uninstall clears the game compatibility flag, temp logs, and menu or pitboard overrides. A bug report sends the race-log file name. Browser Source ignores other websites.

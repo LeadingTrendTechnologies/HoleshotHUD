@@ -805,13 +805,50 @@ fn pane_app_updates(
         x,
         y,
         w,
-        "Update automatically on launch",
-        cfg.auto_update_on_launch,
-        Hit::AutoUpdateOnLaunch,
+        "Check for updates",
+        cfg.check_for_updates,
+        Hit::CheckForUpdates,
         hover,
         hits,
     );
-    if cfg.auto_update_on_launch {
+    if cfg.check_for_updates {
+        text(
+            px,
+            fonts,
+            "Asks GitHub when Holeshot HUD starts. Nothing about you is sent.",
+            11.0,
+            x + 4.0,
+            y + 2.0,
+            dim(),
+            false,
+        );
+        y += 22.0;
+        y = toggle_row(
+            px,
+            fonts,
+            x,
+            y,
+            w,
+            "Update automatically on launch",
+            cfg.auto_update_on_launch,
+            Hit::AutoUpdateOnLaunch,
+            hover,
+            hits,
+        );
+    } else {
+        text(
+            px,
+            fonts,
+            "Startup does not contact GitHub.",
+            11.0,
+            x + 4.0,
+            y + 2.0,
+            dim(),
+            false,
+        );
+        y += 22.0;
+    }
+    if cfg.check_for_updates && cfg.auto_update_on_launch {
         text(
             px,
             fonts,
@@ -823,7 +860,7 @@ fn pane_app_updates(
             false,
         );
         y += 22.0;
-    } else {
+    } else if cfg.check_for_updates {
         text(
             px,
             fonts,
